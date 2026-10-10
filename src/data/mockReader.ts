@@ -1,8 +1,9 @@
-import type { Dynamic, DynamicReader, User } from './contracts';
+import type { Comment, Dynamic, DynamicReader, User } from './contracts';
 
 export interface MockDataset {
   readonly creator: User;
   readonly dynamics: readonly Dynamic[];
+  readonly comments?: Readonly<Record<string, readonly Comment[]>>;
 }
 
 function normalizeUser(user: User): User {
@@ -50,6 +51,32 @@ export function createMockReader(dataset: MockDataset): DynamicReader {
       return { status: 'success', data: {
         items: items.slice(offset, offset + size),
         nextCursor: items.length > offset + size ? `${prefix}${offset + size}` : null,
+      } };
+    },
+    async readComments({ dynamicId, sort, cursor, signal }) {
+      if (signal.aborted) return { status: 'cancelled' };
+      const prefix = `comments:${encodeURIComponent(dataset.creator.id)}:${encodeURIComponent(dynamicId)}:${sort}:`;
+      const comments = (dataset.comments?.[dynamicId] ?? []).map(item => ({
+        ...item, author: normalizeUser(item.author), publishedAt: normalizeTime(item.publishedAt),
+        likeCount: item.likeCount !== null && Number.isSafeInteger(item.likeCount) && item.likeCount >= 0 ? item.likeCount : null,
+      })).sort((a, b) => {
+        if (sort === 'hot' && a.likeCount !== b.likeCount) {
+          if (a.likeCount === null) return 1;
+          if (b.likeCount === null) return -1;
+          return b.likeCount - a.likeCount;
+        }
+        if (a.publishedAt !== b.publishedAt) {
+          if (a.publishedAt === null) return 1;
+          if (b.publishedAt === null) return -1;
+          return Date.parse(b.publishedAt) - Date.parse(a.publishedAt);
+        }
+        return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+      });
+      const offset = cursor == null ? 0 : cursor.startsWith(prefix) ? Number(cursor.slice(prefix.length)) : NaN;
+      if (!Number.isSafeInteger(offset) || offset < 0 || offset > comments.length) return { status: 'error' };
+      return { status: 'success', data: {
+        items: comments.slice(offset, offset + 20),
+        nextCursor: comments.length > offset + 20 ? `${prefix}${offset + 20}` : null,
       } };
     },
     async readDetail({ id, signal }) {

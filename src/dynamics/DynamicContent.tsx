@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { Dynamic, User } from '../data/contracts';
 import styles from './Dynamics.module.css';
-import { ListText } from './ListText';
+import { FoldableText } from './FoldableText';
 
 export function Identity({ user, heading = false }: { user: User; heading?: boolean }) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
@@ -14,7 +14,7 @@ export function Identity({ user, heading = false }: { user: User; heading?: bool
   </div>;
 }
 
-function displayTime(value: string | null): string {
+export function displayTime(value: string | null): string {
   if (!value || !Number.isFinite(Date.parse(value))) return '时间未知';
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -24,15 +24,16 @@ function displayTime(value: string | null): string {
   return `${part('year')}-${part('month')}-${part('day')} ${part('hour')}:${part('minute')}:${part('second')}`;
 }
 
-export function DynamicContent({ dynamic, folding }: {
-  dynamic: Dynamic; folding?: { expanded: boolean; toggle(): void };
+export function DynamicContent({ dynamic, folding, navigateToComments }: {
+  dynamic: Dynamic; folding?: { expanded: boolean; toggle(): void }; navigateToComments?(): void;
 }) {
   const text = dynamic.text.trim() ? dynamic.text : '暂无内容';
   return <>
     <Identity user={dynamic.author} />
     <time className={styles.time} dateTime={dynamic.publishedAt ?? undefined}>{displayTime(dynamic.publishedAt)}</time>
-    {folding ? <ListText text={text} expanded={folding.expanded} toggle={folding.toggle} />
+    {folding ? <FoldableText text={text} expanded={folding.expanded} toggle={folding.toggle} />
       : <p className={styles.text}>{text}</p>}
-    <p className={styles.count}>评论 {dynamic.commentCount ?? '—'}</p>
+    {navigateToComments ? <button className={styles.button} type="button" onClick={navigateToComments}>评论 {dynamic.commentCount ?? '—'}</button>
+      : <p className={styles.count}>评论 {dynamic.commentCount ?? '—'}</p>}
   </>;
 }

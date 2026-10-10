@@ -4,13 +4,28 @@ export interface User {
   readonly avatarUrl: string | null;
 }
 
-// 01 的文字展示模型；图片、评论和回复在对应任务中扩展。
+// 文字动态模型；图片在对应任务中扩展。
 export interface Dynamic {
   readonly id: string;
   readonly author: User;
   readonly publishedAt: string | null;
   readonly text: string;
   readonly commentCount: number | null;
+}
+
+export type CommentSort = 'hot' | 'latest';
+
+export interface Comment {
+  readonly id: string;
+  readonly author: User;
+  readonly publishedAt: string | null;
+  readonly text: string;
+  readonly likeCount: number | null;
+}
+
+export interface CommentBatch {
+  readonly items: readonly Comment[];
+  readonly nextCursor: string | null;
 }
 
 export interface DynamicBatch {
@@ -29,4 +44,5 @@ export interface DynamicReader {
   readonly creator: User;
   readList(input: { readonly limit: number; readonly cursor?: string | null; readonly signal: AbortSignal }): Promise<ReadResult<DynamicBatch>>;
   readDetail(input: { readonly id: string; readonly signal: AbortSignal }): Promise<DetailResult>;
+  readComments(input: { readonly dynamicId: string; readonly sort: CommentSort; readonly cursor?: string | null; readonly signal: AbortSignal }): Promise<ReadResult<CommentBatch>>;
 }
