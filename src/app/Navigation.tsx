@@ -7,6 +7,7 @@ interface PageEntry {
   readonly path: string;
   readonly sourcePageEntryId: string | null;
   readonly listSnapshot?: ListSnapshot;
+  readonly detailTarget?: 'top' | 'comments';
 }
 interface Session {
   readonly sessionId: string;
@@ -15,8 +16,9 @@ interface Session {
 interface Navigation {
   readonly pageEntryId: string;
   readonly listSnapshot: ListSnapshot | undefined;
+  readonly detailTarget: 'top' | 'comments';
   saveListSnapshot(pageEntryId: string, snapshot: ListSnapshot): void;
-  openDetail(id: string): void;
+  openDetail(id: string, target?: 'top' | 'comments'): void;
   returnToList(): void;
 }
 const NavigationContext = createContext<Navigation | null>(null);
@@ -79,10 +81,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const navigation = useMemo<Navigation>(() => ({
     pageEntryId: entry.pageEntryId,
     listSnapshot: entry.listSnapshot,
+    detailTarget: entry.detailTarget ?? 'top',
     saveListSnapshot,
-    openDetail(id) {
+    openDetail(id, target = 'top') {
       const next: PageEntry = {
-        pageEntryId: crypto.randomUUID(), path: `/dynamics/${encodeURIComponent(id)}`,
+        pageEntryId: crypto.randomUUID(), path: `/dynamics/${encodeURIComponent(id)}`, detailTarget: target,
         // 来源关系仅在本模块从有效列表直接 PUSH 时建立；按地址初始化不会创建。
         sourcePageEntryId: validEntry?.path === '/' ? validEntry.pageEntryId : null,
       };
@@ -100,7 +103,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         void navigate('/', { replace: true, state: null });
       }
     },
-  }), [entry.pageEntryId, entry.listSnapshot, saveListSnapshot, validEntry, session.entries, session.sessionId, navigate]);
+  }), [entry.pageEntryId, entry.listSnapshot, entry.detailTarget, saveListSnapshot, validEntry, session.entries, session.sessionId, navigate]);
   return <NavigationContext.Provider value={navigation}>{children}</NavigationContext.Provider>;
 }
 

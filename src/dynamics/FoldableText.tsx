@@ -4,7 +4,9 @@ import styles from './Dynamics.module.css';
 // scrollHeight 按整数像素取整，留出一个像素避免恰好六行误判。
 const layoutRoundingTolerance = 1;
 
-export function ListText({ text, expanded, toggle }: { text: string; expanded: boolean; toggle(): void }) {
+export function FoldableText({ text, expanded, toggle, subject = '正文' }: {
+  text: string; expanded: boolean; toggle(): void; subject?: '正文' | '评论';
+}) {
   const paragraph = useRef<HTMLParagraphElement>(null);
   const [overflowing, setOverflowing] = useState(false);
   const id = useId();
@@ -25,6 +27,6 @@ export function ListText({ text, expanded, toggle }: { text: string; expanded: b
   return <>
     <p id={id} ref={paragraph} className={`${styles.text} ${expanded ? '' : styles.collapsed}`}>{text}</p>
     {overflowing && <button type="button" className={styles.button} aria-expanded={expanded}
-      aria-controls={id} onClick={toggle}>{expanded ? '收起正文' : '展开正文'}</button>}
+      aria-controls={id} onClick={toggle}>{expanded ? `收起${subject}` : `展开${subject}`}</button>}
   </>;
 }

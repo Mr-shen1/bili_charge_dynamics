@@ -41,7 +41,7 @@ function ListVisit({ reader }: { reader: DynamicReader }) {
     {!state.data && <ReadNotice status={state.status} area="动态列表" retry={load} />}
     {state.data?.items.length === 0 && <p role="status">暂无动态</p>}
     {state.data?.items.map(dynamic => <article className={styles.card} key={dynamic.id} data-reading-id={dynamic.id}>
-      <DynamicContent dynamic={dynamic} folding={{ expanded: expanded[dynamic.id] ?? false,
+      <DynamicContent dynamic={dynamic} navigateToComments={() => openDetail(dynamic.id, 'comments')} folding={{ expanded: expanded[dynamic.id] ?? false,
         toggle: () => setExpanded(previous => ({ ...previous, [dynamic.id]: !previous[dynamic.id] })),
       }} />
       <button className={styles.button} type="button" onClick={() => openDetail(dynamic.id)}>查看详情</button>
