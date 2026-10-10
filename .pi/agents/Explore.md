@@ -2,6 +2,7 @@
 name: Explore
 display_name: Explore
 description: Read-only codebase exploration using CodeGraph MCP first
+thinking: max
 tools:
   - read
   - bash
