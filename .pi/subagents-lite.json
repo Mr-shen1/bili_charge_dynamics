@@ -1,0 +1,6 @@
+{
+  "agent": {
+    "review": "openai/gpt-6-sol",
+    "Explore": "openai/gpt-6-luna"
+  }
+}
