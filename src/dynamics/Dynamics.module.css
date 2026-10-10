@@ -6,7 +6,8 @@
 .avatar { flex: 0 0 44px; width: 44px; height: 44px; border-radius: 50%; object-fit: cover; }
 .nickname { min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
 .time { display: block; margin: 12px 0; color: var(--muted); font-size: .875rem; }
-.text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.75; margin: 16px 0; }
+.text { --collapsed-lines: 6; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.75; margin: 16px 0; }
+.collapsed { max-height: calc(var(--collapsed-lines) * 1lh); overflow: hidden; }
 .count { color: var(--muted); font-size: .875rem; }
 .button { min-height: 44px; min-width: 44px; padding: 10px 16px; border: 1px solid var(--border); border-radius: 8px; color: var(--accent); background: var(--surface); cursor: pointer; font: inherit; }
 .button:hover { background: #eef4ff; }

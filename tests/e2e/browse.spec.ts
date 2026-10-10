@@ -63,6 +63,13 @@ test('正文选择、头像昵称不跳转；键盘操作可聚焦且焦点可�
   await expect(page).toHaveURL(/\/$/);
   expect(await page.evaluate(() => window.getSelection()?.toString())).toContain('第八行');
   await page.keyboard.press('Tab');
+  const expand = card.getByRole('button', { name: '展开正文' });
+  await expect(expand).toBeFocused();
+  expect(await expand.evaluate(element => getComputedStyle(element).outlineStyle)).not.toBe('none');
+  await page.keyboard.press('Enter');
+  await expect(card.getByRole('button', { name: '收起正文' })).toBeFocused();
+  await expect(page).toHaveURL(/\/$/);
+  await page.keyboard.press('Tab');
   const action = page.getByRole('button', { name: '查看详情' }).first();
   await expect(action).toBeFocused();
   expect(await action.evaluate(element => getComputedStyle(element).outlineStyle)).not.toBe('none');

@@ -27,6 +27,6 @@ export type DetailResult = ReadResult<Dynamic> | { readonly status: 'not-found' 
 
 export interface DynamicReader {
   readonly creator: User;
-  readList(input: { readonly limit: number; readonly signal: AbortSignal }): Promise<ReadResult<DynamicBatch>>;
+  readList(input: { readonly limit: number; readonly cursor?: string | null; readonly signal: AbortSignal }): Promise<ReadResult<DynamicBatch>>;
   readDetail(input: { readonly id: string; readonly signal: AbortSignal }): Promise<DetailResult>;
 }

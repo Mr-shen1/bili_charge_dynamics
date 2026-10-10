@@ -4,6 +4,29 @@ import { createMockReader } from '../src/data/mockReader';
 const creator = { id: '90071992547409930', nickname: '纸飞机', avatarUrl: null };
 
 describe('统一动态读取接口', () => {
+  it('25 条动态按完整排序分为 10、10、5，重读同一标记不会跳批', async () => {
+    const reader = createMockReader({ creator, dynamics: Array.from({ length: 25 }, (_, i) => ({
+      id: String(i).padStart(2, '0'), author: creator, publishedAt: '2026-01-01T00:00:00Z',
+      text: String(i), commentCount: 0,
+    })).reverse() });
+    const signal = new AbortController().signal;
+    const first = await reader.readList({ limit: 10, signal });
+    if (first.status !== 'success') throw new Error('Expected success');
+    const second = await reader.readList({ limit: 10, signal, cursor: first.data.nextCursor });
+    if (second.status !== 'success') throw new Error('Expected success');
+    expect(second).toEqual(await reader.readList({ limit: 10, signal, cursor: first.data.nextCursor }));
+    const third = await reader.readList({ limit: 10, signal, cursor: second.data.nextCursor });
+    if (third.status !== 'success') throw new Error('Expected success');
+    expect([first.data.items.length, second.data.items.length, third.data.items.length]).toEqual([10, 10, 5]);
+    expect([...first.data.items, ...second.data.items, ...third.data.items].map(item => item.id)).toEqual([
+      '00', '01', '02', '03', '04', '05', '06', '07', '08', '09',
+      '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24',
+    ]);
+    expect(third.data.nextCursor).toBeNull();
+    expect(await reader.readList({ limit: 10, signal, cursor: 'comments:10' })).toEqual({ status: 'error' });
+    const anotherCreator = createMockReader({ creator: { ...creator, id: 'another' }, dynamics: [] });
+    expect(await anotherCreator.readList({ limit: 10, signal, cursor: first.data.nextCursor })).toEqual({ status: 'error' });
+  });
   it('缺失或无效时间/计数保留为空，零值保留；未知详情与取消读取语义不同', async () => {
     const reader = createMockReader({ creator, dynamics: [
       { id: 'missing', author: creator, publishedAt: null, text: '', commentCount: null },

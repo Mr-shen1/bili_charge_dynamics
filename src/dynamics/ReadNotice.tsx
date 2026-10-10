@@ -3,7 +3,7 @@ import styles from './Dynamics.module.css';
 
 export function ReadNotice({ status, area, retry }: {
   status: DetailResult['status'] | 'loading';
-  area: '动态列表' | '动态详情';
+  area: '动态列表' | '动态详情' | '动态追加';
   retry(): void;
 }) {
   if (status === 'loading') return <p role="status" className={styles.status}>{area}加载中…</p>;

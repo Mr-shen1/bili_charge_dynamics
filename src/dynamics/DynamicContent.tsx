@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Dynamic, User } from '../data/contracts';
 import styles from './Dynamics.module.css';
+import { ListText } from './ListText';
 
 export function Identity({ user, heading = false }: { user: User; heading?: boolean }) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
@@ -23,11 +24,15 @@ function displayTime(value: string | null): string {
   return `${part('year')}-${part('month')}-${part('day')} ${part('hour')}:${part('minute')}:${part('second')}`;
 }
 
-export function DynamicContent({ dynamic }: { dynamic: Dynamic }) {
+export function DynamicContent({ dynamic, folding }: {
+  dynamic: Dynamic; folding?: { expanded: boolean; toggle(): void };
+}) {
+  const text = dynamic.text.trim() ? dynamic.text : '暂无内容';
   return <>
     <Identity user={dynamic.author} />
     <time className={styles.time} dateTime={dynamic.publishedAt ?? undefined}>{displayTime(dynamic.publishedAt)}</time>
-    <p className={styles.text}>{dynamic.text.trim() ? dynamic.text : '暂无内容'}</p>
+    {folding ? <ListText text={text} expanded={folding.expanded} toggle={folding.toggle} />
+      : <p className={styles.text}>{text}</p>}
     <p className={styles.count}>评论 {dynamic.commentCount ?? '—'}</p>
   </>;
 }

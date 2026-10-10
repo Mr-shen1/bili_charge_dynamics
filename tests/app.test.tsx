@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { StrictMode } from 'react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, useNavigate } from 'react-router';
 import { describe, expect, it } from 'vitest';
 import { App } from '../src/app/App';
 import { createMockReader } from '../src/data/mockReader';
@@ -18,7 +18,108 @@ function show(reader: DynamicReader, path = '/') {
   return render(<MemoryRouter initialEntries={[path]}><App reader={reader} /></MemoryRouter>);
 }
 
+function VisitControls() {
+  const navigate = useNavigate();
+  return <>
+    <button onClick={() => void navigate('/', { state: null })}>新列表访问</button>
+    <button onClick={() => void navigate(-1)}>历史后退</button>
+  </>;
+}
+
 describe('文字动态公开页面行为', () => {
+  it('同路径的新访问从首批开始，后退只恢复原访问的范围，不共享可变进度', async () => {
+    const user = userEvent.setup();
+    const reader = createMockReader({ creator, dynamics: Array.from({ length: 25 }, (_, i) => ({
+      ...item, id: String(i).padStart(2, '0'), text: `动态 ${i}`,
+    })) });
+    render(<MemoryRouter><VisitControls /><App reader={reader} /></MemoryRouter>);
+    await screen.findAllByRole('article');
+    await user.click(screen.getByRole('button', { name: '加载更多' }));
+    await screen.findByText('动态 19');
+    await user.click(screen.getByRole('button', { name: '新列表访问' }));
+    await screen.findByText('动态 0');
+    expect(screen.getAllByRole('article')).toHaveLength(10);
+    await user.click(screen.getByRole('button', { name: '历史后退' }));
+    await screen.findByText('动态 19');
+    expect(screen.getAllByRole('article')).toHaveLength(20);
+    await user.click(screen.getByRole('button', { name: '加载更多' }));
+    await screen.findByText('动态 24');
+    expect(screen.getAllByRole('article')).toHaveLength(25);
+  });
+  it('追加失败保留首批，在原批次重试，随后读完 25 条且不再提供加载入口', async () => {
+    const user = userEvent.setup();
+    const base = createMockReader({ creator, dynamics: Array.from({ length: 25 }, (_, i) => ({
+      ...item, id: String(i).padStart(2, '0'), text: `动态 ${i}`,
+    })) });
+    show(createControlledReader(base, { list: [{}, { result: { status: 'error' } }] }));
+    expect(await screen.findAllByRole('article')).toHaveLength(10);
+    await user.click(screen.getByRole('button', { name: '加载更多' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('动态追加读取失败');
+    expect(screen.getAllByRole('article')).toHaveLength(10);
+    await user.click(screen.getAllByRole('button', { name: '查看详情' })[0]!);
+    await user.click(await screen.findByRole('button', { name: '返回列表' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('动态追加读取失败');
+    expect(screen.getAllByRole('article')).toHaveLength(10);
+    await user.click(screen.getByRole('button', { name: '重试' }));
+    expect(await screen.findByText('动态 19')).toBeVisible();
+    expect(screen.getAllByRole('article')).toHaveLength(20);
+    await user.click(screen.getByRole('button', { name: '加载更多' }));
+    expect(await screen.findByText('动态 24')).toBeVisible();
+    expect(screen.getAllByRole('article')).toHaveLength(25);
+    expect(screen.getByText('动态已加载完毕')).toBeVisible();
+    expect(screen.queryByRole('button', { name: '加载更多' })).not.toBeInTheDocument();
+  });
+  it('Adapter 批次交界重复 ID 只展示一次，追加取消可重读且不推进标记', async () => {
+    const user = userEvent.setup();
+    const first = { ...item, id: 'first', text: '首批正文' };
+    const next = { ...item, id: 'next', text: '追加正文' };
+    show(createControlledReader(createMockReader({ creator, dynamics: [] }), { list: [
+      { result: { status: 'success', data: { items: [first], nextCursor: 'opaque-token' } } },
+      { result: { status: 'cancelled' } },
+      { result: { status: 'success', data: { items: [first, next, next], nextCursor: null } } },
+    ] }));
+    await screen.findByText('首批正文');
+    await user.click(screen.getByRole('button', { name: '加载更多' }));
+    expect(await screen.findByText('读取已取消，可重新读取。')).toBeVisible();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('article')).toHaveLength(1);
+    await user.click(screen.getByRole('button', { name: '重新读取' }));
+    await screen.findByText('追加正文');
+    expect(screen.getAllByRole('article')).toHaveLength(2);
+    expect(screen.getByText('动态已加载完毕')).toBeVisible();
+  });
+  it.each(['success', 'error', 'rejection'] as const)('重复追加不重复请求，离开后旧 %s 不污染返回的列表，未完成批次可继续读取', async outcome => {
+    const user = userEvent.setup();
+    const base = createMockReader({ creator, dynamics: Array.from({ length: 25 }, (_, i) => ({
+      ...item, id: String(i).padStart(2, '0'), text: `动态 ${i}`,
+    })) });
+    let resolve!: (value: Awaited<ReturnType<DynamicReader['readList']>>) => void;
+    let reject!: (reason: Error) => void;
+    const pending = new Promise<Awaited<ReturnType<DynamicReader['readList']>>>((ok, fail) => { resolve = ok; reject = fail; });
+    const controlled = createControlledReader(base, { list: [{}, { result: pending, ignoreAbort: true }] });
+    const cursors: (string | null | undefined)[] = [];
+    show({ ...controlled, readList(input) { cursors.push(input.cursor); return controlled.readList(input); } });
+    await screen.findAllByRole('article');
+    const more = screen.getByRole('button', { name: '加载更多' });
+    fireEvent.click(more);
+    fireEvent.click(more);
+    expect(more).toBeDisabled();
+    expect(cursors).toHaveLength(2);
+    await user.click(screen.getAllByRole('button', { name: '查看详情' })[0]!);
+    await screen.findByRole('button', { name: '返回列表' });
+    await user.click(screen.getByRole('button', { name: '返回列表' }));
+    expect(await screen.findByText('动态 19')).toBeVisible();
+    expect(cursors).toHaveLength(3);
+    expect(cursors[2]).toBe(cursors[1]);
+    await act(async () => {
+      if (outcome === 'rejection') reject(new Error('late failure'));
+      else resolve(outcome === 'error' ? { status: 'error' } : { status: 'success', data: { items: [{ ...item, id: 'late', text: '过期动态' }], nextCursor: null } });
+    });
+    expect(screen.getAllByRole('article')).toHaveLength(20);
+    expect(screen.queryByText('过期动态')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '加载更多' })).toBeEnabled();
+  });
   it('取消的当前读取不当作用户错误，也不遗留永久加载，可重新读取', async () => {
     const user = userEvent.setup();
     const base = createMockReader({ creator, dynamics: [item] });

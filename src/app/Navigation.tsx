@@ -1,10 +1,12 @@
-import { createContext, useContext, useEffect, useMemo, useReducer, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, type ReactNode } from 'react';
+import type { ListSnapshot } from './ListSnapshot';
 import { useLocation, useNavigate } from 'react-router';
 
 interface PageEntry {
   readonly pageEntryId: string;
   readonly path: string;
   readonly sourcePageEntryId: string | null;
+  readonly listSnapshot?: ListSnapshot;
 }
 interface Session {
   readonly sessionId: string;
@@ -12,14 +14,27 @@ interface Session {
 }
 interface Navigation {
   readonly pageEntryId: string;
+  readonly listSnapshot: ListSnapshot | undefined;
+  saveListSnapshot(pageEntryId: string, snapshot: ListSnapshot): void;
   openDetail(id: string): void;
   returnToList(): void;
 }
 const NavigationContext = createContext<Navigation | null>(null);
 
-function register(state: Session, entry: PageEntry): Session {
-  if (state.entries[entry.pageEntryId]) return state;
-  return { ...state, entries: { ...state.entries, [entry.pageEntryId]: entry } };
+type SessionAction = { type: 'register'; entry: PageEntry }
+  | { type: 'save-list'; pageEntryId: string; snapshot: ListSnapshot };
+
+function reduceSession(state: Session, action: SessionAction): Session {
+  if (action.type === 'register') {
+    const entry = action.entry;
+    if (state.entries[entry.pageEntryId]) return state;
+    return { ...state, entries: { ...state.entries, [entry.pageEntryId]: entry } };
+  }
+  const entry = state.entries[action.pageEntryId];
+  if (!entry || entry.path !== '/') return state;
+  return { ...state, entries: { ...state.entries,
+    [action.pageEntryId]: { ...entry, listSnapshot: action.snapshot },
+  } };
 }
 
 function readMetadata(value: unknown): { sessionId: string; pageEntryId: string } | null {
@@ -28,9 +43,9 @@ function readMetadata(value: unknown): { sessionId: string; pageEntryId: string 
     ? { sessionId: value.sessionId, pageEntryId: value.pageEntryId } : null;
 }
 
-// 稳定挂载于所有路由页之上。这里只建立访问身份/来源，不预做阅读快照。
+// 稳定挂载于所有路由页之上；访问元数据和列表快照仅保存在当前会话内存。
 export function SessionProvider({ children }: { children: ReactNode }) {
-  const [session, dispatch] = useReducer(register, undefined, () => ({
+  const [session, dispatch] = useReducer(reduceSession, undefined, () => ({
     sessionId: crypto.randomUUID(), entries: {},
   }));
   const location = useLocation();
@@ -45,7 +60,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (validEntry) return;
-    dispatch(freshEntry);
+    dispatch({ type: 'register', entry: freshEntry });
     // 首次 POP、失效会话或未登记的 PUSH/REPLACE 都按地址建新访问，不猜测来源。
     void navigate(location.pathname + location.search + location.hash, {
       replace: true, state: { sessionId: session.sessionId, pageEntryId: freshEntry.pageEntryId },
@@ -58,15 +73,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return () => { window.history.scrollRestoration = previous; };
   }, []);
 
+  const saveListSnapshot = useCallback((pageEntryId: string, snapshot: ListSnapshot) => {
+    dispatch({ type: 'save-list', pageEntryId, snapshot });
+  }, []);
   const navigation = useMemo<Navigation>(() => ({
     pageEntryId: entry.pageEntryId,
+    listSnapshot: entry.listSnapshot,
+    saveListSnapshot,
     openDetail(id) {
       const next: PageEntry = {
         pageEntryId: crypto.randomUUID(), path: `/dynamics/${encodeURIComponent(id)}`,
         // 来源关系仅在本模块从有效列表直接 PUSH 时建立；按地址初始化不会创建。
         sourcePageEntryId: validEntry?.path === '/' ? validEntry.pageEntryId : null,
       };
-      dispatch(next);
+      dispatch({ type: 'register', entry: next });
       void navigate(next.path, { state: { sessionId: session.sessionId, pageEntryId: next.pageEntryId } });
     },
     returnToList() {
@@ -80,7 +100,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         void navigate('/', { replace: true, state: null });
       }
     },
-  }), [entry.pageEntryId, validEntry, session.entries, session.sessionId, navigate]);
+  }), [entry.pageEntryId, entry.listSnapshot, saveListSnapshot, validEntry, session.entries, session.sessionId, navigate]);
   return <NavigationContext.Provider value={navigation}>{children}</NavigationContext.Provider>;
 }
 

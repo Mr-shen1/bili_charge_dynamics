@@ -41,13 +41,15 @@ export function createMockReader(dataset: MockDataset): DynamicReader {
 
   return {
     creator: normalizeUser(dataset.creator),
-    async readList({ limit, signal }) {
+    async readList({ limit, cursor, signal }) {
       if (signal.aborted) return { status: 'cancelled' };
-      const size = Math.max(1, Math.min(10, Math.floor(limit)));
+      const prefix = `dynamics:${encodeURIComponent(dataset.creator.id)}:time-desc:`;
+      const offset = cursor == null ? 0 : cursor.startsWith(prefix) ? Number(cursor.slice(prefix.length)) : NaN;
+      if (!Number.isSafeInteger(offset) || offset < 0 || offset > items.length) return { status: 'error' };
+      const size = Number.isFinite(limit) ? Math.max(1, Math.min(10, Math.floor(limit))) : 10;
       return { status: 'success', data: {
-        items: items.slice(0, size),
-        // 本票只读取首批；调用方不解析标记，下一批能力归 02。
-        nextCursor: items.length > size ? `dynamics:${size}` : null,
+        items: items.slice(offset, offset + size),
+        nextCursor: items.length > offset + size ? `${prefix}${offset + size}` : null,
       } };
     },
     async readDetail({ id, signal }) {
