@@ -1,6 +1,6 @@
 {
   "agent": {
-    "review": "openai/gpt-6-sol",
+    "review": "deepseek/deepseek-flash",
     "Explore": "openai/gpt-6-luna"
   }
 }

@@ -1,8 +1,8 @@
 ---
 name: review
 description: Performs one focused, read-only Standards or Spec review for the code-review skill
-model: openai/gpt-6-sol
-thinking: xhigh
+model: deepseek/deepseek-flash
+thinking: high
 tools:
   - read
   - bash
