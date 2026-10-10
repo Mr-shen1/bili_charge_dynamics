@@ -2,6 +2,27 @@ import { expect, test } from '@playwright/test';
 
 test.use({ baseURL: 'http://127.0.0.1:4174' });
 
+test('第二批追加失败保留展开及阅读位置，原位置重试后读完 25 条', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: '重试' }).click();
+  await expect(page.getByRole('article')).toHaveCount(10);
+  await page.getByRole('article').first().getByRole('button', { name: '展开正文' }).click();
+  const more = page.getByRole('button', { name: '加载更多' });
+  await more.scrollIntoViewIfNeeded();
+  const pixelY = await page.evaluate(() => window.scrollY);
+  await more.click();
+  await expect(more).toBeDisabled();
+  await expect(page.getByRole('alert')).toContainText('动态追加读取失败');
+  await expect(page.getByRole('article')).toHaveCount(10);
+  await expect(page.getByRole('article').first().getByRole('button', { name: '收起正文' })).toHaveCount(1);
+  expect(await page.evaluate(() => window.scrollY)).toBeCloseTo(pixelY, 0);
+  await page.getByRole('button', { name: '重试' }).click();
+  await expect(page.getByRole('article')).toHaveCount(20);
+  await page.getByRole('button', { name: '加载更多' }).click();
+  await expect(page.getByRole('article')).toHaveCount(25);
+  await expect(page.getByText('动态已加载完毕')).toBeVisible();
+});
+
 test('专用故障装配确定性列表/详情失败重试，长昵称不撑宽页面', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('alert')).toContainText('动态列表读取失败');

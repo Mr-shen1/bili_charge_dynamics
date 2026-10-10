@@ -1,8 +1,8 @@
 # 文字动态浏览
 
-目前仅完成 [任务 01](.scratch/dynamics-viewer/issues/01-browse-text-dynamics.md)：固定虚构 UP 主、首批最多 10 条文字动态、独立完整正文详情、站内返回、详情直达/刷新、加载/空态/错误重试及安全文本展示。
+目前完成 [任务 01](.scratch/dynamics-viewer/issues/01-browse-text-dynamics.md) 和 [任务 02](.scratch/dynamics-viewer/issues/02-continue-reading-dynamics.md)：固定虚构 UP 主、每批最多 10 条文字动态、独立完整正文详情、站内返回、详情直达/刷新、加载/空态/错误重试及安全文本展示；列表支持显式追加、超过六个渲染行的正文展开/收起，以及会话内返回原列表阅读进度。
 
-动态追加、正文折叠、阅读位置恢复、评论、内容图片与预览、Nginx 配置均留给 02–09。本工程不调用真实 B站、后端或 OSS，也不需要凭据。
+评论、内容图片与预览、完整详情历史快照、Nginx 配置仍留给 03–09。本工程不调用真实 B站、后端或 OSS，也不需要凭据。
 
 ## 环境与运行
 
@@ -42,15 +42,16 @@ pnpm build
 
 ## 装配与边界
 
-- `src/data/contracts.ts`：01 的只读文字模型、首批列表和详情接口，区分成功、取消、错误与动态不存在。后续任务扩展图片/评论以及下一批读取。
-- `src/data/mockReader.ts`：统一规范时间、缺失值与计数，按时间倒序、字符串 ID 升序稳定排序。页大小上限 10；本票返回下一批标记，但尚不提供追加操作或下一批读取。
-- `src/data/assembly.ts`：25 条虚构文字动态和项目内自行绘制的 SVG 头像；正常评论数为 0。
-- `src/app/Navigation.tsx`：稳定的 Context + reducer 会话容器，维护会话 ID、独立页面访问 ID 和可验证的列表来源。只存轻量历史元数据，不使用 localStorage/sessionStorage，不预做阅读快照。
-- `src/dynamics/`：页面消费统一读取接口，正文作为文本呈现、保留换行；取消及过期成功/失败不会改写已离开的页面。
-- `src/dev/`：确定性开发/测试装配。`pnpm dev:fault` 使列表及各详情首次失败一次，重试恢复，并使用长昵称样例；通过编译配置切换，不提供公开故障 URL 参数或页面控制面板。即使 `pnpm build --mode fault`，也只装配正常数据。
+- `src/data/contracts.ts`：只读文字模型、带不透明下一批标记的列表与详情接口，区分成功、取消、错误与动态不存在。UI 原样传递标记；后续任务扩展图片/评论。
+- `src/data/mockReader.ts`：统一规范时间、缺失值与计数，完整集合按时间倒序、字符串 ID 升序稳定排序，再分页。页大小上限 10；标记绑定 UP 主动态资源和时间排序，错误资源标记返回读取失败。
+- `src/data/assembly.ts`：25 条虚构文字动态和项目内自行绘制的 SVG 头像；包含多批长正文、长词、长昵称、emoji 和长 URL，正常评论数为 0。
+- `src/app/Navigation.tsx`：稳定的 Context + reducer 会话容器，维护会话 ID、独立页面访问 ID、可验证的列表来源与列表快照。快照只存当前会话内存；history.state 仍只有轻量导航元数据，不使用 localStorage/sessionStorage。
+- `src/app/readingPosition.ts`：统一保存稳定内容定位点、视口偏移与像素后备；内容/展开状态先还原，再等待最多两个布局帧定位，用户滚动输入中断恢复，不等待读取或图片。
+- `src/dynamics/`：页面消费统一读取接口，正文安全呈现并保留换行；列表按实际渲染行数折叠，ResizeObserver 随宽度重判。追加失败不清空内容或推进标记，重复及过期请求不能改写当前访问。详情正文仍完整展示。
+- `src/dev/`：确定性开发/测试装配。`pnpm dev:fault` 使首批和第二批列表及各详情首次失败一次，重试恢复，并使用长昵称样例；通过编译配置切换，不提供公开故障 URL 参数或页面控制面板。即使 `pnpm build --mode fault`，也只装配正常数据。
 
 路由采用 BrowserRouter：`/`、`/dynamics/:dynamicId`，其余为前端未找到页面。无有效站内来源时详情返回安全替换为列表首页；刷新后不沿用失效的内存来源。
 
 ## 验收记录
 
-详见 [01 验收记录](.scratch/dynamics-viewer/acceptance-01.md)。Vite 的开发/预览回退不代表 Nginx 的回退、资源错误或缓存已经验证；正式静态部署配置与验收留给 08/09。
+详见 [01 验收记录](.scratch/dynamics-viewer/acceptance-01.md) 与 [02 验收记录](.scratch/dynamics-viewer/acceptance-02.md)。Vite 的开发/预览回退不代表 Nginx 的回退、资源错误或缓存已经验证；正式静态部署配置与验收留给 08/09。
