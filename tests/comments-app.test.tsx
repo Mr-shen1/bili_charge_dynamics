@@ -126,6 +126,48 @@ it.each([
   expect(screen.getByText('上方动态保持完整')).toBeVisible();
 });
 
+it.each(['success', 'error', 'rejection'] as const)('新排序先成功后，忽略取消的旧排序%s逆序到达不覆盖结果或下一批', async outcome => {
+  const user = userEvent.setup();
+  const old = deferred();
+  const latest = deferred();
+  const base = createMockReader({ creator, dynamics: [dynamic] });
+  show(createControlledReader(base, { comments: { d: {
+    hot: [{ result: old.promise, ignoreAbort: true }],
+    latest: [{ result: latest.promise }, { result: { status: 'success', data: { items: [{ ...comment, id: 'next', text: '新排序第二批' }], nextCursor: null } } }],
+  } } }));
+  const area = await screen.findByRole('region', { name: '评论区' });
+  await user.click(within(area).getByRole('button', { name: '最新' }));
+  await act(async () => latest.resolve({ status: 'success', data: { items: [{ ...comment, text: '最终选择评论' }], nextCursor: 'latest-next' } }));
+  expect(within(area).getByText('最终选择评论')).toBeVisible();
+  await act(async () => {
+    if (outcome === 'rejection') old.reject(new Error('late failure'));
+    else old.resolve(outcome === 'error' ? { status: 'error' } : { status: 'success', data: { items: [{ ...comment, text: '过期排序评论' }], nextCursor: null } });
+  });
+  expect(within(area).getByRole('button', { name: '最新' })).toHaveAttribute('aria-pressed', 'true');
+  expect(within(area).getByText('最终选择评论')).toBeVisible();
+  expect(within(area).queryByText('过期排序评论')).not.toBeInTheDocument();
+  expect(within(area).queryByRole('alert')).not.toBeInTheDocument();
+  await user.click(within(area).getByRole('button', { name: '加载更多评论' }));
+  expect(await within(area).findByText('新排序第二批')).toBeVisible();
+  expect(within(area).getAllByRole('listitem')).toHaveLength(2);
+  expect(within(area).getByText('评论已加载完毕')).toBeVisible();
+  expect(screen.getByText('上方动态保持完整')).toBeVisible();
+});
+
+it('当前评论读取拒绝后保留动态并在目标排序局部重试', async () => {
+  const user = userEvent.setup();
+  const pending = deferred();
+  const base = createMockReader({ creator, dynamics: [dynamic], comments: { d: [comment] } });
+  show(createControlledReader(base, { comments: { d: { hot: [{ result: pending.promise }] } } }));
+  const area = await screen.findByRole('region', { name: '评论区' });
+  await act(async () => pending.reject(new Error('network failure')));
+  expect(await within(area).findByRole('alert')).toHaveTextContent('最热评论读取失败');
+  expect(screen.getByText('上方动态保持完整')).toBeVisible();
+  await user.click(within(area).getByRole('button', { name: '重试' }));
+  expect(await within(area).findByText(/第一行/)).toBeVisible();
+  expect(within(area).queryByRole('alert')).not.toBeInTheDocument();
+});
+
 it('首次、目标排序及追加错误各自局部重试，追加保留内容并重读原批次', async () => {
   const user = userEvent.setup();
   const base = createMockReader({ creator, dynamics: [dynamic], comments: { d: Array.from({ length: 45 }, (_, i) => ({
@@ -189,19 +231,25 @@ it('详情默认最热，一级评论安全展示身份、北京时间及只读�
   show(createMockReader({ creator, dynamics: [dynamic], comments: { d: [
     comment,
     { ...comment, id: 'other', author: { ...creator, id: 'other' }, text: '', publishedAt: null, likeCount: null },
+    { ...comment, id: 'missing-name', author: { id: 'unknown', nickname: null, avatarUrl: null }, text: '缺失昵称评论' },
   ] } }));
   const area = await screen.findByRole('region', { name: '评论区' });
   await within(area).findByText(/第一行/);
   expect(within(area).getByRole('button', { name: '最热' })).toHaveAttribute('aria-pressed', 'true');
   const rows = within(area).getAllByRole('listitem');
-  expect(within(rows[0]!).getByText('UP主')).toBeVisible();
-  expect(within(rows[1]!).queryByText('UP主')).not.toBeInTheDocument();
-  expect(within(rows[0]!).getByText('2026-02-04 12:04:05')).toBeVisible();
-  expect(within(rows[0]!).getByText('点赞 0')).toBeVisible();
-  expect(within(rows[1]!).getByText('点赞 —')).toBeVisible();
-  expect(within(rows[1]!).getByText('暂无评论内容')).toBeVisible();
-  expect(within(rows[1]!).getByText('时间未知')).toBeVisible();
-  expect(within(rows[0]!).getByRole('img')).toHaveAttribute('src', '/default-avatar.svg');
+  const authorRow = rows.find(row => within(row).queryByText(/第一行/))!;
+  const emptyRow = rows.find(row => within(row).queryByText('暂无评论内容'))!;
+  expect(within(authorRow).getByText('UP主')).toBeVisible();
+  expect(within(emptyRow).queryByText('UP主')).not.toBeInTheDocument();
+  expect(within(authorRow).getByText('2026-02-04 12:04:05')).toBeVisible();
+  expect(within(authorRow).getByText('点赞 0')).toBeVisible();
+  expect(within(emptyRow).getByText('点赞 —')).toBeVisible();
+  expect(within(emptyRow).getByText('暂无评论内容')).toBeVisible();
+  expect(within(emptyRow).getByText('时间未知')).toBeVisible();
+  expect(within(authorRow).getByRole('img')).toHaveAttribute('src', '/default-avatar.svg');
+  const missingName = rows.find(row => within(row).queryByText('缺失昵称评论'))!;
+  expect(within(missingName).getByText('未知用户')).toBeVisible();
+  expect(within(missingName).queryByText('UP主')).not.toBeInTheDocument();
   expect(area.querySelector('script')).toBeNull();
   expect(within(area).queryByRole('link')).not.toBeInTheDocument();
   expect(screen.getByText('评论 100')).toBeVisible();
