@@ -34,7 +34,7 @@ function ListVisit({ reader }: { reader: DynamicReader }) {
     };
   }, [pageEntryId, saveListSnapshot]);
 
-  return <main ref={root} className={styles.page}>
+  return <main ref={root} tabIndex={-1} className={styles.page}>
     <header className={styles.header}>
       <Identity user={reader.creator} heading />
     </header>

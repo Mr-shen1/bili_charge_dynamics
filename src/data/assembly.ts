@@ -23,6 +23,16 @@ const longCommentText = [
   '评论内容第八段：也可以再次收起。',
 ].join('\n');
 
+const pictures = Array.from({ length: 12 }, (_, index) => {
+  const signatureExample = index === 0 ? '?signature=demo%2Fonly&expires=123' : '';
+  return {
+    id: `landscape-${index + 1}`,
+    thumbnailUrl: `/demo-images/landscape-${index + 1}-thumb.v1.png${signatureExample}`,
+    previewUrl: `/demo-images/landscape-${index + 1}-preview.v1.png${signatureExample}`,
+    width: index === 11 ? 600 : 1200, height: index === 11 ? 1600 : index === 10 ? 600 : 900,
+  };
+});
+
 export const reader = createMockReader({
   creator,
   dynamics: Array.from({ length: 25 }, (_, index) => ({
@@ -30,8 +40,14 @@ export const reader = createMockReader({
     author: index === 2 ? { ...creator, nickname: '长昵称'.repeat(30) } : creator,
     publishedAt: new Date(Date.UTC(2026, 2, 1, 2, 3, 4) - index * 86400000).toISOString(),
     text: index === 0 || index === 10 ? openingText
+      : index === 1 ? ''
       : index === 2 ? `长词 ${'a'.repeat(220)} 🙂`
+      : [3, 4, 5, 6, 8].includes(index) ? `图文日记 ${index + 1}\n用自绘风景记录今天。`
       : `文字日记 ${index + 1}\n把平凡的日子写成一段简单的记录。`,
+    images: index === 1 ? pictures.slice(0, 1) : index === 3 ? pictures.slice(0, 4)
+      : index === 4 ? pictures.slice(0, 9) : index === 5 ? pictures
+      : index === 6 ? [{ ...pictures[10]!, width: null, height: null }]
+      : index === 8 ? pictures.slice(11) : [],
     commentCount: index === 0 ? 70 : 0,
   })),
   comments: {
