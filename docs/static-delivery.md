@@ -138,12 +138,12 @@ HTTP_ACCEPTANCE_URL=http://192.168.8.20:4180/ pnpm test:http
 
 脚本要求 HTTP、真实私有 IPv4 和 Nginx 响应；通过实际 Chromium 页面断言 `isSecureContext === false`、`randomUUID` 不可用而 `getRandomValues` 可用，检查启动错误、四类标识的 UUID v4 格式、列表追加→详情→预览→关闭/前进/后退→列表恢复和刷新重置。不 mock crypto、不伪造安全上下文，也不使用浏览器安全豁免。它不负责启动或更新外部站点，必须与全量 `test:delivery` 一起执行；两者各自覆盖普通 HTTP 与资源/缓存/构建更新风险，不能互相替代。
 
-自动化通过后保持该正常站点运行，向验收者提供 URL、构建哈希和独立 Nginx 停止命令，在实际 Linux 品牌浏览器、iPhone、iPad、Android 上续验。无 Mac 时桌面 Safari 仍为未验证；Chromium 模拟不能代替品牌浏览器、iOS Safari 或 Android 真机。临时地址、配置与续验范围见 [09 验收记录](../.scratch/dynamics-viewer/acceptance-09.md)。
+自动化通过后保持该正常站点运行，向验收者提供 URL、构建哈希和独立 Nginx 停止命令，在 Linux Chrome 与 iPhone Safari 上人工检查。2026-10-12 用户已确认本期只验收这两类目标，其他设备/浏览器不再是续验待办；Chromium 模拟不能代替品牌 Chrome 或 iPhone Safari 真机，也不能把移出目标写成通过。临时地址、配置与续验范围见 [09 验收记录](../.scratch/dynamics-viewer/acceptance-09.md)。
 
 ## 5. 素材与范围边界
 
 本期 PNG/SVG 为项目内自绘素材，来源与重建见 [素材说明](../public/demo-images/README.md)。浏览器按模型给定的 URL 请求，不依赖 B站外链、不改写图片参数。后续 OSS 由浏览器直连给定的 HTTPS URL；域名、CORS、权限、签名有效期和缓存需另行评估，本票不加应用服务器代理，不配置 OSS/CDN/云平台。
 
-2 核 2GB 是静态站点的目标配置，**不是容量保证**；未采购、部署或压测真实服务器。后端、数据库、爬虫和总体资源占用仍需独立评估。TLS、生产权限/安全加固、发布自动化、真实 Android/iOS/Safari 及跨设备收口属于后续工作或任务 09，本票不声称这些已经验证。
+2 核 2GB 是静态站点的目标配置，**不是容量保证**；未采购、部署或压测真实服务器。后端、数据库、爬虫和总体资源占用仍需独立评估。TLS、生产权限/安全加固、发布自动化属于后续工作；Linux Chrome / iPhone Safari 的实际兼容检查及收口见任务 09，本票不声称这些已经验证。其他设备/浏览器不在当前本期目标内。
 
 参考：[Nginx location/try_files/ETag](https://nginx.org/en/docs/http/ngx_http_core_module.html)、[缓存头规则](https://nginx.org/en/docs/http/ngx_http_headers_module.html)、[编译选项](https://nginx.org/en/docs/configure.html)。

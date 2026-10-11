@@ -10,7 +10,7 @@
 
 长图默认完整显示，可通过“适应宽度”按钮纵向阅读，再切回“完整显示”；按钮支持键盘。高宽比至少 2:1 提供长图模式，尺寸缺失时按加载后的自然尺寸识别。手机横向滑动切图，首尾不循环、单图不切换；纵向阅读不切图，切换图片后预览纵向位置归零。显示模式和最后查看图片保留于当前预览会话，关闭后浏览器前进可恢复；预览中刷新则替换清理失效标记并显示底层页面，不自动连续后退。
 
-详情历史返回按独立页面访问恢复评论排序、分页范围、回复及文字展开和阅读位置；同一动态的不同访问互不覆盖。未完成的读取返回后从原批次继续，看图不取消底层有效请求。数据与展开范围先恢复，再按稳定动态/评论/回复标识定位；用户主动滚动优先，刷新可重置，不写本地或会话存储。08 已提供 Nginx 静态交付配置；09 已对最终集成产物重新完成全量自动化回归和本机真实 Nginx 验证，补齐四宽度完整流程、列表图片几何、时区与逆序竞态证据。真实 Chrome/Edge/Safari、Android Chrome/iOS Safari 真机尚未验证，09 及本期整体不能宣称完整验收。本工程不调用真实 B站、后端或 OSS，也不需要凭据。
+详情历史返回按独立页面访问恢复评论排序、分页范围、回复及文字展开和阅读位置；同一动态的不同访问互不覆盖。未完成的读取返回后从原批次继续，看图不取消底层有效请求。数据与展开范围先恢复，再按稳定动态/评论/回复标识定位；用户主动滚动优先，刷新可重置，不写本地或会话存储。08 已提供 Nginx 静态交付配置；09 已对最终集成产物重新完成全量自动化回归和本机真实 Nginx 验证，补齐四宽度完整流程、列表图片几何、时区与逆序竞态证据。用户已在 Linux Chrome 与 iPhone Safari 检查列表、图片预览、评论/回复、返回等核心流程，暂未发现问题。2026-10-12 用户明确将本期兼容目标收窄为这两类设备/浏览器，其他目标不再是本期待办；版本与专项检查的证据边界见 09 记录，不能把核心流程反馈扩写为完整验收。本工程不调用真实 B站、后端或 OSS，也不需要凭据。
 
 ## 环境与运行
 
@@ -47,14 +47,14 @@ pnpm build
 - `NGINX_BIN=/absolute/path/to/nginx NGINX_MIME_TYPES=/absolute/path/to/mime.types pnpm test:delivery`：在临时目录启动真实 Nginx，验证正常产物、资源错误/缓存、可复现构建及一次更新；不配置系统服务。准备步骤见下节。
 - `HTTP_ACCEPTANCE_URL=http://192.168.8.20:4180/ pnpm test:http`：对已启动的可信局域网 Nginx 正常产物验证真实非 localhost HTTP 的启动、UUID v4、详情/预览历史与刷新；先重新构建并更新站点副本，地址替换为实际私有 IPv4。与 `test:delivery` 配合执行，详见静态交付说明；不等于真机验收。
 - 浏览器测试设设备时区为 `America/Los_Angeles`，检查页面仍显示北京时间。四种约定宽度为 360、390、768、1280px。
-- Linux 需要 Chromium 可用的系统库；缺库时按 Playwright 官方系统要求安装。模拟视口不是 Android/iOS 真机测试。
+- Linux 需要 Chromium 可用的系统库；缺库时按 Playwright 官方系统要求安装。模拟视口不能代替 Linux 品牌 Chrome 或 iPhone Safari 真机检查；既有 Pixel 7 参数保留作自动化视口/触摸配置，不意味着 Android 是本期兼容目标。
 - 如环境设置了 HTTP 代理，需使本地测试服务器绕过代理：`NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost pnpm test:e2e`；静态产物测试同理。
 
 ## 静态交付
 
 参见 [静态交付说明](docs/static-delivery.md) 和 [Nginx 示例](deploy/nginx.conf)：域名根路径部署，有效详情直达/刷新与未知页面回退到入口；明确资源路径缺失返回 HTTP 404，不回退成 HTML。入口重新验证，内容哈希 JS/CSS 和版本化图片长期缓存，未版本化资源不永久缓存，资源错误 `no-store`。前端“未找到页面”不等于服务器 HTTP 404。
 
-发布应保留旧哈希资源并原子切换入口；本期是项目内演示素材，未来 OSS 由浏览器直连给定 URL，不加服务器代理。2 核 2GB 仅是目标，不是容量保证；后端、数据库和爬虫需另行评估。本期不实施云部署、自动发布或容量压测；09 的自动化与本机静态交付结果已汇总，目标浏览器/真机续验仍未完成。
+发布应保留旧哈希资源并原子切换入口；本期是项目内演示素材，未来 OSS 由浏览器直连给定 URL，不加服务器代理。2 核 2GB 仅是目标，不是容量保证；后端、数据库和爬虫需另行评估。本期不实施云部署、自动发布或容量压测；09 的自动化与本机静态交付结果已汇总，正式兼容目标仅为 Linux Chrome 与 iPhone Safari，核心流程已获用户人工检查反馈，剩余版本/专项证据边界见 09 记录。
 
 ## 装配与边界
 
@@ -71,4 +71,4 @@ pnpm build
 
 ## 验收记录
 
-详见 [01 验收记录](.scratch/dynamics-viewer/acceptance-01.md)、[02 验收记录](.scratch/dynamics-viewer/acceptance-02.md)、[03 验收记录](.scratch/dynamics-viewer/acceptance-03.md)、[04 验收记录](.scratch/dynamics-viewer/acceptance-04.md)、[05 验收记录](.scratch/dynamics-viewer/acceptance-05.md)、[06 验收记录](.scratch/dynamics-viewer/acceptance-06.md)、[07 验收记录](.scratch/dynamics-viewer/acceptance-07.md)、[08 验收记录](.scratch/dynamics-viewer/acceptance-08.md) 与 [09 最终集成验收记录](.scratch/dynamics-viewer/acceptance-09.md)。06 手势使用 Chromium CDP 触摸输入和 Pixel 7 模拟视口验证，不代表真实 Android/iOS 触控验收。Vite 的开发/预览回退不代表 Nginx 验收；08 使用临时编译的 Nginx 1.28.0 实测，未操作生产环境。09 已实际复跑最终集成产物：Vitest 93/93、开发浏览器 102 通过（10 项仅 Nginx 跳过）、preview 94 通过（同样跳过 10 项）、真实 Nginx 104/104，以及构建重现/故障装配隔离/更新演练；Vite 不替代 Nginx。09 表内逐项记录通过及未验证，真实浏览器和真机范围保持未验收，续验步骤见该记录。
+详见 [01 验收记录](.scratch/dynamics-viewer/acceptance-01.md)、[02 验收记录](.scratch/dynamics-viewer/acceptance-02.md)、[03 验收记录](.scratch/dynamics-viewer/acceptance-03.md)、[04 验收记录](.scratch/dynamics-viewer/acceptance-04.md)、[05 验收记录](.scratch/dynamics-viewer/acceptance-05.md)、[06 验收记录](.scratch/dynamics-viewer/acceptance-06.md)、[07 验收记录](.scratch/dynamics-viewer/acceptance-07.md)、[08 验收记录](.scratch/dynamics-viewer/acceptance-08.md) 与 [09 最终集成验收记录](.scratch/dynamics-viewer/acceptance-09.md)。06 手势使用 Chromium CDP 触摸输入和 Pixel 7 模拟视口验证，不代表真实 Android/iOS 触控验收。Vite 的开发/预览回退不代表 Nginx 验收；08 使用临时编译的 Nginx 1.28.0 实测，未操作生产环境。09 已实际复跑最终集成产物：Vitest 93/93、开发浏览器 102 通过（10 项仅 Nginx 跳过）、preview 94 通过（同样跳过 10 项）、真实 Nginx 104/104，以及构建重现/故障装配隔离/更新演练；Vite 不替代 Nginx。09 表内逐项记录通过及未验证；Linux Chrome / iPhone Safari 核心人工流程反馈、正式范围调整及剩余证据边界见第 11–12 节，其他设备/浏览器已移出本期目标。
