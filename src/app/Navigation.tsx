@@ -29,11 +29,29 @@ const NavigationContext = createContext<Navigation | null>(null);
 
 type SessionAction = { type: 'register'; entry: PageEntry }
   | { type: 'save-list'; pageEntryId: string; snapshot: ListSnapshot }
-  | { type: 'open-preview'; preview: PreviewSession };
+  | { type: 'open-preview'; preview: PreviewSession }
+  | { type: 'move-preview'; previewId: string; offset: number }
+  | { type: 'preview-mode'; previewId: string; mode: PreviewSession['displayMode'] };
 
 function reduceSession(state: Session, action: SessionAction): Session {
   if (action.type === 'open-preview') {
     return { ...state, previews: { ...state.previews, [action.preview.previewId]: action.preview } };
+  }
+  if (action.type === 'move-preview') {
+    const preview = state.previews[action.previewId];
+    if (!preview) return state;
+    const index = Math.max(0, Math.min(preview.images.length - 1, preview.currentIndex + action.offset));
+    if (preview.currentIndex === index) return state;
+    return { ...state, previews: { ...state.previews,
+      [action.previewId]: { ...preview, currentIndex: index },
+    } };
+  }
+  if (action.type === 'preview-mode') {
+    const preview = state.previews[action.previewId];
+    if (!preview || preview.displayMode === action.mode) return state;
+    return { ...state, previews: { ...state.previews,
+      [action.previewId]: { ...preview, displayMode: action.mode },
+    } };
   }
   if (action.type === 'register') {
     const entry = action.entry;
@@ -47,11 +65,12 @@ function reduceSession(state: Session, action: SessionAction): Session {
   } };
 }
 
-function readMetadata(value: unknown): { sessionId: string; pageEntryId: string; previewId?: string } | null {
+function readMetadata(value: unknown): { sessionId: string; pageEntryId: string; previewId?: string | null } | null {
   if (typeof value !== 'object' || value === null || !('sessionId' in value) || !('pageEntryId' in value)) return null;
   return typeof value.sessionId === 'string' && typeof value.pageEntryId === 'string'
     ? { sessionId: value.sessionId, pageEntryId: value.pageEntryId,
-      previewId: 'previewId' in value && typeof value.previewId === 'string' ? value.previewId : undefined } : null;
+      // 区分“没有标记”与“标记形状损坏”，后者同样需要替换清理。
+      previewId: 'previewId' in value ? (typeof value.previewId === 'string' ? value.previewId : null) : undefined } : null;
 }
 
 // 稳定挂载于所有路由页之上；访问元数据和列表快照仅保存在当前会话内存。
@@ -70,24 +89,39 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const entry = validEntry ?? freshEntry;
   const candidatePreview = metadata?.previewId ? session.previews[metadata.previewId] : undefined;
   const preview = validEntry && candidatePreview?.pageEntryId === validEntry.pageEntryId ? candidatePreview : undefined;
-  const closingKey = useRef<string | null>(null);
-  // 去重只约束正在撤销的那次访问；离开记录后清除，不能永久禁止同一历史记录再次关闭。
-  useLayoutEffect(() => { closingKey.current = null; }, [location.key]);
+  const previewId = preview?.previewId;
+  const movePreviewImage = useCallback((id: string, offset: number) => {
+    dispatch({ type: 'move-preview', previewId: id, offset });
+  }, []);
+  const changePreviewMode = useCallback((id: string, mode: PreviewSession['displayMode']) => {
+    dispatch({ type: 'preview-mode', previewId: id, mode });
+  }, []);
+  const closingPreviewId = useRef<string | null>(null);
+  // 仅离开预览后清除去重；同一预览 REPLACE 改 key 不得重启关闭，前进重进仍可关闭。
+  useLayoutEffect(() => { closingPreviewId.current = null; }, [previewId]);
   const closePreview = useCallback(() => {
     // 只撤销本会话登记且指向当前底层访问的记录；重复关闭不重复后退。
-    if (!preview || closingKey.current === location.key) return;
-    closingKey.current = location.key;
+    if (!previewId || closingPreviewId.current === previewId) return;
+    closingPreviewId.current = previewId;
     void navigate(-1);
-  }, [preview, location.key, navigate]);
+  }, [previewId, navigate]);
 
   useEffect(() => {
-    if (validEntry) return;
+    if (validEntry) {
+      if (metadata?.previewId !== undefined && !previewId) {
+        // 仅预览引用失效：替换当前记录，沿用底层访问及其阅读快照，不猜测后退关系。
+        void navigate(location.pathname + location.search + location.hash, {
+          replace: true, state: { sessionId: session.sessionId, pageEntryId: validEntry.pageEntryId },
+        });
+      }
+      return;
+    }
     dispatch({ type: 'register', entry: freshEntry });
     // 首次 POP、失效会话或未登记的 PUSH/REPLACE 都按地址建新访问，不猜测来源。
     void navigate(location.pathname + location.search + location.hash, {
       replace: true, state: { sessionId: session.sessionId, pageEntryId: freshEntry.pageEntryId },
     });
-  }, [validEntry, freshEntry, location.pathname, location.search, location.hash, navigate, session.sessionId]);
+  }, [validEntry, freshEntry, metadata?.previewId, previewId, location.pathname, location.search, location.hash, navigate, session.sessionId]);
 
   useEffect(() => {
     const previous = window.history.scrollRestoration;
@@ -104,9 +138,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     detailTarget: entry.detailTarget ?? 'top',
     saveListSnapshot,
     openImages(images, index, trigger) {
-      if (!validEntry || preview || !images[index]) return;
+      if (!validEntry || previewId || !images[index]) return;
       const next: PreviewSession = { previewId: crypto.randomUUID(), pageEntryId: validEntry.pageEntryId,
-        images, initialIndex: index, triggerId: trigger.id };
+        images, currentIndex: index, displayMode: 'contain', triggerId: trigger.id };
       dispatch({ type: 'open-preview', preview: next });
       void navigate(location.pathname + location.search + location.hash, {
         state: { sessionId: session.sessionId, pageEntryId: validEntry.pageEntryId, previewId: next.previewId },
@@ -132,10 +166,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         void navigate('/', { replace: true, state: null });
       }
     },
-  }), [entry.pageEntryId, entry.listSnapshot, entry.detailTarget, saveListSnapshot, validEntry, session.entries, session.sessionId, navigate, preview, location.pathname, location.search, location.hash]);
+  }), [entry.pageEntryId, entry.listSnapshot, entry.detailTarget, saveListSnapshot, validEntry, session.entries, session.sessionId, navigate, previewId, location.pathname, location.search, location.hash]);
   return <NavigationContext.Provider value={navigation}>
     <div inert={!!preview}>{children}</div>
-    {preview && <ImagePreview key={preview.previewId} preview={preview} close={closePreview} />}
+    {preview && <ImagePreview key={preview.previewId} preview={preview} close={closePreview} moveImage={movePreviewImage} changeMode={changePreviewMode} />}
   </NavigationContext.Provider>;
 }
 

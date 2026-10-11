@@ -27,3 +27,6 @@ In repositories indexed by CodeGraph (a `.codegraph/` directory exists at the re
 
 For implementation workflows or skills (including Matt Pocock's `implement`, `code-review`, and similar workflows), use `mcp__codegraph` to call `codegraph_explore` first when locating or understanding code, then verify graph results against live files. This applies inside delegated subagents too: tell them to use `mcp__codegraph` during their own exploration and include `mcp__codegraph` in their tool allowlist. Do not ask a subagent to spawn `Explore` or another nested subagent; pi-subagents-lite does not support nesting. If a child cannot access MCP, the parent should run CodeGraph and pass it the relevant findings. If the repo is not indexed or the MCP tool is unavailable, fall back to source tools. If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is the user's decision.
 <!-- CODEGRAPH_END -->
+
+## Git
+git 提交使用标准格式，描述编写使用中文

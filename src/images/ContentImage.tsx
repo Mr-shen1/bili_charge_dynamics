@@ -4,8 +4,9 @@ import styles from './Images.module.css';
 
 const unknownImageRatio = 4 / 3;
 
-export function ContentImage({ image, preview = false, label, onPreview, reserveRatio = false }: {
+export function ContentImage({ image, preview = false, label, onPreview, onDimensions, reserveRatio = false }: {
   image: DynamicImage; preview?: boolean; label: string; reserveRatio?: boolean; onPreview?(trigger: HTMLElement): void;
+  onDimensions?(width: number, height: number): void;
 }) {
   const triggerId = useId();
   const [failed, setFailed] = useState(false);
@@ -20,6 +21,7 @@ export function ContentImage({ image, preview = false, label, onPreview, reserve
     width={image.width ?? undefined} height={image.height ?? undefined} onError={() => setFailed(true)} onLoad={event => {
       setLoaded(true);
       const { naturalWidth, naturalHeight } = event.currentTarget;
+      if (naturalWidth > 0 && naturalHeight > 0) onDimensions?.(naturalWidth, naturalHeight);
       if ((!image.width || !image.height) && naturalWidth > 0 && naturalHeight > 0) setRatio(naturalWidth / naturalHeight);
     }} />;
   return <div className={styles.media} style={reserveRatio ? { aspectRatio: reservedRatio, maxWidth: 360 * reservedRatio, height: 'auto' } : undefined}>
