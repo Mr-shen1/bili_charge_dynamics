@@ -1,7 +1,7 @@
 # 09：完成跨设备核心流程与交付验收
 
 Status: ready-for-human
-Implementation: 自动化集成回归与本机真实 Nginx 复验已完成；目标浏览器/真机兼容及总体验收尚未完成，等待人工续验。
+Implementation: 自动化集成回归、本机真实 Nginx 复验与局域网 HTTP 启动缺陷修复已完成；目标浏览器/真机兼容及总体验收尚未完成，等待人工续验。
 Acceptance: 见 [09 验收记录](../acceptance-09.md)，逐项结果与未验证范围不替代未勾选项。
 Blocked by: [07：在历史访问中继续阅读评论与回复](07-restore-discussion-history.md)、[08：用静态产物直接访问页面并正确加载资源](08-static-delivery.md)
 
@@ -46,3 +46,11 @@ Blocked by: [07：在历史访问中继续阅读评论与回复](07-restore-disc
 - 失败：最终运行无失败；新增测试定位/旧断言位置耦合的中间失败已记录并修正，未发现需修改应用实现的产品缺陷。补充逆序和缺失字段等回归证据，没有重做 01–08。
 - 未验证：触控/长图/返回/焦点在真实目标浏览器和手机上的表现，以及 Chrome/Edge/Safari、Android Chrome/iOS Safari 真机兼容。上面的可操作性、浏览器目标和总体完成三项保持未勾选；模拟键盘/CDP触摸通过不代替真机。
 - 总体：本票自动化与本机交付工作已提交交接，但任务09和本期尚未完整验收；父规格/SRS/HLD不因此改为已完成。
+
+### 2026-10-11：真机准备时发现的局域网 HTTP 启动缺陷
+
+- 以实际开始 HEAD `3482100d89e0214e9dd8a6e4eb141502775e681b` 为本次审查基线，工作区干净；未创建分支/worktree，不推送。
+- 已确认产品缺陷：相同正常 dist 在回环 HTTP 通过，但真实 `http://192.168.8.20:4180/` 的 Nginx 页面启动报 `crypto.randomUUID is not a function`；入口/JS/CSS 均 200。此前本机测试的可信回环上下文掩盖了限制。
+- 按公开浏览器接缝先建立实际 LAN HTTP 失败回归，再以 `getRandomValues` UUID v4 兼容四处标识生成；原生 `randomUUID` 可用时沿用，不使用 `Math.random`、新增依赖或改导航/快照/Reader 协议。
+- 重新构建并更新固定站点副本后，`pnpm test:http` 在真实不安全上下文通过；全量 Vitest 93/93、开发 102 通过+10目标跳过、preview 94通过+10目标跳过、真实 Nginx 104/104及构建/更新演练均重新执行通过。具体红绿、哈希、命令及双轴审查见验收记录第10节。
+- 用户具备 Linux、iPhone、iPad、Android，无 Mac；品牌浏览器、所有真机及桌面 Safari 仍未验证。原有未勾选项保持不变，状态仍为 `ready-for-human`；持续运行的可信局域网正常站点供人工续验，不算完成兼容及总体验收。

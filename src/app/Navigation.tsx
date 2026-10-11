@@ -85,10 +85,20 @@ function readMetadata(value: unknown): { sessionId: string; pageEntryId: string;
       previewId: 'previewId' in value ? (typeof value.previewId === 'string' ? value.previewId : null) : undefined } : null;
 }
 
+// 这些 UUID 仅标识会话/访问/预览，不是授权凭证；局域网 HTTP 也须可用。
+function createUuid(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 // 稳定挂载于所有路由页之上；访问元数据和阅读快照仅保存在当前会话内存。
 export function SessionProvider({ children }: { children: ReactNode }) {
-  const [session, dispatch] = useReducer(reduceSession, undefined, () => ({
-    sessionId: crypto.randomUUID(), entries: {}, previews: {},
+  const [session, dispatch] = useReducer(reduceSession, undefined, (): Session => ({
+    sessionId: createUuid(), entries: {}, previews: {},
   }));
   const location = useLocation();
   const navigate = useNavigate();
@@ -96,7 +106,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const knownEntry = metadata?.sessionId === session.sessionId ? session.entries[metadata.pageEntryId] : undefined;
   const validEntry = knownEntry?.path === location.pathname ? knownEntry : undefined;
   const freshEntry = useMemo<PageEntry>(() => ({
-    pageEntryId: crypto.randomUUID(), path: location.pathname, sourcePageEntryId: null,
+    pageEntryId: createUuid(), path: location.pathname, sourcePageEntryId: null,
   }), [location.key, location.pathname]);
   const entry = validEntry ?? freshEntry;
   const candidatePreview = metadata?.previewId ? session.previews[metadata.previewId] : undefined;
@@ -156,7 +166,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     saveDetailSnapshot,
     openImages(images, index, trigger) {
       if (!validEntry || previewId || !images[index]) return;
-      const next: PreviewSession = { previewId: crypto.randomUUID(), pageEntryId: validEntry.pageEntryId,
+      const next: PreviewSession = { previewId: createUuid(), pageEntryId: validEntry.pageEntryId,
         images, currentIndex: index, displayMode: 'contain', triggerId: trigger.id };
       dispatch({ type: 'open-preview', preview: next });
       void navigate(location.pathname + location.search + location.hash, {
@@ -165,7 +175,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     },
     openDetail(id, target = 'top') {
       const next: PageEntry = {
-        pageEntryId: crypto.randomUUID(), path: `/dynamics/${encodeURIComponent(id)}`, detailTarget: target,
+        pageEntryId: createUuid(), path: `/dynamics/${encodeURIComponent(id)}`, detailTarget: target,
         // 来源关系仅在本模块从有效列表直接 PUSH 时建立；按地址初始化不会创建。
         sourcePageEntryId: validEntry?.path === '/' ? validEntry.pageEntryId : null,
       };

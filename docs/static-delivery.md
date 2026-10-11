@@ -123,6 +123,23 @@ curl -i -H 'If-None-Match: "previous-entry-etag"' "$origin/"
 
 记录 Nginx 版本、实际配置、环境和每项结果；环境不可用时保持对应验收项未勾选。执行证据见 [08 验收记录](../.scratch/dynamics-viewer/acceptance-08.md)。
 
+### 4.1 真实局域网 HTTP 回归与真机续验准备
+
+`127.0.0.1` / `localhost` 属于浏览器可信上下文：上面的本机 Nginx 回归不能证明普通 HTTP 的 Web Crypto 能力。应用站点不以 HTTPS 为启动前提；会话、访问、预览标识优先沿用 `crypto.randomUUID`，不可用时由 `crypto.getRandomValues` 生成 UUID v4，不退化到 `Math.random`，也不作为授权凭证。这不意味着生产 HTTP 安全性与 HTTPS 等价。
+
+在同一可信局域网另起**独立临时 Nginx**，仅监听机器实际的私有 IPv4 和空闲非特权端口，例如 `192.168.8.20:4180`；不要改系统 Nginx、防火墙或开启公网转发。主配置包含匹配的 `mime.types` 与示例 server，替换 `listen`、`root`，可用 `allow 192.168.8.0/24; deny all;` 进一步限制访问。IP/网段必须以实际环境为准。只提供重新构建的正常 `dist/`，不能继续使用修复前固定副本，也不能发布 `dev:fault`。
+
+```bash
+pnpm build
+# 按第3节更新该临时站点的发布副本，再启动/检查独立 Nginx。
+# 下列 URL 替换为实际监听的私有 IPv4；不能填 localhost 或回环别名。
+HTTP_ACCEPTANCE_URL=http://192.168.8.20:4180/ pnpm test:http
+```
+
+脚本要求 HTTP、真实私有 IPv4 和 Nginx 响应；通过实际 Chromium 页面断言 `isSecureContext === false`、`randomUUID` 不可用而 `getRandomValues` 可用，检查启动错误、四类标识的 UUID v4 格式、列表追加→详情→预览→关闭/前进/后退→列表恢复和刷新重置。不 mock crypto、不伪造安全上下文，也不使用浏览器安全豁免。它不负责启动或更新外部站点，必须与全量 `test:delivery` 一起执行；两者各自覆盖普通 HTTP 与资源/缓存/构建更新风险，不能互相替代。
+
+自动化通过后保持该正常站点运行，向验收者提供 URL、构建哈希和独立 Nginx 停止命令，在实际 Linux 品牌浏览器、iPhone、iPad、Android 上续验。无 Mac 时桌面 Safari 仍为未验证；Chromium 模拟不能代替品牌浏览器、iOS Safari 或 Android 真机。临时地址、配置与续验范围见 [09 验收记录](../.scratch/dynamics-viewer/acceptance-09.md)。
+
 ## 5. 素材与范围边界
 
 本期 PNG/SVG 为项目内自绘素材，来源与重建见 [素材说明](../public/demo-images/README.md)。浏览器按模型给定的 URL 请求，不依赖 B站外链、不改写图片参数。后续 OSS 由浏览器直连给定的 HTTPS URL；域名、CORS、权限、签名有效期和缓存需另行评估，本票不加应用服务器代理，不配置 OSS/CDN/云平台。

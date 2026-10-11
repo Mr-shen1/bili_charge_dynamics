@@ -2,7 +2,9 @@
 
 范围：[任务 09](issues/09-cross-device-acceptance.md)。依据[实施规格](spec.md)、[SRS](../../docs/SRS.md)、[HLD](../../docs/HLD.md)、[README](../../README.md) 及 acceptance-01 至 acceptance-08。前置记录只用于核对约定，以下通过结果来自本次重新执行，不沿用 08 的旧运行结果。
 
-**结论：可自动化回归及本机真实 Nginx 交付通过；目标浏览器/真机兼容验收未完成，因此任务 09 和本期整体仍未完整验收。** 没有确认的待修复产品缺陷；没有通过删断言或放宽行为要求绕过失败。未验证项保留未勾选，交由人工继续验证。
+**结论：可自动化回归及真实 Nginx 交付通过；已修复真机准备时发现的普通局域网 HTTP 启动缺陷，目标浏览器/真机兼容验收仍未完成，因此任务 09 和本期整体仍未完整验收。** 未通过删断言或放宽行为要求绕过失败；未验证项保留未勾选，交由人工继续验证。
+
+第 1–9 节保留在 `3482100` 中提交的首次验收历史（该轮审查基线为 `2f71c97`），当时 Nginx 仅使用回环地址，不能证明普通 HTTP 可启动。最新修复、实际非 localhost HTTP 红绿证据、最终构建与续验站点见**第 10 节**；首次“未发现产品缺陷”及旧哈希不代表本次结论。
 
 ## 1. 基线、范围与环境
 
@@ -199,3 +201,95 @@ git diff --check
 二轮Spec：**0需修复问题、0越界**。预览主要按钮实测证据已补齐；上游未要求并列必须混入正常装配，独立配套并列夹具符合最小验收样例要求；AC-20正常完整流程与专用故障/数据规则的分层回归合规。另2项非阻断判断为DOM公开按钮触发方式和严格44px，均未改变需求。真机及品牌浏览器未验证仍是验收待办，不被审查通过消除。
 
 两轴分别结论：**Standards 0硬违规、5非阻断判断；Spec 0需修复问题、2非阻断判断，兼容范围仍待人工验收。** 无未处理阻断缺陷，不合并两轴排名。二轮后只回填本节审查事实，不改已复验的运行或测试逻辑。
+
+## 10. 真机准备期间的局域网 HTTP 集成缺陷修复
+
+### 10.1 本次基线与最小范围
+
+- 开始实际分支 `feat/dynamics-viewer`，HEAD / 双轴审查固定基线 `3482100d89e0214e9dd8a6e4eb141502775e681b`，与预计一致；工作区干净。没有创建新分支或 worktree，不推送。
+- 执行日期 2026-10-11（本机时间）；沿用上述 Linux、nvm Node `24.21.0`、pnpm `10.34.6`、Playwright Chromium `145.0.7632.6` 和真实 Nginx `1.28.0`。先检查现存可执行文件、MIME、临时配置和网卡：`wlan0` 仍为 `192.168.8.20/24`，端口 `4180` 空闲，再独立启动站点。
+- CodeGraph 定位后核对活文件：`Navigation.tsx` 四处生成会话、初始访问、详情访问及预览 ID。SRS/HLD 没有应用站点必须 HTTPS 的启动前提；这些标识不是授权凭证。
+- 一个模块内私有 `createUuid`：有原生 `randomUUID` 时沿用，否则用 `getRandomValues` 取 16 字节、设置 v4 / variant 位并格式化。没有 `Math.random`、新依赖、测试专用导出、导航/快照/Reader/数据协议改动。初始化器补 `Session` 返回类型以保持 reducer 的类型推断。
+- 新增 `scripts/verify-http-navigation.mjs` / `pnpm test:http`，沿用公开页面、URL 和浏览器 History 元数据接缝，针对实际可信局域网 Nginx；现有回环地址交付脚本与测试不被替换。README 和静态交付说明明确两项回归各自的边界。
+
+### 10.2 已实际执行的 TDD 红绿证据
+
+先恢复修复前固定站点副本，经真实 `http://192.168.8.20:4180/` 的入口、JS、CSS 均 HTTP 200；浏览器为空并报告原故障。**新增回归先于应用修复执行**：
+
+```bash
+HTTP_ACCEPTANCE_URL=http://192.168.8.20:4180/ node scripts/verify-http-navigation.mjs
+```
+
+红态退出 1：
+
+```text
+HTTP browser capabilities: {"origin":"http://192.168.8.20:4180","isSecureContext":false,"randomUUID":"undefined","getRandomValues":"function"}
+AssertionError: The application must start without crypto.randomUUID errors
+actual: [ 'crypto.randomUUID is not a function' ]
+expected: []
+```
+
+这不是 mock crypto、伪造 `isSecureContext`、域名回环别名或关闭浏览器安全限制；访问实际网卡私有 IPv4，真实 Nginx 只监听该地址。修复后重新 `pnpm build`，更新 `/tmp/dynamics-device-acceptance.UHd7xo/site/` 的副本，**未继续使用旧入口**，同一回归绿态退出 0，能力值保持上述不安全 HTTP 的真实结果：
+
+```text
+PASS: real Nginx http://192.168.8.20:4180; UUID v4 session/entries/preview, history restoration and refresh (Chromium 145.0.7632.6, not real-device acceptance)
+```
+
+覆盖四类生成结果的标准 UUID v4 形状及相互区别；列表 10→20 → 详情独立访问 → 预览 1/12→2/12 → 关闭/前进恢复最后图/后退 → 返回恢复 20 条及原访问 → 刷新新会话重置为 10 条。History 仍只有轻量会话/访问/预览 ID；没有读取私有 React 状态或增加内部测试接缝。
+
+中间失败如实记录：首次类型检查因 UUID helper 的 `string` 返回类型影响 `useReducer` 推断，补明确 `Session` 类型后通过；首次绿态流程在 URL 更新但详情 DOM 尚未替换时，图片定位匹配到旧列表多个按钮，补等待详情公开 article 数为 1 后通过。没有修改产品导航、删断言或更换安全上下文来消除失败。定期类型检查和单文件 `app.test.tsx` 19/19、`discussion-history.test.tsx` 18/18 均通过。
+
+### 10.3 最终全量复跑与最新构建
+
+以下全部基于本次修改重新运行，不沿用首次验收结果：
+
+| 命令 / 运行面 | 本次最终结果 |
+| --- | --- |
+| `pnpm typecheck`、`pnpm build`、`git diff --check` | 通过，退出 0；依赖及 lockfile 未变 |
+| `pnpm test` | **93/93，9 文件** |
+| `pnpm test:e2e`（正常+独立 fault） | **102 通过，10 项按目标跳过** |
+| `pnpm test:e2e:preview`（正常） | **94 通过，10 项按目标跳过**；不当作 Nginx 证据 |
+| `pnpm test:delivery`（真实 Nginx，回环地址） | **104/104，无跳过**；配置检查、相同输入/fault 字节一致、真实更新与浏览器刷新 PASS |
+| `HTTP_ACCEPTANCE_URL=http://192.168.8.20:4180/ pnpm test:http` | **PASS**；真实 Nginx + 非 localhost HTTP，无浏览器安全豁免 |
+
+Nginx 全量使用 `/tmp/dynamics-static-yPisC5/`，退出已清理；更新演练 A `/assets/index-CIrunnGw.js` → B `/assets/index-B60X2IDi.js`，B 只在临时源码副本，不是交付版本。最终再次构建的正常 A：
+
+```text
+5867e4da80b07c8d5180394086b7702ba88dc20fdb2f59b9bbd6335a039c0024  dist/index.html
+cc49390932ba68ad6495e9c89ba640db521e38693ac9d3df890b1e32c64fefe2  dist/assets/index-BcwdfDdW.css
+01e11077c73d1bdbc0c2f86757fd84b9b235b1755c90100f335ad3e41198ad19  dist/assets/index-CIrunnGw.js
+```
+
+`dist/` 不提交。当前会话日志位于本机 `/tmp/dynamics-http-fix-09-logs/`（typecheck、vitest、dev、preview、nginx、build、http-final），红态环境证据另保留于站点目录 `http-uuid-red.json`；均是可清理临时文件，长期交付证据是测试源码、本文结果与可复现命令。全量复跑命令同第 7 节，另加第 10.2 节实际 LAN URL 命令。
+
+### 10.4 本次双轴审查
+
+以实际开始 HEAD `3482100d89e0214e9dd8a6e4eb141502775e681b` 为固定点，提交前使用含新文件的 `git diff --cached 3482100d89e0214e9dd8a6e4eb141502775e681b`，不制造临时提交。Standards / Spec 分别由两名只读 `review` 代理并行执行，均先用 CodeGraph 再核对差异和活文件；审查不代替主线程实际测试。
+
+**Standards：0 硬违规，4 项非阻断判断。** LAN 流程与既有浏览器流程部分同形、UUID/元数据断言略重复、`createUuid` 命名可显式加 v4，以及首次验收历史措辞可能混淆提交与审查基线。已澄清首轮结果提交 `3482100` 与首轮基线 `2f71c97` 的区别；其余保留自包含的实际 LAN 回归及小型模块内函数，避免为本次环境能力修复引入共享流程基础层或新接口。现有命名与相邻注释共同说明 v4 和 HTTP 兼容目的，无须改变行为。
+
+**Spec：0 需修复问题、0 越界、0 实施错误，2 项非阻断判断。** `test:http` 是依赖外部 LAN Nginx 的单独命令，回环测试不能单独防止 fallback 被删除，因此 README/交付说明明确要求两者配合；本次已实际执行。精确轻量元数据键集断言严于上游的一般约束，但本次用户明确要求不改协议，保留作为现有协议未变的证据；来源/意图仍存内存，未新增 History 字段。未来有意扩展协议需相应更新该断言，不把它描述为上游禁止额外字段。
+
+两轴各自结论如上，不合并排名。审查后仅澄清/回填文档事实，运行代码与回归逻辑未再修改；真机和品牌浏览器未验证项不因审查通过而改变。
+
+### 10.5 持续局域网站点与未验证项
+
+续验 URL：`http://192.168.8.20:4180/`；详情 `http://192.168.8.20:4180/dynamics/90071992547409931`，12 图详情末尾 ID `90071992547409936`。独立 Nginx 配置 `/tmp/dynamics-device-acceptance.UHd7xo/nginx.conf` 包含该目录 `server.conf`，root 为 `site/`；仅监听 `192.168.8.20:4180` 并 `allow 192.168.8.0/24; deny all;`。未修改系统 Nginx、防火墙或配置公网转发。真机交接应核对这里的最新入口/JS 哈希，不用旧固定副本。
+
+```bash
+# 查看独立站点日志（不是系统日志）：
+tail -f /tmp/dynamics-device-acceptance.UHd7xo/logs/error.log
+# 只停止这个临时 Nginx：
+/tmp/dynamics-nginx.5kb6zf/nginx-1.28.0/objs/nginx \
+  -p /tmp/dynamics-device-acceptance.UHd7xo/ -c nginx.conf -s quit
+```
+
+用户具有 Linux 电脑、iPhone、iPad、Android，均在同一可信局域网；没有 Mac。以下**没有实际验收，保持未勾选**，站点可访问和自动化通过不改变此状态：
+
+- [ ] Linux 品牌 Chrome、Edge：记录实际版本、键盘/焦点/布局与完整流程结果。
+- [ ] iPhone 与 iPad 的实际 iOS/iPadOS Safari：分别记录型号、OS、Safari 版本、切图/长图滚动、系统边缘返回、底层隔离和关闭恢复。
+- [ ] Android Chrome 真机：记录型号、OS、浏览器版本与实际横纵手势、系统返回和完整流程。
+- [ ] 桌面 Safari：用户无 Mac，继续**未验证**，不使用 iOS Safari 或自动化 WebKit 代替。
+- [ ] 09 兼容、可操作性及总体完成：按第 8 节全流程逐场景填写通过/失败/未验证，只有必需范围实际满足后才收口。
+
+本次只修复已确认启动缺陷，没有把这些项目勾选为通过，也没有改写父规格、SRS 或 HLD 的完成状态。
