@@ -242,6 +242,7 @@ describe('文字动态公开页面行为', () => {
     await user.click(within(card).getByText('纸飞机'));
     await user.click(within(card).getByRole('img'));
     expect(screen.queryByRole('button', { name: '返回列表' })).not.toBeInTheDocument();
+    expect(within(card).queryByRole('group', { name: '动态图片' })).not.toBeInTheDocument();
     await user.click(within(card).getByRole('button', { name: '查看详情' }));
     expect(await screen.findByRole('heading', { name: '动态详情' })).toBeVisible();
     const detail = await screen.findByRole('article');
@@ -249,6 +250,7 @@ describe('文字动态公开页面行为', () => {
     expect(detail.querySelector('script')).toBeNull();
     expect(detail.querySelectorAll('img')).toHaveLength(1);
     expect(within(detail).queryByRole('link')).not.toBeInTheDocument();
+    expect(within(detail).queryByRole('group', { name: '动态图片' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '返回列表' }));
     expect(await screen.findByRole('button', { name: '查看详情' })).toBeVisible();
   });
