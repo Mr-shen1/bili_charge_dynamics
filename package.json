@@ -13,6 +13,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:preview": "pnpm build && E2E_TARGET=preview playwright test",
+    "test:delivery": "node scripts/verify-static-delivery.mjs",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview"
   },
