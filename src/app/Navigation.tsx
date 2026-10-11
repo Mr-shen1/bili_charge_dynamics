@@ -1,5 +1,7 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
 import type { ListSnapshot } from './ListSnapshot';
+import type { DynamicImage } from '../data/contracts';
+import { ImagePreview, type PreviewSession } from '../images/ImagePreview';
 import { useLocation, useNavigate } from 'react-router';
 
 interface PageEntry {
@@ -12,6 +14,7 @@ interface PageEntry {
 interface Session {
   readonly sessionId: string;
   readonly entries: Readonly<Record<string, PageEntry>>;
+  readonly previews: Readonly<Record<string, PreviewSession>>;
 }
 interface Navigation {
   readonly pageEntryId: string;
@@ -20,13 +23,18 @@ interface Navigation {
   saveListSnapshot(pageEntryId: string, snapshot: ListSnapshot): void;
   openDetail(id: string, target?: 'top' | 'comments'): void;
   returnToList(): void;
+  openImages(images: readonly DynamicImage[], index: number, trigger: HTMLElement): void;
 }
 const NavigationContext = createContext<Navigation | null>(null);
 
 type SessionAction = { type: 'register'; entry: PageEntry }
-  | { type: 'save-list'; pageEntryId: string; snapshot: ListSnapshot };
+  | { type: 'save-list'; pageEntryId: string; snapshot: ListSnapshot }
+  | { type: 'open-preview'; preview: PreviewSession };
 
 function reduceSession(state: Session, action: SessionAction): Session {
+  if (action.type === 'open-preview') {
+    return { ...state, previews: { ...state.previews, [action.preview.previewId]: action.preview } };
+  }
   if (action.type === 'register') {
     const entry = action.entry;
     if (state.entries[entry.pageEntryId]) return state;
@@ -39,16 +47,17 @@ function reduceSession(state: Session, action: SessionAction): Session {
   } };
 }
 
-function readMetadata(value: unknown): { sessionId: string; pageEntryId: string } | null {
+function readMetadata(value: unknown): { sessionId: string; pageEntryId: string; previewId?: string } | null {
   if (typeof value !== 'object' || value === null || !('sessionId' in value) || !('pageEntryId' in value)) return null;
   return typeof value.sessionId === 'string' && typeof value.pageEntryId === 'string'
-    ? { sessionId: value.sessionId, pageEntryId: value.pageEntryId } : null;
+    ? { sessionId: value.sessionId, pageEntryId: value.pageEntryId,
+      previewId: 'previewId' in value && typeof value.previewId === 'string' ? value.previewId : undefined } : null;
 }
 
 // 稳定挂载于所有路由页之上；访问元数据和列表快照仅保存在当前会话内存。
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [session, dispatch] = useReducer(reduceSession, undefined, () => ({
-    sessionId: crypto.randomUUID(), entries: {},
+    sessionId: crypto.randomUUID(), entries: {}, previews: {},
   }));
   const location = useLocation();
   const navigate = useNavigate();
@@ -59,6 +68,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     pageEntryId: crypto.randomUUID(), path: location.pathname, sourcePageEntryId: null,
   }), [location.key, location.pathname]);
   const entry = validEntry ?? freshEntry;
+  const candidatePreview = metadata?.previewId ? session.previews[metadata.previewId] : undefined;
+  const preview = validEntry && candidatePreview?.pageEntryId === validEntry.pageEntryId ? candidatePreview : undefined;
+  const closingKey = useRef<string | null>(null);
+  // 去重只约束正在撤销的那次访问；离开记录后清除，不能永久禁止同一历史记录再次关闭。
+  useLayoutEffect(() => { closingKey.current = null; }, [location.key]);
+  const closePreview = useCallback(() => {
+    // 只撤销本会话登记且指向当前底层访问的记录；重复关闭不重复后退。
+    if (!preview || closingKey.current === location.key) return;
+    closingKey.current = location.key;
+    void navigate(-1);
+  }, [preview, location.key, navigate]);
 
   useEffect(() => {
     if (validEntry) return;
@@ -83,6 +103,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     listSnapshot: entry.listSnapshot,
     detailTarget: entry.detailTarget ?? 'top',
     saveListSnapshot,
+    openImages(images, index, trigger) {
+      if (!validEntry || preview || !images[index]) return;
+      const next: PreviewSession = { previewId: crypto.randomUUID(), pageEntryId: validEntry.pageEntryId,
+        images, initialIndex: index, triggerId: trigger.id };
+      dispatch({ type: 'open-preview', preview: next });
+      void navigate(location.pathname + location.search + location.hash, {
+        state: { sessionId: session.sessionId, pageEntryId: validEntry.pageEntryId, previewId: next.previewId },
+      });
+    },
     openDetail(id, target = 'top') {
       const next: PageEntry = {
         pageEntryId: crypto.randomUUID(), path: `/dynamics/${encodeURIComponent(id)}`, detailTarget: target,
@@ -103,8 +132,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         void navigate('/', { replace: true, state: null });
       }
     },
-  }), [entry.pageEntryId, entry.listSnapshot, entry.detailTarget, saveListSnapshot, validEntry, session.entries, session.sessionId, navigate]);
-  return <NavigationContext.Provider value={navigation}>{children}</NavigationContext.Provider>;
+  }), [entry.pageEntryId, entry.listSnapshot, entry.detailTarget, saveListSnapshot, validEntry, session.entries, session.sessionId, navigate, preview, location.pathname, location.search, location.hash]);
+  return <NavigationContext.Provider value={navigation}>
+    <div inert={!!preview}>{children}</div>
+    {preview && <ImagePreview key={preview.previewId} preview={preview} close={closePreview} />}
+  </NavigationContext.Provider>;
 }
 
 export function useAppNavigation(): Navigation {

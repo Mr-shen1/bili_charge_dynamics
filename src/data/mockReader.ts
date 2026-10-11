@@ -47,6 +47,10 @@ export function createMockReader(dataset: MockDataset): DynamicReader {
     author: normalizeUser(item.author),
     publishedAt: normalizeTime(item.publishedAt),
     commentCount: normalizeCount(item.commentCount),
+    images: item.images?.map(image => ({ ...image,
+      width: image.width !== null && Number.isSafeInteger(image.width) && image.width > 0 ? image.width : null,
+      height: image.height !== null && Number.isSafeInteger(image.height) && image.height > 0 ? image.height : null,
+    })),
   })).sort((a, b) => {
     if (a.publishedAt !== b.publishedAt) {
       if (a.publishedAt === null) return 1;

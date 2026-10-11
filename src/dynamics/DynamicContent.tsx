@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Dynamic, User } from '../data/contracts';
 import styles from './Dynamics.module.css';
 import { FoldableText } from './FoldableText';
+import { ImageGrid } from '../images/ImageGrid';
 
 export function Identity({ user, heading = false }: { user: User; heading?: boolean }) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
@@ -27,12 +28,13 @@ export function displayTime(value: string | null): string {
 export function DynamicContent({ dynamic, folding, navigateToComments }: {
   dynamic: Dynamic; folding?: { expanded: boolean; toggle(): void }; navigateToComments?(): void;
 }) {
-  const text = dynamic.text.trim() ? dynamic.text : '暂无内容';
+  const text = dynamic.text.trim() ? dynamic.text : dynamic.images?.length ? '' : '暂无内容';
   return <>
     <Identity user={dynamic.author} />
     <time className={styles.time} dateTime={dynamic.publishedAt ?? undefined}>{displayTime(dynamic.publishedAt)}</time>
-    {folding ? <FoldableText text={text} expanded={folding.expanded} toggle={folding.toggle} />
-      : <p className={styles.text}>{text}</p>}
+    {text && (folding ? <FoldableText text={text} expanded={folding.expanded} toggle={folding.toggle} />
+      : <p className={styles.text}>{text}</p>)}
+    {!!dynamic.images?.length && <ImageGrid images={dynamic.images} list={!!folding} />}
     {navigateToComments ? <button className={styles.button} type="button" onClick={navigateToComments}>评论 {dynamic.commentCount ?? '—'}</button>
       : <p className={styles.count}>评论 {dynamic.commentCount ?? '—'}</p>}
   </>;

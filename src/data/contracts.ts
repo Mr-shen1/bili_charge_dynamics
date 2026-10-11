@@ -4,13 +4,22 @@ export interface User {
   readonly avatarUrl: string | null;
 }
 
-// 文字动态模型；图片在对应任务中扩展。
+export interface DynamicImage {
+  readonly id: string;
+  readonly thumbnailUrl: string;
+  readonly previewUrl: string;
+  readonly width: number | null;
+  readonly height: number | null;
+}
+
+// 图片数组表达读取层给定的顺序；未提供图片等价于空集合。
 export interface Dynamic {
   readonly id: string;
   readonly author: User;
   readonly publishedAt: string | null;
   readonly text: string;
   readonly commentCount: number | null;
+  readonly images?: readonly DynamicImage[];
 }
 
 export type CommentSort = 'hot' | 'latest';

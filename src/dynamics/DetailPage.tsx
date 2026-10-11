@@ -17,7 +17,7 @@ export function DetailPage({ reader }: { reader: DynamicReader }) {
 
   useEffect(() => { window.scrollTo({ top: 0, left: 0, behavior: 'instant' }); }, [pageEntryId]);
 
-  return <main className={styles.page}>
+  return <main tabIndex={-1} className={styles.page}>
     <button className={styles.button} type="button" onClick={returnToList}>返回列表</button>
     <h1>动态详情</h1>
     <ReadNotice status={state.status} area="动态详情" retry={retry} />
