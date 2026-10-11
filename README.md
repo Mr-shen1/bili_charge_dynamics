@@ -1,6 +1,6 @@
 # 图文动态浏览
 
-目前完成 [任务 01](.scratch/dynamics-viewer/issues/01-browse-text-dynamics.md)、[任务 02](.scratch/dynamics-viewer/issues/02-continue-reading-dynamics.md)、[任务 03](.scratch/dynamics-viewer/issues/03-read-and-sort-comments.md)、[任务 04](.scratch/dynamics-viewer/issues/04-expand-comment-replies.md)、[任务 05](.scratch/dynamics-viewer/issues/05-preview-dynamic-images.md)、[任务 06](.scratch/dynamics-viewer/issues/06-mobile-image-history.md) 和 [任务 07](.scratch/dynamics-viewer/issues/07-restore-discussion-history.md)：固定虚构 UP 主、每批最多 10 条图文动态、独立完整正文详情、站内返回、详情直达/刷新、加载/空态/错误重试及安全文本展示；列表支持显式追加、超过六个渲染行的正文展开/收起，以及会话内返回原列表阅读进度。
+目前完成 [任务 01](.scratch/dynamics-viewer/issues/01-browse-text-dynamics.md)、[任务 02](.scratch/dynamics-viewer/issues/02-continue-reading-dynamics.md)、[任务 03](.scratch/dynamics-viewer/issues/03-read-and-sort-comments.md)、[任务 04](.scratch/dynamics-viewer/issues/04-expand-comment-replies.md)、[任务 05](.scratch/dynamics-viewer/issues/05-preview-dynamic-images.md)、[任务 06](.scratch/dynamics-viewer/issues/06-mobile-image-history.md)、[任务 07](.scratch/dynamics-viewer/issues/07-restore-discussion-history.md) 和 [任务 08](.scratch/dynamics-viewer/issues/08-static-delivery.md)：固定虚构 UP 主、每批最多 10 条图文动态、独立完整正文详情、站内返回、详情直达/刷新、加载/空态/错误重试及安全文本展示；列表支持显式追加、超过六个渲染行的正文展开/收起，以及会话内返回原列表阅读进度。
 
 详情支持一级评论的最热/最新排序、每批 20 条的显式追加、长评论展开/收起与局部失败重试；列表评论数可直接进入评论区。
 
@@ -10,7 +10,7 @@
 
 长图默认完整显示，可通过“适应宽度”按钮纵向阅读，再切回“完整显示”；按钮支持键盘。高宽比至少 2:1 提供长图模式，尺寸缺失时按加载后的自然尺寸识别。手机横向滑动切图，首尾不循环、单图不切换；纵向阅读不切图，切换图片后预览纵向位置归零。显示模式和最后查看图片保留于当前预览会话，关闭后浏览器前进可恢复；预览中刷新则替换清理失效标记并显示底层页面，不自动连续后退。
 
-详情历史返回按独立页面访问恢复评论排序、分页范围、回复及文字展开和阅读位置；同一动态的不同访问互不覆盖。未完成的读取返回后从原批次继续，看图不取消底层有效请求。数据与展开范围先恢复，再按稳定动态/评论/回复标识定位；用户主动滚动优先，刷新可重置，不写本地或会话存储。Nginx 配置与部署验证留给 08/09，跨设备总体验收由 09 汇总。本工程不调用真实 B站、后端或 OSS，也不需要凭据。
+详情历史返回按独立页面访问恢复评论排序、分页范围、回复及文字展开和阅读位置；同一动态的不同访问互不覆盖。未完成的读取返回后从原批次继续，看图不取消底层有效请求。数据与展开范围先恢复，再按稳定动态/评论/回复标识定位；用户主动滚动优先，刷新可重置，不写本地或会话存储。08 已提供 Nginx 静态交付配置并完成本机真实 Nginx 验证；最终集成产物与跨设备总体验收仍由 09 复跑、汇总。本工程不调用真实 B站、后端或 OSS，也不需要凭据。
 
 ## 环境与运行
 
@@ -43,10 +43,17 @@ pnpm build
 
 - `pnpm test`：Vitest 数据契约与 RTL 公开页面行为，通过读取接口注入可控 Adapter；不直接断言私有组件状态。
 - `pnpm test:e2e`：启动正常开发服务器（4173）与专用故障服务器（4174），在桌面 Chromium 和 Pixel 7 模拟视口运行浏览器流程。
-- `pnpm test:e2e:preview`：先重新构建，再对 `dist/` 的正常静态产物运行浏览器测试；不使用故障装配。
+- `pnpm test:e2e:preview`：先重新构建，再对 `dist/` 的正常静态产物运行浏览器测试；不使用故障装配，不替代 Nginx 验收。
+- `NGINX_BIN=/absolute/path/to/nginx NGINX_MIME_TYPES=/absolute/path/to/mime.types pnpm test:delivery`：在临时目录启动真实 Nginx，验证正常产物、资源错误/缓存、可复现构建及一次更新；不配置系统服务。准备步骤见下节。
 - 浏览器测试设设备时区为 `America/Los_Angeles`，检查页面仍显示北京时间。四种约定宽度为 360、390、768、1280px。
 - Linux 需要 Chromium 可用的系统库；缺库时按 Playwright 官方系统要求安装。模拟视口不是 Android/iOS 真机测试。
 - 如环境设置了 HTTP 代理，需使本地测试服务器绕过代理：`NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost pnpm test:e2e`；静态产物测试同理。
+
+## 静态交付
+
+参见 [静态交付说明](docs/static-delivery.md) 和 [Nginx 示例](deploy/nginx.conf)：域名根路径部署，有效详情直达/刷新与未知页面回退到入口；明确资源路径缺失返回 HTTP 404，不回退成 HTML。入口重新验证，内容哈希 JS/CSS 和版本化图片长期缓存，未版本化资源不永久缓存，资源错误 `no-store`。前端“未找到页面”不等于服务器 HTTP 404。
+
+发布应保留旧哈希资源并原子切换入口；本期是项目内演示素材，未来 OSS 由浏览器直连给定 URL，不加服务器代理。2 核 2GB 仅是目标，不是容量保证；后端、数据库和爬虫需另行评估。本票不实施云部署、自动发布、容量压测或任务 09 的最终跨设备收口。
 
 ## 装配与边界
 
@@ -63,4 +70,4 @@ pnpm build
 
 ## 验收记录
 
-详见 [01 验收记录](.scratch/dynamics-viewer/acceptance-01.md)、[02 验收记录](.scratch/dynamics-viewer/acceptance-02.md)、[03 验收记录](.scratch/dynamics-viewer/acceptance-03.md)、[04 验收记录](.scratch/dynamics-viewer/acceptance-04.md)、[05 验收记录](.scratch/dynamics-viewer/acceptance-05.md)、[06 验收记录](.scratch/dynamics-viewer/acceptance-06.md) 与 [07 验收记录](.scratch/dynamics-viewer/acceptance-07.md)。06 手势使用 Chromium CDP 触摸输入和 Pixel 7 模拟视口验证，不代表真实 Android/iOS 触控验收。Vite 的开发/预览回退不代表 Nginx 的回退、资源错误或缓存已经验证；正式静态部署配置与验收留给 08/09。
+详见 [01 验收记录](.scratch/dynamics-viewer/acceptance-01.md)、[02 验收记录](.scratch/dynamics-viewer/acceptance-02.md)、[03 验收记录](.scratch/dynamics-viewer/acceptance-03.md)、[04 验收记录](.scratch/dynamics-viewer/acceptance-04.md)、[05 验收记录](.scratch/dynamics-viewer/acceptance-05.md)、[06 验收记录](.scratch/dynamics-viewer/acceptance-06.md)、[07 验收记录](.scratch/dynamics-viewer/acceptance-07.md) 与 [08 验收记录](.scratch/dynamics-viewer/acceptance-08.md)。06 手势使用 Chromium CDP 触摸输入和 Pixel 7 模拟视口验证，不代表真实 Android/iOS 触控验收。Vite 的开发/预览回退不代表 Nginx 验收；08 使用临时编译的 Nginx 1.28.0 实测，未操作生产环境。09 仍须用最终集成产物复跑相应静态检查，不沿用 08 的较早产物结果。
