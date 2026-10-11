@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it } from 'vitest';
@@ -12,13 +12,28 @@ const image = { id: 'picture', thumbnailUrl: '/images/thumb.v1.svg?signature=a%2
   previewUrl: '/images/full.v1.svg?signature=c%2Fd&expires=123', width: 800, height: 600 };
 const dynamic = { id: 'picture-post', author: creator, publishedAt: '2026-03-01T00:00:00Z',
   text: '', commentCount: 0, images: [image] };
-function show(count = 1, path = '/') {
-  const images = Array.from({ length: count }, (_, index) => ({ ...image, id: `image-${index}` }));
+function show(count = 1, path = '/', dimensions = { width: 800, height: 600 }) {
+  const images = Array.from({ length: count }, (_, index) => ({ ...image, ...dimensions, id: `image-${index}` }));
   return render(<MemoryRouter initialEntries={[path]}><App reader={createMockReader({ creator,
     dynamics: [{ ...dynamic, images }] })} /></MemoryRouter>);
 }
 
 describe('动态图片公开页面行为', () => {
+  it('长图默认完整显示，键盘可切换适应宽度并保留可关闭的焦点', async () => {
+    const user = userEvent.setup();
+    show(2, '/', { width: 600, height: 1600 });
+    await user.click(await screen.findByRole('img', { name: '图片 1' }));
+    const preview = await screen.findByRole('dialog');
+    const mode = within(preview).getByRole('button', { name: '适应宽度' });
+    expect(mode).toHaveAttribute('aria-pressed', 'false');
+    mode.focus();
+    await user.keyboard('{Enter}');
+    expect(within(preview).getByRole('button', { name: '完整显示' })).toHaveAttribute('aria-pressed', 'true');
+    await user.keyboard(' ');
+    expect(within(preview).getByRole('button', { name: '适应宽度' })).toHaveFocus();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
   it('预览不重建底层列表访问，打开前仍有效的追加可以完成', async () => {
     const user = userEvent.setup();
     let finish!: (result: Awaited<ReturnType<DynamicReader['readList']>>) => void;
@@ -73,6 +88,18 @@ describe('动态图片公开页面行为', () => {
     expect(close).toHaveFocus();
     await user.tab({ shift: true });
     expect(close).toHaveFocus();
+  });
+  it('快速连续方向键仍逐次切图，不因批量渲染丢失输入', async () => {
+    const user = userEvent.setup();
+    show(4);
+    await user.click(await screen.findByRole('img', { name: '图片 1' }));
+    const preview = await screen.findByRole('dialog');
+    act(() => {
+      fireEvent.keyDown(document, { key: 'ArrowRight' });
+      fireEvent.keyDown(document, { key: 'ArrowRight' });
+      fireEvent.keyDown(document, { key: 'ArrowRight' });
+    });
+    expect(within(preview).getByText('4 / 4')).toBeVisible();
   });
   it('按钮和方向键按读取顺序切图，首尾不循环，Esc 关闭', async () => {
     const user = userEvent.setup();

@@ -17,6 +17,9 @@
 .action { min-height: 44px; min-width: 44px; padding: 10px 16px; border: 1px solid var(--preview-border); border-radius: 8px; color: var(--preview-text); background: var(--preview-action); font: inherit; cursor: pointer; }
 .action:focus-visible { outline: 3px solid var(--preview-focus); outline-offset: 3px; }
 .action:disabled { opacity: .5; cursor: default; }
-.stage { min-height: 0; flex: 1; display: flex; align-items: center; justify-content: center; padding: 16px 0; overflow: hidden; }
+.stage { min-height: 0; flex: 1; display: flex; align-items: center; justify-content: center; padding: 16px 0; overflow: hidden; overscroll-behavior: contain; touch-action: pan-y; }
+.widthStage { display: block; overflow-y: auto; overflow-x: hidden; }
+.widthStage .media { height: auto; min-height: 100%; align-items: flex-start; }
 .stage img { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; }
+.widthStage img { width: 100%; max-height: none; height: auto; }
 .remaining { position: absolute; inset: 0; display: grid; place-items: center; background: var(--image-overlay); color: var(--preview-text); font-size: 1.5rem; pointer-events: none; }
