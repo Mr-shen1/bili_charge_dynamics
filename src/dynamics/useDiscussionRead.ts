@@ -1,18 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { CommentBatch, CommentSort, DynamicReader, ReadResult } from '../data/contracts';
+import type { ReadResult } from '../data/contracts';
 
-interface CommentReadState {
-  readonly status: ReadResult<CommentBatch>['status'] | 'loading';
-  readonly data: CommentBatch | null;
+interface DiscussionBatch<T> {
+  readonly items: readonly T[];
+  readonly nextCursor: string | null;
+}
+interface DiscussionReadState<T> {
+  readonly status: ReadResult<DiscussionBatch<T>>['status'] | 'loading';
+  readonly data: DiscussionBatch<T> | null;
 }
 
-// 每个评论排序视图独立拥有批次和请求；切换排序/访问时卸载，不能复用旧分页。
-export function useCommentRead(reader: DynamicReader, dynamicId: string, sort: CommentSort) {
-  const [state, setState] = useState<CommentReadState>({ status: 'loading', data: null });
+// 每个排序视图/回复根节点独立拥有请求；所属视图卸载使迟到结果及完成失效。
+export function useDiscussionRead<T extends { readonly id: string }>(
+  read: (cursor: string | null | undefined, signal: AbortSignal, initial: boolean) => Promise<ReadResult<DiscussionBatch<T>>>,
+) {
+  const [state, setState] = useState<DiscussionReadState<T>>({ status: 'loading', data: null });
   const current = useRef(state);
   const request = useRef<AbortController | null>(null);
   const active = useRef(false);
-  const update = useCallback((next: CommentReadState) => {
+  const update = useCallback((next: DiscussionReadState<T>) => {
     current.current = next;
     setState(next);
   }, []);
@@ -25,7 +31,7 @@ export function useCommentRead(reader: DynamicReader, dynamicId: string, sort: C
     const valid = () => active.current && request.current === controller && !controller.signal.aborted;
     update({ data: previous, status: 'loading' });
     try {
-      const result = await reader.readComments({ dynamicId, sort, cursor: previous?.nextCursor, signal: controller.signal });
+      const result = await read(previous?.nextCursor, controller.signal, previous === null);
       if (!valid()) return;
       if (result.status === 'success') {
         const seen = new Set(previous?.items.map(item => item.id));
@@ -43,7 +49,7 @@ export function useCommentRead(reader: DynamicReader, dynamicId: string, sort: C
     } finally {
       if (valid()) request.current = null;
     }
-  }, [reader, dynamicId, sort, update]);
+  }, [read, update]);
   useEffect(() => {
     active.current = true;
     void load();

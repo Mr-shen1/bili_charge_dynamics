@@ -32,7 +32,7 @@ export const reader = createMockReader({
     text: index === 0 || index === 10 ? openingText
       : index === 2 ? `长词 ${'a'.repeat(220)} 🙂`
       : `文字日记 ${index + 1}\n把平凡的日子写成一段简单的记录。`,
-    commentCount: index === 0 ? 45 : 0,
+    commentCount: index === 0 ? 70 : 0,
   })),
   comments: {
     '90071992547409931': Array.from({ length: 45 }, (_, index) => ({
@@ -45,6 +45,22 @@ export const reader = createMockReader({
         : index === 42 ? '' : index === 41 ? `长词 ${'a'.repeat(220)} 🙂`
         : `评论记录 ${index + 1}\n@朋友 谢谢分享 🙂`,
       likeCount: index === 42 ? null : index,
+      replyCount: index === 44 ? 25 : 0,
     })),
+  },
+  replies: {
+    '90071992547409931': {
+      'comment-44': Array.from({ length: 25 }, (_, index) => ({
+        id: `reply-${String(index).padStart(2, '0')}`,
+        author: index === 0 ? creator : index === 1 ? { ...creator, id: 'same-name-reader' }
+          : index === 2 ? { id: 'unknown-reader', nickname: null, avatarUrl: null }
+          : { id: `reply-reader-${index}`, nickname: index === 3 ? '长回复昵称'.repeat(30) : `回复读者 ${index + 1}`, avatarUrl: null },
+        publishedAt: new Date(Date.UTC(2026, 2, 1, 4, 0, 0) + index * 60000).toISOString(),
+        text: index === 0 ? `长回复 1\n${longCommentText}` : index === 2 ? ''
+          : index === 3 ? `回复记录 4\n${'a'.repeat(220)} 🙂` : `回复记录 ${index + 1}\n谢谢分享 🙂`,
+        likeCount: index === 2 ? null : index,
+        replyTo: index === 2 ? null : index === 3 ? { id: 'long-target', nickname: '长目标昵称'.repeat(30), avatarUrl: null } : creator,
+      })),
+    },
   },
 });

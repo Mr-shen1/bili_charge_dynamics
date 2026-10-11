@@ -9,7 +9,7 @@ import type { Comment, CommentBatch, DynamicReader, ReadResult } from '../src/da
 
 const creator = { id: 'up', nickname: '纸飞机', avatarUrl: null };
 const dynamic = { id: 'd', author: creator, publishedAt: null, text: '上方动态保持完整', commentCount: 100 };
-const comment: Comment = { id: 'c', author: creator, publishedAt: '2026-02-03T23:04:05-05:00', text: '第一行\n🙂 @朋友 <script>window.pwned=true</script>', likeCount: 0 };
+const comment: Comment = { id: 'c', author: creator, publishedAt: '2026-02-03T23:04:05-05:00', text: '第一行\n🙂 @朋友 <script>window.pwned=true</script>', likeCount: 0, replyCount: 0 };
 function deferred() {
   let resolve!: (value: ReadResult<CommentBatch>) => void;
   let reject!: (reason: Error) => void;
