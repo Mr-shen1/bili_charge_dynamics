@@ -1,6 +1,6 @@
 # 图文动态浏览
 
-目前完成 [任务 01](.scratch/dynamics-viewer/issues/01-browse-text-dynamics.md)、[任务 02](.scratch/dynamics-viewer/issues/02-continue-reading-dynamics.md)、[任务 03](.scratch/dynamics-viewer/issues/03-read-and-sort-comments.md)、[任务 04](.scratch/dynamics-viewer/issues/04-expand-comment-replies.md)、[任务 05](.scratch/dynamics-viewer/issues/05-preview-dynamic-images.md) 和 [任务 06](.scratch/dynamics-viewer/issues/06-mobile-image-history.md)：固定虚构 UP 主、每批最多 10 条图文动态、独立完整正文详情、站内返回、详情直达/刷新、加载/空态/错误重试及安全文本展示；列表支持显式追加、超过六个渲染行的正文展开/收起，以及会话内返回原列表阅读进度。
+目前完成 [任务 01](.scratch/dynamics-viewer/issues/01-browse-text-dynamics.md)、[任务 02](.scratch/dynamics-viewer/issues/02-continue-reading-dynamics.md)、[任务 03](.scratch/dynamics-viewer/issues/03-read-and-sort-comments.md)、[任务 04](.scratch/dynamics-viewer/issues/04-expand-comment-replies.md)、[任务 05](.scratch/dynamics-viewer/issues/05-preview-dynamic-images.md)、[任务 06](.scratch/dynamics-viewer/issues/06-mobile-image-history.md) 和 [任务 07](.scratch/dynamics-viewer/issues/07-restore-discussion-history.md)：固定虚构 UP 主、每批最多 10 条图文动态、独立完整正文详情、站内返回、详情直达/刷新、加载/空态/错误重试及安全文本展示；列表支持显式追加、超过六个渲染行的正文展开/收起，以及会话内返回原列表阅读进度。
 
 详情支持一级评论的最热/最新排序、每批 20 条的显式追加、长评论展开/收起与局部失败重试；列表评论数可直接进入评论区。
 
@@ -10,7 +10,7 @@
 
 长图默认完整显示，可通过“适应宽度”按钮纵向阅读，再切回“完整显示”；按钮支持键盘。高宽比至少 2:1 提供长图模式，尺寸缺失时按加载后的自然尺寸识别。手机横向滑动切图，首尾不循环、单图不切换；纵向阅读不切图，切换图片后预览纵向位置归零。显示模式和最后查看图片保留于当前预览会话，关闭后浏览器前进可恢复；预览中刷新则替换清理失效标记并显示底层页面，不自动连续后退。
 
-完整详情历史快照留给 07，Nginx 配置与部署验证留给 08/09，跨设备总体验收由 09 汇总。本工程不调用真实 B站、后端或 OSS，也不需要凭据。
+详情历史返回按独立页面访问恢复评论排序、分页范围、回复及文字展开和阅读位置；同一动态的不同访问互不覆盖。未完成的读取返回后从原批次继续，看图不取消底层有效请求。数据与展开范围先恢复，再按稳定动态/评论/回复标识定位；用户主动滚动优先，刷新可重置，不写本地或会话存储。Nginx 配置与部署验证留给 08/09，跨设备总体验收由 09 汇总。本工程不调用真实 B站、后端或 OSS，也不需要凭据。
 
 ## 环境与运行
 
@@ -52,15 +52,15 @@ pnpm build
 
 - `src/data/contracts.ts`：只读动态/一级评论/回复模型、完整回复数与可缺失的回复目标、带不透明下一批标记的列表/评论/回复接口，以及详情接口，区分成功、取消、错误与动态不存在。UI 原样传递标记；动态图片以稳定 ID、有序数组、缩略/预览 URL 和可缺失尺寸表达，不改写签名参数。
 - `src/data/mockReader.ts`：统一规范时间、缺失值与计数，完整集合按时间倒序、字符串 ID 升序稳定排序，再分页。动态页大小上限 10；评论先对完整集合按最热（点赞/时间降序、ID 升序）或最新（时间降序、ID 升序）排序，再每批 20 条分页，空排序值在有效值后。回复始终对完整集合按时间正序、ID 升序排序，首批最多 3 条、追加最多 10 条；标记绑定 UP 主、动态及根评论。错误资源标记返回读取失败，空值在有效值之后。
-- `src/data/assembly.ts`：25 条虚构图文动态、项目内自行绘制的 SVG 头像与几何风景 PNG；包括无正文单图、4/9/12 图、未知尺寸与高纵横比图片。素材来源、实际缩略尺寸和重建方式见 `public/demo-images/README.md`；包含多批长正文、长词、长昵称、emoji 和长 URL，首条动态具备 45 条一级评论，`comment-44` 下有 25 条回复，总评论数为 70；含 UP 主、同名非 UP 主、缺失字段、零值、长评论/回复及长目标昵称样例，完整计数不随加载范围变化。
-- `src/app/Navigation.tsx`：稳定的 Context + reducer 会话容器，维护会话 ID、独立页面访问 ID、可验证的列表来源、详情入口意图（顶部/评论区）与列表快照。快照只存当前会话内存；history.state 仍只有轻量导航元数据，不使用 localStorage/sessionStorage。预览由导航统一 PUSH 同 URL 记录，预览 ID 与底层页面访问 ID 独立，切图和模式只更新会话内存；关闭只撤销当前有效记录，重复关闭不二次后退。关闭后保留可前进到达的会话，新导航分支不重建被浏览器丢弃的前进记录。失效预览标记通过 REPLACE 清理；底层访问仍有效时保留其 ID 和阅读快照。底层页面在预览期间保持挂载，不取消仍有效的读取。
+- `src/data/assembly.ts`：25 条虚构图文动态、项目内自行绘制的 SVG 头像与几何风景 PNG；包括无正文单图、4/9/12 图、未知尺寸与高纵横比图片。素材来源、实际缩略尺寸和重建方式见 `public/demo-images/README.md`；包含多批长正文、长词、长昵称、emoji 和长 URL，首条动态带一张复用素材的未知尺寸图片，具备 45 条一级评论，`comment-44` 下有 25 条回复，总评论数为 70；含 UP 主、同名非 UP 主、缺失字段、零值、长评论/回复及长目标昵称样例，完整计数不随加载范围变化。
+- `src/app/Navigation.tsx`：稳定的 Context + reducer 会话容器，维护会话 ID、独立页面访问 ID、可验证的列表来源、详情入口意图（顶部/评论区）与列表/详情快照。快照只存当前会话内存；history.state 仍只有轻量导航元数据，不使用 localStorage/sessionStorage。预览由导航统一 PUSH 同 URL 记录，预览 ID 与底层页面访问 ID 独立，切图和模式只更新会话内存；关闭只撤销当前有效记录，重复关闭不二次后退。关闭后保留可前进到达的会话，新导航分支不重建被浏览器丢弃的前进记录。失效预览标记通过 REPLACE 清理；底层访问仍有效时保留其 ID 和阅读快照。底层页面在预览期间保持挂载，不取消仍有效的读取。
 - `src/app/readingPosition.ts`：统一保存稳定内容定位点、视口偏移与像素后备；内容/展开状态先还原，再等待最多两个布局帧定位，用户滚动输入中断恢复，不等待读取或图片。
-- `src/dynamics/`：页面消费统一读取接口，正文安全呈现并保留换行；列表按实际渲染行数折叠，ResizeObserver 随宽度重判。追加失败不清空内容或推进标记，重复及过期请求不能改写当前访问。详情正文仍完整展示；一级评论同样按真实行数折叠。评论视图按页面访问隔离，切换排序重置分页和评论展开、回到评论区顶部而不重新初始化上方动态。旧成功、错误和完成均受当前请求有效性保护；一级评论与回复复用讨论批次协调器，回复区按根评论独立持有请求和错误；只为当前已展示且回复数非零/未知的评论读取预览，不预取全部回复。收起只改变可见范围，保留数据和下一批标记；排序/访问重置使旧评论及回复成功、错误和完成失效，不保存完整详情历史快照。
+- `src/dynamics/`：页面消费统一读取接口，正文安全呈现并保留换行；列表按实际渲染行数折叠，ResizeObserver 随宽度重判。追加失败不清空内容或推进标记，重复及过期请求不能改写当前访问。详情正文仍完整展示；一级评论同样按真实行数折叠。评论视图按页面访问隔离，切换排序重置分页和评论展开、回到评论区顶部而不重新初始化上方动态。旧成功、错误和完成均受当前请求有效性保护；一级评论与回复复用讨论批次协调器，回复区按根评论独立持有请求和错误；只为当前已展示且回复数非零/未知的评论读取预览，不预取全部回复。收起只改变可见范围，保留数据和下一批标记；排序/访问卸载使旧评论及回复成功、错误和完成失效。详情按页面访问 ID 保存成功正文、评论排序与范围、各根评论回复及文字展开、下一批标记和阅读位置；成功内容无需重读，未完成批次恢复后重读原标记，错误保持局部重试。访问内草稿只替换对象，不修改已保存快照；不同访问不共享可变视图状态。
 - `src/images/`：图片网格与单图比例占位、单张加载/失败/原 URL 重试、按需预览、焦点约束和底层滚动锁。未知尺寸先稳定占位，加载后在框内使用实际比例，避免迟到加载移动阅读位置；会话只保存触发元素 ID，不保留失效 DOM 引用。关闭先解锁、恢复位置，再在底层解除 inert 后以 `preventScroll` 恢复焦点。支持长图完整/适宽阅读和触摸方向锁定；移动至少 12px 后判定方向，水平位移至少为纵向的 1.5 倍且结束时达到 50px 才切图，取消及多指触摸不切图。不增加自由/双指缩放。手势不直接操作 History API。
-- `src/dev/`：确定性开发/测试装配。`pnpm dev:fault` 使首批和第二批列表及各详情首次失败一次，重试恢复，并使用长昵称样例；受控读取 Adapter 可按动态/评论排序及动态/根评论注入延迟、取消、错误和忽略取消的结果；评论与回复的局部故障/乱序在公开页面测试中驱动，互不消费计划或取消请求。通过编译配置切换，不提供公开故障 URL 参数或页面控制面板。即使 `pnpm build --mode fault`，也只装配正常数据。
+- `src/dev/`：确定性开发/测试装配。`pnpm dev:fault` 使首批和第二批列表及各详情首次失败一次，重试恢复，并使用长昵称样例；受控读取 Adapter 可按动态/评论排序及动态/根评论注入延迟、取消、错误和忽略取消的结果；评论与回复的局部故障/乱序在公开页面测试中驱动，互不消费计划或取消请求。讨论第二批延迟供浏览器验证加载中离开及历史返回，不影响正常静态产物。通过编译配置切换，不提供公开故障 URL 参数或页面控制面板。即使 `pnpm build --mode fault`，也只装配正常数据。
 
 路由采用 BrowserRouter：`/`、`/dynamics/:dynamicId`，其余为前端未找到页面。无有效站内来源时详情返回安全替换为列表首页；刷新后不沿用失效的内存来源。
 
 ## 验收记录
 
-详见 [01 验收记录](.scratch/dynamics-viewer/acceptance-01.md)、[02 验收记录](.scratch/dynamics-viewer/acceptance-02.md)、[03 验收记录](.scratch/dynamics-viewer/acceptance-03.md)、[04 验收记录](.scratch/dynamics-viewer/acceptance-04.md)、[05 验收记录](.scratch/dynamics-viewer/acceptance-05.md) 与 [06 验收记录](.scratch/dynamics-viewer/acceptance-06.md)。06 手势使用 Chromium CDP 触摸输入和 Pixel 7 模拟视口验证，不代表真实 Android/iOS 触控验收。Vite 的开发/预览回退不代表 Nginx 的回退、资源错误或缓存已经验证；正式静态部署配置与验收留给 08/09。
+详见 [01 验收记录](.scratch/dynamics-viewer/acceptance-01.md)、[02 验收记录](.scratch/dynamics-viewer/acceptance-02.md)、[03 验收记录](.scratch/dynamics-viewer/acceptance-03.md)、[04 验收记录](.scratch/dynamics-viewer/acceptance-04.md)、[05 验收记录](.scratch/dynamics-viewer/acceptance-05.md)、[06 验收记录](.scratch/dynamics-viewer/acceptance-06.md) 与 [07 验收记录](.scratch/dynamics-viewer/acceptance-07.md)。06 手势使用 Chromium CDP 触摸输入和 Pixel 7 模拟视口验证，不代表真实 Android/iOS 触控验收。Vite 的开发/预览回退不代表 Nginx 的回退、资源错误或缓存已经验证；正式静态部署配置与验收留给 08/09。

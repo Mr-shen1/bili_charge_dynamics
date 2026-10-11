@@ -1,10 +1,11 @@
-import { useCallback, useId, useState } from 'react';
+import { useCallback, useId, useLayoutEffect, useRef, useState } from 'react';
 import { replyAppendSize, replyPreviewSize, type DynamicReader } from '../data/contracts';
 import { Identity, displayTime } from './DynamicContent';
 import { FoldableText } from './FoldableText';
 import { ReadNotice } from './ReadNotice';
 import { useDiscussionRead } from './useDiscussionRead';
 import styles from './Dynamics.module.css';
+import { useDiscussionVisit } from './DiscussionVisit';
 
 export function ReplySection({ reader, dynamicId, rootId }: {
   reader: DynamicReader; dynamicId: string; rootId: string;
@@ -13,9 +14,16 @@ export function ReplySection({ reader, dynamicId, rootId }: {
   const read = useCallback((cursor: string | null | undefined, signal: AbortSignal, initial: boolean) =>
     reader.readReplies({ dynamicId, rootId, cursor, signal, limit: initial ? replyPreviewSize : replyAppendSize }),
     [reader, dynamicId, rootId]);
-  const { state, load } = useDiscussionRead(read);
-  const [expanded, setExpanded] = useState(false);
-  const [expandedTexts, setExpandedTexts] = useState<Readonly<Record<string, boolean>>>({});
+  const visit = useDiscussionVisit();
+  const initial = useRef(visit.current.replies[rootId]);
+  const { state, load } = useDiscussionRead(read, initial.current?.read);
+  const [expanded, setExpanded] = useState(initial.current?.expanded ?? false);
+  const [expandedTexts, setExpandedTexts] = useState<Readonly<Record<string, boolean>>>(initial.current?.expandedTexts ?? {});
+  useLayoutEffect(() => {
+    visit.current = { ...visit.current, replies: { ...visit.current.replies,
+      [rootId]: { read: state, expanded, expandedTexts },
+    } };
+  }, [visit, rootId, state, expanded, expandedTexts]);
   const visible = expanded ? state.data?.items : state.data?.items.slice(0, replyPreviewSize);
   const expand = () => {
     setExpanded(true);
@@ -25,7 +33,7 @@ export function ReplySection({ reader, dynamicId, rootId }: {
     {!state.data && <ReadNotice status={state.status} area="回复" retry={load} />}
     {state.data?.items.length === 0 && <p role="status">暂无回复</p>}
     <ul id={listId} className={styles.comments} aria-label="回复列表">
-      {visible?.map(reply => <li key={reply.id} className={styles.reply}>
+      {visible?.map(reply => <li key={reply.id} className={styles.reply} data-reading-id={`reply:${rootId}:${reply.id}`}>
         <Identity user={reply.author} />
         {reply.author.id === reader.creator.id && <span>UP主</span>}
         {reply.replyTo?.nickname && <p className={styles.text}>回复 @{reply.replyTo.nickname}</p>}

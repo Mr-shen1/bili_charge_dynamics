@@ -2,16 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 
 type InitialState<R> = R | { status: 'loading' } | { status: 'error' };
 
-// 仅协调本票两个首次读取区域；不包含分页、缓存或阅读恢复。
+// 协调首次读取；已有成功内容可由所属访问提供，未完成请求不进入快照。
 export function useInitialRead<R extends { readonly status: string }>(
-  resourceKey: string, load: (signal: AbortSignal) => Promise<R>,
+  resourceKey: string, load: (signal: AbortSignal) => Promise<R>, initial?: R,
 ) {
   const [stored, setStored] = useState<{ key: string; load: typeof load; result: InitialState<R> }>({
-    key: resourceKey, load, result: { status: 'loading' },
+    key: resourceKey, load, result: initial ?? { status: 'loading' },
   });
   const [attempt, setAttempt] = useState(0);
-  const pending = useRef(true);
+  const pending = useRef(!initial);
   useEffect(() => {
+    if (initial && attempt === 0) return;
     const controller = new AbortController();
     let active = true;
     pending.current = true;
@@ -28,7 +29,7 @@ export function useInitialRead<R extends { readonly status: string }>(
       setStored({ key: resourceKey, load, result: { status: 'error' } });
     });
     return () => { active = false; controller.abort(); };
-  }, [resourceKey, load, attempt]);
+  }, [resourceKey, load, attempt, initial]);
 
   return {
     // 资源/装配切换的首次渲染也不能短暂显示上一次内容。
