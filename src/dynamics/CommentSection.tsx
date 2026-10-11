@@ -1,9 +1,10 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import type { CommentSort, DynamicReader } from '../data/contracts';
 import { Identity, displayTime } from './DynamicContent';
-import { useCommentRead } from './useCommentRead';
+import { useDiscussionRead } from './useDiscussionRead';
 import { ReadNotice } from './ReadNotice';
 import { FoldableText } from './FoldableText';
+import { ReplySection } from './ReplySection';
 import styles from './Dynamics.module.css';
 
 export function CommentSection({ reader, dynamicId, initialTarget }: {
@@ -36,14 +37,16 @@ export function CommentSection({ reader, dynamicId, initialTarget }: {
 function CommentSortView({ reader, dynamicId, sort, onSettled }: {
   reader: DynamicReader; dynamicId: string; sort: CommentSort; onSettled(): void;
 }) {
-  const { state, load } = useCommentRead(reader, dynamicId, sort);
+  const read = useCallback((cursor: string | null | undefined, signal: AbortSignal) =>
+    reader.readComments({ dynamicId, sort, cursor, signal }), [reader, dynamicId, sort]);
+  const { state, load } = useDiscussionRead(read);
   const [expanded, setExpanded] = useState<Readonly<Record<string, boolean>>>({});
   const area = sort === 'hot' ? '最热评论' : '最新评论';
   useLayoutEffect(() => { if (state.status !== 'loading') onSettled(); }, [state.status, onSettled]);
   return <>
     {!state.data && <ReadNotice status={state.status} area={area} retry={load} />}
     {state.data?.items.length === 0 && <p role="status">暂无评论</p>}
-    <ul className={styles.comments}>
+    <ul className={styles.comments} aria-label="一级评论">
       {state.data?.items.map(comment => <li key={comment.id} className={styles.card}>
         <Identity user={comment.author} />
         {comment.author.id === reader.creator.id && <span>UP主</span>}
@@ -52,6 +55,8 @@ function CommentSortView({ reader, dynamicId, sort, onSettled }: {
           expanded={expanded[comment.id] ?? false}
           toggle={() => setExpanded(previous => ({ ...previous, [comment.id]: !previous[comment.id] }))} />
         <p className={styles.count}>点赞 {comment.likeCount ?? '—'}</p>
+        <p className={styles.count}>回复 {comment.replyCount ?? '—'}</p>
+        {comment.replyCount !== 0 && <ReplySection reader={reader} dynamicId={dynamicId} rootId={comment.id} />}
       </li>)}
     </ul>
     {state.data && state.data.items.length > 0 && (state.data.nextCursor === null

@@ -1,9 +1,11 @@
-import type { Comment, Dynamic, DynamicReader, User } from './contracts';
+import { replyAppendSize, replyPreviewSize } from './contracts';
+import type { Comment, Dynamic, DynamicReader, ReadResult, Reply, User } from './contracts';
 
 export interface MockDataset {
   readonly creator: User;
   readonly dynamics: readonly Dynamic[];
   readonly comments?: Readonly<Record<string, readonly Comment[]>>;
+  readonly replies?: Readonly<Record<string, Readonly<Record<string, readonly Reply[]>>>>;
 }
 
 function normalizeUser(user: User): User {
@@ -24,13 +26,27 @@ function normalizeTime(value: string | null): string | null {
   return Number.isFinite(time) ? new Date(time).toISOString() : null;
 }
 
+function normalizeCount(value: number | null): number | null {
+  return value !== null && Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+function readBatch<T>(
+  items: readonly T[], prefix: string, cursor: string | null | undefined, size: number,
+): ReadResult<{ readonly items: readonly T[]; readonly nextCursor: string | null }> {
+  const offset = cursor == null ? 0 : cursor.startsWith(prefix) ? Number(cursor.slice(prefix.length)) : NaN;
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset > items.length) return { status: 'error' };
+  return { status: 'success', data: {
+    items: items.slice(offset, offset + size),
+    nextCursor: items.length > offset + size ? `${prefix}${offset + size}` : null,
+  } };
+}
+
 export function createMockReader(dataset: MockDataset): DynamicReader {
   const items = dataset.dynamics.map(item => ({
     ...item,
     author: normalizeUser(item.author),
     publishedAt: normalizeTime(item.publishedAt),
-    commentCount: item.commentCount !== null && Number.isSafeInteger(item.commentCount) && item.commentCount >= 0
-      ? item.commentCount : null,
+    commentCount: normalizeCount(item.commentCount),
   })).sort((a, b) => {
     if (a.publishedAt !== b.publishedAt) {
       if (a.publishedAt === null) return 1;
@@ -45,20 +61,35 @@ export function createMockReader(dataset: MockDataset): DynamicReader {
     async readList({ limit, cursor, signal }) {
       if (signal.aborted) return { status: 'cancelled' };
       const prefix = `dynamics:${encodeURIComponent(dataset.creator.id)}:time-desc:`;
-      const offset = cursor == null ? 0 : cursor.startsWith(prefix) ? Number(cursor.slice(prefix.length)) : NaN;
-      if (!Number.isSafeInteger(offset) || offset < 0 || offset > items.length) return { status: 'error' };
       const size = Number.isFinite(limit) ? Math.max(1, Math.min(10, Math.floor(limit))) : 10;
-      return { status: 'success', data: {
-        items: items.slice(offset, offset + size),
-        nextCursor: items.length > offset + size ? `${prefix}${offset + size}` : null,
-      } };
+      return readBatch(items, prefix, cursor, size);
+    },
+    async readReplies({ dynamicId, rootId, limit, cursor, signal }) {
+      if (signal.aborted) return { status: 'cancelled' };
+      const prefix = `replies:${encodeURIComponent(dataset.creator.id)}:${encodeURIComponent(dynamicId)}:${encodeURIComponent(rootId)}:time-asc:`;
+      const replies = (dataset.replies?.[dynamicId]?.[rootId] ?? []).map(item => ({
+        ...item, author: normalizeUser(item.author), publishedAt: normalizeTime(item.publishedAt),
+        likeCount: normalizeCount(item.likeCount),
+        replyTo: item.replyTo ? normalizeUser(item.replyTo) : null,
+      })).sort((a, b) => {
+        if (a.publishedAt !== b.publishedAt) {
+          if (a.publishedAt === null) return 1;
+          if (b.publishedAt === null) return -1;
+          return Date.parse(a.publishedAt) - Date.parse(b.publishedAt);
+        }
+        return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+      });
+      const maximum = cursor == null ? replyPreviewSize : replyAppendSize;
+      const size = Number.isFinite(limit) ? Math.max(1, Math.min(maximum, Math.floor(limit))) : maximum;
+      return readBatch(replies, prefix, cursor, size);
     },
     async readComments({ dynamicId, sort, cursor, signal }) {
       if (signal.aborted) return { status: 'cancelled' };
       const prefix = `comments:${encodeURIComponent(dataset.creator.id)}:${encodeURIComponent(dynamicId)}:${sort}:`;
       const comments = (dataset.comments?.[dynamicId] ?? []).map(item => ({
         ...item, author: normalizeUser(item.author), publishedAt: normalizeTime(item.publishedAt),
-        likeCount: item.likeCount !== null && Number.isSafeInteger(item.likeCount) && item.likeCount >= 0 ? item.likeCount : null,
+        likeCount: normalizeCount(item.likeCount),
+        replyCount: normalizeCount(item.replyCount),
       })).sort((a, b) => {
         if (sort === 'hot' && a.likeCount !== b.likeCount) {
           if (a.likeCount === null) return 1;
@@ -72,12 +103,7 @@ export function createMockReader(dataset: MockDataset): DynamicReader {
         }
         return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
       });
-      const offset = cursor == null ? 0 : cursor.startsWith(prefix) ? Number(cursor.slice(prefix.length)) : NaN;
-      if (!Number.isSafeInteger(offset) || offset < 0 || offset > comments.length) return { status: 'error' };
-      return { status: 'success', data: {
-        items: comments.slice(offset, offset + 20),
-        nextCursor: comments.length > offset + 20 ? `${prefix}${offset + 20}` : null,
-      } };
+      return readBatch(comments, prefix, cursor, 20);
     },
     async readDetail({ id, signal }) {
       if (signal.aborted) return { status: 'cancelled' };

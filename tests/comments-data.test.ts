@@ -4,7 +4,7 @@ import { reader as normalReader } from '../src/data/assembly';
 
 const creator = { id: 'up', nickname: '纸飞机', avatarUrl: null };
 const dynamic = { id: 'd', author: creator, publishedAt: null, text: '', commentCount: 99 };
-const comment = { author: creator, publishedAt: '2026-01-01T00:00:00Z', text: '评论', likeCount: 0 };
+const comment = { author: creator, publishedAt: '2026-01-01T00:00:00Z', text: '评论', likeCount: 0, replyCount: 0 };
 
 it('正常装配首条动态确有45条一级评论，两种排序各为20、20、5', async () => {
   const signal = new AbortController().signal;

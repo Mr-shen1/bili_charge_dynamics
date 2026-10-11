@@ -5,7 +5,7 @@ import styles from './Dynamics.module.css';
 const layoutRoundingTolerance = 1;
 
 export function FoldableText({ text, expanded, toggle, subject = '正文' }: {
-  text: string; expanded: boolean; toggle(): void; subject?: '正文' | '评论';
+  text: string; expanded: boolean; toggle(): void; subject?: '正文' | '评论' | '回复正文';
 }) {
   const paragraph = useRef<HTMLParagraphElement>(null);
   const [overflowing, setOverflowing] = useState(false);

@@ -1,4 +1,4 @@
-import type { CommentBatch, CommentSort, DetailResult, DynamicReader, DynamicBatch, ReadResult } from '../data/contracts';
+import type { CommentBatch, CommentSort, DetailResult, DynamicReader, DynamicBatch, ReadResult, ReplyBatch } from '../data/contracts';
 
 interface Step<T> {
   readonly result?: T | Promise<T>;
@@ -6,6 +6,7 @@ interface Step<T> {
   readonly ignoreAbort?: boolean;
 }
 export interface ReadPlan {
+  readonly replies?: Readonly<Record<string, Readonly<Record<string, readonly Step<ReadResult<ReplyBatch>>[]>>>>;
   readonly list?: readonly Step<ReadResult<DynamicBatch>>[];
   readonly detail?: Readonly<Record<string, readonly Step<DetailResult>[]>>;
   readonly eachDetail?: readonly Step<DetailResult>[];
@@ -14,6 +15,9 @@ export interface ReadPlan {
 
 // 仅供开发/测试装配。计划按操作消费，不随机失败，可故意忽略取消制造乱序。
 export function createControlledReader(base: DynamicReader, plan: ReadPlan): DynamicReader {
+  const replies = new Map(Object.entries(plan.replies ?? {}).map(([id, roots]) => [id,
+    new Map(Object.entries(roots).map(([rootId, steps]) => [rootId, [...steps]])),
+  ]));
   const list = [...(plan.list ?? [])];
   const comments = new Map(Object.entries(plan.comments ?? {}).map(([id, sorts]) => [id, {
     hot: [...(sorts.hot ?? [])], latest: [...(sorts.latest ?? [])],
@@ -30,6 +34,11 @@ export function createControlledReader(base: DynamicReader, plan: ReadPlan): Dyn
   }
   return {
     creator: base.creator,
+    async readReplies(input) {
+      await Promise.resolve();
+      if (input.signal.aborted) return { status: 'cancelled' };
+      return run(replies.get(input.dynamicId)?.get(input.rootId)?.shift(), input.signal, () => base.readReplies(input));
+    },
     async readComments(input) {
       await Promise.resolve();
       if (input.signal.aborted) return { status: 'cancelled' };

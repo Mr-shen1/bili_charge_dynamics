@@ -70,7 +70,7 @@ test('正文选择、头像昵称不跳转；键盘操作可聚焦且焦点可�
   await expect(card.getByRole('button', { name: '收起正文' })).toBeFocused();
   await expect(page).toHaveURL(/\/$/);
   await page.keyboard.press('Tab');
-  const comments = card.getByRole('button', { name: '评论 45', exact: true });
+  const comments = card.getByRole('button', { name: '评论 70', exact: true });
   await expect(comments).toBeFocused();
   const commentBox = await comments.boundingBox();
   expect(commentBox?.height).toBeGreaterThanOrEqual(44);
