@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
 import type { ListSnapshot } from './ListSnapshot';
+import type { DetailSnapshot } from './DetailSnapshot';
 import type { DynamicImage } from '../data/contracts';
 import { ImagePreview, type PreviewSession } from '../images/ImagePreview';
 import { useLocation, useNavigate } from 'react-router';
@@ -9,6 +10,7 @@ interface PageEntry {
   readonly path: string;
   readonly sourcePageEntryId: string | null;
   readonly listSnapshot?: ListSnapshot;
+  readonly detailSnapshot?: DetailSnapshot;
   readonly detailTarget?: 'top' | 'comments';
 }
 interface Session {
@@ -19,8 +21,10 @@ interface Session {
 interface Navigation {
   readonly pageEntryId: string;
   readonly listSnapshot: ListSnapshot | undefined;
+  readonly detailSnapshot: DetailSnapshot | undefined;
   readonly detailTarget: 'top' | 'comments';
   saveListSnapshot(pageEntryId: string, snapshot: ListSnapshot): void;
+  saveDetailSnapshot(pageEntryId: string, snapshot: DetailSnapshot): void;
   openDetail(id: string, target?: 'top' | 'comments'): void;
   returnToList(): void;
   openImages(images: readonly DynamicImage[], index: number, trigger: HTMLElement): void;
@@ -29,6 +33,7 @@ const NavigationContext = createContext<Navigation | null>(null);
 
 type SessionAction = { type: 'register'; entry: PageEntry }
   | { type: 'save-list'; pageEntryId: string; snapshot: ListSnapshot }
+  | { type: 'save-detail'; pageEntryId: string; snapshot: DetailSnapshot }
   | { type: 'open-preview'; preview: PreviewSession }
   | { type: 'move-preview'; previewId: string; offset: number }
   | { type: 'preview-mode'; previewId: string; mode: PreviewSession['displayMode'] };
@@ -59,7 +64,14 @@ function reduceSession(state: Session, action: SessionAction): Session {
     return { ...state, entries: { ...state.entries, [entry.pageEntryId]: entry } };
   }
   const entry = state.entries[action.pageEntryId];
-  if (!entry || entry.path !== '/') return state;
+  if (!entry) return state;
+  if (action.type === 'save-detail') {
+    if (!entry.path.startsWith('/dynamics/')) return state;
+    return { ...state, entries: { ...state.entries,
+      [action.pageEntryId]: { ...entry, detailSnapshot: action.snapshot },
+    } };
+  }
+  if (entry.path !== '/') return state;
   return { ...state, entries: { ...state.entries,
     [action.pageEntryId]: { ...entry, listSnapshot: action.snapshot },
   } };
@@ -73,7 +85,7 @@ function readMetadata(value: unknown): { sessionId: string; pageEntryId: string;
       previewId: 'previewId' in value ? (typeof value.previewId === 'string' ? value.previewId : null) : undefined } : null;
 }
 
-// 稳定挂载于所有路由页之上；访问元数据和列表快照仅保存在当前会话内存。
+// 稳定挂载于所有路由页之上；访问元数据和阅读快照仅保存在当前会话内存。
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [session, dispatch] = useReducer(reduceSession, undefined, () => ({
     sessionId: crypto.randomUUID(), entries: {}, previews: {},
@@ -132,11 +144,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const saveListSnapshot = useCallback((pageEntryId: string, snapshot: ListSnapshot) => {
     dispatch({ type: 'save-list', pageEntryId, snapshot });
   }, []);
+  const saveDetailSnapshot = useCallback((pageEntryId: string, snapshot: DetailSnapshot) => {
+    dispatch({ type: 'save-detail', pageEntryId, snapshot });
+  }, []);
   const navigation = useMemo<Navigation>(() => ({
     pageEntryId: entry.pageEntryId,
     listSnapshot: entry.listSnapshot,
+    detailSnapshot: entry.detailSnapshot,
     detailTarget: entry.detailTarget ?? 'top',
     saveListSnapshot,
+    saveDetailSnapshot,
     openImages(images, index, trigger) {
       if (!validEntry || previewId || !images[index]) return;
       const next: PreviewSession = { previewId: crypto.randomUUID(), pageEntryId: validEntry.pageEntryId,
@@ -166,7 +183,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         void navigate('/', { replace: true, state: null });
       }
     },
-  }), [entry.pageEntryId, entry.listSnapshot, entry.detailTarget, saveListSnapshot, validEntry, session.entries, session.sessionId, navigate, previewId, location.pathname, location.search, location.hash]);
+  }), [entry.pageEntryId, entry.listSnapshot, entry.detailSnapshot, entry.detailTarget, saveListSnapshot, saveDetailSnapshot, validEntry, session.entries, session.sessionId, navigate, previewId, location.pathname, location.search, location.hash]);
   return <NavigationContext.Provider value={navigation}>
     <div inert={!!preview}>{children}</div>
     {preview && <ImagePreview key={preview.previewId} preview={preview} close={closePreview} moveImage={movePreviewImage} changeMode={changePreviewMode} />}

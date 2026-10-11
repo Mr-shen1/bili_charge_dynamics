@@ -12,4 +12,7 @@ export const reader = createControlledReader(base, {
     { delayMs: 200, result: { status: 'error' } }, { delayMs: 200 },
   ],
   eachDetail: [{ delayMs: 200, result: { status: 'error' } }],
+  // 讨论追加留出确定性离开窗口；正常静态产物不包含这些计划。
+  comments: { '90071992547409931': { hot: [{}, { delayMs: 1500 }] } },
+  replies: { '90071992547409931': { 'comment-44': [{}, { delayMs: 1500 }] } },
 });

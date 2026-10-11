@@ -44,7 +44,8 @@ export const reader = createMockReader({
       : index === 2 ? `长词 ${'a'.repeat(220)} 🙂`
       : [3, 4, 5, 6, 8].includes(index) ? `图文日记 ${index + 1}\n用自绘风景记录今天。`
       : `文字日记 ${index + 1}\n把平凡的日子写成一段简单的记录。`,
-    images: index === 1 ? pictures.slice(0, 1) : index === 3 ? pictures.slice(0, 4)
+    images: index === 0 ? [{ ...pictures[10]!, width: null, height: null }]
+      : index === 1 ? pictures.slice(0, 1) : index === 3 ? pictures.slice(0, 4)
       : index === 4 ? pictures.slice(0, 9) : index === 5 ? pictures
       : index === 6 ? [{ ...pictures[10]!, width: null, height: null }]
       : index === 8 ? pictures.slice(11) : [],

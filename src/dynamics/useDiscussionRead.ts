@@ -1,20 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReadResult } from '../data/contracts';
+import type { DiscussionReadState } from '../app/DetailSnapshot';
 
 interface DiscussionBatch<T> {
   readonly items: readonly T[];
   readonly nextCursor: string | null;
 }
-interface DiscussionReadState<T> {
-  readonly status: ReadResult<DiscussionBatch<T>>['status'] | 'loading';
-  readonly data: DiscussionBatch<T> | null;
-}
 
 // 每个排序视图/回复根节点独立拥有请求；所属视图卸载使迟到结果及完成失效。
 export function useDiscussionRead<T extends { readonly id: string }>(
   read: (cursor: string | null | undefined, signal: AbortSignal, initial: boolean) => Promise<ReadResult<DiscussionBatch<T>>>,
+  initial?: DiscussionReadState<T>,
 ) {
-  const [state, setState] = useState<DiscussionReadState<T>>({ status: 'loading', data: null });
+  const [state, setState] = useState<DiscussionReadState<T>>(initial ?? { status: 'loading', data: null });
   const current = useRef(state);
   const request = useRef<AbortController | null>(null);
   const active = useRef(false);
@@ -52,7 +50,7 @@ export function useDiscussionRead<T extends { readonly id: string }>(
   }, [read, update]);
   useEffect(() => {
     active.current = true;
-    void load();
+    if (!initial || initial.status === 'loading' || initial.status === 'cancelled') void load();
     return () => {
       active.current = false;
       request.current?.abort();

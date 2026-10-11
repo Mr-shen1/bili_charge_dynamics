@@ -53,7 +53,7 @@ test('正文选择、头像昵称不跳转；键盘操作可聚焦且焦点可�
   await page.goto('/');
   const card = page.getByRole('article').first();
   await card.getByText('纸飞机', { exact: true }).click();
-  await card.getByRole('img').click();
+  await card.getByRole('img', { name: '纸飞机的头像', exact: true }).click();
   await card.locator('p').first().evaluate(element => {
     const range = document.createRange();
     range.selectNodeContents(element);
@@ -69,6 +69,8 @@ test('正文选择、头像昵称不跳转；键盘操作可聚焦且焦点可�
   await page.keyboard.press('Enter');
   await expect(card.getByRole('button', { name: '收起正文' })).toBeFocused();
   await expect(page).toHaveURL(/\/$/);
+  await page.keyboard.press('Tab');
+  await expect(card.getByRole('button', { name: '预览图片 1', exact: true })).toBeFocused();
   await page.keyboard.press('Tab');
   const comments = card.getByRole('button', { name: '评论 70', exact: true });
   await expect(comments).toBeFocused();

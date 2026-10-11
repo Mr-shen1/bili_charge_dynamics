@@ -6,11 +6,13 @@ import { ReadNotice } from './ReadNotice';
 import { FoldableText } from './FoldableText';
 import { ReplySection } from './ReplySection';
 import styles from './Dynamics.module.css';
+import { useDiscussionVisit } from './DiscussionVisit';
 
 export function CommentSection({ reader, dynamicId, initialTarget }: {
   reader: DynamicReader; dynamicId: string; initialTarget: 'top' | 'comments';
 }) {
-  const [sort, setSort] = useState<CommentSort>('hot');
+  const visit = useDiscussionVisit();
+  const [sort, setSort] = useState<CommentSort>(visit.current.sort);
   const root = useRef<HTMLElement>(null);
   const commentEntryPending = useRef(initialTarget === 'comments');
   const locateCommentEntry = useCallback(() => {
@@ -22,6 +24,7 @@ export function CommentSection({ reader, dynamicId, initialTarget }: {
     if (target === sort) return;
     commentEntryPending.current = false;
     root.current?.scrollIntoView?.({ block: 'start', behavior: 'instant' });
+    visit.current = { sort: target, read: { status: 'loading', data: null }, expanded: {}, replies: {} };
     setSort(target);
   };
   return <section ref={root} aria-label="评论区">
@@ -39,15 +42,20 @@ function CommentSortView({ reader, dynamicId, sort, onSettled }: {
 }) {
   const read = useCallback((cursor: string | null | undefined, signal: AbortSignal) =>
     reader.readComments({ dynamicId, sort, cursor, signal }), [reader, dynamicId, sort]);
-  const { state, load } = useDiscussionRead(read);
-  const [expanded, setExpanded] = useState<Readonly<Record<string, boolean>>>({});
+  const visit = useDiscussionVisit();
+  const initial = useRef(visit.current);
+  const { state, load } = useDiscussionRead(read, initial.current.read);
+  const [expanded, setExpanded] = useState<Readonly<Record<string, boolean>>>(initial.current.expanded);
+  useLayoutEffect(() => {
+    visit.current = { ...visit.current, sort, read: state, expanded };
+  }, [visit, sort, state, expanded]);
   const area = sort === 'hot' ? '最热评论' : '最新评论';
   useLayoutEffect(() => { if (state.status !== 'loading') onSettled(); }, [state.status, onSettled]);
   return <>
     {!state.data && <ReadNotice status={state.status} area={area} retry={load} />}
     {state.data?.items.length === 0 && <p role="status">暂无评论</p>}
     <ul className={styles.comments} aria-label="一级评论">
-      {state.data?.items.map(comment => <li key={comment.id} className={styles.card}>
+      {state.data?.items.map(comment => <li key={comment.id} className={styles.card} data-reading-id={`comment:${comment.id}`}>
         <Identity user={comment.author} />
         {comment.author.id === reader.creator.id && <span>UP主</span>}
         <time className={styles.time} dateTime={comment.publishedAt ?? undefined}>{displayTime(comment.publishedAt)}</time>
