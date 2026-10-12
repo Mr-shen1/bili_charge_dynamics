@@ -16,7 +16,7 @@ export default defineConfig({
   // Nginx 由静态交付验证脚本管理，不以 Vite preview 代替。
   webServer: nginx ? undefined : [
     {
-      command: `pnpm ${preview ? 'preview' : 'dev'} --host 127.0.0.1 --port 4173 --strictPort`,
+      command: `pnpm ${preview ? 'preview' : 'dev --mode mock'} --host 127.0.0.1 --port 4173 --strictPort`,
       url: 'http://127.0.0.1:4173', reuseExistingServer: false,
     },
     ...(!preview ? [{

@@ -3,57 +3,17 @@
 import logging
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
 from threading import Event
 
 import anyio
 import httpx
 import pytest
-from fastapi.testclient import TestClient
-
-from backend.bili_monitor.app import create_app
+from backend.tests.management_support import BASE, DEFAULT_MONITOR, UID, card, client_for, profile_response
 from backend.tests.sqlite_fixtures import (
     management_relation,
     quote,
     reject_config_inserts,
 )
-
-UID = "900719925474099312345"
-BASE = "/api/manage/ups"
-DEFAULT_MONITOR = {
-    "mode": "recent",
-    "recent_n": 10,
-    "enabled": True,
-    "last_checked_at": None,
-    "last_succeeded_at": None,
-}
-
-
-def card(uid=UID, name="虚构星海"):
-    return {
-        "code": 0,
-        "data": {
-            "card": {
-                "mid": uid,
-                "name": name,
-                "face": "https://example.invalid/avatar.png",
-            }
-        },
-    }
-
-
-def profile_response(request):
-    assert request.url.host == "api.bilibili.com"
-    assert request.url.path == "/x/web-interface/card"
-    assert request.method == "GET"
-    return httpx.Response(200, json=card(request.url.params["mid"]))
-
-
-@contextmanager
-def client_for(path, handler=profile_response):
-    app = create_app(path, profile_transport=httpx.MockTransport(handler))
-    with TestClient(app, raise_server_exceptions=False) as client:
-        yield client
 
 
 def test_add_fetches_public_card_and_persists_large_string_uid(tmp_path):

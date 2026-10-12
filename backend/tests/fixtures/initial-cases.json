@@ -1,0 +1,6 @@
+{
+  "normal": {"code": 0, "data": {"item": {"id_str": "101", "basic": {"comment_id_str": "99101", "comment_type": 17}, "modules": {"module_author": {"mid": "900719925474099312345", "name": "虚构作者", "face": "https://example.invalid/author.png", "pub_ts": 1791513496}, "module_stat": {"comment": {"count": 12}}, "module_dynamic": {"major": {"type": "MAJOR_TYPE_OPUS", "opus": {"title": "虚构标题", "summary": {"text": "正文\n<b>普通文本</b> 🙂"}, "pics": [{"url": "https://example.invalid/one.png", "width": 640, "height": 480}]}}}}}}},
+  "empty": {"code": 0, "data": {"item": {"id_str": "102", "modules": {"module_author": {"mid": "900719925474099312345"}, "module_stat": {"comment": {"count": 0}}, "module_dynamic": {"major": {"type": "MAJOR_TYPE_OPUS", "opus": {"summary": {"text": ""}, "pics": []}}}}}}},
+  "restricted": {"code": 0, "data": {"item": {"id_str": "103", "modules": {"module_author": {"mid": "900719925474099312345"}, "module_stat": {"comment": {"count": 501}}, "module_dynamic": {"major": {"type": "MAJOR_TYPE_BLOCKED", "blocked": {"hint_message": "虚构受限提示，不是正文"}}}}}}},
+  "failed": {"code": -1, "message": "FICTIONAL_SECRET_BUSINESS_FAILURE"}
+}

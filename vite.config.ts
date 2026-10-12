@@ -9,7 +9,8 @@ export default defineConfig(({ command, mode }) => ({
     target: mode === 'manage-e2e' ? 'http://127.0.0.1:4176' : 'http://127.0.0.1:8000',
   } } },
   resolve: { alias: { '#assembly': fileURLToPath(new URL(
-    command === 'serve' && mode === 'fault' ? './src/dev/assembly.ts' : './src/data/assembly.ts', import.meta.url,
+    command === 'serve' && mode === 'fault' ? './src/dev/assembly.ts'
+      : mode === 'mock' ? './src/data/assembly.ts' : './src/data/productionAssembly.ts', import.meta.url,
   )) } },
   test: {
     environment: 'jsdom',

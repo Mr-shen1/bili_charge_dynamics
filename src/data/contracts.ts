@@ -20,6 +20,23 @@ export interface Dynamic {
   readonly text: string;
   readonly commentCount: number | null;
   readonly images?: readonly DynamicImage[];
+  readonly archive?: ArchiveMetadata;
+}
+
+export type ArchiveWorkState = 'pending' | 'success' | 'restricted' | 'failed';
+
+export interface ArchiveMetadata {
+  readonly title: string | null;
+  readonly editedAt: string | null;
+  readonly editStatus: 'observed' | 'unknown' | 'error';
+  readonly contentState: 'success' | 'restricted' | 'failed';
+  readonly lastAttempt: 'success' | 'restricted' | 'failed';
+  readonly localCommentCount: number;
+  readonly mediaSources: readonly { readonly url: string; readonly width: number | null; readonly height: number | null }[];
+  readonly commentLocator: Readonly<Record<string, unknown>> | null;
+  readonly observedVersion: string | null;
+  readonly syncedVersion: string | null;
+  readonly work: { readonly text: ArchiveWorkState; readonly media: ArchiveWorkState; readonly comments: ArchiveWorkState };
 }
 
 export type CommentSort = 'hot' | 'latest';
@@ -57,13 +74,14 @@ export interface DynamicBatch {
 
 export type ReadResult<T> =
   | { readonly status: 'success'; readonly data: T }
-  | { readonly status: 'error' }
+  | { readonly status: 'error'; readonly reason?: 'not-archived' }
   | { readonly status: 'cancelled' };
 
 export type DetailResult = ReadResult<Dynamic> | { readonly status: 'not-found' };
 
 export interface DynamicReader {
   readonly creator: User;
+  readonly discussions?: 'not-archived';
   readReplies(input: { readonly dynamicId: string; readonly rootId: string; readonly limit: number; readonly cursor?: string | null; readonly signal: AbortSignal }): Promise<ReadResult<ReplyBatch>>;
   readList(input: { readonly limit: number; readonly cursor?: string | null; readonly signal: AbortSignal }): Promise<ReadResult<DynamicBatch>>;
   readDetail(input: { readonly id: string; readonly signal: AbortSignal }): Promise<DetailResult>;

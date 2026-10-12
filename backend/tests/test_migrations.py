@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from backend.bili_monitor.app import create_app
 from backend.tests.sqlite_fixtures import management_relation, quote
-from backend.tests.test_management import BASE, UID, client_for
+from backend.tests.management_support import BASE, UID, client_for
 
 
 def test_empty_unversioned_database_migrates_and_reopens(tmp_path):
@@ -23,18 +23,18 @@ def test_empty_unversioned_database_migrates_and_reopens(tmp_path):
     with client_for(path) as client:
         assert client.get(BASE).json() == saved
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 1
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 5
 
 
 def test_future_database_refuses_startup_without_downgrading(tmp_path, caplog):
     path = tmp_path / "FICTIONAL_SECRET_FUTURE.sqlite"
     with sqlite3.connect(path) as database:
-        database.execute("PRAGMA user_version = 2")
+        database.execute("PRAGMA user_version = 6")
     with pytest.raises(RuntimeError, match="Unsupported database schema version"):
         with client_for(path):
             pytest.fail("A future schema must not serve requests")
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 6
     assert "FICTIONAL_SECRET" not in caplog.text
 
 
@@ -100,3 +100,70 @@ def test_unexpected_transport_startup_failure_is_sanitized(tmp_path, caplog):
         with TestClient(application):
             pytest.fail("A failed transport must not serve requests")
     assert "FICTIONAL_SECRET" not in str(failure.value) + caplog.text
+
+
+def test_v4_indefinite_cursor_is_invalidated_without_losing_archive(tmp_path):
+    import json
+    path = tmp_path / "v4.sqlite"
+    token = "1234567890abcdef1234567890abcdef"
+    saved = {"id": "123", "published_at": None}
+    # 已发布 v4 文件的固定结构，仅构造迁移输入；结果仍从公开 HTTP 验证。
+    with sqlite3.connect(path) as database:
+        database.executescript("""
+            CREATE TABLE identities(uid TEXT PRIMARY KEY, name TEXT, avatar_url TEXT);
+            CREATE TABLE monitors(uid TEXT PRIMARY KEY REFERENCES identities(uid), mode TEXT NOT NULL DEFAULT 'recent', recent_n INTEGER NOT NULL DEFAULT 10, enabled INTEGER NOT NULL DEFAULT 1);
+            CREATE TABLE targets(uid TEXT REFERENCES monitors(uid) ON DELETE CASCADE, id TEXT, PRIMARY KEY(uid,id));
+            CREATE TABLE archives(id TEXT PRIMARY KEY, uid TEXT REFERENCES identities(uid), document TEXT, generation INTEGER DEFAULT 0);
+            CREATE TABLE archive_pages(token TEXT PRIMARY KEY, batch_limit INTEGER, document TEXT);
+            PRAGMA user_version = 4;
+        """)
+        database.execute("INSERT INTO identities VALUES (?, NULL, NULL)", (UID,))
+        database.execute("INSERT INTO archives VALUES ('123', ?, ?, 0)", (UID, json.dumps(saved)))
+        database.execute("INSERT INTO archive_pages VALUES (?, 10, ?)", (token, json.dumps({"items": [saved], "next_cursor": None})))
+    with client_for(path) as client:
+        assert client.get("/api/archive/dynamics", params={"cursor": token}).status_code == 422
+        assert client.get("/api/archive/dynamics/123").json() == saved
+        assert client.get("/api/archive/dynamics").json() == {"items": [saved], "next_cursor": None}
+    with client_for(path) as client:
+        assert client.get("/api/archive/dynamics", params={"cursor": token}).status_code == 422
+        assert client.get("/api/archive/dynamics/123").json() == saved
+
+
+def test_real_v1_configuration_migrates_through_targets_archives_and_snapshot_versions(tmp_path):
+    path = tmp_path / "v1.sqlite"
+    with sqlite3.connect(path) as database:
+        database.executescript("""
+            CREATE TABLE identities(uid TEXT PRIMARY KEY, name TEXT, avatar_url TEXT);
+            CREATE TABLE monitors(uid TEXT PRIMARY KEY REFERENCES identities(uid), mode TEXT NOT NULL DEFAULT 'recent', recent_n INTEGER NOT NULL DEFAULT 10, enabled INTEGER NOT NULL DEFAULT 1);
+            PRAGMA user_version = 1;
+        """)
+        database.execute("INSERT INTO identities VALUES (?, '虚构旧身份', NULL)", (UID,))
+        database.execute("INSERT INTO monitors VALUES (?, 'specified', 23, 1)", (UID,))
+    with client_for(path) as client:
+        saved = client.get(f"{BASE}/{UID}").json()
+        assert saved["name"] == "虚构旧身份"
+        assert saved["monitor"]["recent_n"] == 23
+        assert saved["monitor"]["mode"] == "specified"
+        assert client.get(f"{BASE}/{UID}/targets").json() == {"targets": []}
+        assert client.get("/api/archive/dynamics").json() == {"items": [], "next_cursor": None}
+        assert client.post("/api/sync/initial", json={"uid": UID}).json() == {"processed": 0, "succeeded": 0, "failed": 0}
+    with client_for(path) as client:
+        assert client.get(f"{BASE}/{UID}").json() == saved
+
+
+def test_reopened_v5_expired_and_foreign_resource_cursors_are_rejected_over_http(tmp_path):
+    import json
+    import time
+    path = tmp_path / "v5.sqlite"
+    with client_for(path):
+        pass
+    # 构造已有 v5 持久文件输入，无时钟 mock；过期标记/外资源标记不应被读取。
+    with sqlite3.connect(path) as database:
+        database.execute("INSERT INTO archive_pages VALUES (?, 10, ?, 1, ?)",
+                         ("1" * 32, json.dumps({"items": [], "next_cursor": None}), "dynamics:all:published-desc:id-binary:v1"))
+        database.execute("INSERT INTO archive_pages VALUES (?, 10, ?, ?, ?)",
+                         ("2" * 32, json.dumps({"items": [], "next_cursor": None}), int(time.time()) + 900, "comments:123:latest"))
+    with client_for(path) as client:
+        for cursor in ("1" * 32, "2" * 32):
+            assert client.get("/api/archive/dynamics", params={"cursor": cursor}).status_code == 422
+        assert client.get("/api/archive/dynamics").json() == {"items": [], "next_cursor": None}
