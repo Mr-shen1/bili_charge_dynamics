@@ -6,3 +6,7 @@ playwright-report/
 test-results/
 /script_demo/
 /docs/assets/ui-reference/
+.venv/
+__pycache__/
+*.py[cod]
+/backend/data/
