@@ -46,6 +46,10 @@ try {
   const releaseA = join(workspace, 'release-a');
   const releaseB = join(workspace, 'build-source', 'dist');
   const current = join(workspace, 'current');
+  const productionBuild = join(workspace, 'production-build');
+  await cp(join(repo, 'dist'), productionBuild, { recursive: true });
+  // 历史阅读回归使用显式 mock 构建；它不能替代生产 API 验收证据。
+  run('pnpm', ['build:mock']);
   await cp(join(repo, 'dist'), releaseA, { recursive: true });
   await symlink(releaseA, current);
   // Nginx 解析 error_log stderr 之前仍会打开默认 logs/error.log；避免启动 alert。
@@ -96,18 +100,20 @@ http {
   }
   await symlink(join(repo, 'node_modules'), join(buildSource, 'node_modules'), 'dir');
   run('pnpm', ['build'], buildSource);
-  await assertSameBuild(releaseA, releaseB);
+  await assertSameBuild(productionBuild, releaseB);
   // 即使显式指定 fault 构建模式，也不能把开发故障装配带入发布产物。
   run('pnpm', ['build', '--mode', 'fault'], buildSource);
+  await assertSameBuild(productionBuild, releaseB);
+  run('pnpm', ['build:mock'], buildSource);
   await assertSameBuild(releaseA, releaseB);
-  console.log('PASS: reproducible bundles; fault build mode still uses normal assembly');
+  console.log('PASS: 生产与显式 mock bundle 构建可复现；fault 构建仍使用 production 装配');
 
   // 仅修改临时副本，再真实构建 B：不是手改 dist 或伪造新资源名。
   const mainPath = join(buildSource, 'src/main.tsx');
   await writeFile(mainPath, `${await readFile(mainPath, 'utf8')}\ndocument.documentElement.dataset.deliveryRevision = 'release-b';\n`);
   const entryPath = join(buildSource, 'index.html');
   await writeFile(entryPath, (await readFile(entryPath, 'utf8')).replace('</title>', ' — delivery update</title>'));
-  run('pnpm', ['build'], buildSource);
+  run('pnpm', ['build:mock'], buildSource);
   const updatedEntry = await readFile(join(releaseB, 'index.html'), 'utf8');
   const scriptPath = html => {
     const match = html.match(/src="(\/assets\/[^\"]+\.js)"/);
@@ -152,4 +158,6 @@ http {
     clearTimeout(forceStop);
   }
   await rm(workspace, { recursive: true, force: true });
+  // 不要让显式演示 bundle 留在默认发布目录。
+  run('pnpm', ['build']);
 }

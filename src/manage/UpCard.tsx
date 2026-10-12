@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Identity, displayTime } from '../dynamics/DynamicContent';
 import type { ManagedUp, ManagementApi, MonitorConfig } from './managementApi';
 import type { ManagementRequests } from './useManagementRequests';
+import { TargetManager } from './TargetManager';
 
 export function UpCard({ up, api, requests, onChange }: {
   up: ManagedUp; api: ManagementApi; requests: ManagementRequests; onChange(up: ManagedUp): void;
@@ -82,10 +83,11 @@ export function UpCard({ up, api, requests, onChange }: {
           <label htmlFor={`manage-n-${up.uid}`}>近期 N 条</label>
           <input id={`manage-n-${up.uid}`} type="text" inputMode="numeric" value={recentN}
             onChange={event => { setRecentN(event.target.value); setNotice(null); }} />
-        </div> : <p className="manage-muted">指定动态目标的增加、移除与归属校验将在后续交付；本期仅保存模式。</p>}
+        </div> : <p className="manage-muted">保存指定模式后仅监控下方关联目标；不附加近期动态。</p>}
         <button type="submit">{busy && pending === 'save' ? '正在保存…' : notice?.error && notice.action === 'save' ? '重试保存' : '保存配置'}</button>
       </fieldset>
     </form>}
+    {up.monitor && mode === 'specified' && <TargetManager uid={up.uid} api={api} requests={requests} />}
     {up.monitor ? <div className="manage-actions">
       <button className="manage-delete" type="button" disabled={busy} onClick={() => void remove()}>
         {busy && pending === 'delete' ? '正在删除…' : notice?.error && notice.action === 'delete' ? '重试删除' : '删除监控配置'}

@@ -197,6 +197,7 @@ describe('/manage 生产映射页面', () => {
     let firstSaves = 0;
     const writes: { url: string; body: unknown }[] = [];
     show(async (url, init) => {
+      if (url.endsWith('/targets') && init.method === 'GET') return Response.json({ targets: [] });
       if (init.method === 'GET') return Response.json({ ups: [up('123'), up('456')] });
       const body: unknown = JSON.parse(String(init.body));
       writes.push({ url, body });
@@ -218,8 +219,8 @@ describe('/manage 生产映射页面', () => {
     fireEvent.submit(a.getByRole('textbox', { name: '近期 N 条' }).closest('form')!);
     expect(firstSaves).toBe(1);
     await user.selectOptions(b.getByRole('combobox', { name: '监控模式' }), 'specified');
-    expect(b.getByText(/指定动态目标的增加.*后续交付/)).toBeInTheDocument();
-    expect(b.queryByRole('textbox', { name: /动态 ID/ })).not.toBeInTheDocument();
+    expect(b.getByText('保存指定模式后仅监控下方关联目标；不附加近期动态。')).toBeInTheDocument();
+    expect(await b.findByRole('textbox', { name: '动态 ID' })).toBeInTheDocument();
     b.getByRole('button', { name: '保存配置' }).focus();
     await user.keyboard('{Enter}');
     expect(await b.findByText('保存成功。')).toBeInTheDocument();

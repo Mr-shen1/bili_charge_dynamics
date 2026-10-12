@@ -11,6 +11,22 @@ import { useDiscussionVisit } from './DiscussionVisit';
 export function CommentSection({ reader, dynamicId, initialTarget }: {
   reader: DynamicReader; dynamicId: string; initialTarget: 'top' | 'comments';
 }) {
+  return reader.discussions === 'not-archived'
+    ? <UnarchivedComments initialTarget={initialTarget} />
+    : <ArchivedComments reader={reader} dynamicId={dynamicId} initialTarget={initialTarget} />;
+}
+function UnarchivedComments({ initialTarget }: { initialTarget: 'top' | 'comments' }) {
+  const root = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    if (initialTarget === 'comments') root.current?.scrollIntoView?.({ block: 'start', behavior: 'instant' });
+  }, [initialTarget]);
+  return <section ref={root} aria-label="评论区"><h2>评论区</h2>
+    <p role="status">评论尚未归档；来源计数不代表本地已有评论。</p>
+  </section>;
+}
+function ArchivedComments({ reader, dynamicId, initialTarget }: {
+  reader: DynamicReader; dynamicId: string; initialTarget: 'top' | 'comments';
+}) {
   const visit = useDiscussionVisit();
   const [sort, setSort] = useState<CommentSort>(visit.current.sort);
   const root = useRef<HTMLElement>(null);

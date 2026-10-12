@@ -3,7 +3,7 @@
 from fastapi.testclient import TestClient
 
 from backend.tests.live_app import create_app
-from backend.tests.test_management import BASE, UID
+from backend.tests.management_support import BASE, UID
 
 
 def test_live_factory_uses_environment_database_and_fixed_fictional_cards(

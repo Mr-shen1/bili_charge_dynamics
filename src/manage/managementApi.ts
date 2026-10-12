@@ -1,3 +1,6 @@
+import { isValidId } from '../data/identifiers';
+import { isRecord as record } from '../data/guards';
+
 export interface MonitorConfig {
   readonly mode: 'recent' | 'specified';
   readonly recentN: number;
@@ -13,6 +16,8 @@ export interface ManagedUp {
   readonly avatarUrl: string | null;
   readonly monitor: Monitor | null;
 }
+export interface ManagedTarget { readonly id: string }
+export const invalidTargetMessage = '动态 ID 须为无前导零的正整数字符串，最多 128 位。';
 export type ManagementResult<T> =
   | { readonly status: 'success'; readonly data: T }
   | { readonly status: 'error'; readonly message: string }
@@ -20,12 +25,7 @@ export type ManagementResult<T> =
 export type ManagementTransport = (url: string, init: RequestInit) => Promise<Response>;
 
 export const invalidUidMessage = 'UID 须为无前导零的正整数字符串，最多 128 位。';
-export function isValidUid(value: unknown): value is string {
-  return typeof value === 'string' && /^[1-9][0-9]{0,127}$/.test(value);
-}
-function record(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
+export const isValidUid = isValidId;
 function timestamp(value: unknown): value is string | null {
   return value === null || (typeof value === 'string'
     && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
@@ -62,6 +62,8 @@ function httpError(body: unknown, status: number): ManagementResult<never> {
     case 'INVALID_INPUT': return status === 422 ? { status: 'error', message: '输入不合法，请检查后重试。' } : invalidResponse;
     case 'ALREADY_MONITORED': return status === 409 ? { status: 'error', message: '该 UID 已有监控配置。' } : invalidResponse;
     case 'NOT_FOUND': return status === 404 ? { status: 'error', message: '身份或监控配置不存在，请重新读取。' } : invalidResponse;
+    case 'TARGET_AUTHOR_MISMATCH': return status === 409 ? { status: 'error', message: '动态作者与所选 UP 不符。' } : invalidResponse;
+    case 'TARGET_UNVERIFIED': return status === 502 ? { status: 'error', message: '无法确认动态归属。' } : invalidResponse;
     case 'PROFILE_UNAVAILABLE': return status === 502 ? { status: 'error', message: '未取得 UP 资料，请重试。' } : invalidResponse;
     case 'STORAGE_UNAVAILABLE': return status === 503 ? { status: 'error', message: '配置存储暂不可用，请重试。' } : invalidResponse;
     case 'INTERNAL_ERROR': return status === 500 ? { status: 'error', message: '管理服务暂不可用，请重试。' } : invalidResponse;
@@ -89,7 +91,45 @@ export function createManagementApi(transport: ManagementTransport = (url, init)
       return signal.aborted ? { status: 'cancelled' } : invalidResponse;
     }
   }
+  async function targetRequest(uid: string, signal: AbortSignal, method: 'GET' | 'POST' | 'DELETE', id?: string): Promise<ManagementResult<unknown>> {
+    if (!isValidUid(uid)) return { status: 'error', message: invalidUidMessage };
+    if (method !== 'GET' && !isValidId(id)) return { status: 'error', message: invalidTargetMessage };
+    try {
+      if (signal.aborted) return { status: 'cancelled' };
+      const response = await transport(`/api/manage/ups/${uid}/targets${method === 'DELETE' ? `/${id}` : ''}`, {
+        method, signal, ...(method === 'POST' ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) } : {}),
+      });
+      if (signal.aborted) return { status: 'cancelled' };
+      if (method === 'DELETE' && response.status === 204) return { status: 'success', data: undefined };
+      const body: unknown = await response.json();
+      if (signal.aborted) return { status: 'cancelled' };
+      if (!response.ok) return httpError(body, response.status);
+      return response.status === (method === 'POST' ? 201 : 200) && method !== 'DELETE'
+        ? { status: 'success', data: body } : invalidResponse;
+    } catch { return signal.aborted ? { status: 'cancelled' } : invalidResponse; }
+  }
   return {
+    async listTargets({ uid, signal }: { readonly uid: string; readonly signal: AbortSignal }): Promise<ManagementResult<readonly ManagedTarget[]>> {
+      const result = await targetRequest(uid, signal, 'GET');
+      if (result.status !== 'success') return result;
+      const body = result.data;
+      if (!record(body) || !Array.isArray(body.targets)) return invalidResponse;
+      const targets: ManagedTarget[] = [];
+      for (const item of body.targets) {
+        if (!record(item) || !isValidId(item.id) || targets.some(target => target.id === item.id)) return invalidResponse;
+        targets.push({ id: item.id });
+      }
+      return { status: 'success', data: targets };
+    },
+    async addTarget({ uid, id, signal }: { readonly uid: string; readonly id: string; readonly signal: AbortSignal }): Promise<ManagementResult<ManagedTarget>> {
+      const result = await targetRequest(uid, signal, 'POST', id);
+      if (result.status !== 'success') return result;
+      return record(result.data) && result.data.id === id ? { status: 'success', data: { id } } : invalidResponse;
+    },
+    async deleteTarget({ uid, id, signal }: { readonly uid: string; readonly id: string; readonly signal: AbortSignal }): Promise<ManagementResult<void>> {
+      const result = await targetRequest(uid, signal, 'DELETE', id);
+      return result.status === 'success' ? { status: 'success', data: undefined } : result;
+    },
     getUp({ uid, signal }: { readonly uid: string; readonly signal: AbortSignal }) {
       return upRequest(uid, signal, 'GET');
     },

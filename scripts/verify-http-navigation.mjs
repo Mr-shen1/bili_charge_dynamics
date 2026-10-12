@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { isIP } from 'node:net';
 import { chromium, expect } from '@playwright/test';
 
-// 对已运行的可信局域网 Nginx 正常产物验收；不修改 crypto 或浏览器安全限制。
+// 历史阅读/预览回归使用明确的 mock 构建；不冒充生产归档 API 或真机验收。
 const baseURL = new URL(process.env.HTTP_ACCEPTANCE_URL || '');
 assert.equal(baseURL.protocol, 'http:', 'HTTP_ACCEPTANCE_URL must use real non-localhost HTTP');
 assert.equal(isIP(baseURL.hostname), 4, 'Use the actual LAN IPv4 address, not a localhost alias');
@@ -11,7 +11,7 @@ assert.equal(baseURL.pathname, '/', 'Use the site root URL');
 assert.equal(baseURL.search + baseURL.hash + baseURL.username + baseURL.password, '');
 const response = await fetch(baseURL);
 assert.equal(response.status, 200);
-assert.match(response.headers.get('server') || '', /^nginx\//i, 'Serve the freshly built normal dist through real Nginx');
+assert.match(response.headers.get('server') || '', /^nginx\//i, 'Serve the explicit build:mock bundle through real Nginx');
 
 const browser = await chromium.launch();
 try {

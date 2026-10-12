@@ -1,4 +1,4 @@
-"""管理 HTTP 应用；不含采集或周期调度。"""
+"""管理、归档读取与显式一次初始化 HTTP；不含周期调度。"""
 
 import os
 import sqlite3
@@ -6,18 +6,27 @@ from contextlib import asynccontextmanager
 
 import httpx
 from anyio import to_thread
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Query, Request, Response
+from typing import Annotated
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException
 
-from .contracts import UID, AddUP, APIError, MonitorConfig, error_response
+from .contracts import UID, AddUP, AddTarget, APIError, MonitorConfig, error_response
 from .profiles import fetch_profile
 from .safety import configure_safe_logging
 from .storage import Store
+from .source import verify_author
+from .sync import initialize
 
 
 async def run_store(function, *args):
     return await to_thread.run_sync(function, *args)
+
+
+def validate_query(request, allowed=()):
+    keys = [key for key, _ in request.query_params.multi_items()]
+    if set(keys) - set(allowed) or len(keys) != len(set(keys)):
+        raise APIError("INVALID_INPUT")
 
 
 def create_app(
@@ -78,11 +87,13 @@ def create_app(
         return await run_store(store.add, uid, name, avatar_url)
 
     @application.get("/api/manage/ups")
-    async def list_ups():
+    async def list_ups(request: Request):
+        validate_query(request)
         return {"ups": await run_store(store.read)}
 
     @application.get("/api/manage/ups/{uid}")
-    async def get_up(uid: UID):
+    async def get_up(uid: UID, request: Request):
+        validate_query(request)
         saved = await run_store(store.read, uid)
         if not saved:
             raise APIError("NOT_FOUND")
@@ -98,6 +109,48 @@ def create_app(
     async def delete_monitor(uid: UID):
         await run_store(store.delete_monitor, uid)
         return Response(status_code=204)
+
+    @application.post("/api/manage/ups/{uid}/targets", status_code=201)
+    async def add_target(uid: UID, body: AddTarget):
+        saved = await run_store(store.read, uid)
+        if not saved or saved[0]["monitor"] is None:
+            raise APIError("NOT_FOUND")
+        # 重复关联仍复核来源，避免把已存在状态伪装成这次验证成功。
+        author_id = await verify_author(application.state.profiles, body.id)
+        if author_id != uid:
+            raise APIError("TARGET_AUTHOR_MISMATCH")
+        return await run_store(store.add_target, uid, body.id)
+
+    @application.get("/api/manage/ups/{uid}/targets")
+    async def list_targets(uid: UID, request: Request):
+        validate_query(request)
+        return {"targets": await run_store(store.targets, uid)}
+
+    @application.delete("/api/manage/ups/{uid}/targets/{id}", status_code=204)
+    async def delete_target(uid: UID, id: UID):
+        await run_store(store.delete_target, uid, id)
+        return Response(status_code=204)
+
+    @application.post("/api/sync/initial")
+    async def initial_sync(body: AddUP):
+        return await initialize(store, application.state.profiles, body.uid)
+
+    @application.get("/api/archive/dynamics")
+    async def list_archive(
+        request: Request,
+        limit: Annotated[int, Query(ge=1, le=10)] = 10,
+        cursor: Annotated[str | None, Query(max_length=64)] = None,
+    ):
+        validate_query(request, ("limit", "cursor"))
+        return await run_store(store.list_archives, limit, cursor)
+
+    @application.get("/api/archive/dynamics/{id}")
+    async def read_archive(id: UID, request: Request):
+        validate_query(request)
+        saved = await run_store(store.read_archive, id)
+        if saved is None:
+            raise APIError("NOT_FOUND")
+        return saved
 
     return application
 

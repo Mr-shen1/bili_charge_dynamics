@@ -2,6 +2,10 @@
 
 > 范围说明：本文保留任务 08 的模拟前端静态交付基线与复现步骤。文中的“本期 / 本票”仅指该历史阶段，不代表新增 API、SQLite、采集进程或 OSS 已部署或验收。下一阶段总体设计见 [HLD](HLD.md)，新增页面路径及 API 代理规则需在后续实施时扩展并重新验证；本轮不修改现有部署配置。
 
+## 当前执行方式（后端集成 02）
+
+默认 `pnpm dev` / `pnpm build` 现在使用生产归档 Adapter，需要 Python API；没有归档时显示成功空，不再自动装配演示数据。历史阅读回归必须显式使用 `pnpm dev --mode mock` / `pnpm build:mock`。`test:e2e:preview` 使用 mock 构建；`test:delivery` 分别校验生产构建重现和 fault 构建隔离，再用显式 mock 运行历史 Nginx 阅读及更新测试，结束恢复生产 `dist/`。它不证明真实归档部署或真机兼容；生产 Adapter/SQLite 穿透证据另见后端集成 02 验收。以下历史阶段说明不作为新后端验收。
+
 该阶段是纯静态 SPA：Vite 在本地或 CI 构建，Nginx 只读取 `dist/`，不需要 SSR、常驻 Node.js 应用、模拟 HTTP 服务或服务器代理。部署在域名根路径，非子路径。任务 09 对最终集成产物的复跑结果见 [09 验收记录](../.scratch/dynamics-viewer/acceptance-09.md)，不能仅沿用任务 08 的结果。
 
 ## 1. 可复现构建
@@ -23,9 +27,9 @@ pnpm test:e2e:preview
 pnpm build
 ```
 
-发布目录为 `dist/`，不提交仓库；默认无 source map。`pnpm build` 使用正常虚构数据装配；即使 `pnpm build --mode fault` 也不会携带开发故障装配。不提供故障控制面板或公开故障 URL 参数，不调用真实 B站/后端，不需要服务凭据。读取失败与内容不存在由应用分别表达；故障回归使用 `DynamicReader` 可控 Adapter 或独立 `dev:fault`，不得发布故障服务。
+发布目录为 `dist/`，不提交仓库；默认无 source map。当前 `pnpm build` 使用生产归档 Adapter；显式 `pnpm build:mock` 才使用虚构数据。即使 `pnpm build --mode fault` 也不会携带开发故障装配。不提供故障控制面板或公开故障 URL 参数；mock 不调用真实上游，生产读取只调用本地归档 API。读取失败与内容不存在由应用分别表达；故障回归使用 `DynamicReader` 可控 Adapter 或独立 `dev:fault`，不得发布故障服务。
 
-`test:e2e:preview` 验证正常构建，不证明 Nginx 的资源错误或缓存规则正确。Nginx 验证入口见第 4 节。
+`test:e2e:preview` 验证显式 mock 构建，不证明生产归档或 Nginx 的资源错误、缓存规则正确。Nginx 验证入口见第 4 节。
 
 ## 2. Nginx 配置与路径契约
 
@@ -129,18 +133,18 @@ curl -i -H 'If-None-Match: "previous-entry-etag"' "$origin/"
 
 `127.0.0.1` / `localhost` 属于浏览器可信上下文：上面的本机 Nginx 回归不能证明普通 HTTP 的 Web Crypto 能力。应用站点不以 HTTPS 为启动前提；会话、访问、预览标识优先沿用 `crypto.randomUUID`，不可用时由 `crypto.getRandomValues` 生成 UUID v4，不退化到 `Math.random`，也不作为授权凭证。这不意味着生产 HTTP 安全性与 HTTPS 等价。
 
-在同一可信局域网另起**独立临时 Nginx**，仅监听机器实际的私有 IPv4 和空闲非特权端口，例如 `192.168.8.20:4180`；不要改系统 Nginx、防火墙或开启公网转发。主配置包含匹配的 `mime.types` 与示例 server，替换 `listen`、`root`，可用 `allow 192.168.8.0/24; deny all;` 进一步限制访问。IP/网段必须以实际环境为准。只提供重新构建的正常 `dist/`，不能继续使用修复前固定副本，也不能发布 `dev:fault`。
+在同一可信局域网另起**独立临时 Nginx**，仅监听机器实际的私有 IPv4 和空闲非特权端口，例如 `192.168.8.20:4180`；不要改系统 Nginx、防火墙或开启公网转发。主配置包含匹配的 `mime.types` 与示例 server，替换 `listen`、`root`，可用 `allow 192.168.8.0/24; deny all;` 进一步限制访问。IP/网段必须以实际环境为准。这个历史阅读/图片回归使用重新构建的显式 mock `dist/`，只放在隔离的临时站点；不能发布 `dev:fault`，也不能把 mock 当生产归档证据。
 
 ```bash
-pnpm build
-# 按第3节更新该临时站点的发布副本，再启动/检查独立 Nginx。
+pnpm build:mock
+# 按第3节更新该临时演示站点的发布副本，再启动/检查独立 Nginx。
 # 下列 URL 替换为实际监听的私有 IPv4；不能填 localhost 或回环别名。
 HTTP_ACCEPTANCE_URL=http://192.168.8.20:4180/ pnpm test:http
 ```
 
 脚本要求 HTTP、真实私有 IPv4 和 Nginx 响应；通过实际 Chromium 页面断言 `isSecureContext === false`、`randomUUID` 不可用而 `getRandomValues` 可用，检查启动错误、四类标识的 UUID v4 格式、列表追加→详情→预览→关闭/前进/后退→列表恢复和刷新重置。不 mock crypto、不伪造安全上下文，也不使用浏览器安全豁免。它不负责启动或更新外部站点，必须与全量 `test:delivery` 一起执行；两者各自覆盖普通 HTTP 与资源/缓存/构建更新风险，不能互相替代。
 
-自动化通过后保持该正常站点运行，向验收者提供 URL、构建哈希和独立 Nginx 停止命令，在 Linux Chrome 与 iPhone Safari 上人工检查。2026-10-12 用户已确认本期只验收这两类目标，其他设备/浏览器不再是续验待办；Chromium 模拟不能代替品牌 Chrome 或 iPhone Safari 真机，也不能把移出目标写成通过。临时地址、配置与续验范围见 [09 验收记录](../.scratch/dynamics-viewer/acceptance-09.md)。
+历史 mock 自动化通过后可保持该隔离演示站点运行，向验收者提供 URL、构建哈希和独立 Nginx 停止命令，在 Linux Chrome 与 iPhone Safari 上人工检查。2026-10-12 用户已确认本期只验收这两类目标，其他设备/浏览器不再是续验待办；Chromium 模拟不能代替品牌 Chrome 或 iPhone Safari 真机，也不能把移出目标写成通过。临时地址、配置与续验范围见 [09 验收记录](../.scratch/dynamics-viewer/acceptance-09.md)。
 
 ## 5. 素材与范围边界
 

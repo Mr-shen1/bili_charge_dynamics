@@ -1,58 +1,12 @@
 import { expect, test } from '@playwright/test';
-import { spawn, type ChildProcess } from 'node:child_process';
-import { once } from 'node:events';
+import type { ChildProcess } from 'node:child_process';
+import { logsOf, startApi, stopApi } from './apiProcess';
 import { mkdtemp, rm } from 'node:fs/promises';
-import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { setTimeout as delay } from 'node:timers/promises';
 
 const apiUrl = 'http://127.0.0.1:4176/api/manage/ups';
 const largeUid = '900719925474099312345';
-const apiLogs = new WeakMap<ChildProcess, () => string>();
-
-async function stopApi(child: ChildProcess) {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  const exited = once(child, 'exit');
-  // Signal only the process group created by this test (uv and its Uvicorn child).
-  const signal = (name: NodeJS.Signals) => {
-    if (child.pid && child.exitCode === null && child.signalCode === null) process.kill(-child.pid, name);
-  };
-  signal('SIGTERM');
-  const forceStop = setTimeout(() => signal('SIGKILL'), 5000);
-  try { await exited; } finally { clearTimeout(forceStop); }
-}
-
-async function startApi(database: string) {
-  const probe = createServer();
-  probe.listen(4176, '127.0.0.1');
-  await once(probe, 'listening');
-  await new Promise<void>((resolve, reject) => probe.close(error => error ? reject(error) : resolve()));
-  const child = spawn('uv', ['run', '--no-sync', 'python', '-m', 'uvicorn',
-    'backend.tests.live_app:create_app', '--factory', '--host', '127.0.0.1', '--port', '4176'], {
-    env: { ...process.env, BILI_DATABASE_PATH: database },
-    detached: true, stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  let output = '';
-  let startupError: Error | undefined;
-  child.stdout?.on('data', chunk => { output += String(chunk); });
-  child.stderr?.on('data', chunk => { output += String(chunk); });
-  child.on('error', error => { startupError = error; });
-  apiLogs.set(child, () => output);
-  try {
-    for (let attempt = 0; attempt < 100; attempt++) {
-      if (startupError) throw startupError;
-      if (child.exitCode !== null) throw new Error(`Test API exited: ${output}`);
-      try {
-        const response = await fetch(apiUrl, { signal: AbortSignal.timeout(500) });
-        if (response.ok && Array.isArray((await response.json()).ups)) return child;
-      } catch { /* Wait for this process, never reuse an existing server. */ }
-      await delay(100);
-    }
-    throw new Error(`Test API not ready: ${output}`);
-  } catch (error) { await stopApi(child); throw error; }
-}
-
 test('实际 API 保存两 UP 配置，服务重启和页面刷新后仍可读，删除保留身份', async ({ page }) => {
   const directory = await mkdtemp(join(tmpdir(), 'bili-management-'));
   const database = join(directory, 'monitor.sqlite');
@@ -139,7 +93,7 @@ test('实际上游拒绝显示失败，可键盘原位重试，四宽度无页�
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     }
     await stopApi(api);
-    const logs = apiLogs.get(api)?.();
+    const logs = logsOf(api);
     expect(logs).toContain('Application startup complete.');
     expect(logs).not.toContain('FICTIONAL_SECRET');
   } finally {
