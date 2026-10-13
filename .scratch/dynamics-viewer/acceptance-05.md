@@ -1,6 +1,6 @@
 # 05 验收记录：动态图片网格与基础预览
 
-范围：[任务 05](issues/05-preview-dynamic-images.md)，参考[实施规格](spec.md)、[SRS](../../docs/SRS.md)、[HLD](../../docs/HLD.md)、README 与 [01](acceptance-01.md) / [02](acceptance-02.md) / [03](acceptance-03.md) / [04](acceptance-04.md) 验收。只验收基础图片网格与桌面键盘预览，不宣称完整 FR-09 / FR-10 或本期项目完成。
+范围：[任务 05](issues/05-preview-dynamic-images.md)，参考[实施规格](spec.md)、[SRS](../../docs/product/SRS.md)、[HLD](../../docs/design/HLD.md)、README 与 [01](acceptance-01.md) / [02](acceptance-02.md) / [03](acceptance-03.md) / [04](acceptance-04.md) 验收。只验收基础图片网格与桌面键盘预览，不宣称完整 FR-09 / FR-10 或本期项目完成。
 
 ## 基线与环境
 

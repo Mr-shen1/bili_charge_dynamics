@@ -2,15 +2,28 @@
 
 **What to build:** 维护者得到可复现构建/运行的单 API、单采集、SQLite 与静态前端交付；通过 Nginx 打开四类页面及真实归档、多 UP 管理和媒体，并取得逐项可复核验收记录，明确区分自动化通过与尚未授权/实测的上游、持续运行及真机项目。
 
-**Blocked by:** [11: 监控生命周期与完整运行状态](11-monitoring-lifecycle.md)
+**Blocked by:** [31: 双进程与 Nginx](31-reproducible-deployment.md)、[32: 自动化与台账](32-automated-acceptance.md)、[33: 正式浏览器验收](33-browser-device-acceptance.md)、[34: 上游与持续运行](34-live-source-runtime-evidence.md)
 
-**Status:** ready-for-agent
+**Status:** needs-triage
+
+**票据角色:** 汇总（等待维护者根据子票证据核验收口，不直接派工实施）
+
+## 执行拆分（汇总票，不直接派工）
+
+原业务前置 [11](11-monitoring-lifecycle.md) 由 #29/#30 交付，以下四票区分代理可执行工作与必须维护者参与的实测。统一规则见[执行计划](../implementation-plan.md)，本票分诊标签不代表人工验收已完成。
+
+- [31](31-reproducible-deployment.md)：可复现单 API/单采集/SQLite、实际隔离 Nginx、缓存和安全运行说明；依赖 #30。
+- [32](32-automated-acceptance.md)：本期自动化/穿透回归和 AC-01–AC-34 证据台账；依赖 #31，不等待人工票才能整理台账。
+- [33](33-browser-device-acceptance.md)：Linux Chrome 与 iPhone Safari 正式环境操作证据；依赖 #31，`ready-for-human`。
+- [34](34-live-source-runtime-evidence.md)：授权上游、真实媒体、持续调度和资源实测；依赖 #31，`ready-for-human`。
+
+四票共同覆盖下列原清单。#32 完成但 #33/#34 必需项未验证时，本汇总票和整个功能都不能宣称完整验收；环境缺失须明确记录，不把写完步骤当成通过。
 
 ## 依据
 
 - [父规格](../spec.md)：故事 1–68；I1–I12；T1–T3、穿透与证据核验。
-- [SRS](../../../docs/SRS.md)：FR-01–FR-20、DR-01–DR-05、NFR-01–NFR-05；AC-01–AC-34 全量回归，交付主责 AC-16、AC-19、AC-20、AC-32、AC-33、AC-34。
-- [HLD](../../../docs/HLD.md)：第 10–15 节；[FSR](../../../docs/FSR.md)、[有限上游证据](../../../docs/backend-feasibility.md)、[UI 文字规范](../../../docs/ui-reference.md)、[历史静态交付](../../../docs/static-delivery.md)。
+- [SRS](../../../docs/product/SRS.md)：FR-01–FR-20、DR-01–DR-05、NFR-01–NFR-05；AC-01–AC-34 全量回归，交付主责 AC-16、AC-19、AC-20、AC-32、AC-33、AC-34。
+- [HLD](../../../docs/design/HLD.md)：第 10–15 节；[FSR](../../../docs/product/FSR.md)、[有限上游证据](../../../docs/backend/evidence/backend-feasibility.md)、[UI 文字规范](../../../docs/design/ui-reference.md)、[历史静态交付](../../../docs/deployment/static-delivery.md)。
 
 ## 核验标准
 
@@ -46,6 +59,25 @@
 | AC-27 | [09](09-comment-change-sync.md) |
 | AC-28 | [02](02-target-initial-archive.md)、[04](04-root-comments.md)、[05](05-replies.md)、[06](06-dynamic-images.md)、[07](07-comment-images.md)、[08](08-periodic-edit-sync.md)、[09](09-comment-change-sync.md) 各自分项；[11](11-monitoring-lifecycle.md) 整合 |
 | AC-29 | [01](01-up-monitoring-management.md) 至 [10](10-recent-window.md) 各自数据保留，[11](11-monitoring-lifecycle.md) 验证全类型与在途生命周期 |
+
+## 拆分后的执行责任
+
+上表保留原 #01–#12 的范围追踪；实际派工使用下表及子票 `Blocked by`，不是再派一次父票。各行 AC 仅指相应子范围，不免除上表其他责任。
+
+| 执行票 | 主要证据责任 |
+| --- | --- |
+| [13](13-scoped-archive-reading.md)、[14](14-scope-navigation-cards.md) | scope/排序/导航/卡片/恢复：AC-01–AC-05、AC-12–AC-18、AC-21、AC-29、AC-31 |
+| [15](15-root-comment-archive.md)、[16](16-root-comment-reading.md) | 根评论协议/分页/排序及 UI：AC-01–AC-04、AC-06、AC-07、AC-12、AC-14、AC-15、AC-18、AC-24、AC-28、AC-31 |
+| [17](17-reply-archive.md)、[18](18-reply-reading.md) | 回复归档/关系/展开/恢复：AC-01、AC-03、AC-04、AC-07、AC-08、AC-12、AC-14、AC-15、AC-18、AC-24、AC-28 |
+| [19](19-dynamic-media-archive.md)、[20](20-dynamic-image-reading.md)、[21](21-comment-media-archive.md)、[22](22-comment-image-reading.md) | 两类媒体/独立失败/预览：AC-09–AC-12、AC-14–AC-18、AC-28–AC-30、AC-32 |
+| [23](23-fixed-cadence-checks.md)、[24](24-versioned-edit-sync.md) | 固定节拍/编辑/版本恢复：AC-04、AC-22、AC-25、AC-26、AC-28、AC-33、AC-34 的受控证据 |
+| [25](25-comment-count-sync.md)、[26](26-comment-sync-status.md) | 评论计数触发/状态：AC-04、AC-14、AC-22、AC-24、AC-25、AC-27–AC-29 |
+| [27](27-recent-target-discovery.md)、[28](28-recent-window-lifecycle.md) | 原规则发现/窗口：AC-22–AC-25、AC-29、AC-33 |
+| [29](29-inflight-monitoring-lifecycle.md)、[30](30-integrated-archive-lifecycle.md) | 在途生命周期/自动媒体联动/聚合：AC-13、AC-17、AC-20–AC-30、AC-32、AC-33 |
+| [31](31-reproducible-deployment.md) | AC-19 Nginx/构建、AC-33 双进程、AC-32 风险及脱敏，兼顾 AC-13/17/18 |
+| [32](32-automated-acceptance.md) | AC-01–AC-34 本期台账及可自动化项回归，AC-20 穿透和 AC-34 证据区分；人工证据由 #33/#34 分别回填 |
+| [33](33-browser-device-acceptance.md) | AC-16 正式浏览器/真机主责，以及 AC-10–AC-13、AC-20、AC-31、AC-34 的设备证据 |
+| [34](34-live-source-runtime-evidence.md) | AC-25–AC-28、AC-30、AC-32–AC-34 的授权上游/OSS/持续运行/资源证据 |
 
 ## 测试与证据边界
 

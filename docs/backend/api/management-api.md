@@ -1,6 +1,6 @@
 # UP 管理接口（票据 01）
 
-> 本文保留 01 契约的边界。02 新增指定目标、初始化、归档读取及后续迁移，见 [archive-api.md](archive-api.md) 与 [backend/README.md](../backend/README.md)；指定模式不再只是占位控件。
+> 本文保留 01 契约的边界。02 新增指定目标、初始化、归档读取及后续迁移，见 [archive-api.md](archive-api.md) 与 [backend/README.md](../../../backend/README.md)；指定模式不再只是占位控件。
 
 本契约细化 `.scratch/backend-integration/issues/01-up-monitoring-management.md`，仅涉及身份和监控配置，不含采集、指定动态目标操作或调度。测试入口沿用父规格已确认的 T1/T2。
 

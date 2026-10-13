@@ -1,6 +1,6 @@
 # 06 验收记录：手机长图阅读与预览历史
 
-范围：[任务 06](issues/06-mobile-image-history.md)，参考[实施规格](spec.md)、[SRS](../../docs/SRS.md)、[HLD](../../docs/HLD.md)、README 及 acceptance-01 至 acceptance-05。只完成预览会话、长图与手势，不重做 01–05，不提前实现 07 的完整详情/评论/回复历史快照。
+范围：[任务 06](issues/06-mobile-image-history.md)，参考[实施规格](spec.md)、[SRS](../../docs/product/SRS.md)、[HLD](../../docs/design/HLD.md)、README 及 acceptance-01 至 acceptance-05。只完成预览会话、长图与手势，不重做 01–05，不提前实现 07 的完整详情/评论/回复历史快照。
 
 ## 基线与环境
 

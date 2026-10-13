@@ -248,12 +248,12 @@ Status: ready-for-agent
 
 文档来源集中如下：
 
-- [FSR：可行性、风险与资源边界](../../docs/FSR.md)
-- [SRS：FR/DR/NFR/AC 当前真值](../../docs/SRS.md)
-- [HLD：职责、读取及检查同步设计](../../docs/HLD.md)
-- [后端可行性：13 次只读样本与证据限制](../../docs/backend-feasibility.md)
-- [UI 文字规范：配色、层级及功能裁剪](../../docs/ui-reference.md)
-- [历史静态交付参考](../../docs/static-delivery.md)
+- [FSR：可行性、风险与资源边界](../../docs/product/FSR.md)
+- [SRS：FR/DR/NFR/AC 当前真值](../../docs/product/SRS.md)
+- [HLD：职责、读取及检查同步设计](../../docs/design/HLD.md)
+- [后端可行性：13 次只读样本与证据限制](../../docs/backend/evidence/backend-feasibility.md)
+- [UI 文字规范：配色、层级及功能裁剪](../../docs/design/ui-reference.md)
+- [历史静态交付参考](../../docs/deployment/static-delivery.md)
 - [本地 issue tracker 约定](../../docs/agents/issue-tracker.md)
 - [分诊标签](../../docs/agents/triage-labels.md)
 - [领域文档约定](../../docs/agents/domain.md)

@@ -1,6 +1,6 @@
 # 03 验收记录：阅读一级评论并切换最热/最新
 
-范围：[任务 03](issues/03-read-and-sort-comments.md)，依据 [实施规格](spec.md)、[SRS](../../docs/SRS.md)、[HLD](../../docs/HLD.md)、README 以及 [01](acceptance-01.md)/[02](acceptance-02.md) 的验收与已确认测试接缝。仅完成一级评论相关子项，不宣称 FR-07、全部 FR-10 或完整项目验收通过。
+范围：[任务 03](issues/03-read-and-sort-comments.md)，依据 [实施规格](spec.md)、[SRS](../../docs/product/SRS.md)、[HLD](../../docs/design/HLD.md)、README 以及 [01](acceptance-01.md)/[02](acceptance-02.md) 的验收与已确认测试接缝。仅完成一级评论相关子项，不宣称 FR-07、全部 FR-10 或完整项目验收通过。
 
 ## 基线与环境
 

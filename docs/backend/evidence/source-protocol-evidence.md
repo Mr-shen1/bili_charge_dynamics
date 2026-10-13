@@ -1,6 +1,6 @@
 # 02 协议静态依据（虚构 fixture 的结构边界）
 
-本次只静态读取本机 ignored 参考的无敏感函数局部；未读取 Cookie、密钥或通知配置，未执行/导入原脚本，未访问网络。原参考不作为运行依赖，以下无敏感字段和 tracked fixture 才是可复现依据。既有实际请求证据见 [backend-feasibility](../docs/backend-feasibility.md)，不能将 fixture 当作真实上游可用性证明。
+本次只静态读取本机 ignored 参考的无敏感函数局部；未读取 Cookie、密钥或通知配置，未执行/导入原脚本，未访问网络。原参考不作为运行依赖，以下无敏感字段和 tracked fixture 才是可复现依据。既有实际请求证据见 [backend-feasibility](backend-feasibility.md)，不能将 fixture 当作真实上游可用性证明。
 
 ## 指定动态
 
@@ -16,13 +16,13 @@
 - `MAJOR_TYPE_ARCHIVE` 是视频，本票不扩展视频能力。
 - `modules.module_stat.comment.count` 是来源计数，不是本地采集数量。
 
-上述 OPUS `summary` 仅是摘要，不能当全文。后续核对公开固定快照的 CONTENT/TITLE 模块结构，完整正文只由安全页面初始化数据中受支持的有序段落确认，缺失或未知段落保持失败/待处理；具体 WORD/RICH/PIC 路径及引用见 [dynamic-protocol-fields.md](../docs/dynamic-protocol-fields.md#页面全文与标题结构)。
+上述 OPUS `summary` 仅是摘要，不能当全文。后续核对公开固定快照的 CONTENT/TITLE 模块结构，完整正文只由安全页面初始化数据中受支持的有序段落确认，缺失或未知段落保持失败/待处理；具体 WORD/RICH/PIC 路径及引用见 [dynamic-protocol-fields.md](dynamic-protocol-fields.md#页面全文与标题结构)。
 
-原参考上述局部未确认作者昵称、头像及图片尺寸映射。随后通过公开 Git 固定快照核对 `module_author.name/face`、OPUS `pics[].width/height` 和 DRAW `items[].width/height`，具体引用与证据边界见 [dynamic-protocol-fields.md](../docs/dynamic-protocol-fields.md)。缺字段仍保持未知，不能把虚构数据补齐当作真实字段保证。
+原参考上述局部未确认作者昵称、头像及图片尺寸映射。随后通过公开 Git 固定快照核对 `module_author.name/face`、OPUS `pics[].width/height` 和 DRAW `items[].width/height`，具体引用与证据边界见 [dynamic-protocol-fields.md](dynamic-protocol-fields.md)。缺字段仍保持未知，不能把虚构数据补齐当作真实字段保证。
 
 ## HTML 编辑信号
 
-原脚本没有 HTML 编辑时间解析；依据仅来自 `docs/backend-feasibility.md:69-97` 记录的一次 `/opus/{id}` 页面样本。初始化数据结构是 `__INITIAL_STATE__.detail.id_str`，`detail.modules[]` 按 `module_type == MODULE_TYPE_AUTHOR` 找作者的 `module_author.mid/pub_time/pub_ts`，按 `MODULE_TYPE_STAT` 找 `module_stat.comment.count`。编辑文案示例“编辑于 2026年10月09日 13:01”，普通详情同一 `pub_ts` 的普通时间为“2026年10月09日 10:38”。
+原脚本没有 HTML 编辑时间解析；依据仅来自 `docs/backend/evidence/backend-feasibility.md:69-97` 记录的一次 `/opus/{id}` 页面样本。初始化数据结构是 `__INITIAL_STATE__.detail.id_str`，`detail.modules[]` 按 `module_type == MODULE_TYPE_AUTHOR` 找作者的 `module_author.mid/pub_time/pub_ts`，按 `MODULE_TYPE_STAT` 找 `module_stat.comment.count`。编辑文案示例“编辑于 2026年10月09日 13:01”，普通详情同一 `pub_ts` 的普通时间为“2026年10月09日 10:38”。
 
 安全提取 JSON，不执行脚本，不固定 script 标签或数组下标。缺标记是未知，不是未编辑；无效日期/非 JSON 是错误，不覆盖旧可信值。发布时间与编辑时间独立。`opus/detail` JSON 曾返回412，不依赖该接口。
 

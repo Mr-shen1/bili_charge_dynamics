@@ -2,7 +2,7 @@
 
 Status: ready-for-agent
 
-依据：[FSR](../../docs/FSR.md)、[SRS](../../docs/SRS.md)、[HLD](../../docs/HLD.md)。整理基线为已确认文档提交 `e3a2064`。
+依据：[FSR](../../docs/product/FSR.md)、[SRS](../../docs/product/SRS.md)、[HLD](../../docs/design/HLD.md)。整理基线为已确认文档提交 `e3a2064`。
 
 本文将已确认需求与设计汇总为本期开发规格，不增加产品范围。需求细节及验收条件以 SRS 为准，架构决定以 HLD 为准，可行性与资源约束以 FSR 为准。下文的 `FR`、`DR`、`NFR`、`AC` 均引用 SRS 编号。
 

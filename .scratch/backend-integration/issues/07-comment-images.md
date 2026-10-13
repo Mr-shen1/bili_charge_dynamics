@@ -2,15 +2,26 @@
 
 **What to build:** 阅读者能在真实归档一级评论中看到有序图片，包括纯图评论，并直接预览该评论自己的图片组；服务端复用动态图上传能力，单图失败不影响评论文本、其他图或其他评论。
 
-**Blocked by:** [04: 一级评论归档与详情评论区](04-root-comments.md)、[06: 动态图片 OSS 归档与预览](06-dynamic-images.md)
+**Blocked by:** [21: 评论媒体归档](21-comment-media-archive.md)、[22: 评论图阅读](22-comment-image-reading.md)
 
-**Status:** ready-for-agent
+**Status:** needs-triage
+
+**票据角色:** 汇总（等待维护者根据子票证据核验收口，不直接派工实施）
+
+## 执行拆分（汇总票，不直接派工）
+
+原业务前置 [04](04-root-comments.md)、[06](06-dynamic-images.md) 细化为数据与预览的实际依赖。统一规则见[执行计划](../implementation-plan.md)，分诊标签不表示完成。
+
+- [21](21-comment-media-archive.md)：根评论图片解析、复用上传、owner 隔离和独立恢复；依赖 #15、#19，不等待 UI。
+- [22](22-comment-image-reading.md)：真实评论区纯图展示、组内预览、历史/焦点和局部故障；依赖 #16、#20、#21，明确复用 #20 预览能力。
+
+两票共同覆盖下列原清单；计数变化后的自动媒体联动由 #30 收口，不增加回复图片。
 
 ## 依据
 
 - [父规格](../spec.md)：故事 22–27、32、33、35、54、55、58、59、63、64；I3、I4、I6、I7、I9–I12；T1–T3。
-- [SRS](../../../docs/SRS.md)：FR-08–FR-12、FR-19、FR-20、DR-01、DR-03–DR-05、NFR-02–NFR-04；AC-09–AC-12、AC-14–AC-18、AC-28–AC-30、AC-32（一级评论图范围）。
-- [HLD](../../../docs/HLD.md)：第 3.5、7–9 节；[UI 文字规范](../../../docs/ui-reference.md)。
+- [SRS](../../../docs/product/SRS.md)：FR-08–FR-12、FR-19、FR-20、DR-01、DR-03–DR-05、NFR-02–NFR-04；AC-09–AC-12、AC-14–AC-18、AC-28–AC-30、AC-32（一级评论图范围）。
+- [HLD](../../../docs/design/HLD.md)：第 3.5、7–9 节；[UI 文字规范](../../../docs/design/ui-reference.md)。
 
 ## 核验标准
 

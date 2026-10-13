@@ -9,8 +9,8 @@
 ## 依据
 
 - [父规格](../spec.md)：故事 36–39、43、44、57、64、65、67；I1–I4、I12；T1、T2。
-- [SRS](../../../docs/SRS.md)：FR-12、FR-14、FR-19、DR-04、DR-05、NFR-04、NFR-05；AC-15、AC-22、AC-29、AC-32、AC-33（本票范围）。
-- [HLD](../../../docs/HLD.md)：第 1、2.1、3.5、9.3 节。
+- [SRS](../../../docs/product/SRS.md)：FR-12、FR-14、FR-19、DR-04、DR-05、NFR-04、NFR-05；AC-15、AC-22、AC-29、AC-32、AC-33（本票范围）。
+- [HLD](../../../docs/design/HLD.md)：第 1、2.1、3.5、9.3 节。
 
 ## 核验标准
 
@@ -34,4 +34,4 @@ T2 使用隔离临时 SQLite 和模拟上游资料响应，经过 HTTP 写读及
 
 ## Comments
 
-已在 `feat/up-monitoring-management` 实施并完成 T1/T2 自动化与双轴审查，等待人工复核。HTTP/输入/迁移细化见 [管理契约](../../../docs/management-api.md)，逐项证据、测试结果及未验证范围见 [01 验收记录](../acceptance-01.md)。指定目标操作仍属 02；无真实上游授权核验、本票真机或新 Nginx 实测，不以测试装配冒充这些证据。
+已在 `feat/up-monitoring-management` 实施并完成 T1/T2 自动化与双轴审查，等待人工复核。HTTP/输入/迁移细化见 [管理契约](../../../docs/backend/api/management-api.md)，逐项证据、测试结果及未验证范围见 [01 验收记录](../acceptance-01.md)。指定目标操作仍属 02；无真实上游授权核验、本票真机或新 Nginx 实测，不以测试装配冒充这些证据。

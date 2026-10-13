@@ -14,11 +14,11 @@
 
 ## 协议依据
 
-无敏感参考结构与有限页面样本边界见 [PROTOCOL_EVIDENCE.md](../../backend/PROTOCOL_EVIDENCE.md)；作者、媒体尺寸公共 Git 固定快照依据见 [dynamic-protocol-fields.md](../../docs/dynamic-protocol-fields.md)。fixture 全部虚构，不能作为实际上游权限或长期可用性证据。接口细化见 [archive-api.md](../../docs/archive-api.md)。
+无敏感参考结构与有限页面样本边界见 [source-protocol-evidence.md](../../docs/backend/evidence/source-protocol-evidence.md)；作者、媒体尺寸公共 Git 固定快照依据见 [dynamic-protocol-fields.md](../../docs/backend/evidence/dynamic-protocol-fields.md)。fixture 全部虚构，不能作为实际上游权限或长期可用性证据。接口细化见 [archive-api.md](../../docs/backend/api/archive-api.md)。
 
 ## 实施证据
 
-- 后端逐片 Red → Green 记录见 [backend/acceptance-02.md](../../backend/acceptance-02.md)。
+- 后端逐片 Red → Green 记录见 [.scratch/backend-integration/evidence/backend-acceptance-02.md](evidence/backend-acceptance-02.md)。
 - T1/T2/T3 穿透浏览器测试先因缺少 fixture API 工厂失败；增加实际工厂后能完成目标校验，并在正文同步尚未实现时失败（返回全部 failed）。此为观察到的 Red，不将骨架能力当完成。
 - 根据公开模块结构补充标题独立安全展示：`pnpm test tests/archive-app.test.tsx` Red 1 failed/7 passed（标题未映射），增加可选标题 metadata 映射后 Green 8/8；不把标题混为正文段落，不执行标签。
 - `pnpm typecheck` 多次通过；`pnpm test tests/production-assembly.test.ts tests/archive-reader.test.ts --maxWorkers=2`：7/7。

@@ -1,12 +1,12 @@
 # 静态交付与 Nginx 验证（任务 08）
 
-> 范围说明：本文保留任务 08 的模拟前端静态交付基线与复现步骤。文中的“本期 / 本票”仅指该历史阶段，不代表新增 API、SQLite、采集进程或 OSS 已部署或验收。下一阶段总体设计见 [HLD](HLD.md)，新增页面路径及 API 代理规则需在后续实施时扩展并重新验证；本轮不修改现有部署配置。
+> 范围说明：本文保留任务 08 的模拟前端静态交付基线与复现步骤。文中的“本期 / 本票”仅指该历史阶段，不代表新增 API、SQLite、采集进程或 OSS 已部署或验收。下一阶段总体设计见 [HLD](../design/HLD.md)，新增页面路径及 API 代理规则需在后续实施时扩展并重新验证；本轮不修改现有部署配置。
 
 ## 当前执行方式（后端集成 02）
 
 默认 `pnpm dev` / `pnpm build` 现在使用生产归档 Adapter，需要 Python API；没有归档时显示成功空，不再自动装配演示数据。历史阅读回归必须显式使用 `pnpm dev --mode mock` / `pnpm build:mock`。`test:e2e:preview` 使用 mock 构建；`test:delivery` 分别校验生产构建重现和 fault 构建隔离，再用显式 mock 运行历史 Nginx 阅读及更新测试，结束恢复生产 `dist/`。它不证明真实归档部署或真机兼容；生产 Adapter/SQLite 穿透证据另见后端集成 02 验收。以下历史阶段说明不作为新后端验收。
 
-该阶段是纯静态 SPA：Vite 在本地或 CI 构建，Nginx 只读取 `dist/`，不需要 SSR、常驻 Node.js 应用、模拟 HTTP 服务或服务器代理。部署在域名根路径，非子路径。任务 09 对最终集成产物的复跑结果见 [09 验收记录](../.scratch/dynamics-viewer/acceptance-09.md)，不能仅沿用任务 08 的结果。
+该阶段是纯静态 SPA：Vite 在本地或 CI 构建，Nginx 只读取 `dist/`，不需要 SSR、常驻 Node.js 应用、模拟 HTTP 服务或服务器代理。部署在域名根路径，非子路径。任务 09 对最终集成产物的复跑结果见 [09 验收记录](../../.scratch/dynamics-viewer/acceptance-09.md)，不能仅沿用任务 08 的结果。
 
 ## 1. 可复现构建
 
@@ -33,7 +33,7 @@ pnpm build
 
 ## 2. Nginx 配置与路径契约
 
-示例：[deploy/nginx.conf](../deploy/nginx.conf)。将它作为 `http` 上下文中的 `server` 配置包含；Nginx 主配置必须已加载 `mime.types`，建议 `default_type application/octet-stream`。修改 `root` 为可读的发布目录或 `current` 链接。示例仅监听 `127.0.0.1:4173`，供本机非特权验证；真实部署的监听地址、域名、TLS 和运维权限由维护者另行配置，本票不操作生产环境。
+示例：[deploy/nginx.conf](../../deploy/nginx.conf)。将它作为 `http` 上下文中的 `server` 配置包含；Nginx 主配置必须已加载 `mime.types`，建议 `default_type application/octet-stream`。修改 `root` 为可读的发布目录或 `current` 链接。示例仅监听 `127.0.0.1:4173`，供本机非特权验证；真实部署的监听地址、域名、TLS 和运维权限由维护者另行配置，本票不操作生产环境。
 
 在应用配置生效前检查语法，再按维护者自己的运维流程启用；验证脚本不会 reload 系统 Nginx。
 
@@ -127,7 +127,7 @@ curl -I "$origin/demo-images/landscape-1-thumb.v1.png"
 curl -i -H 'If-None-Match: "previous-entry-etag"' "$origin/"
 ```
 
-记录 Nginx 版本、实际配置、环境和每项结果；环境不可用时保持对应验收项未勾选。执行证据见 [08 验收记录](../.scratch/dynamics-viewer/acceptance-08.md)。
+记录 Nginx 版本、实际配置、环境和每项结果；环境不可用时保持对应验收项未勾选。执行证据见 [08 验收记录](../../.scratch/dynamics-viewer/acceptance-08.md)。
 
 ### 4.1 真实局域网 HTTP 回归与真机续验准备
 
@@ -144,11 +144,11 @@ HTTP_ACCEPTANCE_URL=http://192.168.8.20:4180/ pnpm test:http
 
 脚本要求 HTTP、真实私有 IPv4 和 Nginx 响应；通过实际 Chromium 页面断言 `isSecureContext === false`、`randomUUID` 不可用而 `getRandomValues` 可用，检查启动错误、四类标识的 UUID v4 格式、列表追加→详情→预览→关闭/前进/后退→列表恢复和刷新重置。不 mock crypto、不伪造安全上下文，也不使用浏览器安全豁免。它不负责启动或更新外部站点，必须与全量 `test:delivery` 一起执行；两者各自覆盖普通 HTTP 与资源/缓存/构建更新风险，不能互相替代。
 
-历史 mock 自动化通过后可保持该隔离演示站点运行，向验收者提供 URL、构建哈希和独立 Nginx 停止命令，在 Linux Chrome 与 iPhone Safari 上人工检查。2026-10-12 用户已确认本期只验收这两类目标，其他设备/浏览器不再是续验待办；Chromium 模拟不能代替品牌 Chrome 或 iPhone Safari 真机，也不能把移出目标写成通过。临时地址、配置与续验范围见 [09 验收记录](../.scratch/dynamics-viewer/acceptance-09.md)。
+历史 mock 自动化通过后可保持该隔离演示站点运行，向验收者提供 URL、构建哈希和独立 Nginx 停止命令，在 Linux Chrome 与 iPhone Safari 上人工检查。2026-10-12 用户已确认本期只验收这两类目标，其他设备/浏览器不再是续验待办；Chromium 模拟不能代替品牌 Chrome 或 iPhone Safari 真机，也不能把移出目标写成通过。临时地址、配置与续验范围见 [09 验收记录](../../.scratch/dynamics-viewer/acceptance-09.md)。
 
 ## 5. 素材与范围边界
 
-本期 PNG/SVG 为项目内自绘素材，来源与重建见 [素材说明](../public/demo-images/README.md)。浏览器按模型给定的 URL 请求，不依赖 B站外链、不改写图片参数。后续 OSS 由浏览器直连给定的 HTTPS URL；域名、CORS、权限、签名有效期和缓存需另行评估，本票不加应用服务器代理，不配置 OSS/CDN/云平台。
+本期 PNG/SVG 为项目内自绘素材，来源与重建见 [素材说明](../../public/demo-images/README.md)。浏览器按模型给定的 URL 请求，不依赖 B站外链、不改写图片参数。后续 OSS 由浏览器直连给定的 HTTPS URL；域名、CORS、权限、签名有效期和缓存需另行评估，本票不加应用服务器代理，不配置 OSS/CDN/云平台。
 
 2 核 2GB 是静态站点的目标配置，**不是容量保证**；未采购、部署或压测真实服务器。后端、数据库、爬虫和总体资源占用仍需独立评估。TLS、生产权限/安全加固、发布自动化属于后续工作；Linux Chrome / iPhone Safari 的实际兼容检查及收口见任务 09，本票不声称这些已经验证。其他设备/浏览器不在当前本期目标内。
 

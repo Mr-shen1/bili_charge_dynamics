@@ -2,15 +2,26 @@
 
 **What to build:** 阅读者在真实一级评论下看到已归档楼中楼，按时间正序先读最多 3 条、每次追加 10 条，收起后可恢复已加载范围；单根评论失败和历史返回不丢其他评论或该次访问的阅读进度。
 
-**Blocked by:** [04: 一级评论归档与详情评论区](04-root-comments.md)
+**Blocked by:** [17: 回复归档](17-reply-archive.md)、[18: 回复阅读](18-reply-reading.md)
 
-**Status:** ready-for-agent
+**Status:** needs-triage
+
+**票据角色:** 汇总（等待维护者根据子票证据核验收口，不直接派工实施）
+
+## 执行拆分（汇总票，不直接派工）
+
+原业务前置为 [04](04-root-comments.md)，现在细化到实际需要的子票，不必等待无关 UI。统一规则见[执行计划](../implementation-plan.md)，分诊标签不表示完成。
+
+- [17](17-reply-archive.md)：来源完整回复分页、关系、真实 HTTP 和整轮根回复 checkpoint；依赖 #15，可与 #16 并行。
+- [18](18-reply-reading.md)：生产 Adapter、3/13/23/25、收起复用、根级故障与详情历史恢复；依赖 #16、#17。
+
+两票交付后核对下列原清单，不把只归档上游预览或只接入模拟阅读视为完成。
 
 ## 依据
 
 - [父规格](../spec.md)：故事 4、9、12–15、19–21、29–35、42、47、54、55、57；I3、I6、I8–I10；T1–T3。
-- [SRS](../../../docs/SRS.md)：FR-01、FR-03、FR-04、FR-06、FR-07、FR-10–FR-12、FR-18、FR-19、DR-01、DR-02、DR-04、DR-05、NFR-04；AC-01、AC-03、AC-04、AC-07、AC-08、AC-12、AC-14、AC-15、AC-18、AC-24、AC-28（回复范围）。
-- [HLD](../../../docs/HLD.md)：第 2.3、3–5、8–10 节。
+- [SRS](../../../docs/product/SRS.md)：FR-01、FR-03、FR-04、FR-06、FR-07、FR-10–FR-12、FR-18、FR-19、DR-01、DR-02、DR-04、DR-05、NFR-04；AC-01、AC-03、AC-04、AC-07、AC-08、AC-12、AC-14、AC-15、AC-18、AC-24、AC-28（回复范围）。
+- [HLD](../../../docs/design/HLD.md)：第 2.3、3–5、8–10 节。
 
 ## 核验标准
 

@@ -1,14 +1,14 @@
 # UP 主动态与评论查看页面：可行性分析报告（FSR）
 
 - 状态：已将后端可行性讨论和前端扩展决定纳入文档；新阶段尚未实现、部署或验收。
-- 已有基线：模拟数据驱动的阅读前端已完成上一阶段验收，见 [09 验收记录](../.scratch/dynamics-viewer/acceptance-09.md)。该记录不证明新增后端或改版页面已经通过。
+- 已有基线：模拟数据驱动的阅读前端已完成上一阶段验收，见 [09 验收记录](../../.scratch/dynamics-viewer/acceptance-09.md)。该记录不证明新增后端或改版页面已经通过。
 - 下一阶段目标：多 UP 监控管理、真实内容归档和读取、OSS 图片交付，以及参考 B站样式的阅读页面改版。
 - 部署目标：优先复用阿里云 2 核 2GB；这不是必须同机或容量已验证的承诺。新增付费资源另行确认。
-- 文档边界：本轮只同步 `docs/`，不生成实施 spec、tickets 或实现代码。用户行为与验收规则以 [SRS](SRS.md) 为准，架构见 [HLD](HLD.md)。
+- 文档边界：本轮只同步 `docs/`，不生成实施 spec、tickets 或实现代码。用户行为与验收规则以 [SRS](SRS.md) 为准，架构见 [HLD](../design/HLD.md)。
 
 ## 1. 结论
 
-**已有证据支持进入后端实施规格阶段，但持续运行的性能与可靠性尚待验证。** 两个用户提供的 Python 脚本为动态来源、评论分页和去重提供了参考；本轮少量只读请求进一步验证了目标样本的动态读取、评论读取和页面编辑时间提取。证据与限制单独记录于 [后端可行性验证记录](backend-feasibility.md)。
+**已有证据支持进入后端实施规格阶段，但持续运行的性能与可靠性尚待验证。** 两个用户提供的 Python 脚本为动态来源、评论分页和去重提供了参考；本轮少量只读请求进一步验证了目标样本的动态读取、评论读取和页面编辑时间提取。证据与限制单独记录于 [后端可行性验证记录](../backend/evidence/backend-feasibility.md)。
 
 已确认采用 React + TypeScript + Vite + React Router 前端，Python + FastAPI 后端，SQLite 持久化；API 与采集各运行一个进程，不引入 Redis、Celery 或微服务。前端仍可静态托管，不需要常驻 Node.js 或 SSR。
 
@@ -28,7 +28,7 @@
 4. 点击动态卡片进入详情顶部，或点击评论气泡图标与数量进入同一详情页的评论区。
 5. 阅读动态、一级评论图片和楼中楼，返回来源列表时恢复其数据与位置。
 
-视觉尽量对齐 B站现有动态页的颜色、布局和样式，以用户提供的 [页面参考](ui-reference.md) 为准；不复制截图中未确认的产品能力。
+视觉尽量对齐 B站现有动态页的颜色、布局和样式，以用户提供的 [页面参考](../design/ui-reference.md) 为准；不复制截图中未确认的产品能力。
 
 ### 2.2 内容来源与充电边界
 
@@ -219,9 +219,9 @@ Python/FastAPI/SQLite、双进程、两种监控模式、15 秒节拍、页面�
 ## 11. 实施参考
 
 - [SRS：需求与验收](SRS.md)
-- [HLD：总体设计](HLD.md)
-- [后端可行性验证记录](backend-feasibility.md)：脚本、第三方文档、页面样本和实际请求分别标明证据级别。
-- [页面视觉参考与功能裁剪](ui-reference.md)
+- [HLD：总体设计](../design/HLD.md)
+- [后端可行性验证记录](../backend/evidence/backend-feasibility.md)：脚本、第三方文档、页面样本和实际请求分别标明证据级别。
+- [页面视觉参考与功能裁剪](../design/ui-reference.md)
 - [Vite：静态部署](https://vite.dev/guide/static-deploy.html)
 - [Nginx：try_files](https://nginx.org/en/docs/http/ngx_http_core_module.html#try_files)
 - [React Router：ScrollRestoration](https://reactrouter.com/api/components/ScrollRestoration)

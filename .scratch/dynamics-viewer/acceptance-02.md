@@ -1,6 +1,6 @@
 # 02 验收记录：连续阅读动态并从详情回到原位置
 
-范围：[02](issues/02-continue-reading-dynamics.md)，依据 [实施规格](spec.md)、[SRS](../../docs/SRS.md)、[HLD](../../docs/HLD.md)；沿用 [01 验收](acceptance-01.md) 的读取接口、导航身份与测试接缝。仅完成动态列表部分，不代表完整 AC-12 或详情评论历史已经验收。
+范围：[02](issues/02-continue-reading-dynamics.md)，依据 [实施规格](spec.md)、[SRS](../../docs/product/SRS.md)、[HLD](../../docs/design/HLD.md)；沿用 [01 验收](acceptance-01.md) 的读取接口、导航身份与测试接缝。仅完成动态列表部分，不代表完整 AC-12 或详情评论历史已经验收。
 
 ## 基线与环境
 

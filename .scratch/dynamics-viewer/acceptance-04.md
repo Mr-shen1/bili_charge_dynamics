@@ -1,6 +1,6 @@
 # 04 验收记录：展开、收起并继续阅读楼中楼
 
-范围：[任务 04](issues/04-expand-comment-replies.md)，依据 [实施规格](spec.md)、[SRS](../../docs/SRS.md)、[HLD](../../docs/HLD.md)、README 和 [01](acceptance-01.md)/[02](acceptance-02.md)/[03](acceptance-03.md) 验收。只实现当前详情访问内的回复阅读及 03 明确留给本票的逐条回复总数，不代表完整项目或详情历史恢复验收。
+范围：[任务 04](issues/04-expand-comment-replies.md)，依据 [实施规格](spec.md)、[SRS](../../docs/product/SRS.md)、[HLD](../../docs/design/HLD.md)、README 和 [01](acceptance-01.md)/[02](acceptance-02.md)/[03](acceptance-03.md) 验收。只实现当前详情访问内的回复阅读及 03 明确留给本票的逐条回复总数，不代表完整项目或详情历史恢复验收。
 
 ## 基线与环境
 

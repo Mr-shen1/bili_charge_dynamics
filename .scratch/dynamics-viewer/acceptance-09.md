@@ -1,6 +1,6 @@
 # 09 验收记录：最终集成回归与跨设备交付
 
-范围：[任务 09](issues/09-cross-device-acceptance.md)。依据[实施规格](spec.md)、[SRS](../../docs/SRS.md)、[HLD](../../docs/HLD.md)、[README](../../README.md) 及 acceptance-01 至 acceptance-08。前置记录用于核对约定；自动化与真实 Nginx 证据来自第 1–10 节所记录的本期实际执行，用户实机结果来自第 11–13 节。第 13 节是文档与人工证据收口，不宣称重新运行产品测试。
+范围：[任务 09](issues/09-cross-device-acceptance.md)。依据[实施规格](spec.md)、[SRS](../../docs/product/SRS.md)、[HLD](../../docs/design/HLD.md)、[README](../../README.md) 及 acceptance-01 至 acceptance-08。前置记录用于核对约定；自动化与真实 Nginx 证据来自第 1–10 节所记录的本期实际执行，用户实机结果来自第 11–13 节。第 13 节是文档与人工证据收口，不宣称重新运行产品测试。
 
 **当前结论：任务 09 及已确认本期范围内验收完成，仅覆盖 Linux Chrome 与 iPhone Safari。** 自动化、真实 Nginx 与普通局域网 HTTP 回归通过，启动缺陷已修复；用户已提供实际设备/版本，并确认桌面键盘与焦点、iPhone 切图/长图滚动/返回隔离检查通过，补齐最后三项验收证据。其他设备/浏览器属于范围外，不视为通过。未删断言或放宽行为绕过失败；历史未验证状态保留，最终当前结果见第 13 节。
 
@@ -155,7 +155,7 @@ pnpm build
 git diff --check
 ```
 
-上述Nginx临时编译路径不是新机器必有路径；不存在时按 `docs/static-delivery.md` 准备可执行Nginx和匹配MIME文件、替换环境变量。Chromium未安装时执行 `pnpm exec playwright install chromium`，系统库缺失按Playwright要求准备；不得改用Vite冒充交付验证。
+上述Nginx临时编译路径不是新机器必有路径；不存在时按 `docs/deployment/static-delivery.md` 准备可执行Nginx和匹配MIME文件、替换环境变量。Chromium未安装时执行 `pnpm exec playwright install chromium`，系统库缺失按Playwright要求准备；不得改用Vite冒充交付验证。
 
 | 命令 / 运行面 | 最终结果 |
 | --- | --- |
@@ -178,7 +178,7 @@ git diff --check
 - [ ] Android Chrome真机和iOS Safari真机：没有连接设备；尤其系统返回/边缘手势、触摸方向锁、长图滚动与底层隔离、关闭焦点恢复需实际检查。
 - [ ] 目标浏览器/真机下复核四宽度完整页面及主要可操作性：模拟检查已过，但兼容目标尚未验收。屏幕阅读器、软键盘等未专项验证，不声称覆盖。
 
-续验者应按 `docs/static-delivery.md` 在可从设备访问的测试站点提供**最终正常dist/Nginx**（现示例只监听回环，监听地址/TLS由维护者自行配置），记录访问构建的入口/JS哈希、设备型号、OS、实际浏览器版本、是否真机/模拟及日期。不要发布fault服务。
+续验者应按 `docs/deployment/static-delivery.md` 在可从设备访问的测试站点提供**最终正常dist/Nginx**（现示例只监听回环，监听地址/TLS由维护者自行配置），记录访问构建的入口/JS哈希、设备型号、OS、实际浏览器版本、是否真机/模拟及日期。不要发布fault服务。
 
 每个目标均执行：列表加载25条/展开长文 → 查看详情或评论入口 → 图片预览/切图/长图适宽滚动 → 返回只关闭预览 → 排序/读45条评论/展开25条回复 → 返回列表和前进恢复；在长昵称、正文、评论/回复和图片区域检查溢出及约44px操作区域。桌面另用Tab/Enter/方向键/Esc检查可见焦点、焦点约束及关闭恢复；手机实际横/纵手势与系统返回不使底层移动或误离开。
 

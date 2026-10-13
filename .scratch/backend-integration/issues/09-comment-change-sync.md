@@ -2,15 +2,26 @@
 
 **What to build:** 已启用目标的来源评论总数变化后，采集进程通过既有根评论/回复同步能力更新可读归档，页面和管理状态分别显示来源计数、实际归档及完成情况；初始化或失败可重试，正文受限不阻断真实评论。
 
-**Blocked by:** [05: 楼中楼归档与阅读](05-replies.md)、[08: 固定 15 秒检查与编辑同步](08-periodic-edit-sync.md)
+**Blocked by:** [25: 计数触发同步](25-comment-count-sync.md)、[26: 评论同步状态](26-comment-sync-status.md)
 
-**Status:** ready-for-agent
+**Status:** needs-triage
+
+**票据角色:** 汇总（等待维护者根据子票证据核验收口，不直接派工实施）
+
+## 执行拆分（汇总票，不直接派工）
+
+原业务前置 [05](05-replies.md)、[08](08-periodic-edit-sync.md) 细化到根回复同步与版本工作能力，不要求先完成回复 UI。统一规则见[执行计划](../implementation-plan.md)，分诊标签不表示完成。
+
+- [25](25-comment-count-sync.md)：来源计数映射/触发、完整必要根回复分页、版本交错及失败恢复；依赖 #17、#24。
+- [26](26-comment-sync-status.md)：生产 API/Adapter 到管理和阅读页面，区分来源/本地/未知/零及分项状态；依赖 #16、#25。
+
+两票共同覆盖下列原清单；不新增默认校准或媒体阻塞，评论图自动联动由 #30 验证。
 
 ## 依据
 
 - [父规格](../spec.md)：故事 15、42、43、47、53–57；I4–I6、I8、I10；T1–T3。
-- [SRS](../../../docs/SRS.md)：FR-04、FR-14、FR-16–FR-19、DR-01、DR-04、DR-05、NFR-04；AC-04、AC-22、AC-24、AC-25、AC-27–AC-29（评论变化范围）。
-- [HLD](../../../docs/HLD.md)：第 2.2、2.3、3.5、10 节；[来源计数证据](../../../docs/backend-feasibility.md)。
+- [SRS](../../../docs/product/SRS.md)：FR-04、FR-14、FR-16–FR-19、DR-01、DR-04、DR-05、NFR-04；AC-04、AC-22、AC-24、AC-25、AC-27–AC-29（评论变化范围）。
+- [HLD](../../../docs/design/HLD.md)：第 2.2、2.3、3.5、10 节；[来源计数证据](../../../docs/backend/evidence/backend-feasibility.md)。
 
 ## 核验标准
 

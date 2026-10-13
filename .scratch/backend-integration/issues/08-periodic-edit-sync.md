@@ -2,15 +2,26 @@
 
 **What to build:** 启用目标在独立采集进程中按固定 15 秒接受检查，可信页面编辑时间变化后通过已有公开同步能力更新正文；慢同步不阻断新检查，失败与新旧版本交错可恢复，用户在管理页看见真实检查和正文同步状态。
 
-**Blocked by:** [02: 指定动态首次归档与阅读](02-target-initial-archive.md)
+**Blocked by:** [23: 固定检查](23-fixed-cadence-checks.md)、[24: 编辑同步](24-versioned-edit-sync.md)
 
-**Status:** ready-for-agent
+**Status:** needs-triage
+
+**票据角色:** 汇总（等待维护者根据子票证据核验收口，不直接派工实施）
+
+## 执行拆分（汇总票，不直接派工）
+
+原业务前置 #02 已由用户确认完成。统一规则见[执行计划](../implementation-plan.md)，分诊标签不表示完成。
+
+- [23](23-fixed-cadence-checks.md)：可运行独立采集进程、固定节拍、忙检查跳过、检查/同步分离及持久公开检查状态；依赖 #02。
+- [24](24-versioned-edit-sync.md)：可信编辑触发、实际观察版本提交、失败/重启恢复与管理/正文映射；依赖 #23。
+
+两票共同覆盖下列原清单；复用 #02 安全解析及首次同步，不把正文成功当媒体/评论全成功。长期实际稳定性由 #34 单独取证。
 
 ## 依据
 
 - [父规格](../spec.md)：故事 14、43、48–52、55–57、64、67、68；I1、I4、I5、I12；T1–T3。
-- [SRS](../../../docs/SRS.md)：FR-04、FR-14、FR-16、FR-17、DR-05、NFR-04、NFR-05；AC-04、AC-22、AC-25、AC-26、AC-28、AC-33、AC-34（本票检查/正文范围）。
-- [HLD](../../../docs/HLD.md)：第 1、2.2、2.3、3.5、10 节；[样本证据限制](../../../docs/backend-feasibility.md)。
+- [SRS](../../../docs/product/SRS.md)：FR-04、FR-14、FR-16、FR-17、DR-05、NFR-04、NFR-05；AC-04、AC-22、AC-25、AC-26、AC-28、AC-33、AC-34（本票检查/正文范围）。
+- [HLD](../../../docs/design/HLD.md)：第 1、2.2、2.3、3.5、10 节；[样本证据限制](../../../docs/backend/evidence/backend-feasibility.md)。
 
 ## 核验标准
 
