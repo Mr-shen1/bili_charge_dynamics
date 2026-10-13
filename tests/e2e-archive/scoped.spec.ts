@@ -33,7 +33,7 @@ test('真实 SQLite/API→生产 Reader→全部与单 UP 页面、刷新和断�
     await expect(page.getByRole('article')).toHaveCount(13);
     expect(await page.getByRole('article').evaluateAll(cards => cards.map(card => card.getAttribute('data-reading-id'))))
       .toEqual(['1001', '1003', '1005', '1007', '1009', '1011', '1013', '1015', '1017', '1019', '1021', '1023', '1025']);
-    await page.getByRole('article').first().getByRole('button', { name: '查看详情', exact: true }).click();
+    await page.getByRole('article').first().getByRole('link', { name: /^阅读全文 / }).click({ position: { x: 8, y: 8 } });
     await expect(page.getByText('有限归档正文 1001', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: '返回列表', exact: true }).click();
     await expect(page).toHaveURL(/\/ups\/123$/);
@@ -53,10 +53,18 @@ test('真实 SQLite/API→生产 Reader→全部与单 UP 页面、刷新和断�
     expect((await page.request.patch('/api/manage/ups/456/monitor', { data: { mode: 'specified', recent_n: 10, enabled: false } })).status()).toBe(200);
     await stopApi(api);
     api = await startApi(database, factory);
-    await page.goto('/ups/123');
+    await page.goto('/');
+    const retainedUps = page.getByRole('navigation', { name: '归档范围', exact: true });
+    // 删除配置后，直接从选择条进入旧身份归档，而不靠手工输入单 UP 地址。
+    const deletedUp = retainedUps.getByRole('link', { name: '保留作者一', exact: true });
+    await expect(deletedUp).toBeVisible();
+    await expect(deletedUp.locator('img')).toBeVisible();
+    await deletedUp.click();
+    await expect(page).toHaveURL(/\/ups\/123$/);
+    await expect(deletedUp).toHaveAttribute('aria-current', 'page');
     await expect(page.getByRole('article')).toHaveCount(10);
-    await expect(page.getByRole('navigation', { name: '归档范围' }).getByRole('link', { name: '保留作者一', exact: true })).toBeVisible();
-    await page.getByRole('navigation', { name: '归档范围' }).getByRole('link', { name: '保留作者二', exact: true }).click();
+    await expect(page.getByText('有限归档正文 1001', { exact: true })).toBeVisible();
+    await retainedUps.getByRole('link', { name: '保留作者二', exact: true }).click();
     await expect(page).toHaveURL(/\/ups\/456$/);
     await expect(page.getByRole('article')).toHaveCount(10);
     await expect(page.getByText('有限归档正文 1002', { exact: true })).toBeVisible();

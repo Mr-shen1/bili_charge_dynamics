@@ -44,8 +44,8 @@ for (const width of [360, 390, 768, 1280]) {
     await checkLayoutAndTargets(page);
     await locate(card);
     const listOffset = await top(card);
-    // 按现有历史测试接缝触发公开按钮，避免 Playwright 自动滚动改写待保存的位置。
-    await card.getByRole('button', { name: '查看详情', exact: true }).evaluate(element => (element as HTMLButtonElement).click());
+    // 按现有历史测试接缝触发公开链接，避免 Playwright 自动滚动改写待保存的位置。
+    await card.getByRole('link', { name: /^阅读全文 / }).evaluate(element => (element as HTMLAnchorElement).click());
     await expect(page).toHaveURL(new RegExp(`/dynamics/${firstId}$`));
     await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
     await expect(page.getByRole('article')).toContainText('第八行');
@@ -122,7 +122,7 @@ test.describe('切换设备时区为 UTC', () => {
     const card = page.getByRole('article').first();
     await expect(card.getByText('2026-03-01 10:03:04', { exact: true })).toBeVisible();
     await expect(card.getByRole('button', { name: '评论 70', exact: true })).toBeVisible();
-    await card.getByRole('button', { name: '查看详情', exact: true }).click();
+    await card.getByRole('link', { name: /^阅读全文 / }).click({ position: { x: 8, y: 8 } });
     const area = page.getByRole('region', { name: '评论区', exact: true });
     const root = area.getByRole('list', { name: '一级评论', exact: true }).locator(':scope > li').first();
     await expect(root.getByText('2026-03-01 10:16:00', { exact: true })).toBeVisible();

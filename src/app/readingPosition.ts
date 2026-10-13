@@ -19,16 +19,17 @@ export function captureReadingPosition(root: HTMLElement | null): ReadingPositio
 
 // 由应用统一定位；最多等待两个布局帧，不轮询读取或图片。
 // 内容范围和展开状态由页面先同步还原，缺失锚点立即走有界像素后备。
-export function restoreReadingPosition(root: HTMLElement | null, position: ReadingPosition | null): () => void {
+export function restoreReadingPosition(root: HTMLElement | null, position: ReadingPosition | null, onUserInteraction?: () => void): () => void {
   let stopped = false;
   let frame = 0;
   const stop = () => { stopped = true; cancelAnimationFrame(frame); };
+  const stopOnInteraction = () => { onUserInteraction?.(); stop(); };
   const stopOnKey = (event: KeyboardEvent) => {
-    if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) stop();
+    if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) stopOnInteraction();
   };
-  window.addEventListener('wheel', stop, { passive: true });
-  window.addEventListener('touchmove', stop, { passive: true });
-  window.addEventListener('pointerdown', stop, { passive: true });
+  window.addEventListener('wheel', stopOnInteraction, { passive: true });
+  window.addEventListener('touchmove', stopOnInteraction, { passive: true });
+  window.addEventListener('pointerdown', stopOnInteraction, { passive: true });
   window.addEventListener('keydown', stopOnKey);
   const locate = () => {
     if (stopped) return;
@@ -45,9 +46,9 @@ export function restoreReadingPosition(root: HTMLElement | null, position: Readi
   else frame = requestAnimationFrame(() => { frame = requestAnimationFrame(locate); });
   return () => {
     stop();
-    window.removeEventListener('wheel', stop);
-    window.removeEventListener('touchmove', stop);
-    window.removeEventListener('pointerdown', stop);
+    window.removeEventListener('wheel', stopOnInteraction);
+    window.removeEventListener('touchmove', stopOnInteraction);
+    window.removeEventListener('pointerdown', stopOnInteraction);
     window.removeEventListener('keydown', stopOnKey);
   };
 }

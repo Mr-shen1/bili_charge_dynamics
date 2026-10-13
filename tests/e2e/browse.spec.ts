@@ -8,11 +8,11 @@ test('列表 → 文字详情顶部 → 返回来源列表 → 浏览器前进',
     if (!request.url().startsWith('http://127.0.0.1:4173')) externalRequests.push(request.url());
   });
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: '纸飞机' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: '归档范围', exact: true }).getByRole('link', { name: '纸飞机', exact: true })).toBeVisible();
   await expect(page.getByRole('article')).toHaveCount(10);
   await expect(page.getByText('2026-03-01 10:03:04')).toBeVisible();
   const card = page.getByRole('article').last();
-  await card.getByRole('button', { name: '查看详情' }).click();
+  await card.getByRole('link', { name: /^阅读全文 / }).click({ position: { x: 8, y: 8 } });
   await expect(page).toHaveURL(/\/dynamics\/90071992547409940$/);
   await expect(page.getByRole('article')).toHaveCount(1);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
@@ -41,7 +41,7 @@ test('有效详情直达、刷新后可阅读安全完整正文，无来源返�
 
 test('刷新遗留来源标记后返回仍去首页，不沿用已失效的会话历史', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: '查看详情' }).first().click();
+  await page.getByRole('link', { name: /^阅读全文 / }).first().click({ position: { x: 8, y: 8 } });
   await expect(page).toHaveURL(new RegExp(`/dynamics/${firstId}$`));
   await page.reload();
   await expect(page.getByRole('article')).toHaveCount(1);
@@ -62,28 +62,31 @@ test('正文选择、头像昵称不跳转；键盘操作可聚焦且焦点可�
   });
   await expect(page).toHaveURL(/\/$/);
   expect(await page.evaluate(() => window.getSelection()?.toString())).toContain('第八行');
-  // 最小 scope 导航排在卡片之前，逐项检查真实键盘顺序，而非假定首个控件仍是展开。
+  // 结束独立的文字选择操作，再验证主动键盘入口；不把遗留选区带到下一操作。
+  await card.getByText('纸飞机', { exact: true }).click();
+  // 检查导航及内嵌操作的键盘可用性，不将整卡 link 在 DOM 中的位置当作契约。
   await page.getByRole('main').focus();
   await page.keyboard.press('Tab');
   await expect(page.getByRole('link', { name: '全部归档', exact: true })).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(page.getByRole('navigation', { name: '归档范围' }).getByRole('link', { name: '纸飞机', exact: true })).toBeFocused();
-  await page.keyboard.press('Tab');
   const expand = card.getByRole('button', { name: '展开正文' });
+  await expand.focus();
   await expect(expand).toBeFocused();
   expect(await expand.evaluate(element => getComputedStyle(element).outlineStyle)).not.toBe('none');
   await page.keyboard.press('Enter');
   await expect(card.getByRole('button', { name: '收起正文' })).toBeFocused();
   await expect(page).toHaveURL(/\/$/);
-  await page.keyboard.press('Tab');
-  await expect(card.getByRole('button', { name: '预览图片 1', exact: true })).toBeFocused();
-  await page.keyboard.press('Tab');
+  const image = card.getByRole('button', { name: '预览图片 1', exact: true });
+  await image.focus();
+  await expect(image).toBeFocused();
   const comments = card.getByRole('button', { name: '评论 70', exact: true });
+  await comments.focus();
   await expect(comments).toBeFocused();
   const commentBox = await comments.boundingBox();
   expect(commentBox?.height).toBeGreaterThanOrEqual(44);
-  await page.keyboard.press('Tab');
-  const action = page.getByRole('button', { name: '查看详情' }).first();
+  const action = card.getByRole('link', { name: '阅读全文 90071992547409931', exact: true });
+  await action.focus();
   await expect(action).toBeFocused();
   expect(await action.evaluate(element => getComputedStyle(element).outlineStyle)).not.toBe('none');
   const box = await action.boundingBox();

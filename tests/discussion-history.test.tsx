@@ -32,7 +32,7 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 async function open(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByRole('button', { name: '查看详情' }));
+  await user.click(await screen.findByRole('link', { name: '阅读全文 d' }));
   return screen.findByRole('region', { name: '评论区' });
 }
 
@@ -45,7 +45,7 @@ it('历史返回恢复该次评论排序、已读顺序和下一批，而非从�
   await user.click(within(area).getByRole('button', { name: '加载更多评论' }));
   expect(within(area).getAllByRole('listitem')).toHaveLength(40);
   await user.click(screen.getByRole('button', { name: '返回列表' }));
-  await screen.findByRole('button', { name: '查看详情' });
+  await screen.findByRole('link', { name: '阅读全文 d' });
   await user.click(screen.getByRole('button', { name: '历史前进' }));
   area = await screen.findByRole('region', { name: '评论区' });
   expect(within(area).getByRole('button', { name: '最新' })).toHaveAttribute('aria-pressed', 'true');
@@ -64,7 +64,7 @@ it('回复展开、已读范围和下一批在历史返回后保留，收起再�
   await user.click(within(repliesArea).getByRole('button', { name: '展开回复' }));
   await within(repliesArea).findByText('答复 12');
   await user.click(screen.getByRole('button', { name: '返回列表' }));
-  await screen.findByRole('button', { name: '查看详情' });
+  await screen.findByRole('link', { name: '阅读全文 d' });
   await user.click(screen.getByRole('button', { name: '历史前进' }));
   repliesArea = await screen.findByRole('region', { name: '回复区 c-44' });
   expect(within(repliesArea).getByText('答复 12')).toBeVisible();
@@ -72,7 +72,7 @@ it('回复展开、已读范围和下一批在历史返回后保留，收起再�
   expect(within(repliesArea).getAllByRole('listitem')).toHaveLength(23);
   await user.click(within(repliesArea).getByRole('button', { name: '收起回复' }));
   await user.click(screen.getByRole('button', { name: '历史后退' }));
-  await screen.findByRole('button', { name: '查看详情' });
+  await screen.findByRole('link', { name: '阅读全文 d' });
   await user.click(screen.getByRole('button', { name: '历史前进' }));
   repliesArea = await screen.findByRole('region', { name: '回复区 c-44' });
   expect(within(repliesArea).getAllByRole('listitem')).toHaveLength(3);
@@ -94,7 +94,7 @@ it('同一动态两次访问的排序、评论范围及回复展开互不覆盖�
   await user.click(within(second).getByRole('button', { name: '最新' }));
   await within(second).findByText('讨论 0');
   await user.click(screen.getByRole('button', { name: '历史后退' }));
-  await screen.findByRole('button', { name: '查看详情' });
+  await screen.findByRole('link', { name: '阅读全文 d' });
   await user.click(screen.getByRole('button', { name: '历史后退' }));
   const restored = await screen.findByRole('region', { name: '评论区' });
   expect(within(restored).getByRole('button', { name: '最热' })).toHaveAttribute('aria-pressed', 'true');
@@ -102,7 +102,7 @@ it('同一动态两次访问的排序、评论范围及回复展开互不覆盖�
   expect(within(screen.getByRole('region', { name: '回复区 c-44' })).getByText('答复 12')).toBeVisible();
   await user.click(within(restored).getByRole('button', { name: '加载更多评论' }));
   await user.click(screen.getByRole('button', { name: '历史前进' }));
-  await screen.findByRole('button', { name: '查看详情' });
+  await screen.findByRole('link', { name: '阅读全文 d' });
   await user.click(screen.getByRole('button', { name: '历史前进' }));
   const restoredSecond = await screen.findByRole('region', { name: '评论区' });
   expect(within(restoredSecond).getByRole('button', { name: '最新' })).toHaveAttribute('aria-pressed', 'true');
@@ -128,7 +128,7 @@ it.each(['comments', 'replies'] as const)('加载中离开恢复%s原批次，�
     await user.click(within(repliesArea).getByRole('button', { name: '展开回复' }));
   }
   await user.click(screen.getByRole('button', { name: '返回列表' }));
-  await screen.findByRole('button', { name: '查看详情' });
+  await screen.findByRole('link', { name: '阅读全文 d' });
   await user.click(screen.getByRole('button', { name: '历史前进' }));
   if (areaName === 'comments') {
     const restored = await screen.findByRole('region', { name: '评论区' });
@@ -172,7 +172,7 @@ it.each([
   }
   await within(area).findByText(`${areaName === 'comments' ? '最热评论' : '回复'}${phase === 'append' ? '追加' : ''}加载中…`);
   await user.click(screen.getByRole('button', { name: '返回列表' }));
-  await screen.findByRole('button', { name: '查看详情' });
+  await screen.findByRole('link', { name: '阅读全文 d' });
   await user.click(screen.getByRole('button', { name: '历史前进' }));
   area = await screen.findByRole('region', { name: areaName === 'comments' ? '评论区' : '回复区 c-44' });
   await act(async () => {

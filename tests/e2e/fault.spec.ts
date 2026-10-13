@@ -32,7 +32,7 @@ test('专用故障装配确定性列表/详情失败重试，长昵称不撑宽�
   }
   await page.getByRole('button', { name: '重试' }).click();
   await expect(page.getByRole('article')).toHaveCount(10);
-  await page.getByRole('button', { name: '查看详情' }).first().click();
+  await page.getByRole('link', { name: /^阅读全文 / }).first().click({ position: { x: 8, y: 8 } });
   await expect(page.getByRole('alert')).toContainText('动态详情读取失败');
   await page.getByRole('button', { name: '重试' }).click();
   await expect(page.getByText(/第八行/)).toBeVisible();
@@ -42,7 +42,7 @@ for (const areaName of ['comments', 'replies'] as const) {
   test(`讨论${areaName}追加加载中离开再返回，保留成功内容并继续原批而不永久加载`, async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: '重试', exact: true }).click();
-    await page.getByRole('article').first().getByRole('button', { name: '查看详情', exact: true }).click();
+    await page.getByRole('article').first().getByRole('link', { name: /^阅读全文 / }).click({ position: { x: 8, y: 8 } });
     await expect(page.getByRole('alert')).toContainText('动态详情读取失败');
     await page.getByRole('button', { name: '重试', exact: true }).click();
     const comments = page.getByRole('region', { name: '评论区', exact: true });

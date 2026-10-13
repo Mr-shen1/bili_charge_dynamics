@@ -7,8 +7,8 @@ import { useDiscussionRead } from './useDiscussionRead';
 import styles from './Dynamics.module.css';
 import { useDiscussionVisit } from './DiscussionVisit';
 
-export function ReplySection({ reader, dynamicId, rootId }: {
-  reader: DynamicReader; dynamicId: string; rootId: string;
+export function ReplySection({ reader, dynamicId, authorId, rootId }: {
+  reader: DynamicReader; dynamicId: string; authorId: string; rootId: string;
 }) {
   const listId = useId();
   const read = useCallback((cursor: string | null | undefined, signal: AbortSignal, initial: boolean) =>
@@ -35,7 +35,7 @@ export function ReplySection({ reader, dynamicId, rootId }: {
     <ul id={listId} className={styles.comments} aria-label="回复列表">
       {visible?.map(reply => <li key={reply.id} className={styles.reply} data-reading-id={`reply:${rootId}:${reply.id}`}>
         <Identity user={reply.author} />
-        {reply.author.id === reader.creator.id && <span>UP主</span>}
+        {reply.author.id === authorId && <span className={styles.upBadge}>UP主</span>}
         {reply.replyTo?.nickname && <p className={styles.text}>回复 @{reply.replyTo.nickname}</p>}
         <time className={styles.time} dateTime={reply.publishedAt ?? undefined}>{displayTime(reply.publishedAt)}</time>
         <FoldableText text={reply.text.trim() ? reply.text : '暂无评论内容'} subject="回复正文"

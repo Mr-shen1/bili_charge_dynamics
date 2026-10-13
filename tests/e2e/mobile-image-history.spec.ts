@@ -186,7 +186,7 @@ test('从底层开始新导航分支后不虚构已丢弃的前进预览，新�
   await expect(preview.getByText('2 / 4')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(preview).toHaveCount(0);
-  await card.getByRole('button', { name: '查看详情' }).click();
+  await card.getByRole('link', { name: /^阅读全文 / }).click({ position: { x: 8, y: 8 } });
   await expect(page).toHaveURL(new RegExp(`/dynamics/${fourId}$`));
   await page.goBack();
   await expect(page).toHaveURL(/\/$/);

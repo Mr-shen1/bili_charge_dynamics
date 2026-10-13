@@ -9,7 +9,7 @@ for (const method of ['页面返回', '浏览器后退'] as const) {
     const anchor = page.getByRole('article').nth(12);
     await anchor.evaluate(element => window.scrollTo(0, window.scrollY + element.getBoundingClientRect().top - 40));
     const offset = await anchor.evaluate(element => element.getBoundingClientRect().top);
-    await anchor.getByRole('button', { name: '查看详情' }).click();
+    await anchor.getByRole('link', { name: /^阅读全文 / }).click({ position: { x: 8, y: 8 } });
     await expect(page.getByRole('heading', { name: '动态详情' })).toBeVisible();
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
     // 返回时宽度变化，用稳定锚点而不是旧像素定位。
@@ -34,7 +34,7 @@ test('恢复尚未执行时的主动滚轮优先，迟到帧不把用户拉回',
   await page.getByRole('button', { name: '加载更多' }).click();
   await expect(page.getByRole('article')).toHaveCount(20);
   const anchor = page.getByRole('article').nth(12);
-  await anchor.getByRole('button', { name: '查看详情' }).click();
+  await anchor.getByRole('link', { name: /^阅读全文 / }).click({ position: { x: 8, y: 8 } });
   await expect(page.getByRole('heading', { name: '动态详情' })).toBeVisible();
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
   // 控制时间边界，让历史返回的两个布局帧暂不执行。
@@ -71,9 +71,11 @@ test('长词按实际排版随视口改变折叠入口，四种宽度展开和�
   for (const width of [360, 390, 768, 1280]) {
     await page.setViewportSize({ width, height: 800 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await expect(card.getByRole('link')).toHaveCount(0);
+    // 正文中的 URL 仍是纯文本；仅存在独立整卡详情入口。
+    await expect(card.getByRole('link')).toHaveCount(1);
+    await expect(card.getByRole('link', { name: '阅读全文 90071992547409933', exact: true })).toHaveAttribute('href', '/dynamics/90071992547409933');
   }
-  await card.getByRole('button', { name: '查看详情' }).click();
+  await card.getByRole('link', { name: /^阅读全文 / }).click({ position: { x: 8, y: 8 } });
   await expect(page).toHaveURL(/\/dynamics\/90071992547409933$/);
   await expect(page.getByRole('article')).toHaveCount(1);
   for (const width of [360, 390, 768, 1280]) {
@@ -96,7 +98,7 @@ test('列表实际超过六行才折叠，可展开收起；详情完整展示',
   await expect(page).toHaveURL(/\/$/);
   await card.getByRole('button', { name: '收起正文' }).click();
   expect(await text.evaluate(element => element.getBoundingClientRect().height / parseFloat(getComputedStyle(element).lineHeight))).toBeCloseTo(6, 1);
-  await card.getByRole('button', { name: '查看详情' }).click();
+  await card.getByRole('link', { name: /^阅读全文 / }).click({ position: { x: 8, y: 8 } });
   await expect(page.getByRole('article')).toHaveCount(1);
   await expect(page.getByRole('button', { name: '展开正文' })).toHaveCount(0);
   expect(await page.getByRole('article').locator('p').first().evaluate(element => element.getBoundingClientRect().height / parseFloat(getComputedStyle(element).lineHeight))).toBeGreaterThan(6);

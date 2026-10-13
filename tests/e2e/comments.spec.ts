@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 const firstId = '90071992547409931';
 
-test('列表评论数进入同一详情定位评论区；返回后查看详情明确从顶部进入', async ({ page }) => {
+test('列表评论数进入同一详情定位评论区；返回后阅读全文明确从顶部进入', async ({ page }) => {
   await page.goto('/');
   const first = page.getByRole('article').first();
   const entry = first.getByRole('button', { name: '评论 70', exact: true });
@@ -16,7 +16,7 @@ test('列表评论数进入同一详情定位评论区；返回后查看详情�
   await area.getByRole('button', { name: '加载更多评论' }).click();
   await page.getByRole('button', { name: '返回列表' }).click();
   await expect(page).toHaveURL(/\/$/);
-  await first.getByRole('button', { name: '查看详情' }).click();
+  await first.getByRole('link', { name: /^阅读全文 / }).click({ position: { x: 8, y: 8 } });
   await expect(rows).toHaveCount(20);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
 });
