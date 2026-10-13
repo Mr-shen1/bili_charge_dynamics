@@ -10,7 +10,7 @@
 
 ## 公开行为覆盖
 
-`backend/tests/test_dynamic_media.py` 共 36 项（含参数化）：
+`backend/tests/test_dynamic_media.py` 共 37 项（含参数化）：
 
 | 要求 | 公开验证 |
 | --- | --- |
@@ -20,7 +20,8 @@
 | 单图重试、不重宣称正文 | 关闭重开、正文上游不可用后 `POST /api/sync/media/123` 完成剩余图；`media_id` 可只重试一张，另一失败项不改变；成功项重复执行为零 |
 | 来源／整条正文版本切换 | 编辑时间变化替换标题、正文和媒体来源；同 URL 的新版本也重新上传；URL／正文变化但信号不变不触发更新；删除全部图片提交成功空并保留旧成功媒体 |
 | 旧版本迟到与失败保留 | 下载／上传分别暂停，与新版本正文成功／失败及新图成功／失败交错；旧提交不改新关联、不清新工作，失败保留旧成功公开 URL |
-| 同关联并发重试 | 新尝试令牌取代旧尝试；旧成功／失败迟到均不能覆写新结果，每次 PUT 的对象 key 不同，不会物理覆写已发布的新对象 |
+| 同关联并发重试 | 新尝试令牌取代旧尝试；旧成功／失败迟到均不能覆写新结果，直接比较两次 PUT key 不同及发布 URL 指向新对象，不会物理覆写已发布的新对象 |
+| 正文重试不覆盖媒体失败 | 初次正文／媒体均失败后，同版本正文重试成功；在媒体重新领取前经 HTTP 仍可见原图片失败和脱敏错误，不被正文提交改成 pending |
 | 进程退出恢复 | 在外部上传边界终止子进程，重新打开同一真实 SQLite 经 HTTP 可见 pending；独立入口重新领取并完成，无内部令牌泄漏 |
 | 网络不占长事务 | 下载／上传暂停时，另一个应用实例的归档 HTTP 读取和配置 PATCH 可完成；不检查线程数或毫秒阈值 |
 | 迁移与读取快照 | 固定已发布 v7 SQL 输入→v8，旧正文／来源保留且媒体 pending；旧 cursor 完整内容不改。当前媒体上传只影响 detail／新首批，不改旧 cursor，重开仍相同 |
@@ -39,11 +40,11 @@ RED→GREEN 纵向切片记录：新增工厂媒体装配参数前，首个协�
 
 ```sh
 uv run pytest backend/tests/test_dynamic_media.py -q
-# 36 passed
+# 37 passed
 uv run pytest backend/tests/test_dynamic_media.py backend/tests/test_scoped_archive.py backend/tests/test_root_comments.py -q
-# 92 passed
+# 93 passed
 uv run pytest backend/tests -q
-# 244 passed
+# 245 passed
 pnpm typecheck
 # passed
 pnpm test
@@ -58,7 +59,21 @@ git diff --check
 
 ## 双轴审查
 
-待本次 Standards／Spec 两个 review 子代理审查后补充结果。
+初审由两个 `review` 子代理并行执行，基线 `b830ce90901f909b27ddfd424594a9156fc3664d`，命令 `git diff b830ce90901f909b27ddfd424594a9156fc3664d...HEAD`，初审提交 `bd71f52`。两个轴不合并或跨轴重排；以下分别记录原发现及处理。
+
+### Standards
+
+硬违规 0；判断性发现 7：媒体聚合规则重复／散落；受信域重复；公开 URL 谓词命名不够精确；裸状态与布尔参数；边界广泛异常捕获；SDK 传输测试可能耦合；重复输入长度／pattern 校验。
+
+已统一 `refresh_media_progress` 的完成／失败聚合规则（新观察登记 pending 与网络开始 pending 仍有各自明确语义），迁移复用同一规则；提取受信图片域判断并将 URL 谓词改名为 `is_archive_delivery_url`，明确它不证明实际匿名可读。其余低影响判断项保留：字符串状态沿用仓库 DTO，不引入额外框架；两个实际调用场景需要自动来源版本过滤与单图选择；I/O 边界统一捕获并固定错误以避免秘密／traceback 外泄，存储异常仍在边界外；SDK `requests.Session.send` 是已确认的外部 HTTP seam，用于真实适配器的签名协议验证，不 mock 内部协调；长度与格式限制共同防御输入。未发现网络进入长事务、凭据泄漏或 SDK 正常生命周期违规。
+
+### Spec
+
+确证功能性违规 0、范围扩张 0；评论图 owner 明确保留给 #21，不计本票缺失。3 个边界／证据提醒：同版本正文重试可能抹掉媒体聚合 failed；两次 PUT key 不同缺直接断言；已淘汰内部尝试行无清理。
+
+已以失败测试修复第一项，保证同版本正文重试保留失败聚合状态直到媒体领取；新增外部 key 不同／新 URL 指向新对象的直接断言；来源切换在同一短事务中删除废弃关联令牌，保留当前 pending 的重开恢复语义。没有选择云对象自动回收策略，孤立对象风险继续明确保留。
+
+初审总结：Standards 0 硬违规／7 判断项（主要为聚合规则散落）；Spec 0 确证违规／3 提醒（主要为正文覆盖媒体失败聚合）。针对上述补强后的二次复核结果待补充。
 
 ## 未验证与风险
 

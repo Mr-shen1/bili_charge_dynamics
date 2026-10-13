@@ -41,10 +41,12 @@ class FakeOSS:
 
 
 @contextmanager
-def media_client(path, state, uploader=None, download_handler=None):
+def media_client(path, state, uploader=None, download_handler=None, source_handler=None):
     def upstream(request):
         if request.url.path == "/x/web-interface/card":
             return profile_response(request)
+        if source_handler is not None:
+            return source_handler(request)
         if request.url.host == "www.bilibili.com":
             html = state["html"]
             if isinstance(html, dict):
@@ -246,9 +248,11 @@ def test_late_retry_of_same_association_cannot_overwrite_new_attempt(tmp_path, o
     state = {"html": readable_html(pictures=[PICS[0]])}
     reached, release = Event(), Event()
     old_attempt = True
+    object_keys = []
 
     class InterleavedOSS:
         async def upload(self, key, content, content_type):
+            object_keys.append(key)
             if old_attempt:
                 reached.set()
                 await anyio.to_thread.run_sync(lambda: release.wait(10))
@@ -274,6 +278,9 @@ def test_late_retry_of_same_association_cannot_overwrite_new_attempt(tmp_path, o
             assert older.result().json() == {"processed": 1, "succeeded": 0, "failed": 1}
         assert newer_client.get(ARCHIVE).json() == saved
         assert saved["work"]["media"] == "success"
+        assert len(object_keys) == 2
+        assert object_keys[0] != object_keys[1]
+        assert saved["media"][0]["public_url"] == "https://archive.example.invalid/" + object_keys[1]
 
 
 @pytest.mark.parametrize("bad_url", [
@@ -406,6 +413,45 @@ def test_oss_configuration_errors_are_sanitized_at_startup(tmp_path, monkeypatch
         with TestClient(create_app(tmp_path / "media.sqlite")):
             pytest.fail("Invalid configuration must not start serving")
     assert "FICTIONAL_CONFIGURATION" not in str(failure.value) + caplog.text
+
+
+def test_same_version_body_retry_preserves_media_failure_until_media_attempt_begins(tmp_path):
+    reached, release = Event(), Event()
+    retrying_body = False
+    detail = detail_json()
+    detail["data"]["item"]["modules"]["module_dynamic"]["major"]["opus"]["pics"] = PICS
+
+    async def source(request):
+        if request.url.host == "www.bilibili.com":
+            return httpx.Response(200, text=readable_html(pictures=PICS) if retrying_body else author_html())
+        if request.url.path == "/x/polymer/web-dynamic/v1/detail":
+            return httpx.Response(200, json=detail)
+        if retrying_body:
+            reached.set()
+            await anyio.to_thread.run_sync(lambda: release.wait(10))
+        return httpx.Response(503)
+
+    class FailingOSS:
+        async def upload(self, key, content, content_type):
+            raise RuntimeError("FICTIONAL_MEDIA_FAILURE")
+
+    with media_client(tmp_path / "media.sqlite", {}, FailingOSS(), source_handler=source) as client:
+        prepare(client)
+        client.post(SYNC, json={"uid": UID})
+        failed = client.get(ARCHIVE).json()
+        assert failed["media_last_attempt"] == "failed"
+        retrying_body = True
+        with ThreadPoolExecutor() as pool:
+            syncing = pool.submit(client.post, SYNC, json={"uid": UID})
+            try:
+                assert reached.wait(5)
+                saved = client.get(ARCHIVE).json()
+                assert saved["work"]["text"] == "success"
+                assert saved["media_last_attempt"] == "failed"
+                assert saved["media"] == failed["media"]
+            finally:
+                release.set()
+            assert syncing.result().status_code == 200
 
 
 def test_individual_download_failures_can_be_retried_by_media_id(tmp_path):

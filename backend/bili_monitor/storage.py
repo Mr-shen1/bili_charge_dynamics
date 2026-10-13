@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from .contracts import APIError
-from .media import reconcile_media
+from .media import reconcile_media, refresh_media_progress
 
 
 SNAPSHOT_TTL_SECONDS = 15 * 60
@@ -136,9 +136,8 @@ class Store:
                     )""")
                     for row in connection.execute("SELECT id, document FROM archives").fetchall():
                         document = json.loads(row["document"])
-                        reconcile_media(document, document.get("media_sources", []), document.get("synced_version"))
-                        if document.get("content_state") != "success" and not document["media"]:
-                            document["work"]["media"] = document["media_last_attempt"] = "pending"
+                        reconcile_media(document, document.get("media_sources", []), document.get("synced_version"),
+                                        empty_confirmed=document.get("content_state") == "success")
                         connection.execute("UPDATE archives SET document = ? WHERE id = ?",
                                            (json.dumps(document, ensure_ascii=False), row["id"]))
                 connection.execute("PRAGMA user_version = 8")
@@ -361,6 +360,7 @@ class Store:
                 document.update(updates)
                 if "media_sources" in updates:
                     reconcile_media(document, updates["media_sources"], updates.get("observed_version"))
+                    self._prune_media_attempts(connection, id, document["media"])
                 if document["observed_version"] != document["synced_version"]:
                     document["work"]["text"] = "pending"
                 if document["observed_version"] != document["media_version"]:
@@ -387,6 +387,7 @@ class Store:
                     if document["work"]["text"] == "pending":
                         document.update(body)
                         reconcile_media(document, document["media_sources"], version)
+                        self._prune_media_attempts(connection, id, document["media"])
                         document["content_state"] = "success"
                         if version is not None:
                             document["synced_version"] = version
@@ -405,6 +406,12 @@ class Store:
             except BaseException:
                 connection.rollback()
                 raise
+
+    def _prune_media_attempts(self, connection, id, media):
+        # 来源切换后废弃旧令牌；当前组崩溃留下的令牌仍可由重试取代。
+        connection.execute("""DELETE FROM media_attempts WHERE dynamic_id = ?
+            AND media_id NOT IN (SELECT value FROM json_each(?))""",
+                           (id, json.dumps([item["id"] for item in media])))
 
     def claim_media(self, id, media_id):
         with self.connection() as connection:
@@ -442,15 +449,7 @@ class Store:
                     connection.commit()
                     return False
                 item.update(public_url=public_url, status="failed" if error else "success", error=error)
-                complete = all(item["status"] == "success" for item in document["media"])
-                document["work"]["media"] = (
-                    "success" if complete and document["observed_version"] == document["media_version"] else "pending"
-                )
-                document["media_last_attempt"] = (
-                    "success" if complete else "failed" if any(item["status"] == "failed" for item in document["media"]) else "pending"
-                )
-                if complete:
-                    document["synced_media_version"] = document["media_version"]
+                refresh_media_progress(document)
                 connection.execute("UPDATE archives SET document = ? WHERE id = ?",
                                    (json.dumps(document, ensure_ascii=False), id))
                 connection.commit()

@@ -14,18 +14,38 @@ class MediaUploader(Protocol):
     async def upload(self, key: str, content: bytes, content_type: str) -> str: ...
 
 
-def is_public_media_url(url):
+IMAGE_SOURCE_DOMAINS = ("hdslb.com", "biliimg.com")
+
+
+def is_image_source_host(host):
+    return any(host == domain or host.endswith("." + domain) for domain in IMAGE_SOURCE_DOMAINS)
+
+
+def is_archive_delivery_url(url):
+    """校验无签名归档交付地址，不保证真实对象已可匿名访问。"""
     if safe_url(url) is None:
         return False
     parsed = urlsplit(url)
     host = parsed.hostname or ""
-    return not (parsed.query or parsed.fragment or any(
-        host == domain or host.endswith("." + domain)
-        for domain in ("hdslb.com", "biliimg.com", "bilibili.com")
-    ))
+    return not (parsed.query or parsed.fragment or is_image_source_host(host)
+                or host == "bilibili.com" or host.endswith(".bilibili.com"))
 
 
-def reconcile_media(document, sources, version):
+def refresh_media_progress(document, *, empty_confirmed=True):
+    items = document["media"]
+    complete = (bool(items) or empty_confirmed) and all(item["status"] == "success" for item in items)
+    document["work"]["media"] = (
+        "success" if complete and document.get("observed_version") == document["media_version"] else "pending"
+    )
+    document["media_last_attempt"] = (
+        "success" if complete else "failed" if any(item["status"] == "failed" for item in items) else "pending"
+    )
+    document.setdefault("synced_media_version", None)
+    if complete:
+        document["synced_media_version"] = document["media_version"]
+
+
+def reconcile_media(document, sources, version, *, empty_confirmed=True):
     """只由实际提交正文/来源调用，不作为编辑检测器。"""
     previous = document.get("media", [])
     same_version = document.get("media_version") == version
@@ -45,14 +65,7 @@ def reconcile_media(document, sources, version):
     ids = {item["id"] for item in current + retained}
     retained.extend(item for item in previous if item["status"] == "success" and item["id"] not in ids)
     document.update(media=current, media_version=version)
-    complete = all(item["status"] == "success" for item in current)
-    document["work"]["media"] = (
-        "success" if complete and document.get("observed_version") == version else "pending"
-    )
-    document["media_last_attempt"] = "success" if complete else "pending"
-    document.setdefault("synced_media_version", None)
-    if complete:
-        document["synced_media_version"] = version
+    refresh_media_progress(document, empty_confirmed=empty_confirmed)
 
 
 class ImageDownloader:
@@ -65,8 +78,7 @@ class ImageDownloader:
         host = parsed.hostname or ""
         default_port = 443 if parsed.scheme == "https" else 80
         if (safe_url(url, allow_http=True) is None or parsed.port not in (None, default_port)
-                or not any(host.endswith("." + domain) or host == domain
-                           for domain in ("hdslb.com", "biliimg.com"))):
+                or not is_image_source_host(host)):
             raise ValueError("Unsupported media origin")
         response = await self.client.get(url)
         response.raise_for_status()
@@ -100,7 +112,7 @@ async def sync_media(store, downloader, uploader, id, current_only=False, media_
             content, content_type = await downloader.download(item["source_url"])
             error = "MEDIA_UPLOAD_FAILED"
             public_url = await uploader.upload(f"dynamics/{id}/{item['id']}/{token}", content, content_type)
-            if not is_public_media_url(public_url):
+            if not is_archive_delivery_url(public_url):
                 raise ValueError("Invalid public media URL")
             error = None
         except Exception:

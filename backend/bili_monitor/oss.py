@@ -7,7 +7,7 @@ from urllib.parse import quote, urlsplit
 import oss2
 from anyio import to_thread
 
-from .media import is_public_media_url
+from .media import is_archive_delivery_url
 from .source import safe_url
 
 
@@ -20,7 +20,7 @@ class OSSUploader:
                 or not (endpoint_url.hostname or "").endswith(".aliyuncs.com")
                 or not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,61}[a-z0-9]", bucket)
                 or not re.fullmatch(r"[a-z0-9-]+", region)
-                or not is_public_media_url(public_base_url)
+                or not is_archive_delivery_url(public_base_url)
                 or not access_key_id or not access_key_secret):
             raise ValueError("Invalid OSS configuration")
         auth = (oss2.StsAuth(access_key_id, access_key_secret, security_token, auth_version=oss2.AUTH_VERSION_4)
