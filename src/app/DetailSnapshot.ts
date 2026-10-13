@@ -5,6 +5,7 @@ import type { ReadingPosition } from './ListSnapshot';
 export interface DiscussionReadState<T> {
   readonly status: ReadResult<{ items: readonly T[]; nextCursor: string | null }>['status'] | 'loading';
   readonly data: { readonly items: readonly T[]; readonly nextCursor: string | null } | null;
+  readonly reason?: Extract<ReadResult<never>, { status: 'error' }>['reason'];
 }
 export interface ReplySnapshot {
   readonly read: DiscussionReadState<Reply>;
@@ -17,6 +18,10 @@ export interface CommentSnapshot {
   readonly expanded: Readonly<Record<string, boolean>>;
   readonly replies: Readonly<Record<string, ReplySnapshot>>;
 }
+export function emptyCommentSnapshot(sort: CommentSort = 'hot'): CommentSnapshot {
+  return { sort, read: { status: 'loading', data: null }, expanded: {}, replies: {} };
+}
+
 export interface DetailSnapshot {
   readonly dynamic: Dynamic | null;
   readonly comments: CommentSnapshot;

@@ -1,4 +1,4 @@
-import type { ArchiveMetadata, ArchiveWorkState, DetailResult, Dynamic, DynamicBatch, DynamicReader, ReadResult, User } from './contracts';
+import type { ArchiveMetadata, ArchiveWorkState, Comment, CommentBatch, DetailResult, Dynamic, DynamicBatch, DynamicReader, ReadResult, User } from './contracts';
 import { isValidId } from './identifiers';
 import { isRecord as record } from './guards';
 
@@ -59,9 +59,39 @@ function parseArchive(raw: unknown): Dynamic | null {
     publishedAt: time(raw.published_at), text: raw.text, commentCount: count(raw.source_comment_count), images: [],
     archive: { title: typeof raw.title === 'string' && raw.title.trim() ? raw.title : null,
       editedAt: time(raw.edited_at, true), editStatus: status, contentState: raw.content_state,
-      lastAttempt: raw.last_attempt, localCommentCount: Number(raw.local_comment_count), mediaSources,
+      lastAttempt: raw.last_attempt, localCommentCount: Number(raw.local_comment_count),
+      localReplyCount: count(raw.local_reply_count),
+      rootCommentsLastAttempt: raw.root_comments_last_attempt === 'pending' || raw.root_comments_last_attempt === 'success'
+        || raw.root_comments_last_attempt === 'failed' || raw.root_comments_last_attempt === 'unconfirmed' ? raw.root_comments_last_attempt : undefined,
+      mediaSources,
       commentLocator: raw.comment_locator, observedVersion: raw.observed_version, syncedVersion: raw.synced_version,
       work: { text: raw.work.text, media: raw.work.media, comments: raw.work.comments } },
+  };
+}
+
+function parseComment(raw: unknown, dynamicId: string): Comment | null {
+  if (!record(raw) || !isValidId(raw.id) || raw.dynamic_id !== dynamicId
+    || raw.root_id !== '0' || raw.parent_id !== '0' || !record(raw.author)
+    || !(raw.author.id === null || isValidId(raw.author.id))
+    || !version(raw.author.nickname) || !version(raw.author.avatar_url)
+    || !version(raw.text) || !version(raw.published_at)
+    || !(raw.like_count === null || count(raw.like_count) !== null)
+    || !(raw.source_reply_count === null || count(raw.source_reply_count) !== null)
+    || !(raw.comment_locator === null || record(raw.comment_locator)) || !Array.isArray(raw.media_sources)) return null;
+  for (const source of raw.media_sources) {
+    if (!record(source) || typeof source.url !== 'string'
+      || !(source.width === null || count(source.width) !== null)
+      || !(source.height === null || count(source.height) !== null)) return null;
+  }
+  return {
+    // 未知身份使用非合法来源 ID，永远不匹配合法动态作者 ID。
+    id: raw.id, author: { id: raw.author.id ?? '',
+      nickname: typeof raw.author.nickname === 'string' && raw.author.nickname.trim() ? raw.author.nickname : null,
+      avatarUrl: url(raw.author.avatar_url) },
+    publishedAt: time(raw.published_at), text: raw.text ?? '',
+    likeCount: count(raw.like_count), replyCount: count(raw.source_reply_count),
+    // #16 只保留待归档数，不暴露/请求来源 URL；图片读取由 #22 负责。
+    pendingMediaCount: raw.media_sources.length,
   };
 }
 
@@ -69,7 +99,7 @@ function parseArchive(raw: unknown): Dynamic | null {
 export function createArchiveReader(transport: ArchiveTransport = (url, init) => fetch(url, init)): DynamicReader {
   return {
     creator: { id: 'archive', nickname: '归档动态', avatarUrl: null },
-    discussions: 'not-archived',
+    replies: 'not-archived',
     async readUps({ signal }): Promise<ReadResult<readonly User[]>> {
       if (signal.aborted) return { status: 'cancelled' };
       try {
@@ -125,7 +155,29 @@ export function createArchiveReader(transport: ArchiveTransport = (url, init) =>
         return dynamic?.id === dynamicId ? { status: 'success', data: dynamic } : failed;
       } catch { return signal.aborted ? { status: 'cancelled' } : failed; }
     },
-    async readComments({ signal }) { return signal.aborted ? { status: 'cancelled' } : { status: 'error', reason: 'not-archived' }; },
+    async readComments({ dynamicId, sort, cursor, signal }): Promise<ReadResult<CommentBatch>> {
+      if (signal.aborted) return { status: 'cancelled' };
+      if (!isValidId(dynamicId) || !(sort === 'hot' || sort === 'latest')
+        || !(cursor == null || typeof cursor === 'string')) return failed;
+      const query = new URLSearchParams({ sort, limit: '20' });
+      if (cursor != null) query.set('cursor', cursor);
+      try {
+        const response = await transport(`/api/archive/dynamics/${dynamicId}/comments?${query}`, { method: 'GET', signal });
+        const body: unknown = await response.json();
+        if (signal.aborted) return { status: 'cancelled' };
+        if (response.status === 422 && record(body) && record(body.error) && body.error.code === 'CURSOR_INVALID')
+          return { status: 'error', reason: 'invalid-cursor' };
+        if (response.status !== 200 || !record(body) || !Array.isArray(body.items)
+          || body.items.length > 20 || !(body.next_cursor === null || typeof body.next_cursor === 'string')) return failed;
+        const items: Comment[] = [];
+        for (const raw of body.items) {
+          const item = parseComment(raw, dynamicId);
+          if (!item || items.some(existing => existing.id === item.id)) return failed;
+          items.push(item);
+        }
+        return { status: 'success', data: { items, nextCursor: body.next_cursor } };
+      } catch { return signal.aborted ? { status: 'cancelled' } : failed; }
+    },
     async readReplies({ signal }) { return signal.aborted ? { status: 'cancelled' } : { status: 'error', reason: 'not-archived' }; },
   };
 }

@@ -50,6 +50,7 @@ export function DynamicContent({ dynamic, folding, navigateToComments }: {
       {archive.contentState === 'success' && archive.lastAttempt === 'restricted' && <p role="status">最近正文访问受限；{retainedMessage}</p>}
       {!!archive.mediaSources.length && <p role="status">图片待归档（{archive.mediaSources.length} 张）。</p>}
       <p className={styles.count}>本地已归档一级评论：{archive.localCommentCount}</p>
+      <p className={styles.count}>本地已归档回复：{archive.localReplyCount ?? '—'}</p>
       <p className={styles.count}>正文{workLabel(archive.work.text, '已保存', '待同步')}；媒体{workLabel(archive.work.media, '已归档', '待归档')}；评论{workLabel(archive.work.comments, '已归档', '待归档')}。</p>
     </>}
     {text && (folding ? <FoldableText text={text} expanded={folding.expanded} toggle={folding.toggle} />

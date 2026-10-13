@@ -30,6 +30,13 @@ export async function installNavigationHttp(page: Page) {
       await route.fulfill({ json: { ups } });
       return;
     }
+    if (url.pathname.endsWith('/comments')) {
+      const parentId = url.pathname.split('/').at(-2);
+      await route.fulfill(dynamics.some(item => item.id === parentId)
+        ? { json: { items: [], next_cursor: null } }
+        : { status: 404, json: { error: { code: 'NOT_FOUND' } } });
+      return;
+    }
     if (url.pathname.startsWith('/api/archive/dynamics/')) {
       const item = dynamics.find(item => item.id === url.pathname.split('/').at(-1));
       await route.fulfill(item ? { json: item } : { status: 404, json: { error: { code: 'NOT_FOUND' } } });

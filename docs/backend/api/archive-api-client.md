@@ -1,6 +1,6 @@
-# 前端归档读取与指定目标（02 / 13）
+# 前端归档读取与指定目标（02 / 13 / 16）
 
-下列 02 记录保持原交付边界；13 增量契约及证据独立列在文末。前端 T1 不能替代后端 SQLite、上游协议、部署或真机验收。
+下列 02 记录保持原交付边界；13、16 增量契约及证据独立列在文末。生产根评论能力以 16 增量为准，02 的全局讨论未归档描述仅为历史交付记录。前端 T1 不能替代后端 SQLite、上游协议、部署或真机验收。
 
 ## 装配与边界
 
@@ -101,3 +101,45 @@
 - 这是最小可用路由，不交付 #14 的选择条、卡片重排或完整跨 scope 历史恢复；不触上游、初始化、评论或媒体采集。
 
 13 的 T1/T2、真实 API→页面浏览器测试和可复现命令见 [13 验收记录](../../../.scratch/backend-integration/acceptance-13.md)；它们不代表部署、真实上游或真机通过。
+
+## 16 增量：生产根评论 Adapter
+
+### HTTP 与能力
+
+- `readComments({dynamicId,sort,cursor,signal})` 只发 `GET /api/archive/dynamics/{id}/comments?sort=hot|latest&limit=20`；续页追加原样编码的 `cursor`。ID 保持字符串，不转 Number；非法父 ID、排序或 cursor 类型在传输前拒绝。
+- `{items,next_cursor}` 映射为 `CommentBatch`，保持服务端给定顺序与边界，不在 Adapter 重排、预加载或自动拼接。45 条按服务端 20/20/5 读取；`nextCursor:null` 是结束，由调用方停止追加。评论快照不沿用动态列表的 15 分钟 TTL，完整契约见 [archive-api.md](archive-api.md#读取排序与-cursor-恢复)。
+- 生产 Reader 不再设置全局 `discussions:'not-archived'`，根评论可读；独立设置 `replies:'not-archived'`。正常 `readReplies` 返回安全 `not-archived`，取消返回 `cancelled`，始终不发 HTTP。本增量不实现 #18 回复读取或 #22 评论图片读取。
+- 只识别 HTTP `422` 与 `error.code:'CURSOR_INVALID'` 的组合为 `{status:'error',reason:'invalid-cursor'}`，不返回服务端 message。需由用户显式无 cursor 重读首批，不能自动续接新快照。其他 HTTP（含 404、503）、坏 JSON、DTO 或传输异常返回安全 `error`；普通失败可按原 cursor 重试，Adapter 不推进、缓存或替换标记。
+- 已取消请求不发 HTTP；传输忽略取消后返回成功、错误、坏 JSON 或抛异常，仍优先返回 `cancelled`。访问与排序的迟到请求隔离仍是页面读取协调职责。
+
+### DTO、安全与状态
+
+- 一批最多 20 条，重复 ID、错误 cursor 类型、非法评论 ID、串动态的 `dynamic_id`、非根的 `root_id/parent_id`（必须为字符串 `"0"`）以及必需展示字段缺失/类型错误均整批拒绝，不部分成功或静默跳过。
+- `author.id` 允许合法十进制字符串或 `null`。现有展示 `User.id` 仍为字符串，未知作者映射为 `''`（非合法来源 ID），绝不借用动态作者或全局 creator；只能以已知 ID 与当前动态作者比较 UP 标识，不按昵称比较。
+- 可空 nickname/avatar/text/published_at 必须是字符串或 `null`；空白昵称映射 null。`text:null` 映射展示空字符串，真实空字符串保持为空，不补来源内容。HTML、emoji、换行与 URL 保持普通文本，不执行、不自动链接。
+- `published_at` 为明确 `+08:00` 秒精度时间或 null；非法日历字符串安全映射 null，不拿其他时间补值。`like_count/source_reply_count` 必须为非负安全整数或 null，分别映射 `likeCount/replyCount`；未知不伪造零，不以本地回复数替代来源回复数。
+- 头像只接受无用户名/密码的绝对 HTTPS URL；HTTP、javascript、data、协议相对地址及带凭据 URL 均映射 null。来源媒体仅检查 DTO 结构并映射 `pendingMediaCount`，不把来源 URL 暴露为图片、链接或预览，不发来源业务图片 HTTP；纯图评论文本仍为空，由 UI 显示图片待归档而非虚构无内容。`comment_locator` 为对象或 null，不用于本票回复请求。
+- Archive 新增映射 `localReplyCount` 与 `rootCommentsLastAttempt`，保留 `localCommentCount`、来源 `commentCount` 及 `work.comments` 各自语义。旧冻结动态页可能没有新字段，未知回复数保持 null，未知根尝试状态不猜测。
+- 评论 HTTP 成功批次没有归档状态字段：`200 {items:[],next_cursor:null}` 在 Adapter 是成功空读取，不证明完成采集。页面须结合详情根分项状态区分尚未归档与确认成功空，不以来源计数、本地零数或正文受限推断评论权限。正文 `contentState:'restricted'` 不阻断实际可读本地根评论；已有评论也不因最近根采集失败被抹掉。回复 `not-archived` 与正文 `restricted` 是不同能力/内容状态。
+
+### Adapter seam 的 RED → GREEN
+
+本子任务只改生产 Adapter、其传输契约测试及本文。HTTP 替身仅替换传输，不绕过生产 DTO 映射。命令先运行 `source ~/.nvm/nvm.sh && nvm use`；默认测试命令为 `pnpm test tests/archive-reader.test.ts`。
+
+| 片段 | RED | GREEN |
+| --- | --- | --- |
+| 01 根评论能力与成功空 HTTP | 1 失败 / 7 通过 | 8/8 |
+| 02 根评论 DTO 映射 | 1 失败 / 8 通过 | 9/9 |
+| 03 nullable 作者/文本/时间/计数 | 1 失败 / 9 通过 | 10/10 |
+| 04 hot/latest、20/20/5 与 cursor 编码 | 1 失败 / 10 通过 | 11/11 |
+| 05 CURSOR_INVALID 状态匹配 | 1 失败 / 11 通过 | 12/12 |
+| 06 必需展示字段严格 DTO | 1 失败 / 12 通过 | 13/13 |
+| 07 传输前校验输入 | 1 失败 / 13 通过 | 14/14 |
+| 08 独立 replies 能力 | 1 失败 / 13 通过 | 14/14 |
+| 09 正文受限与根分项/本地数分离 | 1 失败 / 14 通过 | 15/15 |
+| 10 纯图待归档数、安全 URL | 新片段 `-t '纯图根评论'` 1 失败 / 15 跳过 | 完整文件 16/16 |
+| 11 媒体/locator DTO 结构 | 1 失败 / 15 通过 | 16/16 |
+
+另外追加两项既有行为回归（普通失败同 cursor 重试、取消优先），直接通过，未虚报新增 RED。最终 `pnpm test tests/archive-reader.test.ts` **18/18 通过**，`pnpm typecheck` 通过；过程日志为 `/tmp/16-adapter-01-red.log` 至 `/tmp/16-adapter-11-green.log`，最终日志为 `/tmp/16-adapter-final-unit.log`、`/tmp/16-adapter-typecheck.log`。
+
+上述仅为 Adapter 单元证据，不声称 RTL、浏览器、实际 SQLite/HTTP→详情、部署、真实上游或真机已经通过；这些由 #16 主票独立验收记录追踪。

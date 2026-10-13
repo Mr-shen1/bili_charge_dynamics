@@ -55,6 +55,7 @@ describe('全部与单 UP 最小路由', () => {
       author: { id: '456', nickname: two.nickname, avatar_url: null }, text: `作者二归档 ${index + 1}` }));
     const reader = createArchiveReader(async url => {
       if (url.endsWith('/ups')) return Response.json({ ups: [one, two].map(user => ({ id: user.id, nickname: user.nickname, avatar_url: null })) });
+      if (url.includes('/comments?')) return Response.json({ items: [], next_cursor: null });
       if (!url.includes('?')) return Response.json(second[19]);
       requests.push(url);
       const params = new URL(url, 'http://local').searchParams;
