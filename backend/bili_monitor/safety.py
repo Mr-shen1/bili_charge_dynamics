@@ -15,6 +15,12 @@ def configure_safe_logging():
     # logging 父 logger 的 filter 不作用于子 logger，因此挂到具体日志源。
     names = {
         "httpx",
+        "oss2",
+        "oss2.api",
+        "oss2.auth",
+        "oss2.http",
+        "urllib3.connectionpool",
+        "requests",
         "uvicorn.access",
         "httpcore.connection",
         "httpcore.connection_pool",
@@ -26,7 +32,7 @@ def configure_safe_logging():
     names.update(
         name
         for name in logging.Logger.manager.loggerDict
-        if name.startswith("httpcore.")
+        if name.startswith(("httpcore.", "oss2.", "urllib3.", "requests."))
     )
     for name in names:
         logger = logging.getLogger(name)

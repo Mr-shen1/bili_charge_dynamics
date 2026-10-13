@@ -6,7 +6,7 @@
 
 **Blocked by:** [02](02-target-initial-archive.md)（用户确认已完成）
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 ## 依据与交付边界
 
@@ -29,3 +29,13 @@
 T3 用协议 fixtures、可阻塞/失败下载和模拟 OSS 覆盖单图失败、旧/新版本交错及重复处理；T2 验证公开状态、顺序、重开和并行读写。图片变体、压缩、CDN、物理去重和付费策略仍未决，不由本票静默选择；实际云上传证据归 #34。
 
 ## Comments
+
+已实现动态图 HTML/JSON 协议 → 服务端下载／模拟 OSS → v8 真实 SQLite → 归档 HTTP，保存全部图片的 owner、顺序、尺寸、来源、公开 URL、独立状态及脱敏错误。新增 `POST /api/sync/media/{id}` 和可选 `media_id` 单图重试，不重读／重宣称正文。实际版本切换更新标题／全文与来源组，旧成功保存在 `previous_media`；关联 ID 与持久尝试令牌 fencing 旧完成，每次尝试独立对象 key，避免旧 PUT 物理覆盖新对象。没有以图片差异检测编辑或选择物理去重。
+
+已接入固定 `oss2==2.19.1` 的真实 V4 上传能力（含可选 STS），服务端环境配置在仓库外；生产上传不创建资源／开放 ACL。自动化拦截 SDK 外部 HTTP，仅使用虚构凭据，未访问真实云。慢下载／上传期间真实 SQLite 归档读取和配置写入可完成；上传边界子进程退出后可重开恢复。
+
+验证：媒体专项 `uv run pytest backend/tests/test_dynamic_media.py -q` 37 通过；媒体／scope／根评论定向 93 通过；全后端 245 通过；`pnpm typecheck`、`pnpm test`（198 通过）、`pnpm build`、`git diff --check` 通过。契约见 [归档 API](../../../docs/backend/api/archive-api.md#19-动态媒体归档独立重试与公开-url)，配置见 [后端 README](../../../backend/README.md#19-oss-服务端配置)，详细覆盖、TDD、审查及未验证项见 [acceptance-19.md](../acceptance-19.md)。
+
+真实云上传／公开读取与持续运行证据归 #34；本票未验证 Playwright／正式真机，不交付 #20 页面或 Adapter 图片映射、#21 评论媒体、#24 周期编辑。公开图外链与 API 无鉴权风险不变；孤立对象及历史关联尚无容量／回收策略。核验清单留待人工按证据确认，不自动勾选父票 AC。
+
+双轴初审未发现硬规范／确证功能违规；已处理聚合状态散落与同版本正文覆盖媒体 failed 的提醒（公开失败测试推动修复），提取受信域、澄清 URL 校验命名、补充并发 PUT key 不同的直接断言，并在来源切换时清理废弃尝试令牌。审查分轴记录与保留判断见验收证据；补强后全量回归再次通过。二次复核：规范轴 0 硬问题，主要重复／命名问题已解决，其余低影响判断已说明；规格轴 0 新增确证问题，3 个初审提醒均已关闭。

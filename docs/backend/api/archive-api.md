@@ -1,6 +1,6 @@
-# 指定目标、首次归档与归档读取接口（02 / 13 / 15 / 17 后端）
+# 指定目标、首次归档与归档读取接口（02 / 13 / 15 / 17 / 19 后端）
 
-02 交付指定目标的首次正文归档和基础读取；13 后端扩展全部／单 UP 读取与持久身份列表；15 增加已有根评论首次归档及最热／最新读取，17 补齐楼中楼来源分页与持久读取。不包含近期目标选择、周期检查或媒体上传，前端 Adapter／最小路由契约见 [archive-api-client.md](archive-api-client.md)，具体自动化证据见 [13 验收记录](../../../.scratch/backend-integration/acceptance-13.md)。管理身份及配置契约见 [management-api.md](management-api.md)，来源证据及限制见 [backend-feasibility.md](../evidence/backend-feasibility.md)。
+02 交付指定目标的首次正文归档和基础读取；13 后端扩展全部／单 UP 读取与持久身份列表；15 增加已有根评论首次归档及最热／最新读取，17 补齐楼中楼来源分页与持久读取。19 增加动态图下载、OSS 上传与独立重试；不包含近期目标选择、周期检查或评论图上传，前端 Adapter／最小路由契约见 [archive-api-client.md](archive-api-client.md)，具体自动化证据见 [13 验收记录](../../../.scratch/backend-integration/acceptance-13.md)。管理身份及配置契约见 [management-api.md](management-api.md)，来源证据及限制见 [backend-feasibility.md](../evidence/backend-feasibility.md)。
 
 ## 公开边界
 
@@ -9,7 +9,8 @@
 | `GET /api/manage/ups/{uid}/targets` | 无 | `{targets: [{id: string}]}` |
 | `POST /api/manage/ups/{uid}/targets` | `{id: string}` | `{id: string}`，仅在来源作者确认匹配后关联 |
 | `DELETE /api/manage/ups/{uid}/targets/{id}` | 无 | `204`，只解除关联，不删除归档 |
-| `POST /api/sync/initial` | `{uid: string}` | `{processed, succeeded, failed}`，各值为实际处理数 |
+| `POST /api/sync/initial` | `{uid: string}` | `{processed, succeeded, failed}`，仅正文统计；媒体独立保存 |
+| `POST /api/sync/media/{id}` | 可选 `media_id` 查询参数 | `{processed, succeeded, failed}`，仅媒体尝试统计，不重读正文 |
 | `GET /api/archive/ups` | 无 | `{ups: [{id: string, nickname: string \| null, avatar_url: string \| null}]}` |
 | `GET /api/archive/dynamics` | `scope=all\|up`、条件必需的 `uid`、`limit`、可选 `cursor` | `{items: Archive[], next_cursor: string \| null}` |
 | `GET /api/archive/dynamics/{id}` | 无 | `Archive`；本地不存在时 `404` |
@@ -58,8 +59,8 @@ curl --fail-with-body -X POST http://127.0.0.1:8000/api/sync/initial \
 - `edited_at` 仅来自页面 HTML 的 `__INITIAL_STATE__.detail.modules`，按 `MODULE_TYPE_AUTHOR` 读取“编辑于”日期时间。保存来源时区和分钟精度；没有标记不是“确认未编辑”。`edit_status` 为 `observed`、`unknown` 或 `error`，未知/失败不清除旧可信值。
 - `title` 是可空独立标题；`text`、`content_state` 表达成功正文（包括成功空）、受限或失败；`last_attempt` 独立描述最近尝试。失败不覆盖旧成功正文。OPUS 的通用 detail `summary` 不是全文证据；全文来自页面 CONTENT 的有序段落，未取得全文不以摘要冒充成功归档。
 - `source_comment_count` 为动态来源总数（含根评论和回复，可未知），`local_comment_count` 为本地已归档根评论数，15 新增 `local_reply_count`（15 阶段为 0；17 起为真实本地回复数）。三者不互相替代；错误不覆盖旧可信值。
-- `media_sources` 保存顺序、来源 URL 和可用尺寸；`comment_locator` 保存后续评论定位信息。本票不上传媒体，浏览器不把来源业务图当作已归档图片。
-- `observed_version` 与 `synced_version` 分开，`work.text` 仅在对应版本成功时推进。15 的 `work.comments` 仅表示根评论分项，17 的 `work.replies` 表示该轮必要回复分项；`work.media` 仍独立待处理。观察成功、正文成功或根评论成功不代表全部归档完成。
+- `media_sources` 保存顺序、来源 URL 和可用尺寸；`comment_locator` 保存后续评论定位信息。19 新增 `media`、`previous_media`、独立媒体状态和公开 URL（见下节）；来源业务图不是已归档图片，不作为浏览器回退。
+- `observed_version` 与 `synced_version` 分开，`work.text` 仅在对应版本成功时推进。15 的 `work.comments` 仅表示根评论分项，17 的 `work.replies` 表示该轮必要回复分项；`work.media` 独立表达当前媒体版本是否完成。观察成功、正文成功或根评论成功不代表全部归档完成。
 
 ## 15 根评论契约
 
@@ -128,6 +129,36 @@ Archive 新增：
 v6→v7 新增回复、逐根状态与回复分页表，旧根记录及有效根／动态 cursor 内容不改写；旧 Archive 补齐 pending 和 null 状态，不能从旧根成功推断整轮成功。生产 Adapter 现支持 readReplies 并保留可选计数／状态，页面展开／收起及历史恢复由 #18。
 
 自动化证据见 [17 验收记录](../../../.scratch/backend-integration/acceptance-17.md)，固定资料见 [来源协议证据](../evidence/source-protocol-evidence.md#17-楼中楼协议)。
+
+## 19 动态媒体归档、独立重试与公开 URL
+
+### 执行与 HTTP 状态
+
+initial 仍只统计正文，媒体下载/上传不使正文成功倒退；可读根回复先独立提交，不等待媒体上传。未配置 OSS 时不发上传请求，图片保持 pending；成功解析的无图正文可确认媒体成功空，正文失败且未取得来源不冒充成功空。首次正文不可用但 detail 已取得可信图片来源时，也可独立归档这些图片。
+
+`POST /api/sync/media/{id}` 仅读取本地当前媒体关联并尝试未成功项，不读取上游正文、评论或编辑信号，也不重宣称正文成功。可指定 `?media_id=<关联 ID>` 只重试一张图；不指定则顺序处理全部未完成项。未知本地动态／当前关联返回 `404 NOT_FOUND`；非法关联 ID（必须 32 位小写十六进制字符串）、未知／重复 query 返回 `422 INVALID_INPUT`。成功项不重新上传，未配置 OSS 或无待处理项返回零。此显式运维入口允许恢复保留归档，不依赖监控配置仍存在；不是页面读取／刷新入口或自动调度器。
+
+重试统计只计实际领取的媒体：`processed` 为尝试数，`succeeded` 为本次上传并被当前关联接受的完成数，`failed` 包括 I/O 失败和因较新版本／尝试取代而被拒绝的旧提交。归档 GET 成功可携带 pending/failed 图片；HTTP 200 不代表全部同步成功。
+
+### Archive 增量 DTO
+
+- `media`：当前来源组的全部有序关联，不以九格截断。每项含 `id`（不透明字符串）、`owner:{type:"dynamic",id:动态ID}`、从 0 开始的 `position`、`source_url`、可空 `width/height`、可空 `version`、`status:pending|success|failed`、`public_url:string|null`、`error:string|null`。
+- `public_url` 仅在已接受的上传成功后保存；失败／未上传为 null。浏览器直接使用该完整 HTTPS URL，不拼桶／域名、不由 API 代理、不签名续期；来源 URL 只为归档元信息，不用于生产业务图回退。错误只保存固定 `MEDIA_DOWNLOAD_FAILED` 或 `MEDIA_UPLOAD_FAILED`，不保存异常、上游响应或凭据。内部尝试令牌不出现在 HTTP。
+- `previous_media`：被新来源组替换的**旧成功**关联，保留原 owner、顺序、版本及公开 URL，和当前组明确分开；不会把旧 URL 冒充新来源的上传成功。没有自动删除／回收，不承诺容量或费用治理。
+- `media_version`：当前媒体来源组实际处理版本；`synced_media_version`：最近整个来源组成功归档的实际版本，失败保留旧值。null 表示无可信编辑版本，不等于上传未完成，须结合状态判断。
+- `media_last_attempt:pending|success|failed` 描述当前来源组尝试；`work.media=success` 仅在当前组全成功（含确认空）且实际版本匹配可信 `observed_version` 时成立，否则 pending。旧组成功可提交其实际 checkpoint，但不能清除新观察工作。
+
+### 来源切换、提交与恢复
+
+仅沿用可信编辑时间变化或正文待重试工作来更新整条正文和媒体来源，不以 URL／图片／字节差异检测编辑；无新信号且正文已成功时忽略新正文／来源差异，只重试已有媒体。实际提交正文后切换当前媒体组；正文失败保留旧成功正文与来源组。初次 detail 来源可在正文失败时独立登记，checkpoint 只绑定实际取得的版本。
+
+新版本即使来源 URL 相同也建立新关联并重新上传，不假设同 URL 字节不可变、不选物理去重。相同版本、相同位置和来源的重复提交复用关联，成功项不重传；单图领取使用 SQLite 持久尝试令牌，提交同时校验当前关联 ID 和令牌。旧版本迟到成功／失败均不能改写新关联或清除新工作；同关联的新重试也会 fencing 旧尝试。每个尝试使用不同对象 key，旧 PUT 不能覆盖已发布的新对象。来源切换时删除旧关联的内部尝试令牌，同版本正文重试保留已有图片失败状态直到媒体重新领取。被取代／进程退出可能留下无关联对象；未选择对象回收策略，也不保证外部 I/O 恰好一次。
+
+媒体逐张短事务领取／提交，下载与 SDK 上传在事务外；关闭重开或进程退出留下的 pending 可由显式媒体入口重新领取。initial 不再自动处理实际版本落后于新观察的旧组；显式重试可完成旧组，但新版本工作仍 pending。下载限制为受信 B站图片域 `hdslb.com`／`biliimg.com`、HTTP(S) 默认端口，无跳转／环境代理，响应须是非空 `image/*`；原字节上传，不压缩、不创建尺寸变体。
+
+v7→v8 增加内部媒体尝试表并将旧来源初始化为未上传关联，旧正文、评论／回复及来源不删；不会由旧文本成功推断图片上传成功。有效的动态／评论／回复 cursor 内容不重写：旧动态 cursor 可能没有新字段，新首批和 detail 读取当前媒体状态。媒体更新不改变已冻结页的完整内容、顺序、scope／批量或 15 分钟 TTL。
+
+真实接入采用固定版本 `oss2==2.19.1` 和 V4 签名，服务端环境、公开读前提及安全风险见 [后端 README](../../../backend/README.md#19-oss-服务端配置)。可控 HTTP 下载、模拟 OSS、真实 SDK 签名 PUT、失败／交错／重开和网络暂停读写证据见 [19 验收记录](../../../.scratch/backend-integration/acceptance-19.md)；真实云对象可用性归 #34，页面网格／预览与生产 Adapter 图片映射归 #20，评论 owner 扩展归 #21。
 
 ## 安全及证据
 

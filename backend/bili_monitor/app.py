@@ -17,6 +17,8 @@ from .safety import configure_safe_logging
 from .storage import Store
 from .source import verify_author
 from .sync import initialize
+from .media import ImageDownloader, MediaUploader, sync_media
+from .oss import OSSUploader
 
 
 async def run_store(function, *args):
@@ -32,6 +34,8 @@ def validate_query(request, allowed=()):
 def create_app(
     database_path: str | os.PathLike[str],
     profile_transport: httpx.AsyncBaseTransport | None = None,
+    media_transport: httpx.AsyncBaseTransport | None = None,
+    media_uploader: MediaUploader | None = None,
 ) -> FastAPI:
     """启动 lifespan 时迁移指定文件数据库；transport 只替换外部 HTTP。"""
     configure_safe_logging()
@@ -44,11 +48,20 @@ def create_app(
         except (sqlite3.Error, OSError):
             raise RuntimeError("Database initialization failed") from None
         try:
+            uploader = media_uploader if media_uploader is not None else OSSUploader.from_environment()
             async with httpx.AsyncClient(
                 transport=profile_transport, timeout=10, trust_env=False
-            ) as profiles:
+            ) as profiles, httpx.AsyncClient(
+                transport=media_transport, timeout=30, trust_env=False
+            ) as media_client:
                 application.state.profiles = profiles
-                yield
+                application.state.downloader = ImageDownloader(media_client)
+                application.state.media_uploader = uploader
+                try:
+                    yield
+                finally:
+                    if media_uploader is None and uploader is not None:
+                        await to_thread.run_sync(uploader.close)
         except Exception:
             raise RuntimeError("Application lifecycle failed") from None
 
@@ -133,7 +146,16 @@ def create_app(
 
     @application.post("/api/sync/initial")
     async def initial_sync(body: AddUP):
-        return await initialize(store, application.state.profiles, body.uid)
+        return await initialize(store, application.state.profiles, body.uid,
+                                application.state.downloader, application.state.media_uploader)
+
+    @application.post("/api/sync/media/{id}")
+    async def retry_media(
+        id: UID, request: Request,
+        media_id: Annotated[str | None, Query(pattern=r"^[a-f0-9]{32}$", min_length=32, max_length=32)] = None,
+    ):
+        validate_query(request, ("media_id",))
+        return await sync_media(store, application.state.downloader, application.state.media_uploader, id, media_id=media_id)
 
     @application.get("/api/archive/ups")
     async def archive_ups(request: Request):
