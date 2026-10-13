@@ -15,7 +15,7 @@
 - `PATCH /api/manage/ups/{uid}/monitor`，完整配置 `{"mode":"recent","recent_n":10,"enabled":true}` → `200 UP`。mode 仅 `recent` / `specified`；recent_n 为正的 JSON 安全整数（最大 9007199254740991，跨语言精度边界，不是 100 目标产品限额）；enabled 严格布尔。禁止额外字段。没有监控配置时 `404 NOT_FOUND`。
 - `DELETE /api/manage/ups/{uid}/monitor` → `204`，仅删除配置。对已有身份但已删除的配置幂等；未知身份 `404 NOT_FOUND`。
 
-UP 结构：`{"uid":"123","name":"示例","avatar_url":"https://example.invalid/avatar.png","monitor":{"mode":"recent","recent_n":10,"enabled":true,"last_checked_at":null,"last_succeeded_at":null}}`。删除后 monitor 为 null。身份的 name/avatar_url 可空，以兼容旧资料；前端昵称空时显示“未知用户”，头像空或加载失败时使用 `/default-avatar.svg`。当前检查时间始终 null，不把配置保存时间当成检查时间。默认 recent、10、enabled=true，无 UP 数量限额。
+UP 结构：`{"uid":"123","name":"示例","avatar_url":"https://example.invalid/avatar.png","monitor":{"mode":"recent","recent_n":10,"enabled":true,"last_checked_at":null,"last_succeeded_at":null}}`。删除后 monitor 为 null。身份的 name/avatar_url 可空，以兼容旧资料；前端昵称空时显示“未知用户”，头像空或加载失败时使用 `/default-avatar.svg`。01 阶段检查时间始终 null；23 后由持久目标检查/实际成功时间的最大值提供，未检查/未成功仍为 null，不把配置保存时间当成检查时间，详见 [采集与状态契约](collector-api.md)。默认 recent、10、enabled=true，无 UP 数量限额。
 
 错误统一为 `{"error":{"code":"INVALID_INPUT","message":"固定安全提示"}}`。校验 `422 INVALID_INPUT`，上游网络异常、拒绝、身份不符或资料不足 `502 PROFILE_UNAVAILABLE`，存储失败 `503 STORAGE_UNAVAILABLE`，非预期异常 `500 INTERNAL_ERROR`。响应及日志不回显请求体、上游原文、URL 查询参数或异常文本；前端只以固定错误码映射提示，不显示来自 HTTP 的任意错误文字。失败不产生身份或配置、不覆盖已有成功资料。
 

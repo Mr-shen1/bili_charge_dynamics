@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from .contracts import APIError
+from .checks import CheckStore
 from .media import reconcile_media, refresh_media_progress
 
 
@@ -57,7 +58,7 @@ def _freeze_pages(documents, limit):
     return results[0], list(zip(tokens[1:], results[1:]))
 
 
-class Store:
+class Store(CheckStore):
     def __init__(self, path):
         self.path = str(path)
 
@@ -77,7 +78,7 @@ class Store:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 version = connection.execute("PRAGMA user_version").fetchone()[0]
-                if version > 9:
+                if version > 10:
                     raise RuntimeError("Unsupported database schema version")
                 if version == 0:
                     connection.execute("""CREATE TABLE identities (
@@ -175,7 +176,18 @@ class Store:
                                               archive.get("source_comment_count"))
                         connection.execute("UPDATE root_comments SET document = ? WHERE dynamic_id = ? AND id = ?",
                                            (json.dumps(document, ensure_ascii=False), row["dynamic_id"], row["id"]))
-                connection.execute("PRAGMA user_version = 9")
+                if version < 10:
+                    connection.execute("""CREATE TABLE target_checks (
+                        uid TEXT NOT NULL REFERENCES identities(uid), id TEXT NOT NULL,
+                        last_checked_at TEXT, last_succeeded_at TEXT,
+                        check_status TEXT NOT NULL CHECK(check_status IN ('checked', 'unchanged', 'failed')),
+                        observed TEXT NOT NULL, revision INTEGER NOT NULL,
+                        work TEXT NOT NULL CHECK(work IN ('pending', 'running', 'complete')),
+                        check_error TEXT CHECK(check_error IN ('SOURCE_UNAVAILABLE', 'SIGNAL_INVALID')),
+                        sync_error TEXT CHECK(sync_error IN ('SOURCE_UNAVAILABLE', 'SIGNAL_INVALID', 'SYNC_INCOMPLETE')),
+                        PRIMARY KEY(uid, id)
+                    )""")
+                connection.execute("PRAGMA user_version = 10")
                 connection.commit()
             except BaseException:
                 connection.rollback()
@@ -185,7 +197,9 @@ class Store:
         with self.connection() as connection:
             rows = connection.execute(
                 """SELECT i.uid, i.name, i.avatar_url,
-                m.uid AS monitor_uid, m.mode, m.recent_n, m.enabled
+                m.uid AS monitor_uid, m.mode, m.recent_n, m.enabled,
+                (SELECT MAX(c.last_checked_at) FROM target_checks c WHERE c.uid = i.uid) AS last_checked_at,
+                (SELECT MAX(c.last_succeeded_at) FROM target_checks c WHERE c.uid = i.uid) AS last_succeeded_at
                 FROM identities i LEFT JOIN monitors m ON m.uid = i.uid
             """
                 + (
@@ -206,8 +220,8 @@ class Store:
                     "mode": row["mode"],
                     "recent_n": row["recent_n"],
                     "enabled": bool(row["enabled"]),
-                    "last_checked_at": None,
-                    "last_succeeded_at": None,
+                    "last_checked_at": row["last_checked_at"],
+                    "last_succeeded_at": row["last_succeeded_at"],
                 },
             )
             for row in rows
