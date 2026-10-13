@@ -54,7 +54,7 @@ test('列表与详情基础预览只新增同 URL 一条历史，切图不堆栈
   await page.mouse.wheel(0, 300);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(originalY);
 
-  await card.getByRole('button', { name: '查看详情' }).click();
+  await card.getByRole('link', { name: /^阅读全文 / }).click({ position: { x: 8, y: 8 } });
   await expect(page).toHaveURL(new RegExp(`/dynamics/${manyId}$`));
   const detailTrigger = page.getByRole('button', { name: '预览图片 12', exact: true });
   await detailTrigger.scrollIntoViewIfNeeded();

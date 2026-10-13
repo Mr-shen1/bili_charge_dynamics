@@ -1,17 +1,13 @@
-import { useState } from 'react';
 import type { ArchiveWorkState, Dynamic, User } from '../data/contracts';
 import styles from './Dynamics.module.css';
 import { FoldableText } from './FoldableText';
 import { ImageGrid } from '../images/ImageGrid';
+import { UserAvatar } from './UserAvatar';
 
-export function Identity({ user, heading = false }: { user: User; heading?: boolean }) {
-  const [failedUrl, setFailedUrl] = useState<string | null>(null);
-  const source = user.avatarUrl && user.avatarUrl !== failedUrl ? user.avatarUrl : '/default-avatar.svg';
-  return <div className={styles.identity}>
-    <img className={styles.avatar} src={source} alt={`${user.nickname ?? '未知用户'}的头像`}
-      width="44" height="44" onError={() => setFailedUrl(source)} />
-    {heading ? <h1 className={styles.nickname}>{user.nickname ?? '未知用户'}</h1>
-      : <span className={styles.nickname}>{user.nickname ?? '未知用户'}</span>}
+export function Identity({ user }: { user: User }) {
+  return <div className={styles.identity} data-display-identity>
+    <UserAvatar user={user} className={styles.avatar} />
+    <span className={styles.nickname}>{user.nickname ?? '未知用户'}</span>
   </div>;
 }
 
@@ -59,7 +55,11 @@ export function DynamicContent({ dynamic, folding, navigateToComments }: {
     {text && (folding ? <FoldableText text={text} expanded={folding.expanded} toggle={folding.toggle} />
       : <p className={styles.text}>{text}</p>)}
     {!!dynamic.images?.length && <ImageGrid images={dynamic.images} list={!!folding} />}
-    {navigateToComments ? <button className={styles.button} type="button" onClick={navigateToComments}>{commentLabel}</button>
+    {navigateToComments ? <button className={`${styles.button} ${styles.commentEntry}`} type="button" onClick={navigateToComments}>
+      <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <path d="M20 11.5a8 8 0 0 1-8 8H5l-3 2v-10a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" />
+        <path d="M7 9h10M7 13h7" />
+      </svg>{commentLabel}</button>
       : <p className={styles.count}>{commentLabel}</p>}
   </>;
 }

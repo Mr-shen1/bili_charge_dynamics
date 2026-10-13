@@ -8,24 +8,24 @@ import { ReplySection } from './ReplySection';
 import styles from './Dynamics.module.css';
 import { useDiscussionVisit } from './DiscussionVisit';
 
-export function CommentSection({ reader, dynamicId, initialTarget }: {
-  reader: DynamicReader; dynamicId: string; initialTarget: 'top' | 'comments';
+export function CommentSection({ reader, dynamicId, authorId, initialTarget, canLocateEntry }: {
+  reader: DynamicReader; dynamicId: string; authorId: string; initialTarget: 'top' | 'comments'; canLocateEntry(): boolean;
 }) {
   return reader.discussions === 'not-archived'
-    ? <UnarchivedComments initialTarget={initialTarget} />
-    : <ArchivedComments reader={reader} dynamicId={dynamicId} initialTarget={initialTarget} />;
+    ? <UnarchivedComments initialTarget={initialTarget} canLocateEntry={canLocateEntry} />
+    : <ArchivedComments reader={reader} dynamicId={dynamicId} authorId={authorId} initialTarget={initialTarget} canLocateEntry={canLocateEntry} />;
 }
-function UnarchivedComments({ initialTarget }: { initialTarget: 'top' | 'comments' }) {
+function UnarchivedComments({ initialTarget, canLocateEntry }: { initialTarget: 'top' | 'comments'; canLocateEntry(): boolean }) {
   const root = useRef<HTMLElement>(null);
   useLayoutEffect(() => {
-    if (initialTarget === 'comments') root.current?.scrollIntoView?.({ block: 'start', behavior: 'instant' });
-  }, [initialTarget]);
+    if (initialTarget === 'comments' && canLocateEntry()) root.current?.scrollIntoView?.({ block: 'start', behavior: 'instant' });
+  }, [initialTarget, canLocateEntry]);
   return <section ref={root} aria-label="评论区"><h2>评论区</h2>
     <p role="status">评论尚未归档；来源计数不代表本地已有评论。</p>
   </section>;
 }
-function ArchivedComments({ reader, dynamicId, initialTarget }: {
-  reader: DynamicReader; dynamicId: string; initialTarget: 'top' | 'comments';
+function ArchivedComments({ reader, dynamicId, authorId, initialTarget, canLocateEntry }: {
+  reader: DynamicReader; dynamicId: string; authorId: string; initialTarget: 'top' | 'comments'; canLocateEntry(): boolean;
 }) {
   const visit = useDiscussionVisit();
   const [sort, setSort] = useState<CommentSort>(visit.current.sort);
@@ -34,8 +34,8 @@ function ArchivedComments({ reader, dynamicId, initialTarget }: {
   const locateCommentEntry = useCallback(() => {
     if (!commentEntryPending.current) return;
     commentEntryPending.current = false;
-    root.current?.scrollIntoView?.({ block: 'start', behavior: 'instant' });
-  }, []);
+    if (canLocateEntry()) root.current?.scrollIntoView?.({ block: 'start', behavior: 'instant' });
+  }, [canLocateEntry]);
   const selectSort = (target: CommentSort) => {
     if (target === sort) return;
     commentEntryPending.current = false;
@@ -49,12 +49,12 @@ function ArchivedComments({ reader, dynamicId, initialTarget }: {
       <button type="button" className={styles.button} aria-pressed={sort === 'hot'} onClick={() => selectSort('hot')}>最热</button>
       <button type="button" className={styles.button} aria-pressed={sort === 'latest'} onClick={() => selectSort('latest')}>最新</button>
     </div>
-    <CommentSortView key={sort} reader={reader} dynamicId={dynamicId} sort={sort} onSettled={locateCommentEntry} />
+    <CommentSortView key={sort} reader={reader} dynamicId={dynamicId} authorId={authorId} sort={sort} onSettled={locateCommentEntry} />
   </section>;
 }
 
-function CommentSortView({ reader, dynamicId, sort, onSettled }: {
-  reader: DynamicReader; dynamicId: string; sort: CommentSort; onSettled(): void;
+function CommentSortView({ reader, dynamicId, authorId, sort, onSettled }: {
+  reader: DynamicReader; dynamicId: string; authorId: string; sort: CommentSort; onSettled(): void;
 }) {
   const read = useCallback((cursor: string | null | undefined, signal: AbortSignal) =>
     reader.readComments({ dynamicId, sort, cursor, signal }), [reader, dynamicId, sort]);
@@ -73,14 +73,14 @@ function CommentSortView({ reader, dynamicId, sort, onSettled }: {
     <ul className={styles.comments} aria-label="一级评论">
       {state.data?.items.map(comment => <li key={comment.id} className={styles.card} data-reading-id={`comment:${comment.id}`}>
         <Identity user={comment.author} />
-        {comment.author.id === reader.creator.id && <span>UP主</span>}
+        {comment.author.id === authorId && <span className={styles.upBadge}>UP主</span>}
         <time className={styles.time} dateTime={comment.publishedAt ?? undefined}>{displayTime(comment.publishedAt)}</time>
         <FoldableText text={comment.text.trim() ? comment.text : '暂无评论内容'} subject="评论"
           expanded={expanded[comment.id] ?? false}
           toggle={() => setExpanded(previous => ({ ...previous, [comment.id]: !previous[comment.id] }))} />
         <p className={styles.count}>点赞 {comment.likeCount ?? '—'}</p>
         <p className={styles.count}>回复 {comment.replyCount ?? '—'}</p>
-        {comment.replyCount !== 0 && <ReplySection reader={reader} dynamicId={dynamicId} rootId={comment.id} />}
+        {comment.replyCount !== 0 && <ReplySection reader={reader} dynamicId={dynamicId} authorId={authorId} rootId={comment.id} />}
       </li>)}
     </ul>
     {state.data && state.data.items.length > 0 && (state.data.nextCursor === null

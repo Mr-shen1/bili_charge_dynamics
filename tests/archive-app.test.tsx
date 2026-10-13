@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it } from 'vitest';
@@ -10,6 +10,39 @@ function show(transport: ArchiveTransport, path = '/') {
   return render(<MemoryRouter initialEntries={[path]}><App reader={createArchiveReader(transport)} /></MemoryRouter>);
 }
 describe('真实归档基础页面', () => {
+  it('整卡进入详情，身份和选中文字不导航，移除旧详情按钮并保留独立气泡入口', async () => {
+    const user = userEvent.setup();
+    show(async url => Response.json(url.endsWith('/ups') ? { ups: [] }
+      : url.includes('?') ? { items: [archive], next_cursor: null } : archive));
+    const card = await screen.findByRole('article');
+    const entry = within(card).getByRole('link', { name: `阅读全文 ${archive.id}` });
+    expect(entry).toHaveAttribute('href', `/dynamics/${archive.id}`);
+    expect(within(card).queryByRole('button', { name: '查看详情' })).not.toBeInTheDocument();
+    await user.click(within(card).getByText(archive.author.nickname));
+    await user.click(within(card).getByRole('img'));
+    expect(screen.queryByRole('heading', { name: '动态详情' })).not.toBeInTheDocument();
+    const text = within(card).getByText(archive.text.replace(/\s+/g, ' '));
+    const selection = window.getSelection()!;
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    expect(selection.toString()).toBe(archive.text);
+    fireEvent.click(text);
+    expect(screen.queryByRole('heading', { name: '动态详情' })).not.toBeInTheDocument();
+    entry.focus();
+    await user.keyboard('{Enter}');
+    expect(await screen.findByRole('heading', { name: '动态详情' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '返回列表' }));
+    selection.removeAllRanges();
+    await user.click(screen.getByRole('article'));
+    expect(await screen.findByRole('heading', { name: '动态详情' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '返回列表' }));
+    const bubble = screen.getByRole('button', { name: '来源评论 501' });
+    expect(bubble.querySelector('svg')).not.toBeNull();
+    await user.click(bubble);
+    expect(await screen.findByRole('region', { name: '评论区' })).toHaveTextContent('评论尚未归档');
+  });
   it('归档标题独立安全展示，不冒充正文或执行标签', async () => {
     show(async () => Response.json({ ...archive, title: '虚构标题 <img src=x onerror=alert(1)>' }), `/dynamics/${archive.id}`);
     expect(await screen.findByText('虚构标题 <img src=x onerror=alert(1)>')).toBeInTheDocument();
@@ -78,7 +111,7 @@ describe('真实归档基础页面', () => {
     expect(screen.getByText('动态已加载完毕')).toBeInTheDocument();
     expect(queries).toEqual(['/api/archive/dynamics?limit=10&scope=all', '/api/archive/dynamics?limit=10&scope=all&cursor=page2',
       '/api/archive/dynamics?limit=10&scope=all&cursor=page2', '/api/archive/dynamics?limit=10&scope=all&cursor=page3']);
-    await user.click(within(screen.getAllByRole('article')[24]!).getByRole('button', { name: '查看详情' }));
+    await user.click(within(screen.getAllByRole('article')[24]!).getByRole('link', { name: '阅读全文 124' }));
     await screen.findByRole('heading', { name: '动态详情' });
     await user.click(screen.getByRole('button', { name: '返回列表' }));
     expect(screen.getAllByRole('article')).toHaveLength(25);
@@ -89,7 +122,7 @@ describe('真实归档基础页面', () => {
     const urls: string[] = [];
     show(async url => { urls.push(url); return Response.json(url.endsWith('/ups') ? { ups: [] } : url.includes('?') ? { items: [archive], next_cursor: null } : archive); });
     expect(await screen.findByText(archive.text.replace(/\s+/g, ' '))).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: '归档动态' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '全部动态' })).toBeInTheDocument();
     expect(screen.getByText('2026-03-01 10:03:04')).toBeInTheDocument();
     expect(screen.getByText('编辑于 2026-03-02 13:01')).toBeInTheDocument();
     expect(screen.queryByText(/13:01:00/)).not.toBeInTheDocument();
@@ -99,13 +132,13 @@ describe('真实归档基础页面', () => {
     expect(screen.getByRole('button', { name: '来源评论 501' })).toBeInTheDocument();
     expect(document.querySelector('script')).toBeNull();
     expect(document.querySelector('img[src="https://upstream.example.test/image.jpg"]')).toBeNull();
-    await user.click(screen.getByRole('button', { name: '查看详情' }));
+    await user.click(screen.getByRole('link', { name: `阅读全文 ${archive.id}` }));
     const comments = within(screen.getByRole('region', { name: '评论区' }));
     expect(comments.getByText('评论尚未归档；来源计数不代表本地已有评论。')).toBeInTheDocument();
     expect(comments.queryByText('暂无评论')).not.toBeInTheDocument();
     expect(comments.queryByRole('button', { name: '最新' })).not.toBeInTheDocument();
     expect(urls.every(url => url.startsWith('/api/archive/dynamics') || url === '/api/archive/ups')).toBe(true);
     await user.click(screen.getByRole('button', { name: '返回列表' }));
-    expect(screen.getByRole('heading', { name: '归档动态' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '全部动态' })).toBeInTheDocument();
   });
 });

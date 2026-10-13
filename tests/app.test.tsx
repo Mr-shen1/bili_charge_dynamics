@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { StrictMode } from 'react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useNavigate } from 'react-router';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { App } from '../src/app/App';
 import { createMockReader } from '../src/data/mockReader';
 import type { DetailResult, DynamicReader } from '../src/data/contracts';
@@ -27,6 +27,31 @@ function VisitControls() {
 }
 
 describe('文字动态公开页面行为', () => {
+  it.each(['detail', 'comments'] as const)('气泡入口等待 %s 时用户滚动优先，迟到读取不拉回评论区', async phase => {
+    const user = userEvent.setup();
+    let resolve!: () => void;
+    const pending = new Promise<void>(ok => { resolve = ok; });
+    const base = createMockReader({ creator, dynamics: [item] });
+    const reader: DynamicReader = { ...base,
+      async readDetail(input) { if (phase === 'detail') await pending; return base.readDetail(input); },
+      async readComments(input) { if (phase === 'comments') await pending; return base.readComments(input); },
+    };
+    const scroll = vi.fn();
+    const previous = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollIntoView');
+    Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, value: scroll });
+    try {
+      show(reader);
+      await user.click(await screen.findByRole('button', { name: '评论 12345' }));
+      await screen.findByText(phase === 'detail' ? '动态详情加载中…' : '最热评论加载中…');
+      fireEvent.wheel(window);
+      await act(async () => { resolve(); await pending; });
+      await screen.findByText('暂无评论');
+      expect(scroll).not.toHaveBeenCalled();
+    } finally {
+      if (previous) Object.defineProperty(Element.prototype, 'scrollIntoView', previous);
+      else Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+    }
+  });
   it('同路径的新访问从首批开始，后退只恢复原访问的范围，不共享可变进度', async () => {
     const user = userEvent.setup();
     const reader = createMockReader({ creator, dynamics: Array.from({ length: 25 }, (_, i) => ({
@@ -56,7 +81,7 @@ describe('文字动态公开页面行为', () => {
     await user.click(screen.getByRole('button', { name: '加载更多' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('动态追加读取失败');
     expect(screen.getAllByRole('article')).toHaveLength(10);
-    await user.click(screen.getAllByRole('button', { name: '查看详情' })[0]!);
+    await user.click(screen.getAllByRole('link', { name: /^阅读全文 / })[0]!);
     await user.click(await screen.findByRole('button', { name: '返回列表' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('动态追加读取失败');
     expect(screen.getAllByRole('article')).toHaveLength(10);
@@ -105,7 +130,7 @@ describe('文字动态公开页面行为', () => {
     fireEvent.click(more);
     expect(more).toBeDisabled();
     expect(cursors).toHaveLength(2);
-    await user.click(screen.getAllByRole('button', { name: '查看详情' })[0]!);
+    await user.click(screen.getAllByRole('link', { name: /^阅读全文 / })[0]!);
     await screen.findByRole('button', { name: '返回列表' });
     await user.click(screen.getByRole('button', { name: '返回列表' }));
     expect(await screen.findByText('动态 19')).toBeVisible();
@@ -165,12 +190,12 @@ describe('文字动态公开页面行为', () => {
     await screen.findAllByRole('article');
     const oldCard = screen.getByText('旧动态').closest('article');
     if (!oldCard) throw new Error('Expected old card');
-    await user.click(within(oldCard).getByRole('button', { name: '查看详情' }));
+    await user.click(within(oldCard).getByRole('link', { name: '阅读全文 old' }));
     expect(screen.getByRole('status')).toHaveTextContent('动态详情加载中');
     await user.click(screen.getByRole('button', { name: '返回列表' }));
     const currentCard = (await screen.findByText('当前动态')).closest('article');
     if (!currentCard) throw new Error('Expected current card');
-    await user.click(within(currentCard).getByRole('button', { name: '查看详情' }));
+    await user.click(within(currentCard).getByRole('link', { name: '阅读全文 current' }));
     expect(screen.getByRole('status')).toHaveTextContent('动态详情加载中');
     await act(async () => {
       if (outcome === 'rejection') reject(new Error('late failure'));
@@ -210,7 +235,7 @@ describe('文字动态公开页面行为', () => {
     await user.click(screen.getByRole('button', { name: '重试' }));
     expect(await screen.findByText(/第二行 🙂/)).toBeVisible();
     await user.click(screen.getByRole('button', { name: '返回列表' }));
-    expect(await screen.findByRole('button', { name: '查看详情' })).toBeVisible();
+    expect(await screen.findByRole('link', { name: `阅读全文 ${item.id}` })).toBeVisible();
   });
   it.each([
     ['/dynamics/missing', '动态不存在或不可用'],
@@ -233,17 +258,16 @@ describe('文字动态公开页面行为', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.queryByRole('article')).not.toBeInTheDocument();
   });
-  it('只有查看详情触发导航，完整正文安全展示并可返回来源列表', async () => {
+  it('身份仅展示，卡片入口进入详情且完整正文安全展示并可返回来源列表', async () => {
     const user = userEvent.setup();
     const text = '第一行\n🙂 https://example.test #话题# @朋友\n<script>window.pwned = true</script>\n<img src=x onerror=alert(1)>\n第五行\n第六行\n第七行';
     show(createMockReader({ creator, dynamics: [{ ...item, text }] }));
     const card = await screen.findByRole('article');
-    await user.click(within(card).getByText(/第一行/));
     await user.click(within(card).getByText('纸飞机'));
     await user.click(within(card).getByRole('img'));
     expect(screen.queryByRole('button', { name: '返回列表' })).not.toBeInTheDocument();
     expect(within(card).queryByRole('group', { name: '动态图片' })).not.toBeInTheDocument();
-    await user.click(within(card).getByRole('button', { name: '查看详情' }));
+    await user.click(within(card).getByRole('link', { name: `阅读全文 ${item.id}` }));
     expect(await screen.findByRole('heading', { name: '动态详情' })).toBeVisible();
     const detail = await screen.findByRole('article');
     expect(within(detail).getByText(/第七行/).textContent).toBe(text);
@@ -252,14 +276,14 @@ describe('文字动态公开页面行为', () => {
     expect(within(detail).queryByRole('link')).not.toBeInTheDocument();
     expect(within(detail).queryByRole('group', { name: '动态图片' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '返回列表' }));
-    expect(await screen.findByRole('button', { name: '查看详情' })).toBeVisible();
+    expect(await screen.findByRole('link', { name: `阅读全文 ${item.id}` })).toBeVisible();
   });
   it('首次显示加载状态，成功展示身份、北京时间秒值、完整计数及最多十条文字动态', async () => {
     show(createMockReader({ creator, dynamics: Array.from({ length: 12 }, (_, i) => ({
       ...item, id: `dynamic-${i}`, publishedAt: `2026-02-${String(i + 1).padStart(2, '0')}T00:00:00Z`,
     })).concat(item) }));
-    expect(screen.getByRole('status')).toHaveTextContent('动态列表加载中');
-    expect(await screen.findByRole('heading', { name: '纸飞机' })).toBeVisible();
+    expect(screen.getByText('动态列表加载中…')).toHaveAttribute('role', 'status');
+    expect(await screen.findByRole('heading', { name: '全部动态' })).toBeVisible();
     const cards = await screen.findAllByRole('article');
     expect(cards).toHaveLength(10);
     const card = cards.find(card => within(card).queryByText('2026-02-04 12:04:05'));
@@ -267,8 +291,8 @@ describe('文字动态公开页面行为', () => {
     if (!card) throw new Error('Expected time in Beijing');
     expect(within(card).getByText('评论 12345')).toBeVisible();
     expect(within(card).getByText(/第二行 🙂/)).toHaveTextContent('https://example.test #话题# @朋友');
-    expect(within(card).queryByRole('link')).not.toBeInTheDocument();
-    expect(within(card).getByRole('button', { name: '查看详情' })).toBeVisible();
+    expect(within(card).getAllByRole('link')).toHaveLength(1);
+    expect(within(card).getByRole('link', { name: `阅读全文 ${item.id}` })).toBeVisible();
     expect(screen.queryByText(/关注|简介|充电/)).not.toBeInTheDocument();
   });
 });

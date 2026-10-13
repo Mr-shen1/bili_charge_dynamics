@@ -2,7 +2,8 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router';
 import { ArchiveNavigation } from './ArchiveNavigation';
 import type { ArchiveScope, DynamicReader } from '../data/contracts';
-import { DynamicContent, Identity } from './DynamicContent';
+import { DynamicContent } from './DynamicContent';
+import { DynamicCard } from './DynamicCard';
 import { useAppNavigation } from '../app/Navigation';
 import { captureReadingPosition, restoreReadingPosition } from '../app/readingPosition';
 import styles from './Dynamics.module.css';
@@ -40,7 +41,7 @@ function ListVisit({ reader, scope }: { reader: DynamicReader; scope: ArchiveSco
 
   return <main ref={root} tabIndex={-1} className={styles.page}>
     <header className={styles.header}>
-      {scope.kind === 'all' ? <Identity user={reader.creator} heading /> : <h1>UP {scope.upId} 归档</h1>}
+      <h1>{scope.kind === 'all' ? '全部动态' : `UP ${scope.upId} 归档`}</h1>
       <ArchiveNavigation reader={reader} scope={scope} />
     </header>
     {state.reason === 'invalid-cursor' && <section>
@@ -50,12 +51,11 @@ function ListVisit({ reader, scope }: { reader: DynamicReader; scope: ArchiveSco
     {state.reason === 'unknown-up' ? <p role="status">UP 不存在</p>
       : !state.data && state.reason !== 'invalid-cursor' && <ReadNotice status={state.status} area="动态列表" retry={() => void load()} />}
     {state.data?.items.length === 0 && <p role="status">暂无动态</p>}
-    {state.data?.items.map(dynamic => <article className={styles.card} key={dynamic.id} data-reading-id={dynamic.id}>
+    {state.data?.items.map(dynamic => <DynamicCard key={dynamic.id} id={dynamic.id}>
       <DynamicContent dynamic={dynamic} navigateToComments={() => openDetail(dynamic.id, 'comments')} folding={{ expanded: expanded[dynamic.id] ?? false,
         toggle: () => setExpanded(previous => ({ ...previous, [dynamic.id]: !previous[dynamic.id] })),
       }} />
-      <button className={styles.button} type="button" onClick={() => openDetail(dynamic.id)}>查看详情</button>
-    </article>)}
+    </DynamicCard>)}
     {state.data && state.data.items.length > 0 && (state.data.nextCursor === null
       ? <p role="status">动态已加载完毕</p>
       : <section aria-label="动态追加">

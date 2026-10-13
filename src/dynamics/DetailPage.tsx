@@ -25,6 +25,8 @@ function DetailVisit({ reader }: { reader: DynamicReader }) {
   });
   const root = useRef<HTMLElement>(null);
   const initial = useRef(detailSnapshot);
+  const entryAllowed = useRef(true);
+  const canLocateEntry = useCallback(() => entryAllowed.current, []);
   const cached = useRef<DetailResult | undefined>(detailSnapshot?.dynamic
     ? { status: 'success', data: detailSnapshot.dynamic } : undefined);
   const load = useCallback((signal: AbortSignal) => reader.readDetail({ id: dynamicId, signal }), [reader, dynamicId]);
@@ -33,7 +35,8 @@ function DetailVisit({ reader }: { reader: DynamicReader }) {
   useLayoutEffect(() => { if (state.status === 'success') content.current = state.data; }, [state]);
   useLayoutEffect(() => {
     const element = root.current;
-    const stopRestoring = restoreReadingPosition(element, initial.current?.position ?? null);
+    const stopRestoring = restoreReadingPosition(element, initial.current?.position ?? null,
+      () => { entryAllowed.current = false; });
     return () => {
       stopRestoring();
       saveDetailSnapshot(pageEntryId, { dynamic: content.current, comments: discussion.current,
@@ -51,7 +54,7 @@ function DetailVisit({ reader }: { reader: DynamicReader }) {
       <article className={styles.card} data-reading-id={`dynamic:${dynamicId}`}><DynamicContent dynamic={state.data} /></article>
       <DiscussionVisitContext.Provider value={discussion}>
         {/* 只用挂载时的快照判断入口，StrictMode 清理生成的草稿不能改写主动意图。 */}
-        <CommentSection reader={reader} dynamicId={dynamicId} initialTarget={initial.current ? 'top' : detailTarget} />
+        <CommentSection reader={reader} dynamicId={dynamicId} authorId={state.data.author.id} canLocateEntry={canLocateEntry} initialTarget={initial.current ? 'top' : detailTarget} />
       </DiscussionVisitContext.Provider>
     </>}
   </main>;

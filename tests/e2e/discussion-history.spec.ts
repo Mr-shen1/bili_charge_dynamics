@@ -64,7 +64,7 @@ for (const target of ['same', 'other'] as const) {
     });
     await expect(page.getByRole('article')).toHaveCount(10);
     const card = page.getByRole('article').nth(target === 'same' ? 0 : 1);
-    await card.getByRole('button', { name: '查看详情', exact: true }).click();
+    await card.getByRole('link', { name: /^阅读全文 / }).click({ position: { x: 8, y: 8 } });
     await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
     await area.getByRole('button', { name: '最新', exact: true }).click();
     if (target === 'same') {
@@ -132,7 +132,7 @@ test('慢图与未知尺寸不阻塞历史评论恢复；刷新重置内存且�
   await page.route('**/demo-images/*', async route => { blocked += 1; await held; await route.continue(); });
   try {
     await page.goto('/');
-    await page.getByRole('article').first().getByRole('button', { name: '查看详情', exact: true }).click();
+    await page.getByRole('article').first().getByRole('link', { name: /^阅读全文 / }).click({ position: { x: 8, y: 8 } });
     const area = page.getByRole('region', { name: '评论区', exact: true });
     const rows = directRows(area);
     await expect(rows).toHaveCount(20);
@@ -168,7 +168,7 @@ test('慢图与未知尺寸不阻塞历史评论恢复；刷新重置内存且�
 test('详情历史恢复未执行时，用户滚轮停止旧任务而不被迟到帧拉回', async ({ page }) => {
   await page.clock.install();
   await page.goto('/');
-  await page.getByRole('article').first().getByRole('button', { name: '查看详情', exact: true }).evaluate(element => (element as HTMLButtonElement).click());
+  await page.getByRole('article').first().getByRole('link', { name: /^阅读全文 / }).evaluate(element => (element as HTMLAnchorElement).click());
   const area = page.getByRole('region', { name: '评论区', exact: true });
   const rows = directRows(area);
   await area.getByRole('button', { name: '加载更多评论', exact: true }).click();
@@ -192,7 +192,7 @@ test('详情历史恢复未执行时，用户滚轮停止旧任务而不被迟�
 
 test('稳定锚点缺失时使用有界像素后备，范围变短也有限结束', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('article').first().getByRole('button', { name: '查看详情', exact: true }).click();
+  await page.getByRole('article').first().getByRole('link', { name: /^阅读全文 / }).click({ position: { x: 8, y: 8 } });
   const area = page.getByRole('region', { name: '评论区', exact: true });
   const rows = directRows(area);
   await area.getByRole('button', { name: '加载更多评论', exact: true }).click();

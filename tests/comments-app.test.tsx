@@ -10,6 +10,25 @@ import type { Comment, CommentBatch, DynamicReader, ReadResult } from '../src/da
 const creator = { id: 'up', nickname: '纸飞机', avatarUrl: null };
 const dynamic = { id: 'd', author: creator, publishedAt: null, text: '上方动态保持完整', commentCount: 100 };
 const comment: Comment = { id: 'c', author: creator, publishedAt: '2026-02-03T23:04:05-05:00', text: '第一行\n🙂 @朋友 <script>window.pwned=true</script>', likeCount: 0, replyCount: 0 };
+it('评论和回复的 UP 标识按当前动态作者 ID，不按全局身份或同名判断', async () => {
+  const author = { ...creator, id: 'actual-author' };
+  show(createMockReader({ creator, dynamics: [{ ...dynamic, author }], comments: { d: [
+    { ...comment, id: 'author-comment', author, text: '实际作者评论', replyCount: 2 },
+    { ...comment, id: 'same-name', text: '同名不同 ID 评论' },
+  ] }, replies: { d: { 'author-comment': [
+    { id: 'author-reply', author, text: '实际作者回复', publishedAt: null, likeCount: 0, replyTo: null },
+    { id: 'same-name-reply', author: creator, text: '同名不同 ID 回复', publishedAt: null, likeCount: 0, replyTo: null },
+  ] } } }));
+  const authorComment = (await screen.findByText('实际作者评论')).closest('li')!;
+  const otherComment = screen.getByText('同名不同 ID 评论').closest('li')!;
+  expect(within(authorComment).getByText('UP主')).toBeInTheDocument();
+  expect(within(otherComment).queryByText('UP主')).not.toBeInTheDocument();
+  const authorReply = (await screen.findByText('实际作者回复')).closest('li')!;
+  const otherReply = screen.getByText('同名不同 ID 回复').closest('li')!;
+  expect(within(authorReply).getByText('UP主')).toBeInTheDocument();
+  expect(within(otherReply).queryByText('UP主')).not.toBeInTheDocument();
+});
+
 function deferred() {
   let resolve!: (value: ReadResult<CommentBatch>) => void;
   let reject!: (reason: Error) => void;
