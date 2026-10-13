@@ -11,7 +11,7 @@ export function DynamicCard({ id, children }: { id: string; children: ReactNode 
   return <article className={`${styles.card} ${styles.dynamicCard}`} data-reading-id={id}
     onClick={event => {
       if (!normalClick(event) || selectedText() || event.defaultPrevented) return;
-      if (event.target instanceof Element && event.target.closest('a, button, input, select, textarea, [data-card-inert]')) return;
+      if (event.target instanceof Element && event.target.closest('a, button, input, select, textarea, [data-display-identity]')) return;
       openDetail(id);
     }}>
     <a className={styles.cardLink} href={`/dynamics/${encodeURIComponent(id)}`} aria-label={`阅读全文 ${id}`}

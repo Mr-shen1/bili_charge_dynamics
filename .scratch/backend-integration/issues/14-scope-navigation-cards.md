@@ -35,5 +35,6 @@ T1 经生产 Adapter、RTL 受控乱序和 Playwright 验证卡片/气泡/内部
 - 已交付全部/UP 头像昵称横滑条、scope 选中与兜底，整卡真实链接/键盘入口、评论气泡、内部交互隔离及阅读区配色；评论/回复 UP 标识按当前动态作者 ID 判断。
 - 复用原导航会话、scope 请求保护、访问快照及定位；补等待动态/评论期间用户滚动取消迟到评论定位，不增加第二套协调器。
 - 用户确认的 T1/T2 边界经生产 Adapter + HTTP 替身、RTL 受控乱序、Playwright，以及临时真实 SQLite/FastAPI 浏览器链路验证。详细证据与未验证项见 [acceptance-14.md](../acceptance-14.md)。
-- 最终命令：`pnpm test --maxWorkers=2`（163/163）、`pnpm typecheck`、`pnpm build`、`uv run pytest backend/tests -q`（156/156）、`pnpm test:e2e`（104 通过、10 个 Nginx 专项配置性跳过）、`pnpm test:e2e:manage`（2/2）、`pnpm test:e2e:archive`（3/3）、`git diff --check`。Node 经 `nvm use`；浏览器命令清除本机 HTTP/HTTPS/ALL_PROXY 后串行运行。
+- 最终命令：`pnpm test --maxWorkers=2`（163/163）、`pnpm typecheck`、`pnpm build`、`uv run pytest backend/tests -q`（156/156）、`pnpm test:e2e`（104 通过、10 个 Nginx 专项配置性跳过）、`pnpm test:e2e:manage`（2/2）、`pnpm test:e2e:archive`（4/4）、`git diff --check`。Node 经 `nvm use`；浏览器命令清除本机 HTTP/HTTPS/ALL_PROXY 后串行运行。
+- Standards / Spec 双轴审查未发现确认的文档违规或功能缺陷；已统一头像兜底、移除遗留参数，并补生产未归档评论气泡定位及等待详情时用户滚轮优先的浏览器证据。非阻塞判断及处理决定分轴记录于验收文档。
 - `needs-triage` 表示本票已交付等待维护者核验，不代表未实现；#13 与父 #03 的状态/原清单未改动。Linux Chrome/iPhone Safari 正式设备实测、人工视觉及真实部署/上游/OSS未验证，移动模拟不冒充真机。

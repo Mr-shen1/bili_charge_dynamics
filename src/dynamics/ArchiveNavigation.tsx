@@ -2,14 +2,13 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import type { ArchiveScope, DynamicReader, ReadResult, User } from '../data/contracts';
 import styles from './ArchiveNavigation.module.css';
+import { UserAvatar } from './UserAvatar';
 
 function UpOption({ user, selected }: { user: User; selected: boolean }) {
   const nickname = user.nickname ?? '未知用户';
-  const [failedUrl, setFailedUrl] = useState<string | null>(null);
-  const avatar = user.avatarUrl && user.avatarUrl !== failedUrl ? user.avatarUrl : '/default-avatar.svg';
   return <Link className={styles.option} to={`/ups/${encodeURIComponent(user.id)}`}
     aria-current={selected ? 'page' : undefined} title={nickname}>
-    <img className={styles.avatar} src={avatar} alt="" width="44" height="44" onError={() => setFailedUrl(avatar)} />
+    <UserAvatar user={user} className={styles.avatar} decorative />
     <span className={styles.nickname}>{nickname}</span>
   </Link>;
 }

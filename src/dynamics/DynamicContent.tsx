@@ -1,17 +1,13 @@
-import { useState } from 'react';
 import type { ArchiveWorkState, Dynamic, User } from '../data/contracts';
 import styles from './Dynamics.module.css';
 import { FoldableText } from './FoldableText';
 import { ImageGrid } from '../images/ImageGrid';
+import { UserAvatar } from './UserAvatar';
 
-export function Identity({ user, heading = false }: { user: User; heading?: boolean }) {
-  const [failedUrl, setFailedUrl] = useState<string | null>(null);
-  const source = user.avatarUrl && user.avatarUrl !== failedUrl ? user.avatarUrl : '/default-avatar.svg';
-  return <div className={styles.identity} data-card-inert>
-    <img className={styles.avatar} src={source} alt={`${user.nickname ?? '未知用户'}的头像`}
-      width="44" height="44" onError={() => setFailedUrl(source)} />
-    {heading ? <h1 className={styles.nickname}>{user.nickname ?? '未知用户'}</h1>
-      : <span className={styles.nickname}>{user.nickname ?? '未知用户'}</span>}
+export function Identity({ user }: { user: User }) {
+  return <div className={styles.identity} data-display-identity>
+    <UserAvatar user={user} className={styles.avatar} />
+    <span className={styles.nickname}>{user.nickname ?? '未知用户'}</span>
   </div>;
 }
 

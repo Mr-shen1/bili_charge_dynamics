@@ -45,10 +45,31 @@ source ~/.nvm/nvm.sh && nvm use
 | `uv run pytest backend/tests -q` | 156/156 通过 |
 | `env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY pnpm test:e2e` | 104 通过，10 个 Nginx 专项按配置跳过 |
 | `env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY pnpm test:e2e:manage` | 2/2 通过 |
-| `env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY pnpm test:e2e:archive` | 3/3 通过（2 个实际 SQLite/API 联测，1 个生产 Adapter HTTP fixture 布局/恢复测试） |
+| `env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY pnpm test:e2e:archive` | 4/4 通过（2 个实际 SQLite/API 联测，2 个生产 Adapter HTTP fixture 入口/布局/恢复测试） |
 | `git diff --check` | 通过 |
 
 首次定向浏览器回归发现一个测试坐标问题：展开后的卡片高于视口，`scrollIntoViewIfNeeded` 并不保证卡片顶部留白在可见范围内；改为明确滚到卡片顶部后，原生点击断言及完整回归通过。未以强制点击掩盖失败。
+
+## Standards
+
+审查基线为用户确认的 `eff449f`，首轮审查提交 `2e163ce`。确定文档规范违规 0 项，可维护性判断 4 项：
+
+1. `ArchiveNavigation` 与 `Identity` 头像兜底重复：已提取有状态 `UserAvatar` 共享，保留公开页面的坏头像回归。
+2. 卡片专用 `data-card-inert` 泄漏到共享身份组件：改为描述内容语义的 `data-display-identity`；卡片仍在唯一入口处决定不导航。
+3. `reader` / `dynamicId` / `authorId` 逐层传递形成可能的参数簇：保留显式小参数，不为三个必要依赖再造空上下文或读取框架。
+4. 卡片与链接入口的条件判断相似：保留两种语义路径，链接支持原生修饰键/新标签页，卡片正文操作需排除内部交互；共享点击/选择判定，避免将不同导航语义强行合并。
+
+## Spec
+
+首轮确认功能缺陷 0 项；提出证据缺口 1 项及非阻塞判断/整理建议 4 项：
+
+1. 生产 `not-archived` 气泡定位缺真实浏览器证据：已补 `scope-navigation.spec.ts`，验证生产 Adapter 气泡使未归档评论提示可见、卡片重访到顶部，以及等待生产详情时用户滚轮取消迟到定位。
+2. `Identity.heading` 无调用者：已移除遗留参数及分支。
+3. 全局 Selection 可能抑制其他区域选区遗留后的点击：未确认原生用户流程中会发生（普通点击会清除选区），保留选择保护；真实拖选及独立键盘入口回归通过。
+4. 共享身份组件携带卡片语义属性：已按 Standards 的对应建议改为展示身份语义。
+5. 选择条“全部归档”与参考文字“全部动态”措辞不同：保留现有可访问名称与归档范围含义，页面标题为“全部动态”；选中、路由和内容范围不变。
+
+两轴分别记录：Standards 4 个非阻塞判断、最主要为已消除的头像重复；Spec 1 个已补齐证据缺口及 4 个非阻塞判断/整理项，无确认功能缺陷。审查后的小范围整理及新增浏览器证据均再次执行类型检查和回归。
 
 ## 未验证与后续
 

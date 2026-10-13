@@ -1,9 +1,43 @@
 import { expect, test, type Locator } from '@playwright/test';
 import { installNavigationHttp } from './fixtures/navigation-http';
+import { archive } from '../fixtures/archive';
 
 const position = (anchor: Locator) => anchor.evaluate(element => element.getBoundingClientRect().top);
 const locate = (anchor: Locator) => anchor.evaluate(element => window.scrollTo(0, scrollY + element.getBoundingClientRect().top - 40));
 const clickWithoutScroll = (link: Locator) => link.evaluate(element => (element as HTMLAnchorElement).click());
+
+test('生产 Adapter 气泡进入未归档评论区；读取等待期间用户滚动取消迟到定位', async ({ page }) => {
+  await installNavigationHttp(page);
+  let waitForDetail: Promise<void> | undefined;
+  await page.route('**/api/archive/dynamics/1001', async route => {
+    if (waitForDetail) await waitForDetail;
+    await route.fulfill({ json: { ...archive, id: '1001', media_sources: [], source_comment_count: 7,
+      text: Array.from({ length: 80 }, (_, line) => `生产归档长正文 ${line + 1}`).join('\n') } });
+  });
+  await page.goto('/');
+  const bubble = page.getByRole('article').first().getByRole('button', { name: '来源评论 7', exact: true });
+  await bubble.locator('svg').click();
+  const comments = page.getByRole('region', { name: '评论区', exact: true });
+  await expect(comments.getByText('评论尚未归档；来源计数不代表本地已有评论。', { exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(0);
+  await expect(comments).toBeInViewport();
+  await page.getByRole('button', { name: '返回列表', exact: true }).click();
+  await page.getByRole('link', { name: '阅读全文 1001', exact: true }).click({ position: { x: 8, y: 8 } });
+  await expect(page.getByRole('heading', { name: '动态详情', exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
+  await page.getByRole('button', { name: '返回列表', exact: true }).click();
+
+  let finish!: () => void;
+  waitForDetail = new Promise<void>(resolve => { finish = resolve; });
+  await bubble.click();
+  await expect(page.getByText('动态详情加载中…', { exact: true })).toBeVisible();
+  await page.mouse.wheel(0, 200);
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  finish();
+  await expect(page.getByRole('article')).toHaveCount(1);
+  await expect(comments).not.toBeInViewport();
+  await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
+});
 
 test('生产 Adapter HTTP：四宽度选择条局部横滑，跨 scope 同动态访问恢复各自多批、展开与位置', async ({ page }) => {
   await installNavigationHttp(page);

@@ -6,7 +6,7 @@
 .dynamicCard > :not(.cardLink) { position: relative; z-index: 1; }
 .cardLink { position: absolute; inset: 0; border-radius: inherit; }
 .cardLink:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
-.dynamicCard [data-card-inert] { cursor: default; }
+.dynamicCard [data-display-identity] { cursor: default; }
 .commentEntry { display: inline-flex; align-items: center; gap: 8px; }
 .identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .avatar { flex: 0 0 44px; width: 44px; height: 44px; border-radius: 50%; object-fit: cover; }
