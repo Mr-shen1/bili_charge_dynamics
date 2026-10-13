@@ -5,9 +5,10 @@ from anyio import to_thread
 from .source import fetch_detail, fetch_page, page_body, page_metadata
 from .root_comments import sync_roots
 from .replies import sync_replies
+from .media import sync_media
 
 
-async def initialize(store, client, uid):
+async def initialize(store, client, uid, downloader=None, uploader=None):
     targets = await to_thread.run_sync(store.selected_targets, uid)
     result = {"processed": 0, "succeeded": 0, "failed": 0}
     for target in targets:
@@ -47,4 +48,5 @@ async def initialize(store, client, uid):
         result["succeeded" if succeeded else "failed"] += 1
         roots_result = await sync_roots(store, client, id, generation)
         await sync_replies(store, client, id, generation, roots_result)
+        await sync_media(store, downloader, uploader, id, current_only=True)
     return result

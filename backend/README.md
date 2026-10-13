@@ -1,6 +1,6 @@
-# 票据 01–02 / 13 / 15 / 17 后端
+# 票据 01–02 / 13 / 15 / 17 / 19 后端
 
-提供 UP 身份/配置管理、指定动态关联、显式一次初始化及 SQLite 归档读取。增加根评论采集、最热／最新归档分页和完整楼中楼归档读取；没有周期调度、近期目标发现或 OSS 上传；不宣称全部归档完成。管理基础契约见 `docs/backend/api/management-api.md`，02 测试证据见 [backend-acceptance-02.md](../.scratch/backend-integration/evidence/backend-acceptance-02.md)，字段依据见 [source-protocol-evidence.md](../docs/backend/evidence/source-protocol-evidence.md)。
+提供 UP 身份/配置管理、指定动态关联、显式一次初始化及 SQLite 归档读取。支持根评论采集、最热／最新归档分页、完整楼中楼归档读取，以及动态图下载／OSS 上传和独立重试；没有周期调度、近期目标发现或评论图上传，不宣称全部归档完成。管理基础契约见 `docs/backend/api/management-api.md`，02 测试证据见 [backend-acceptance-02.md](../.scratch/backend-integration/evidence/backend-acceptance-02.md)，字段依据见 [source-protocol-evidence.md](../docs/backend/evidence/source-protocol-evidence.md)。
 
 ## 运行
 
@@ -20,10 +20,10 @@ Python 使用 `.python-version` 固定的 3.12；FastAPI、HTTPX、Uvicorn 和 p
 ```python
 from backend.bili_monitor.app import create_app
 
-app = create_app(database_path, profile_transport=None)
+app = create_app(database_path, profile_transport=None, media_transport=None, media_uploader=None)
 ```
 
-工厂不打开数据库，ASGI lifespan 启动时迁移。`profile_transport` 是唯一可替换的外部 HTTP transport，覆盖 card、detail、`/opus/{id}` 页面、`/x/v2/reply` 根评论页及 `/x/v2/reply/reply` 楼中楼页；测试使用 `httpx.MockTransport`，不替换解析、同步或存储。使用包含 lifespan 的服务器或 `with TestClient(app)`。
+工厂不打开数据库，ASGI lifespan 启动时迁移。`profile_transport` 是来源协议的外部 HTTP transport，覆盖 card、detail、`/opus/{id}` 页面、`/x/v2/reply` 根评论页及 `/x/v2/reply/reply` 楼中楼页；测试使用 `httpx.MockTransport`，不替换解析、同步或存储。`media_transport` 只替换独立图片下载 HTTP，`media_uploader` 是异步 `upload(key, content, content_type) -> 完整公开URL` 的外部 OSS 边界，测试替身不替换媒体协调或数据库。未注入 uploader 时从服务端环境装配真实 OSS，全部配置缺失则保持待上传。使用包含 lifespan 的服务器或 `with TestClient(app)`。
 
 生产请求公开 card、通用动态 detail、普通 opus HTML 及根评论页码接口；超时 10 秒，不跟随重定向、不使用环境代理，无 Cookie/凭据输入。不会绕过受限正文，不依赖 `opus/detail` JSON 或 ignored 原脚本。
 
@@ -48,7 +48,7 @@ Archive 字段保持前端约定：`id`、`author:{id,nickname,avatar_url}`、�
 - 首次无编辑信号仍保存正文（observed/synced 可均为 null）。普通相对文案、空白或正文/图片差异不触发更新；可信编辑分钟变化或待重试工作才替换正文。不做正文哈希或图片差异检测。
 - 未知/error 编辑信号保留旧可信 edited_at/observed。正文失败/受限保留旧成功正文、内容状态及媒体；有效零计数可保存，无效计数不覆盖旧可信值。
 - observed 在网络完成前独立持久化，synced 仅绑定本次实际成功处理的 HTML 编辑版本；未知版本不能冒领旧 pending。每次执行用 SQLite generation 条件提交，旧执行不能覆盖较新观察/正文，也不能清掉较新 pending。
-- 正文失败保留 pending；关闭重开后再次 initial，即使编辑信号没变也可重试。15 独立读取根评论，17 补齐回复分页，媒体仍独立 pending；根成功不冒充整轮成功。
+- 正文失败保留 pending；关闭重开后再次 initial，即使编辑信号没变也可重试。15 独立读取根评论，17 补齐回复分页，19 独立提交媒体状态；根成功不冒充整轮成功，正文成功也不冒充上传成功。
 - 停止、删目标、删配置只阻止后续领取，不取消已领取请求；身份及归档保留。
 
 ### 排序、快照与 cursor
@@ -75,15 +75,37 @@ initial 在本轮根页成功后同步非零／未知回复数的根，完整来
 
 逐根读取同时返回来源回复数、本地完整数、最近尝试及成功数；首次失败空本地数不冒充成功空。目标作者只由同根 parent 对应归档解析；找不到则 null，不以 @ 提及者伪造。完整 DTO、错误与证据见 [归档契约](../docs/backend/api/archive-api.md#17-楼中楼完整归档与读取) 与 [17 验收](../.scratch/backend-integration/acceptance-17.md)。不交付 #18 页面展开/历史恢复。
 
+## 19 OSS 服务端配置
+
+动态图按照完整来源顺序下载，原字节上传；每张图保存状态、脱敏错误和完整公开 URL。`POST /api/sync/media/{dynamicId}` 独立恢复未完成图片，可加 `?media_id=<当前关联ID>` 只重试一张；不会请求正文、评论或重新宣称正文成功。已成功项跳过；未配置 uploader 返回零，图片保持 pending。完整 DTO、来源切换、旧成功保留和版本／尝试 fencing 见 [19 契约](../docs/backend/api/archive-api.md#19-动态媒体归档独立重试与公开-url)，证据见 [acceptance-19.md](../.scratch/backend-integration/acceptance-19.md)。
+
+仅在**仓库外的受限服务环境**提供下列配置，勿将真实值写入仓库、前端、命令记录或本 README；应用不读取 ignored 参考脚本／配置，也不自动加载凭据文件：
+
+| 环境变量 | 用途 |
+| --- | --- |
+| `BILI_OSS_ENDPOINT` | 桶所在区域 HTTPS OSS endpoint，例如 `https://oss-cn-hangzhou.aliyuncs.com` |
+| `BILI_OSS_REGION` | 区域，例如 `cn-hangzhou`，用于 V4 签名 |
+| `BILI_OSS_BUCKET` | 已存在桶名；应用不创建桶或改变 ACL |
+| `BILI_OSS_ACCESS_KEY_ID` / `BILI_OSS_ACCESS_KEY_SECRET` | 服务端上传凭据，建议最小 PutObject 权限 |
+| `BILI_OSS_SECURITY_TOKEN` | 可选 STS token；有值时使用 V4 STS 认证，不实现自动续期 |
+| `BILI_OSS_PUBLIC_BASE_URL` | 已配置匿名公开读取的完整 HTTPS 基址，可带固定路径前缀，不带 query／签名／fragment／用户凭据 |
+
+全部缺失时允许启动但不上传；部分缺失／非法配置以固定 `Application lifecycle failed` 拒绝启动，不回显原值。凭据对象不进入数据库／API。固定 `oss2==2.19.1` SDK 使用 V4、30 秒网络超时，阻塞 PUT 在线程池运行；下载 HTTP 独立于来源 HTTP，关闭客户端及 SDK session，不使用环境代理。图片下载只允许 `hdslb.com`／`biliimg.com` 受信图片域、默认端口的 HTTP(S)，不跟随跳转，非图片／空响应记录失败。
+
+公开匿名 URL 的桶／自定义域配置由维护者提供；上传成功不能证明实际匿名访问、浏览器兼容或长期可用，真实云证据归 #34。本票不购买资源、不读真实凭据、不开放 ACL、不选 CDN／压缩／尺寸变体／物理去重。对象 key 每次尝试不同，旧 PUT 不覆盖新结果；被取代／崩溃可能留下孤立对象，尚无回收、备份、容量或费用治理。旧成功关联保存在 `previous_media`，与新组分开，不冒充新图成功。
+
+媒体重试同其他写入口一样无鉴权，须通过网络部署限制暴露；公开图可直接访问及外链，未来站点登录也不会自动保护。页面／生产 Adapter 图映射归 #20，评论媒体归 #21，周期重试归后续调度票。
+
 ## SQLite 与安全
 
-schema 顺序：v1 身份/配置、v2 targets、v3 archives/generation、v4 持久分页、v5 cursor 资源/过期/索引、v6 根评论及独立持久评论页、v7 回复／逐根同步状态／回复持久页。v0–v6 短事务迁移到 v7，冲突回滚、未来版本拒绝启动；旧 v4 无限期 cursor 被失效，但归档不删。每次操作独立连接并启用外键，等待锁最多 2 秒；数据库操作在线程池执行，网络不进事务。删除配置只 cascade 指定关联，绝不 cascade 身份或归档。
+schema 顺序：v1 身份/配置、v2 targets、v3 archives/generation、v4 持久分页、v5 cursor 资源/过期/索引、v6 根评论及独立持久评论页、v7 回复／逐根同步状态／回复持久页、v8 媒体尝试令牌及归档文档媒体字段。v0–v7 短事务迁移到 v8，冲突回滚、未来版本拒绝启动；旧 v4 无限期 cursor 被失效，但归档不删。每次操作独立连接并启用外键，等待锁最多 2 秒；数据库操作在线程池执行，网络不进事务。删除配置只 cascade 指定关联，绝不 cascade 身份或归档。
 
-错误响应使用固定错误码与提示，不记录请求体、上游原文或异常秘密。HTTPX/HTTPCore 传输日志及 Uvicorn access 日志禁用，部署代理也应避免记录敏感查询。本票测试不读取真实 Cookie、不执行/导入参考脚本、不请求真实上游。
+错误响应使用固定错误码与提示，不记录请求体、上游原文或异常秘密。HTTPX/HTTPCore、OSS SDK、Requests/urllib3 传输日志及 Uvicorn access 日志禁用，部署代理也应避免记录敏感查询。本票测试不读取真实 Cookie、不执行/导入参考脚本、不请求真实上游。
 
 ## 测试与 E2E 装配
 
 ```sh
+uv run pytest backend/tests/test_dynamic_media.py -q
 uv run pytest backend/tests/test_replies.py -q
 uv run pytest backend/tests/test_root_comments.py -q
 uv run pytest backend/tests/test_scoped_archive.py -q
@@ -106,4 +128,4 @@ BILI_DATABASE_PATH=/tmp/bili-management-e2e.sqlite uv run uvicorn backend.tests.
 
 ## 限制
 
-有限结构证据和虚构 fixture 不证明上游长期可用或完整全文覆盖。分钟编辑精度漏检已接受；本阶段无周期/近期/上传，无持续调度或 2GB 容量结论。分页冻结全量响应会有临时内存/SQLite 写入成本，15 分钟窗口内频繁新访问会放大磁盘与写竞争；过期删除不保证文件缩小，不宣称容量治理。服务器墙钟回拨可能延长过期判断，生产时钟需正常同步。
+有限结构证据和虚构 fixture 不证明上游长期可用或完整全文覆盖。分钟编辑精度漏检已接受；本阶段无周期／近期／评论图上传，无真实云上传、持续调度或 2GB 容量结论。分页冻结全量响应会有临时内存/SQLite 写入成本，15 分钟窗口内频繁新访问会放大磁盘与写竞争；过期删除不保证文件缩小，不宣称容量治理。服务器墙钟回拨可能延长过期判断，生产时钟需正常同步。

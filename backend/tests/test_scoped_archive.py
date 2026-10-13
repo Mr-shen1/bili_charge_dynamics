@@ -301,7 +301,9 @@ def test_preexisting_v5_global_cursor_remains_readable_with_implicit_and_explici
                 assert response.json() == batch
             assert client.get(ARCHIVE + "/123").json() == {
                 **saved, "local_reply_count": 0, "root_comments_last_attempt": "pending",
-                "synced_root_comment_count": None, "work": {"comments": "pending", "replies": "pending"},
+                "synced_root_comment_count": None, "work": {"comments": "pending", "replies": "pending", "media": "pending"},
+                "media": [], "previous_media": [], "media_version": None,
+                "synced_media_version": None, "media_last_attempt": "pending",
                 "comments_last_attempt": "pending", "replies_last_attempt": "pending",
                 "synced_comment_count": None, "synced_reply_comment_count": None,
             }

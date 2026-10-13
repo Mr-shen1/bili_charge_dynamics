@@ -265,7 +265,9 @@ def test_v5_locator_and_dynamic_cursor_survive_upgrade_and_root_retry(tmp_path):
     with archive_client(path, source_handler(state)) as client:
         upgraded = client.get(ARCHIVE).json()
         assert upgraded == {**old, "local_reply_count": 0, "root_comments_last_attempt": "pending",
-                            "synced_root_comment_count": None, "work": {**old["work"], "replies": "pending"},
+                            "synced_root_comment_count": None, "work": {**old["work"], "replies": "pending", "media": "success"},
+                            "media": [], "previous_media": [], "media_version": None,
+                            "synced_media_version": None, "media_last_attempt": "success",
                             "replies_last_attempt": "pending", "comments_last_attempt": "pending",
                             "synced_comment_count": None, "synced_reply_comment_count": None}
         client.post("/api/sync/initial", json={"uid": UID})

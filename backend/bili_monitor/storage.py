@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from .contracts import APIError
+from .media import reconcile_media
 
 
 SNAPSHOT_TTL_SECONDS = 15 * 60
@@ -53,7 +54,7 @@ class Store:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 version = connection.execute("PRAGMA user_version").fetchone()[0]
-                if version > 7:
+                if version > 8:
                     raise RuntimeError("Unsupported database schema version")
                 if version == 0:
                     connection.execute("""CREATE TABLE identities (
@@ -128,7 +129,19 @@ class Store:
                         document.setdefault("work", {})["replies"] = "pending"
                         connection.execute("UPDATE archives SET document = ? WHERE id = ?",
                                            (json.dumps(document, ensure_ascii=False), row["id"]))
-                connection.execute("PRAGMA user_version = 7")
+                if version < 8:
+                    connection.execute("""CREATE TABLE media_attempts (
+                        dynamic_id TEXT NOT NULL REFERENCES archives(id), media_id TEXT NOT NULL,
+                        token TEXT NOT NULL, PRIMARY KEY(dynamic_id, media_id)
+                    )""")
+                    for row in connection.execute("SELECT id, document FROM archives").fetchall():
+                        document = json.loads(row["document"])
+                        reconcile_media(document, document.get("media_sources", []), document.get("synced_version"))
+                        if document.get("content_state") != "success" and not document["media"]:
+                            document["work"]["media"] = document["media_last_attempt"] = "pending"
+                        connection.execute("UPDATE archives SET document = ? WHERE id = ?",
+                                           (json.dumps(document, ensure_ascii=False), row["id"]))
+                connection.execute("PRAGMA user_version = 8")
                 connection.commit()
             except BaseException:
                 connection.rollback()
@@ -302,7 +315,9 @@ class Store:
             "published_at": None, "edited_at": None, "edit_status": "unknown",
             "title": None, "text": "", "content_state": "failed", "last_attempt": "failed",
             "source_comment_count": None, "local_comment_count": 0,
-            "media_sources": [], "comment_locator": None,
+            "media_sources": [], "media": [], "previous_media": [],
+            "media_version": None, "synced_media_version": None, "media_last_attempt": "pending",
+            "comment_locator": None,
             "observed_version": None, "synced_version": None,
             "local_reply_count": 0, "replies_last_attempt": "pending", "comments_last_attempt": "pending",
             "synced_comment_count": None, "synced_reply_comment_count": None,
@@ -344,8 +359,12 @@ class Store:
                 if "author" in updates:
                     updates["author"] = _merge_known(document["author"], updates["author"])
                 document.update(updates)
+                if "media_sources" in updates:
+                    reconcile_media(document, updates["media_sources"], updates.get("observed_version"))
                 if document["observed_version"] != document["synced_version"]:
                     document["work"]["text"] = "pending"
+                if document["observed_version"] != document["media_version"]:
+                    document["work"]["media"] = "pending"
                 connection.execute("UPDATE archives SET document = ? WHERE id = ? AND generation = ?",
                                    (json.dumps(document, ensure_ascii=False), id, generation))
                 connection.commit()
@@ -367,6 +386,7 @@ class Store:
                 if status == "success":
                     if document["work"]["text"] == "pending":
                         document.update(body)
+                        reconcile_media(document, document["media_sources"], version)
                         document["content_state"] = "success"
                         if version is not None:
                             document["synced_version"] = version
@@ -382,6 +402,59 @@ class Store:
                 connection.commit()
                 # 只有当前可信观察版本已提交 checkpoint 才计正文成功。
                 return status == "success" and document["work"]["text"] == "success"
+            except BaseException:
+                connection.rollback()
+                raise
+
+    def claim_media(self, id, media_id):
+        with self.connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                row = connection.execute("SELECT document FROM archives WHERE id = ?", (id,)).fetchone()
+                document = json.loads(row[0]) if row else None
+                item = next((item for item in document["media"] if item["id"] == media_id), None) if document else None
+                if item is None or item["status"] == "success":
+                    connection.commit()
+                    return None
+                token = uuid4().hex
+                connection.execute("""INSERT INTO media_attempts VALUES (?, ?, ?)
+                    ON CONFLICT(dynamic_id, media_id) DO UPDATE SET token = excluded.token""", (id, media_id, token))
+                item.update(status="pending", error=None)
+                document["media_last_attempt"] = "pending"
+                connection.execute("UPDATE archives SET document = ? WHERE id = ?",
+                                   (json.dumps(document, ensure_ascii=False), id))
+                connection.commit()
+                return token
+            except BaseException:
+                connection.rollback()
+                raise
+
+    def finish_media(self, id, media_id, token, public_url, error):
+        with self.connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                row = connection.execute("SELECT document FROM archives WHERE id = ?", (id,)).fetchone()
+                document = json.loads(row[0]) if row else None
+                item = next((item for item in document["media"] if item["id"] == media_id), None) if document else None
+                claimed = connection.execute("DELETE FROM media_attempts WHERE dynamic_id = ? AND media_id = ? AND token = ?",
+                                             (id, media_id, token)).rowcount
+                if item is None or not claimed:
+                    connection.commit()
+                    return False
+                item.update(public_url=public_url, status="failed" if error else "success", error=error)
+                complete = all(item["status"] == "success" for item in document["media"])
+                document["work"]["media"] = (
+                    "success" if complete and document["observed_version"] == document["media_version"] else "pending"
+                )
+                document["media_last_attempt"] = (
+                    "success" if complete else "failed" if any(item["status"] == "failed" for item in document["media"]) else "pending"
+                )
+                if complete:
+                    document["synced_media_version"] = document["media_version"]
+                connection.execute("UPDATE archives SET document = ? WHERE id = ?",
+                                   (json.dumps(document, ensure_ascii=False), id))
+                connection.commit()
+                return True
             except BaseException:
                 connection.rollback()
                 raise
