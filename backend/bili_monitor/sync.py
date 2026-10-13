@@ -17,38 +17,43 @@ async def initialize(store, client, uid, downloader=None, uploader=None):
         if generation is None:
             continue
         result["processed"] += 1
-        page_meta, body = {"edit_status": "error"}, None
-        try:
-            page = await fetch_page(client, id)
-            page_meta = page_metadata(page, uid)
-            body = page_body(page)
-        except Exception:
-            # 可解析 metadata 不因正文/编辑字段失败丢失。
-            pass
-        if not await to_thread.run_sync(store.observe_archive, id, generation, page_meta):
-            result["failed"] += 1
-            continue
-        status = "success" if body is not None else "failed"
-        detail_meta = {}
-        try:
-            detail_meta, detail_status = await fetch_detail(client, id, uid)
-            await to_thread.run_sync(store.observe_archive, id, generation, {**page_meta, **detail_meta})
-            if body is None and detail_status == "restricted":
-                status = "restricted"
-        except Exception:
-            # 通用接口失败不阻断独立已解析的 HTML 正文。
-            pass
-        if body is not None:
-            body = dict(body)
-            if not body["media_sources"]:
-                body["media_sources"] = detail_meta.get("media_sources", [])
-        succeeded = await to_thread.run_sync(
-            store.finish_archive, id, generation, status, body, page_meta.get("observed_version")
-        )
+        succeeded = await sync_target(store, client, uid, id, generation, downloader, uploader)
         result["succeeded" if succeeded else "failed"] += 1
-        roots_result = await sync_roots(store, client, id, generation)
-        await sync_replies(store, client, id, generation, roots_result)
-        await sync_media(store, downloader, uploader, id, current_only=True)
-        for root_id in await to_thread.run_sync(store.media_root_ids, id):
-            await sync_media(store, downloader, uploader, id, current_only=True, root_id=root_id)
     return result
+
+
+async def sync_target(store, client, uid, id, generation, downloader=None, uploader=None):
+    """执行已领取的单个目标；共享一次初始化和独立采集进程的归档能力。"""
+    page_meta, body = {"edit_status": "error"}, None
+    try:
+        page = await fetch_page(client, id)
+        page_meta = page_metadata(page, uid)
+        body = page_body(page)
+    except Exception:
+        # 可解析 metadata 不因正文/编辑字段失败丢失。
+        pass
+    if not await to_thread.run_sync(store.observe_archive, id, generation, page_meta):
+        return False
+    status = "success" if body is not None else "failed"
+    detail_meta = {}
+    try:
+        detail_meta, detail_status = await fetch_detail(client, id, uid)
+        await to_thread.run_sync(store.observe_archive, id, generation, {**page_meta, **detail_meta})
+        if body is None and detail_status == "restricted":
+            status = "restricted"
+    except Exception:
+        # 通用接口失败不阻断独立已解析的 HTML 正文。
+        pass
+    if body is not None:
+        body = dict(body)
+        if not body["media_sources"]:
+            body["media_sources"] = detail_meta.get("media_sources", [])
+    succeeded = await to_thread.run_sync(
+        store.finish_archive, id, generation, status, body, page_meta.get("observed_version")
+    )
+    roots_result = await sync_roots(store, client, id, generation)
+    await sync_replies(store, client, id, generation, roots_result)
+    await sync_media(store, downloader, uploader, id, current_only=True)
+    for root_id in await to_thread.run_sync(store.media_root_ids, id):
+        await sync_media(store, downloader, uploader, id, current_only=True, root_id=root_id)
+    return succeeded

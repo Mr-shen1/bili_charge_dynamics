@@ -1,6 +1,6 @@
-# 票据 01–02 / 13 / 15 / 17 / 19 / 21 后端
+# 票据 01–02 / 13 / 15 / 17 / 19 / 21 / 23 后端
 
-提供 UP 身份/配置管理、指定动态关联、显式一次初始化及 SQLite 归档读取。支持根评论采集、最热／最新归档分页、完整楼中楼归档读取，以及动态图／一级评论图共用下载、OSS 上传和独立重试；没有周期调度、近期目标发现或评论图页面，不宣称全部归档完成。管理基础契约见 `docs/backend/api/management-api.md`，02 测试证据见 [backend-acceptance-02.md](../.scratch/backend-integration/evidence/backend-acceptance-02.md)，字段依据见 [source-protocol-evidence.md](../docs/backend/evidence/source-protocol-evidence.md)。
+提供 UP 身份/配置管理、指定动态关联、显式一次初始化及 SQLite 归档读取。支持根评论采集、最热／最新归档分页、完整楼中楼归档读取，以及动态图／一级评论图共用下载、OSS 上传和独立重试；23 新增独立进程的固定节拍检查；没有近期目标发现，不宣称全部归档完成。管理基础契约见 `docs/backend/api/management-api.md`，02 测试证据见 [backend-acceptance-02.md](../.scratch/backend-integration/evidence/backend-acceptance-02.md)，字段依据见 [source-protocol-evidence.md](../docs/backend/evidence/source-protocol-evidence.md)。
 
 ## 运行
 
@@ -11,9 +11,33 @@ uv sync --locked
 BILI_DATABASE_PATH=/absolute/path/monitor.sqlite uv run uvicorn backend.bili_monitor.app:app --host 127.0.0.1 --port 8000
 ```
 
-Python 使用 `.python-version` 固定的 3.12；FastAPI、HTTPX、Uvicorn 和 pytest 版本固定于 `uv.lock`。默认数据库为 `backend/data/monitor.sqlite`，启动时创建目录并迁移；仅启动一个 API worker。没有 API 内嵌定时器或常驻 Node.js，也没有本票采集守护进程。
+Python 使用 `.python-version` 固定的 3.12；FastAPI、HTTPX、Uvicorn 和 pytest 版本固定于 `uv.lock`。默认数据库为 `backend/data/monitor.sqlite`，启动时创建目录并迁移；仅启动一个 API worker。没有 API 内嵌定时器或常驻 Node.js；23 的采集进程需单独启动（见下节）。
 
 **首期无鉴权**：管理、初始化及归档接口均可被访问者调用，可能暴露内容或被修改配置。请通过监听地址、防火墙或反向代理限制暴露；隐藏入口不是保护。本期没有备份或容量治理。
+
+## 23 独立采集进程
+
+API 和采集进程使用同一 SQLite 路径，分别启动，不能增加多个采集进程。仅处理持久启用的指定目标，默认 4 个检查并发、一个独立串行归档阶段。固定 15 秒检查与慢同步分离，状态从 `GET /api/manage/ups/{uid}/checks` 读取；完整节拍、重启与状态语义见 [采集契约](../docs/backend/api/collector-api.md)。API 不内嵌定时器。
+
+```sh
+# 前台运行；Ctrl-C 停止（也支持 kill -TERM <pid>）
+BILI_DATABASE_PATH=/absolute/path/monitor.sqlite uv run python -m backend.bili_monitor.collector
+# 一次检查并登记，既不执行同步，也不恢复中断执行
+uv run python -m backend.bili_monitor.collector --database /absolute/path/monitor.sqlite --once
+```
+
+先通过管理 HTTP 配置启用的指定目标（mode 值为 `specified`）；默认 recent 没有发现实现，不会发起检查。配置、观察和待处理都持久化，退出时正在执行的工作保留，正常运行重启后恢复为待处理。锁文件位于数据库旁，运行时不要删除或使用硬链接别名。
+
+最小隔离演示（**仅测试装配，不访问真实上游、不读取 OSS 环境、不使用默认生产数据库**）：
+
+```sh
+demo_dir=$(mktemp -d)
+uv run python -m backend.tests.collector_demo --database "$demo_dir/monitor.sqlite"
+# 同一路径再次运行，验证重启保留观察和成功时间
+uv run python -m backend.tests.collector_demo --database "$demo_dir/monitor.sqlite"
+```
+
+独立 Python 进程输出 0/15/30/45 四个受控节拍的公开 HTTP 状态；首次检查 pending，随后实际无图/零评论归档完成，后续无变化检查只更新检查时间。时间替身只替换外部时钟，真实 SQLite、HTML/JSON 解析、归档及 HTTP 均执行。受控 45 秒不是实际等待 45 秒，也不证明长期运行稳定性。
 
 ## 应用工厂与传输边界
 
@@ -106,13 +130,14 @@ initial 在根／回复独立提交后处理评论图；正文受限不阻断实
 
 ## SQLite 与安全
 
-schema 顺序：v1 身份/配置、v2 targets、v3 archives/generation、v4 持久分页、v5 cursor 资源/过期/索引、v6 根评论及独立持久评论页、v7 回复／逐根同步状态／回复持久页、v8 媒体尝试令牌及归档文档媒体字段、v9 评论 owner 尝试标识与旧根来源 pending 回填。v0–v8 短事务迁移到 v9，冲突回滚、未来版本拒绝启动；旧 v4 无限期 cursor 被失效，但归档不删。每次操作独立连接并启用外键，等待锁最多 2 秒；数据库操作在线程池执行，网络不进事务。删除配置只 cascade 指定关联，绝不 cascade 身份或归档。
+schema 顺序：v1 身份/配置、v2 targets、v3 archives/generation、v4 持久分页、v5 cursor 资源/过期/索引、v6 根评论及独立持久评论页、v7 回复／逐根同步状态／回复持久页、v8 媒体尝试令牌及归档文档媒体字段、v9 评论 owner 尝试标识与旧根来源 pending 回填、v10 持久目标检查/观察/工作/时间/独立错误。v0–v9 短事务迁移到 v10，冲突回滚、未来版本拒绝启动；旧 v4 无限期 cursor 被失效，但归档不删。每次操作独立连接并启用外键，等待锁最多 2 秒；数据库操作在线程池执行，网络不进事务。删除配置只 cascade 指定关联，绝不 cascade 身份或归档。
 
 错误响应使用固定错误码与提示，不记录请求体、上游原文或异常秘密。HTTPX/HTTPCore、OSS SDK、Requests/urllib3 传输日志及 Uvicorn access 日志禁用，部署代理也应避免记录敏感查询。本票测试不读取真实 Cookie、不执行/导入参考脚本、不请求真实上游。
 
 ## 测试与 E2E 装配
 
 ```sh
+uv run pytest backend/tests/test_collector.py -q
 uv run pytest backend/tests/test_comment_media.py -q
 uv run pytest backend/tests/test_dynamic_media.py -q
 uv run pytest backend/tests/test_replies.py -q
@@ -137,4 +162,4 @@ BILI_DATABASE_PATH=/tmp/bili-management-e2e.sqlite uv run uvicorn backend.tests.
 
 ## 限制
 
-有限结构证据和虚构 fixture 不证明上游长期可用或完整全文覆盖。分钟编辑精度漏检已接受；本阶段无周期／近期／评论图页面，无真实云上传、持续调度或 2GB 容量结论。分页冻结全量响应会有临时内存/SQLite 写入成本，15 分钟窗口内频繁新访问会放大磁盘与写竞争；过期删除不保证文件缩小，不宣称容量治理。服务器墙钟回拨可能延长过期判断，生产时钟需正常同步。
+有限结构证据和虚构 fixture 不证明上游长期可用或完整全文覆盖。分钟编辑精度漏检已接受；本阶段已交付独立固定节拍进程，但无近期发现、真实云上传、长期实际稳定性或 2GB 容量结论。分页冻结全量响应会有临时内存/SQLite 写入成本，15 分钟窗口内频繁新访问会放大磁盘与写竞争；过期删除不保证文件缩小，不宣称容量治理。服务器墙钟回拨可能延长过期判断，生产时钟需正常同步。
