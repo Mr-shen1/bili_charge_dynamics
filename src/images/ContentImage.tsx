@@ -16,7 +16,10 @@ export function ContentImage({ image, preview = false, label, onPreview, onDimen
   const [reservedRatio] = useState(image.width && image.height ? image.width / image.height : unknownImageRatio);
   const [ratio, setRatio] = useState(reservedRatio);
   const source = preview ? image.previewUrl : image.thumbnailUrl;
-  const content = failed ? <span className={styles.error}>图片加载失败</span> : <img key={attempt}
+  const unavailableMessage = image.archiveStatus === 'pending' ? '图片待归档'
+    : image.archiveStatus === 'failed' ? '图片归档失败' : '归档图片地址不可用';
+  const content = !source ? <span className={styles.error}>{unavailableMessage}</span>
+    : failed ? <span className={styles.error}>图片加载失败</span> : <img key={attempt}
     src={source} alt={label} loading={preview ? 'eager' : 'lazy'} style={reserveRatio ? { aspectRatio: ratio } : undefined}
     width={image.width ?? undefined} height={image.height ?? undefined} onError={() => setFailed(true)} onLoad={event => {
       setLoaded(true);
@@ -27,7 +30,7 @@ export function ContentImage({ image, preview = false, label, onPreview, onDimen
   return <div className={styles.media} style={reserveRatio ? { aspectRatio: reservedRatio, maxWidth: 360 * reservedRatio, height: 'auto' } : undefined}>
     {onPreview ? <button id={triggerId} type="button" className={styles.thumbnail} aria-label={`预览${label}`}
       onClick={event => onPreview(event.currentTarget)}>{content}</button> : content}
-    {!failed && !loaded && <span className={styles.loading}>图片加载中</span>}
+    {source && !failed && !loaded && <span className={styles.loading}>图片加载中</span>}
     {failed && <button type="button" className={styles.retry} aria-label={`重试${label}`}
       onClick={() => { setAttempt(previous => previous + 1); setFailed(false); setLoaded(false); }}>重试</button>}
   </div>;

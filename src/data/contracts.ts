@@ -6,8 +6,10 @@ export interface User {
 
 export interface DynamicImage {
   readonly id: string;
-  readonly thumbnailUrl: string;
-  readonly previewUrl: string;
+  readonly thumbnailUrl: string | null;
+  readonly previewUrl: string | null;
+  // 演示图无归档状态；生产图始终保留逐图上传状态，不以来源 URL 补空。
+  readonly archiveStatus?: 'pending' | 'success' | 'failed';
   readonly width: number | null;
   readonly height: number | null;
 }

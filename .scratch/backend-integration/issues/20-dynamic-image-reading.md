@@ -6,7 +6,7 @@
 
 **Blocked by:** [19](19-dynamic-media-archive.md)
 
-**Status:** ready-for-agent
+**Status:** needs-triage
 
 ## 依据与交付边界
 
@@ -29,3 +29,11 @@
 T1 经生产 Adapter 和受控图片服务覆盖单/四/九/超过九/长图/坏图、资源请求、浏览器历史与手势；少量实际 T2 API 联测。保留旧预览/焦点回归；与 #19 一起核对父 #06 清单，触控模拟不能代替 #33 真机证据。
 
 ## Comments
+
+已实现生产 Adapter 完整动态图/归档状态映射；成功图片原样直连 API 给出的公开 URL，未上传/归档失败/浏览器坏图区分，来源/旧组不作回退，头像外链不误禁。复用网格、长图、预览与历史恢复，预览身份明确 owner 类型/ID、整组、序号及触发处，未加入评论/回复图、下载或自由缩放。
+
+新增 T1 生产 Adapter 契约与7条受控图片浏览器场景，覆盖单/四/九/十二/长/坏图、四宽度、按需资源请求、历史/焦点/手势及慢图片/缺尺寸/宽度变化下用户滚动优先；新增2条真实 Uvicorn/SQLite/API→生产 Adapter→浏览器联测，验证独立同步、混合状态、删除监控和断源重开保留。#19 的后端/自动化底座可消费，但其人工核验仍未收口；未改依赖票或父票状态。
+
+验证（Node 先 `source ~/.nvm/nvm.sh && nvm use`；浏览器需 `NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost`）：`pnpm typecheck`、`pnpm test`（200通过；审查后最终使用 `pnpm test --maxWorkers=2` 再次200通过）、`uv run pytest backend/tests -q`（245通过）、`pnpm test:e2e:archive`（20通过）、`pnpm test:e2e:manage`（2通过）、`pnpm test:e2e`（104通过/10条Nginx专项跳过）、`pnpm test:e2e:preview`（96通过/同10条跳过）、`pnpm build`、Python编译和`git diff --check`通过。详情与父 #06/#19 分工对照见 [acceptance-20.md](../acceptance-20.md)，映射契约见 [客户端接口](../../../docs/backend/api/archive-api-client.md#20-增量动态图读取与预览)。
+
+双轴审查：规范轴0确证硬违规、规格轴0确证缺陷；判断性提醒、处理和保留理由在验收记录中分轴列出。已统一网格 owner 类型/触控助手，补列表四宽度溢出断言；审查后完整回归通过。核验清单留待人工确认：#33 真机、#34 实际云/上游/持续运行与正式部署仍未验证，不以模拟触控或 CSS/OSS 宣称真机、压缩、性能或父 #06 全部验收通过。
