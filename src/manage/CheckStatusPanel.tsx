@@ -11,15 +11,17 @@ const errors: Record<CheckError, string> = {
 };
 function CheckStatus({ check }: { check: ManagedCheck }) {
   const partial = Object.values(check.parts).some(state => state === 'success');
-  const newer = check.observedVersion !== check.syncedVersion;
+  const partsComplete = Object.values(check.parts).every(state => state === 'success');
+  const versionMismatch = check.observedVersion !== check.syncedVersion;
   return <section aria-label={`动态 ${check.id} 检查状态`}>
     <h3>动态 {check.id}</h3>
     <p>{check.active ? '已纳入检查' : '已停止或移出；保留已有归档与未完成工作。'}</p>
     <p>{checkLabels[check.checkStatus]}</p>
     <p>{check.checkStatus === 'unchecked' ? '尚无检查工作' : check.work === 'running' ? '同步中'
       : check.work === 'complete' ? '对应观察已完成'
+      : partsComplete ? '分项已完成，整轮待确认'
       : partial ? '部分完成' : check.syncError ? '同步失败，待重试' : '待同步'}</p>
-    {newer && <p>观察与正文成功版本不一致；当前观察仍待同步确认。</p>}
+    {versionMismatch && <p>观察与正文成功版本不一致；当前观察仍待同步确认。</p>}
     {check.editStatus === 'unknown' && <p>编辑信号未知；不代表确认未编辑。</p>}
     {check.editStatus === 'error' && <p>编辑信号错误；保留已有可信值。</p>}
     <p>正文{partLabels[check.parts.text]}；动态图{partLabels[check.parts.media]}；评论{partLabels[check.parts.comments]}；回复{partLabels[check.parts.replies]}；评论图{partLabels[check.parts.comment_media]}。</p>

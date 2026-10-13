@@ -85,11 +85,12 @@ describe('目标检查生产映射', () => {
   it('成功时间来自实际执行；读取失败保留旧状态并可原位重试', async () => {
     const user = userEvent.setup();
     let reads = 0;
+    let work = 'complete';
     const api = createManagementApi(async url => {
       if (!url.endsWith('/checks')) return Response.json({ ups: [{ ...up, monitor: null }] });
       reads++;
       if (reads === 2) return new Response('SECRET_TOKEN', { status: 500 });
-      return Response.json({ checks: [{ ...check, active: false, work: 'complete',
+      return Response.json({ checks: [{ ...check, active: false, work,
         synced_version: check.observed.observed_version, sync_error: null,
         last_succeeded_at: '2025-06-01T02:01:00Z', parts: { ...check.parts, text: 'success', media: 'success' } }] });
     });
@@ -104,6 +105,10 @@ describe('目标检查生产映射', () => {
     expect(document.body).not.toHaveTextContent('SECRET_TOKEN');
     await user.click(screen.getByRole('button', { name: '重新读取检查状态' }));
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    work = 'pending';
+    await user.click(screen.getByRole('button', { name: '重新读取检查状态' }));
+    expect(await status.findByText('分项已完成，整轮待确认')).toBeInTheDocument();
+    expect(status.queryByText('部分完成')).not.toBeInTheDocument();
   });
   it('忽略取消的旧状态读取不能污染重新进入的管理页', async () => {
     const user = userEvent.setup();

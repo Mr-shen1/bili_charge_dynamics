@@ -44,7 +44,7 @@ uv run python -m backend.tests.collector_demo --database "$demo_dir/monitor.sqli
 沿用普通 HTML 的安全 JSON/AUTHOR 解析和同一归档执行链，不新增来源采集器。检查的 `observed`/`revision`、实际正文 HTML 版本及各分项 checkpoint 分开保存：
 
 - 正文 checkpoint 绑定执行时实际读取的可信 HTML 编辑版本，不把领取时的版本套给重新获取的正文。两者不匹配时本轮目标仍 pending，后续固定检查确认版本后可继续。旧执行期间的新检查保持最新观察；管理 `parts.text/media` 针对最新检查版本，不能用旧归档成功冒充新工作完成。归档自身的 observed 仍表示执行阶段实际处理的观察。
-- 编辑仅更新正文/动态图来源；collector 不重扫已完成的根评论/回复，只处理初始化和未完成评论重试。显式 initial 保留既有完整初始化/重试能力，计数变化的周期登记由 #25 接续。
+- 编辑仅更新正文/动态图来源；collector 不重扫已完成整轮（根评论和回复均 success）的评论。根或回复任一未完成时，沿用既有完整根＋回复失败重试链；即使根已完成但回复失败，也会重新读取根页。不是纯正文编辑新增重扫策略。显式 initial 保留既有完整初始化/重试能力，计数变化的周期登记由 #25 接续。
 - 编辑未知/error 保留旧可信值；已有正文在新版本失败后的无可信版本重试不得替换旧成功正文、媒体来源或 checkpoint。首次无编辑标记仍可初始化，分钟精度不补秒，发布时间不由编辑时间补齐。
 - 每次目标领取新增持久、内部、不经 HTTP 返回的 `claim_token`；完成需同时匹配该领取令牌。观察 revision 不替代领取 fencing；同版本重开重新领取、旧迟到完成/失败和重复完成均不能清新任务。归档内容继续由 generation fencing，媒体继续由已有逐图令牌 fencing。API 启动不恢复 running，只有取得采集进程锁后才恢复。
 - 正文成功不表示评论/媒体成功；未配置 OSS 的有图目标仍 pending。无新编辑信号时仍可恢复失败分项；重复 execute 对 complete 目标不再次请求来源。

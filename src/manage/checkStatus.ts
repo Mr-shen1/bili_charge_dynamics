@@ -29,8 +29,6 @@ function version(value: unknown): value is string | null {
 }
 export function parseCheck(value: unknown, timestamp: (value: unknown) => value is string | null): ManagedCheck | null {
   if (!isRecord(value) || !isValidId(value.id) || typeof value.active !== 'boolean'
-    || !['unchecked', 'checked', 'unchanged', 'failed'].includes(String(value.check_status))
-    || !['pending', 'running', 'complete'].includes(String(value.work))
     || typeof value.revision !== 'number' || !Number.isSafeInteger(value.revision) || value.revision < 0
     || !timestamp(value.last_checked_at) || !timestamp(value.last_succeeded_at)
     || !errorCode(value.check_error) || !errorCode(value.sync_error)
@@ -42,7 +40,7 @@ export function parseCheck(value: unknown, timestamp: (value: unknown) => value 
   const parts = value.parts;
   if (!workState(parts.text) || !workState(parts.media) || !workState(parts.comments)
     || !workState(parts.replies) || !workState(parts.comment_media)) return null;
-  // 分别核验枚举，让输出在类型层面同样保持封闭。
+  // 单次核验封闭枚举，同时收窄输出类型。
   const checkStatus = value.check_status;
   const work = value.work;
   if (checkStatus !== 'unchecked' && checkStatus !== 'checked' && checkStatus !== 'unchanged' && checkStatus !== 'failed'
