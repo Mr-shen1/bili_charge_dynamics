@@ -21,7 +21,8 @@ it('评论和回复的 UP 标识按当前动态作者 ID，不按全局身份或
   ] } } }));
   const authorComment = (await screen.findByText('实际作者评论')).closest('li')!;
   const otherComment = screen.getByText('同名不同 ID 评论').closest('li')!;
-  expect(within(authorComment).getByText('UP主')).toBeInTheDocument();
+  // 回复也可能已完成；根评论自身的标记不能包含嵌套回复中的标记。
+  expect(within(authorComment).getAllByText('UP主').filter(badge => badge.closest('li') === authorComment)).toHaveLength(1);
   expect(within(otherComment).queryByText('UP主')).not.toBeInTheDocument();
   const authorReply = (await screen.findByText('实际作者回复')).closest('li')!;
   const otherReply = screen.getByText('同名不同 ID 回复').closest('li')!;

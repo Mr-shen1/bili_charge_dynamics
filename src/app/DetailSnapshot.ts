@@ -1,20 +1,20 @@
-import type { Comment, CommentSort, ReadResult, Reply, Dynamic } from '../data/contracts';
+import type { CommentBatch, CommentSort, ReadResult, ReplyBatch, Dynamic } from '../data/contracts';
 
 import type { ReadingPosition } from './ListSnapshot';
 
-export interface DiscussionReadState<T> {
-  readonly status: ReadResult<{ items: readonly T[]; nextCursor: string | null }>['status'] | 'loading';
-  readonly data: { readonly items: readonly T[]; readonly nextCursor: string | null } | null;
+export interface DiscussionReadState<Batch> {
+  readonly status: ReadResult<Batch>['status'] | 'loading';
+  readonly data: Batch | null;
   readonly reason?: Extract<ReadResult<never>, { status: 'error' }>['reason'];
 }
 export interface ReplySnapshot {
-  readonly read: DiscussionReadState<Reply>;
+  readonly read: DiscussionReadState<ReplyBatch>;
   readonly expanded: boolean;
   readonly expandedTexts: Readonly<Record<string, boolean>>;
 }
 export interface CommentSnapshot {
   readonly sort: CommentSort;
-  readonly read: DiscussionReadState<Comment>;
+  readonly read: DiscussionReadState<CommentBatch>;
   readonly expanded: Readonly<Record<string, boolean>>;
   readonly replies: Readonly<Record<string, ReplySnapshot>>;
 }

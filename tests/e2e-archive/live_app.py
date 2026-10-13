@@ -15,6 +15,12 @@ def create_app():
     attempts = {}
     files = {"9101": "normal", "9102": "empty", "9103": "restricted", "9104": "failed"}
     roots = json.loads((FIXTURES / "root-comments.json").read_text()) if os.environ.get("FIXTURE_ROOT_COMMENTS") == "1" else None
+    replies = json.loads((FIXTURES / "replies.json").read_text()) if os.environ.get("FIXTURE_REPLIES") == "1" else None
+    if replies is not None:
+        assert roots is not None
+        root_id = replies["data"]["root"]["rpid_str"]
+        root = next(item for item in roots["data"]["replies"] if item["rpid_str"] == root_id)
+        root["rcount"] = replies["data"]["page"]["count"]
 
     def upstream(request):
         if os.environ.get("FIXTURE_OFFLINE") == "1":
@@ -28,6 +34,17 @@ def create_app():
             payload = json.loads(json.dumps(roots))
             payload["data"]["page"]["num"] = page
             payload["data"]["replies"] = roots["data"]["replies"][(page - 1) * 20:page * 20] or None
+            return httpx.Response(200, json=payload)
+        if request.url.path == "/x/v2/reply/reply" and replies is not None:
+            assert request.url.params["oid"] == "9101"
+            assert request.url.params["type"] == "11"
+            assert request.url.params["root"] == root_id
+            assert request.url.params["ps"] == "20"
+            page = int(request.url.params["pn"])
+            assert page >= 1
+            payload = json.loads(json.dumps(replies))
+            payload["data"]["page"]["num"] = page
+            payload["data"]["replies"] = replies["data"]["replies"][(page - 1) * 20:page * 20] or None
             return httpx.Response(200, json=payload)
         target_id = request.url.params.get("id") if request.url.path.endswith("/detail") else request.url.path.rsplit("/", 1)[-1]
         if target_id == "9104":

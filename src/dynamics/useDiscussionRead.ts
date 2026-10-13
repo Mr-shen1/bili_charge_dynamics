@@ -8,15 +8,15 @@ interface DiscussionBatch<T> {
 }
 
 // 每个排序视图/回复根节点独立拥有请求；所属视图卸载使迟到结果及完成失效。
-export function useDiscussionRead<T extends { readonly id: string }>(
-  read: (cursor: string | null | undefined, signal: AbortSignal, initial: boolean) => Promise<ReadResult<DiscussionBatch<T>>>,
-  initial?: DiscussionReadState<T>,
+export function useDiscussionRead<Batch extends DiscussionBatch<{ readonly id: string }>>(
+  read: (cursor: string | null | undefined, signal: AbortSignal, initial: boolean) => Promise<ReadResult<Batch>>,
+  initial?: DiscussionReadState<Batch>,
 ) {
-  const [state, setState] = useState<DiscussionReadState<T>>(initial ?? { status: 'loading', data: null });
+  const [state, setState] = useState<DiscussionReadState<Batch>>(initial ?? { status: 'loading', data: null });
   const current = useRef(state);
   const request = useRef<AbortController | null>(null);
   const active = useRef(false);
-  const update = useCallback((next: DiscussionReadState<T>) => {
+  const update = useCallback((next: DiscussionReadState<Batch>) => {
     current.current = next;
     setState(next);
   }, []);
@@ -39,7 +39,7 @@ export function useDiscussionRead<T extends { readonly id: string }>(
           return true;
         });
         update({ status: 'success', data: {
-          items: [...(previous?.items ?? []), ...additions], nextCursor: result.data.nextCursor,
+          ...previous, ...result.data, items: [...(previous?.items ?? []), ...additions],
         } });
       } else update({ data: previous, status: result.status,
         ...(result.status === 'error' ? { reason: result.reason } : {}) });
@@ -58,5 +58,13 @@ export function useDiscussionRead<T extends { readonly id: string }>(
       request.current = null;
     };
   }, [load]);
-  return { state, load };
+  // 单根重启保留组件身份，只废弃该根请求；根评论排序重挂载还须重置整个回复子树。
+  const restart = useCallback(() => {
+    if (!active.current) return;
+    request.current?.abort();
+    request.current = null;
+    update({ status: 'loading', data: null });
+    void load();
+  }, [load, update]);
+  return { state, load, restart };
 }

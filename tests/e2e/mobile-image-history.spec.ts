@@ -177,6 +177,10 @@ test('重复开关和替换路由key保留底层阅读与同一预览，快速�
 
 test('从底层开始新导航分支后不虚构已丢弃的前进预览，新开预览独立初始化', async ({ page }) => {
   await page.goto('/');
+  // 本场景测导航分支；先等公开历史记录登记完成，避免把首次会话初始化竞态混入。
+  await expect.poll(() => page.evaluate(() => history.state?.usr)).toMatchObject({
+    sessionId: expect.any(String), pageEntryId: expect.any(String),
+  });
   const card = page.getByRole('article').filter({ has: page.getByText('图文日记 4', { exact: false }) });
   const trigger = card.getByRole('button', { name: '预览图片 1', exact: true });
   await trigger.click();
