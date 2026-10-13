@@ -26,6 +26,18 @@
 
 安全提取 JSON，不执行脚本，不固定 script 标签或数组下标。缺标记是未知，不是未编辑；无效日期/非 JSON 是错误，不覆盖旧可信值。发布时间与编辑时间独立。`opus/detail` JSON 曾返回412，不依赖该接口。
 
+## 15 根评论协议
+
+新增实现仍只使用虚构 JSON 和外部 transport 替身，不请求真实上游、不读取凭据、不执行 ignored 脚本。静态依据：
+
+- ignored `script_demo/bili_charge_monitor.py:330–347,382–407,536–631,817–831`：旧 `/x/v2/reply` 页码参数、条目／图片映射、动态计数口径 caveat、置顶和热评；指定定位沿用 `bili_charge_target_monitor.py:99–114`。
+- 公开第三方固定快照 `cfc5fddcc8a94b74d91970bb5b4eaeb349addc47`：[list.md](https://github.com/alittlehuaji/bilibili-api-collect-mirror/blob/cfc5fddcc8a94b74d91970bb5b4eaeb349addc47/docs/comment/list.md#L5-L62) 列出 `/x/v2/reply`、oid/type/pn/ps/sort 和 `page.count/acount`；[readme.md](https://github.com/alittlehuaji/bilibili-api-collect-mirror/blob/cfc5fddcc8a94b74d91970bb5b4eaeb349addc47/docs/comment/readme.md#L42-L90) 定义字符串 ID、关系、ctime/like/rcount/member；[图片字段](https://github.com/alittlehuaji/bilibili-api-collect-mirror/blob/cfc5fddcc8a94b74d91970bb5b4eaeb349addc47/docs/comment/readme.md#L220-L231) 为 content.pictures 的 img_src/img_width/img_height。
+- 同快照 [list.md:859–966](https://github.com/alittlehuaji/bilibili-api-collect-mirror/blob/cfc5fddcc8a94b74d91970bb5b4eaeb349addc47/docs/comment/list.md#L859-L966) 将裸 `/reply/main` 标为旧地址，替代 `/reply/wbi/main` 使用签名及游标；本票不臆造裸 main 的当前游标保证、不增加 WBI／凭据配置。
+
+文档把旧 `page.count` 定义为根数、`acount` 为总数，但 ignored 脚本指出动态场景口径可能不同；有限实际样本也未证明跨接口恒等。实现不以 count 推根页数，不把 acount 或本地数覆盖动态 module_stat 总数；要求有效分页响应，逐页直到空页并检测计数变化／重复页。该终止协议只能描述当轮接口读至耗尽，不保证并发来源更新下完整快照。
+
+`backend/tests/fixtures/root-comments.json` 是结构真实、身份／内容虚构的原始输入：动态 123 的定位 oid=99123/type=17，两个根、总数 7、回复数 5、置顶／热评结构及有序图片；测试基于该原始协议结构构造多页、空、拒绝、缺失及 45 根排序样例。不是抓取真实响应，也不是匿名可用性证据。固定文档提到 Cookie／APP 认证，本票生产传输不添加凭据；匿名可用性、各类型计数、真实全量及长期可用性仍未验证。
+
 ## 验证范围
 
 fixture 所有身份、内容、媒体 URL、错误秘密均虚构；结构保持不代表覆盖全部上游变体。`BLOCKED` 仅限制正文，不能据此跳过将来的独立评论读取。本票不采评论、不上传媒体、不访问真实来源，不宣称长期稳定或全部归档完成。

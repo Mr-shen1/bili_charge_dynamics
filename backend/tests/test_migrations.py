@@ -23,18 +23,18 @@ def test_empty_unversioned_database_migrates_and_reopens(tmp_path):
     with client_for(path) as client:
         assert client.get(BASE).json() == saved
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 5
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 6
 
 
 def test_future_database_refuses_startup_without_downgrading(tmp_path, caplog):
     path = tmp_path / "FICTIONAL_SECRET_FUTURE.sqlite"
     with sqlite3.connect(path) as database:
-        database.execute("PRAGMA user_version = 6")
+        database.execute("PRAGMA user_version = 7")
     with pytest.raises(RuntimeError, match="Unsupported database schema version"):
         with client_for(path):
             pytest.fail("A future schema must not serve requests")
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 6
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 7
     assert "FICTIONAL_SECRET" not in caplog.text
 
 

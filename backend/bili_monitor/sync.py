@@ -3,6 +3,7 @@
 from anyio import to_thread
 
 from .source import fetch_detail, fetch_page, page_body, page_metadata
+from .root_comments import sync_roots
 
 
 async def initialize(store, client, uid):
@@ -43,4 +44,5 @@ async def initialize(store, client, uid):
             store.finish_archive, id, generation, status, body, page_meta.get("observed_version")
         )
         result["succeeded" if succeeded else "failed"] += 1
+        await sync_roots(store, client, id, generation)
     return result

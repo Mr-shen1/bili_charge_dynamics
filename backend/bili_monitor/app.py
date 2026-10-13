@@ -161,6 +161,16 @@ def create_app(
             raise APIError("NOT_FOUND")
         return saved
 
+    @application.get("/api/archive/dynamics/{id}/comments")
+    async def read_comments(
+        id: UID, request: Request,
+        sort: Literal["hot", "latest"] = "hot",
+        limit: Annotated[int, Query(ge=1, le=20)] = 20,
+        cursor: Annotated[str | None, Query(max_length=64)] = None,
+    ):
+        validate_query(request, ("sort", "limit", "cursor"))
+        return await run_store(store.list_roots, id, sort, limit, cursor)
+
     return application
 
 

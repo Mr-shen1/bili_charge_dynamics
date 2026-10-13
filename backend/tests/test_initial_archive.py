@@ -107,7 +107,7 @@ def test_failed_initial_attempt_is_persisted_retryable_and_local_reads_survive_l
         assert saved["edited_at"] is None
         assert saved["content_state"] == saved["last_attempt"] == "failed"
         assert saved["source_comment_count"] is None
-        assert saved["work"] == {"text": "pending", "media": "pending", "comments": "pending"}
+        assert saved["work"] == {"text": "pending", "media": "pending", "comments": "pending", "replies": "pending"}
         assert "FICTIONAL_SECRET" not in response.text + detail.text + caplog.text
         set_specified(client, enabled=False)
         assert client.post("/api/sync/initial", json={"uid": UID}).json()["processed"] == 0
@@ -198,12 +198,13 @@ def test_readable_full_page_archives_metadata_media_locator_and_version_idempote
             "id": "123", "author": {"id": UID, "nickname": "虚构星海", "avatar_url": "https://example.invalid/avatar.png"},
             "published_at": "2026-10-09T10:38:16+08:00", "edited_at": "2026-10-09T13:01+08:00", "edit_status": "observed",
             "title": None, "text": "虚构全文\n第二行 <b>仍是文本</b> 🙂", "content_state": "success", "last_attempt": "success",
-            "source_comment_count": 7, "local_comment_count": 0,
+            "source_comment_count": 7, "local_comment_count": 0, "local_reply_count": 0,
+            "root_comments_last_attempt": "failed", "synced_root_comment_count": None,
             "media_sources": [{"url": "https://example.invalid/first.png", "width": 640, "height": 480},
                               {"url": "https://example.invalid/second.png", "width": 200, "height": 1200}],
             "comment_locator": {"oid": "99123", "type": 17},
             "observed_version": "2026-10-09T13:01+08:00", "synced_version": "2026-10-09T13:01+08:00",
-            "work": {"text": "success", "media": "pending", "comments": "pending"},
+            "work": {"text": "success", "media": "pending", "comments": "pending", "replies": "pending"},
         }
         before = list(calls)
         assert client.get("/api/archive/dynamics").json()["items"] == [saved]
@@ -386,7 +387,7 @@ def test_draw_rich_text_and_ordered_media_without_edit_or_publication_signal(tmp
         assert saved["edit_status"] == "unknown"
         assert saved["media_sources"] == [{"url": "https://example.invalid/a.png", "width": 12, "height": 30},
                                          {"url": "https://example.invalid/b.png", "width": None, "height": None}]
-        assert saved["work"] == {"text": "success", "media": "pending", "comments": "pending"}
+        assert saved["work"] == {"text": "success", "media": "pending", "comments": "pending", "replies": "pending"}
     with archive_client(path) as client:
         assert client.get("/api/archive/dynamics/123").json() == saved
 
@@ -706,7 +707,7 @@ def test_same_observed_version_retries_after_failed_body_and_database_reopen(tmp
         saved = client.get("/api/archive/dynamics/123").json()
         assert saved["text"] == "可重试正文"
         assert saved["synced_version"] == saved["observed_version"] == "2026-10-09T13:01+08:00"
-        assert saved["work"] == {"text": "success", "media": "pending", "comments": "pending"}
+        assert saved["work"] == {"text": "success", "media": "pending", "comments": "pending", "replies": "pending"}
 
 
 def test_missing_opus_pictures_is_not_successful_empty_media_and_keeps_old_archive(tmp_path):
