@@ -88,21 +88,26 @@ function CommentSortView({ reader, dynamicId, authorId, sort, onSettled, restart
     {!state.data && state.reason !== 'invalid-cursor' && state.reason !== 'not-archived' && <ReadNotice status={state.status} area={area} retry={load} />}
     {state.data?.items.length === 0 && <p role="status">{emptyUnarchived ? unarchivedMessage : '暂无评论'}</p>}
     <ul className={styles.comments} aria-label="一级评论">
-      {state.data?.items.map(comment => <li key={comment.id} className={styles.card} data-reading-id={`comment:${comment.id}`}>
-        <Identity user={comment.author} />
-        {comment.author.id === authorId && <span className={styles.upBadge}>UP主</span>}
-        <time className={styles.time} dateTime={comment.publishedAt ?? undefined}>{displayTime(comment.publishedAt)}</time>
-        {(comment.text.trim() || (!comment.images?.length && !comment.pendingMediaCount)) && <FoldableText text={comment.text.trim() ? comment.text : '暂无评论内容'} subject="评论"
-          expanded={expanded[comment.id] ?? false}
-          toggle={() => setExpanded(previous => ({ ...previous, [comment.id]: !previous[comment.id] }))} />}
-        {!!comment.images?.length && <ImageGrid owner={{ type: 'comment', id: comment.id }} images={comment.images} list={false} />}
-        {!!comment.pendingMediaCount && <p role="status">评论图片待归档（{comment.pendingMediaCount} 张）。</p>}
-        <p className={styles.count}>点赞 {comment.likeCount ?? '—'}</p>
-        <p className={styles.count}>回复 {comment.replyCount ?? '—'}</p>
-        {comment.replyCount !== 0 && (reader.replies === 'not-archived'
-          ? <p role="status">回复尚未归档。</p>
-          : <ReplySection reader={reader} dynamicId={dynamicId} authorId={authorId} rootId={comment.id} />)}
-      </li>)}
+      {state.data?.items.map(comment => {
+        const images = comment.images ?? [];
+        const hasText = Boolean(comment.text.trim());
+        const hasMedia = images.length > 0 || Boolean(comment.pendingMediaCount);
+        return <li key={comment.id} className={styles.card} data-reading-id={`comment:${comment.id}`}>
+          <Identity user={comment.author} />
+          {comment.author.id === authorId && <span className={styles.upBadge}>UP主</span>}
+          <time className={styles.time} dateTime={comment.publishedAt ?? undefined}>{displayTime(comment.publishedAt)}</time>
+          {(hasText || !hasMedia) && <FoldableText text={hasText ? comment.text : '暂无评论内容'} subject="评论"
+            expanded={expanded[comment.id] ?? false}
+            toggle={() => setExpanded(previous => ({ ...previous, [comment.id]: !previous[comment.id] }))} />}
+          {images.length > 0 && <ImageGrid owner={{ type: 'comment', id: comment.id }} images={images} list={false} />}
+          {!!comment.pendingMediaCount && <p role="status">评论图片待归档（{comment.pendingMediaCount} 张）。</p>}
+          <p className={styles.count}>点赞 {comment.likeCount ?? '—'}</p>
+          <p className={styles.count}>回复 {comment.replyCount ?? '—'}</p>
+          {comment.replyCount !== 0 && (reader.replies === 'not-archived'
+            ? <p role="status">回复尚未归档。</p>
+            : <ReplySection reader={reader} dynamicId={dynamicId} authorId={authorId} rootId={comment.id} />)}
+        </li>;
+      })}
     </ul>
     {state.data && state.data.items.length > 0 && (state.data.nextCursor === null
       ? <p role="status">评论已加载完毕</p>

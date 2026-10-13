@@ -4,6 +4,11 @@ export interface User {
   readonly avatarUrl: string | null;
 }
 
+export interface ImageOwner {
+  readonly type: 'dynamic' | 'comment';
+  readonly id: string;
+}
+
 export interface DynamicImage {
   readonly id: string;
   readonly thumbnailUrl: string | null;
@@ -56,8 +61,9 @@ export interface Comment {
   readonly text: string;
   readonly likeCount: number | null;
   readonly replyCount: number | null;
+  // 有序当前图片；未提供等价空集合，旧来源存在性由 pendingMediaCount 单独保留。
   readonly images?: readonly DynamicImage[];
-  // 尚无可展示关联的来源图片数；逐图上传状态由 images 表达。
+  // 兼容旧评论的来源待归档数：只计尚无当前关联的位置，不计 images 中的 pending/failed。
   readonly pendingMediaCount?: number;
 }
 
