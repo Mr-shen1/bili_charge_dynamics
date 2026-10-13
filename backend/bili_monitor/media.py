@@ -32,6 +32,7 @@ def is_archive_delivery_url(url):
 
 
 def refresh_media_progress(document, *, empty_confirmed=True):
+    """按单图结果聚合；迁移中没有成功正文的空来源不能确认媒体成功空。"""
     items = document["media"]
     complete = (bool(items) or empty_confirmed) and all(item["status"] == "success" for item in items)
     document["work"]["media"] = (
