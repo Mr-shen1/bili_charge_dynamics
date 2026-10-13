@@ -2,6 +2,7 @@
 
 import json
 from contextlib import contextmanager
+from uuid import uuid4
 
 from .contracts import APIError
 
@@ -56,6 +57,19 @@ def transaction(store):
         except BaseException:
             connection.rollback()
             raise
+
+
+def check_parts(row):
+    parts = json.loads(row["parts"]) if row["parts"] else dict.fromkeys(
+        ("text", "media", "comments", "replies"), "pending")
+    observed = json.loads(row["observed"]) if row["observed"] else {}
+    # 管理分项针对最新检查观察；旧归档成功不能冒充新正文/媒体完成。
+    version = observed.get("observed_version")
+    if version != row["synced_version"]:
+        parts["text"] = "pending"
+    if version != row["media_version"]:
+        parts["media"] = "pending"
+    return {**parts, "comment_media": row["comment_media"]}
 
 
 def archive_complete(connection, uid, id, observed):
@@ -133,6 +147,7 @@ class CheckStore:
                 c.revision, c.work, c.check_error, c.sync_error,
                 json_extract(a.document, '$.work') AS parts,
                 json_extract(a.document, '$.synced_version') AS synced_version,
+                json_extract(a.document, '$.media_version') AS media_version,
                 CASE WHEN a.id IS NOT NULL AND json_extract(a.document, '$.work.comments') = 'success'
                     AND NOT EXISTS (SELECT 1 FROM root_comments r WHERE r.dynamic_id = a.id
                         AND json_extract(r.document, '$.work.media') IS NOT 'success')
@@ -154,9 +169,7 @@ class CheckStore:
                  "revision": row["revision"] or 0, "work": row["work"] or "pending",
                  "check_error": row["check_error"], "sync_error": row["sync_error"],
                  "synced_version": row["synced_version"],
-                 "parts": {**(json.loads(row["parts"]) if row["parts"] else
-                              dict.fromkeys(("text", "media", "comments", "replies"), "pending")),
-                           "comment_media": row["comment_media"]}} for row in rows]
+                 "parts": check_parts(row)} for row in rows]
 
     def pending_checks(self):
         with self.connection() as connection:
@@ -174,16 +187,18 @@ class CheckStore:
                 WHERE uid = ? AND id = ? AND work = 'pending'""", (uid, id)).fetchone()
             if row is None:
                 return None
-            connection.execute("UPDATE target_checks SET work = 'running' WHERE uid = ? AND id = ?", (uid, id))
-            return {"revision": row["revision"], "observed": json.loads(row["observed"])}
+            token = uuid4().hex
+            connection.execute("UPDATE target_checks SET work = 'running', claim_token = ? WHERE uid = ? AND id = ?",
+                               (token, uid, id))
+            return {"revision": row["revision"], "observed": json.loads(row["observed"]), "token": token}
 
-    def finish_check_work(self, uid, id, revision, succeeded, finished_at, error=None):
+    def finish_check_work(self, uid, id, revision, succeeded, finished_at, error=None, *, token):
         with transaction(self) as connection:
-            row = connection.execute("SELECT revision, work FROM target_checks WHERE uid = ? AND id = ?", (uid, id)).fetchone()
-            if row is None or row["work"] != "running":
+            row = connection.execute("SELECT revision, work, claim_token FROM target_checks WHERE uid = ? AND id = ?", (uid, id)).fetchone()
+            if row is None or row["work"] != "running" or row["claim_token"] != token:
                 return False
             complete = succeeded and row["revision"] == revision
-            connection.execute("""UPDATE target_checks SET work = ?,
+            connection.execute("""UPDATE target_checks SET work = ?, claim_token = NULL,
                 last_succeeded_at = CASE WHEN ? THEN ? ELSE last_succeeded_at END,
                 sync_error = ? WHERE uid = ? AND id = ?""",
                 ("complete" if complete else "pending", complete, finished_at,
@@ -193,4 +208,4 @@ class CheckStore:
     def recover_check_work(self):
         # 仅由已取得进程锁的独立 collector 显式调用；API 启动不得恢复。
         with transaction(self) as connection:
-            connection.execute("UPDATE target_checks SET work = 'pending' WHERE work = 'running'")
+            connection.execute("UPDATE target_checks SET work = 'pending', claim_token = NULL WHERE work = 'running'")

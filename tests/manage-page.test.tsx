@@ -265,7 +265,7 @@ describe('/manage 生产映射页面', () => {
     expect(within(card).getByText('未知用户')).toBeInTheDocument();
     expect(within(card).getByRole('img', { name: '未知用户的头像' })).toHaveAttribute('src', '/default-avatar.svg');
     expect(within(card).getByText('最近检查：未检查')).toBeInTheDocument();
-    expect(within(card).getByText('最近成功：未检查')).toBeInTheDocument();
+    expect(within(card).getByText('最近成功：尚未成功')).toBeInTheDocument();
     expect(within(input.closest('form')!).getAllByRole('textbox')).toHaveLength(1);
     expect(screen.queryByLabelText(/昵称|头像|凭据/)).not.toBeInTheDocument();
   });

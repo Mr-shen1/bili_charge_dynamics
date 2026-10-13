@@ -78,7 +78,7 @@ class Store(CheckStore):
             connection.execute("BEGIN IMMEDIATE")
             try:
                 version = connection.execute("PRAGMA user_version").fetchone()[0]
-                if version > 10:
+                if version > 11:
                     raise RuntimeError("Unsupported database schema version")
                 if version == 0:
                     connection.execute("""CREATE TABLE identities (
@@ -187,7 +187,10 @@ class Store(CheckStore):
                         sync_error TEXT CHECK(sync_error IN ('SOURCE_UNAVAILABLE', 'SIGNAL_INVALID', 'SYNC_INCOMPLETE')),
                         PRIMARY KEY(uid, id)
                     )""")
-                connection.execute("PRAGMA user_version = 10")
+                if version < 11:
+                    # revision 是观察代次，不能 fencing 同一代次的重新领取。
+                    connection.execute("ALTER TABLE target_checks ADD COLUMN claim_token TEXT")
+                connection.execute("PRAGMA user_version = 11")
                 connection.commit()
             except BaseException:
                 connection.rollback()
@@ -441,6 +444,10 @@ class Store(CheckStore):
                     connection.commit()
                     return False
                 document = json.loads(row[0])
+                # 未知/无效编辑信号无法将新正文绑定到可信版本；保留已有成功归档。
+                if (status == "success" and version is None and document["observed_version"] is not None
+                        and document["content_state"] == "success" and document["work"]["text"] == "pending"):
+                    status = "failed"
                 document["last_attempt"] = status
                 if status == "success":
                     if document["work"]["text"] == "pending":

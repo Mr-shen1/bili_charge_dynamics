@@ -3,6 +3,7 @@ import { Identity, displayTime } from '../dynamics/DynamicContent';
 import type { ManagedUp, ManagementApi, MonitorConfig } from './managementApi';
 import type { ManagementRequests } from './useManagementRequests';
 import { TargetManager } from './TargetManager';
+import { CheckStatusPanel } from './CheckStatusPanel';
 
 export function UpCard({ up, api, requests, onChange }: {
   up: ManagedUp; api: ManagementApi; requests: ManagementRequests; onChange(up: ManagedUp): void;
@@ -59,7 +60,9 @@ export function UpCard({ up, api, requests, onChange }: {
     <Identity user={{ id: up.uid, nickname: up.name?.trim() ? up.name : null, avatarUrl: up.avatarUrl }} />
     <p className="manage-muted">UID：{up.uid}</p>
     <p>最近检查：{up.monitor?.lastCheckedAt ? displayTime(up.monitor.lastCheckedAt) : '未检查'}</p>
-    <p>最近成功：{up.monitor?.lastSucceededAt ? displayTime(up.monitor.lastSucceededAt) : '未检查'}</p>
+    <p>最近成功：{up.monitor?.lastSucceededAt ? displayTime(up.monitor.lastSucceededAt) : '尚未成功'}</p>
+    <p className="manage-muted">以上为该 UP 历史目标记录的最近时间，不代表全部目标均已成功。</p>
+    <CheckStatusPanel uid={up.uid} api={api} />
     {up.monitor && <>
       <p>监控：{up.monitor.enabled ? '已启用' : '已停止'}</p>
       <button type="button" disabled={busy} onClick={() => void toggle()}>

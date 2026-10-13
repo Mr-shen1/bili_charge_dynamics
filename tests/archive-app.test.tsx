@@ -133,6 +133,28 @@ describe('真实归档基础页面', () => {
     expect(screen.getAllByRole('img')).toHaveLength(1);
     expect(screen.getByRole('img')).toHaveAttribute('src', '/default-avatar.svg');
   });
+  it.each(['unknown', 'error'] as const)('编辑信号%s仍展示旧可信分钟时间和可读正文，重新访问可读实际提交的新正文', async editStatus => {
+    const urls: string[] = [];
+    let document = { ...archive, edit_status: editStatus, work: { ...archive.work, text: 'success' } };
+    const transport: ArchiveTransport = async (url, init) => {
+      urls.push(url);
+      expect(init.method).toBe('GET');
+      return Response.json(url.includes('/comments?') ? { items: [], next_cursor: null } : document);
+    };
+    const previous = show(transport, `/dynamics/${archive.id}`);
+    expect(await screen.findByText(archive.text.replace(/\s+/g, ' '))).toBeInTheDocument();
+    expect(screen.getByText('编辑于 2026-03-02 13:01')).toBeInTheDocument();
+    expect(screen.queryByText(/13:01:00/)).not.toBeInTheDocument();
+    expect(screen.getByText(editStatus === 'unknown' ? '编辑信号未知。' : '编辑信号读取或解析失败；保留已有可信时间。')).toBeInTheDocument();
+    previous.unmount();
+    document = { ...document, text: '实际提交的新版正文', last_attempt: 'success',
+      synced_version: 'v2', work: { ...document.work, media: 'pending' } };
+    show(transport, `/dynamics/${archive.id}`);
+    expect(await screen.findByText('实际提交的新版正文')).toBeInTheDocument();
+    expect(screen.getByText('正文已保存；媒体待归档；评论待归档。')).toBeInTheDocument();
+    expect(screen.queryByText(archive.text.replace(/\s+/g, ' '))).not.toBeInTheDocument();
+    expect(urls.every(url => url.startsWith('/api/archive/'))).toBe(true);
+  });
   it('正文、媒体、评论工作状态逐项呈现，不把接口状态写死为 pending', async () => {
     const completed = { ...archive, work: { text: 'success', media: 'success', comments: 'failed' } };
     show(async () => Response.json(completed), `/dynamics/${archive.id}`);

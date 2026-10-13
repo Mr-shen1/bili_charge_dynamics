@@ -43,6 +43,11 @@ test('实际 API 保存两 UP 配置，服务重启和页面刷新后仍可读�
     await expect(star.getByLabel('监控模式', { exact: true })).toHaveValue('specified');
     await expect(star.getByText('监控：已停止', { exact: true })).toBeVisible();
     await expect(star.getByText('最近检查：未检查', { exact: true })).toBeVisible();
+    await expect(star.getByText('最近成功：尚未成功', { exact: true })).toBeVisible();
+    const checksRead = page.waitForResponse(response => response.url().endsWith(`/api/manage/ups/${largeUid}/checks`));
+    await star.getByRole('button', { name: '读取检查状态', exact: true }).click();
+    expect(await (await checksRead).json()).toEqual({ checks: [] });
+    await expect(star.getByText('尚无目标检查记录。', { exact: true })).toBeVisible();
     await expect(dawn.getByLabel('近期 N 条', { exact: true })).toHaveValue('23');
     await expect(dawn.getByText('监控：已启用', { exact: true })).toBeVisible();
     const stored = await (await fetch(`${apiUrl}/${largeUid}`)).json();
@@ -55,6 +60,8 @@ test('实际 API 保存两 UP 配置，服务重启和页面刷新后仍可读�
     await page.reload();
     await expect(star.getByText('虚构星海', { exact: true })).toBeVisible();
     await expect(star.getByText('监控配置已删除；身份和已有归档保留。', { exact: true })).toBeVisible();
+    await star.getByRole('button', { name: '读取检查状态', exact: true }).click();
+    await expect(star.getByText('尚无目标检查记录。', { exact: true })).toBeVisible();
     const retained = await fetch(`${apiUrl}/${largeUid}`);
     expect(retained.status).toBe(200);
     expect(await retained.json()).toMatchObject({ uid: largeUid, name: '虚构星海', monitor: null });

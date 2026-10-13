@@ -23,18 +23,18 @@ def test_empty_unversioned_database_migrates_and_reopens(tmp_path):
     with client_for(path) as client:
         assert client.get(BASE).json() == saved
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 10
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 11
 
 
 def test_future_database_refuses_startup_without_downgrading(tmp_path, caplog):
     path = tmp_path / "FICTIONAL_SECRET_FUTURE.sqlite"
     with sqlite3.connect(path) as database:
-        database.execute("PRAGMA user_version = 11")
+        database.execute("PRAGMA user_version = 12")
     with pytest.raises(RuntimeError, match="Unsupported database schema version"):
         with client_for(path):
             pytest.fail("A future schema must not serve requests")
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 11
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 12
     assert "FICTIONAL_SECRET" not in caplog.text
 
 
@@ -228,12 +228,13 @@ def test_check_signals_merge_revision_and_real_success_timestamps_over_http(tmp_
     assert store.enabled_targets() == [{"uid": UID, "id": "123"}, {"uid": UID, "id": "456"}]
     assert store.record_check(UID, "123", {**signals(), "text": "不得写入", "media_sources": []}, CHECKED_AT, None)
     first = store.claim_check_work(UID, "123")
-    assert first == {"revision": 1, "observed": {
+    assert first["revision"] == 1
+    assert first["observed"] == {
         "edit_status": "observed", "observed_version": EDIT_VERSION, "edited_at": EDIT_VERSION,
-        "source_comment_count": 1, "author": {"id": UID, "nickname": "可信昵称"}}}
+        "source_comment_count": 1, "author": {"id": UID, "nickname": "可信昵称"}}
     assert store.claim_check_work(UID, "123") is None
     assert store.pending_checks() == []
-    assert store.finish_check_work(UID, "123", first["revision"], True, FINISHED_AT, None)
+    assert store.finish_check_work(UID, "123", first["revision"], True, FINISHED_AT, None, token=first["token"])
     second_time = "2030-01-01T00:00:15+00:00"
     assert store.record_check(UID, "123", {
         "edit_status": "unknown", "observed_version": None, "edited_at": None,
@@ -268,7 +269,7 @@ def test_running_check_work_retains_new_observation_and_reopens_without_api_reco
         assert current["revision"] == 2 and current["work"] == "running"
     assert store.pending_checks() == []
     assert store.claim_check_work(UID, "123") is None
-    assert not store.finish_check_work(UID, "123", first["revision"], True, FINISHED_AT, None)
+    assert not store.finish_check_work(UID, "123", first["revision"], True, FINISHED_AT, None, token=first["token"])
     with client_for(path) as client:
         current = get_checks(client)[0]
         assert current["work"] == "pending" and current["last_succeeded_at"] is None
@@ -279,7 +280,7 @@ def test_running_check_work_retains_new_observation_and_reopens_without_api_reco
     store.recover_check_work()
     assert store.pending_checks() == [{"uid": UID, "id": "123"}]
     third = store.claim_check_work(UID, "123")
-    assert store.finish_check_work(UID, "123", third["revision"], True, FINISHED_AT, None)
+    assert store.finish_check_work(UID, "123", third["revision"], True, FINISHED_AT, None, token=third["token"])
     with client_for(path) as client:
         assert get_checks(client)[0]["last_succeeded_at"] == FINISHED_AT
 
@@ -291,7 +292,7 @@ def test_failed_checks_and_work_keep_trusted_signals_and_safe_errors(tmp_path, e
     store = check_store(path)
     store.record_check(UID, "123", signals(), CHECKED_AT, None)
     before = store.claim_check_work(UID, "123")
-    assert not store.finish_check_work(UID, "123", before["revision"], False, FINISHED_AT, error)
+    assert not store.finish_check_work(UID, "123", before["revision"], False, FINISHED_AT, error, token=before["token"])
     with client_for(path) as client:
         current = get_checks(client)[0]
         assert current["sync_error"] == expected and current["last_succeeded_at"] is None
@@ -370,7 +371,7 @@ def test_real_v9_configuration_and_archive_migrate_to_checks_without_fabricating
         assert get_checks(client)[0]["check_status"] == "unchecked"
         assert client.get("/api/archive/dynamics/123").json() == saved
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 10
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 11
         assert database.execute("PRAGMA foreign_key_check").fetchall() == []
     reopened = Store(path)
     assert reopened.record_check(UID, "123", {}, CHECKED_AT, None)
@@ -387,7 +388,7 @@ def test_complete_work_becomes_pending_only_for_trusted_version_change(tmp_path)
     store = check_store(path)
     store.record_check(UID, "123", signals(), CHECKED_AT, None)
     first = store.claim_check_work(UID, "123")
-    store.finish_check_work(UID, "123", first["revision"], True, FINISHED_AT, None)
+    store.finish_check_work(UID, "123", first["revision"], True, FINISHED_AT, None, token=first["token"])
     # 即使未知结果含有占位版本，也不能替换可信版本或重新触发编辑工作。
     store.record_check(UID, "123", {"edit_status": "error", "observed_version": "untrusted",
                                     "edited_at": "untrusted"}, CHECKED_AT, None)
@@ -408,7 +409,7 @@ def test_first_failed_check_remains_pending_and_historical_times_are_in_monitor_
     store = check_store(path, ("123", "456"))
     store.record_check(UID, "123", signals(), CHECKED_AT, None)
     first = store.claim_check_work(UID, "123")
-    store.finish_check_work(UID, "123", first["revision"], True, FINISHED_AT, None)
+    store.finish_check_work(UID, "123", first["revision"], True, FINISHED_AT, None, token=first["token"])
     store.delete_target(UID, "123")
     latest = "2030-01-01T00:00:30+00:00"
     store.record_check(UID, "456", None, latest, "FICTIONAL_SECRET")
@@ -438,4 +439,4 @@ def test_v9_check_migration_failure_rolls_back_version_and_can_retry(tmp_path):
     with client_for(path) as client:
         assert get_checks(client)[0]["check_status"] == "unchecked"
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 10
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 11

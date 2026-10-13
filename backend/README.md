@@ -1,4 +1,4 @@
-# 票据 01–02 / 13 / 15 / 17 / 19 / 21 / 23 后端
+# 票据 01–02 / 13 / 15 / 17 / 19 / 21 / 23–24 后端
 
 提供 UP 身份/配置管理、指定动态关联、显式一次初始化及 SQLite 归档读取。支持根评论采集、最热／最新归档分页、完整楼中楼归档读取，以及动态图／一级评论图共用下载、OSS 上传和独立重试；23 新增独立进程的固定节拍检查；没有近期目标发现，不宣称全部归档完成。管理基础契约见 `docs/backend/api/management-api.md`，02 测试证据见 [backend-acceptance-02.md](../.scratch/backend-integration/evidence/backend-acceptance-02.md)，字段依据见 [source-protocol-evidence.md](../docs/backend/evidence/source-protocol-evidence.md)。
 
@@ -38,6 +38,20 @@ uv run python -m backend.tests.collector_demo --database "$demo_dir/monitor.sqli
 ```
 
 独立 Python 进程输出 0/15/30/45 四个受控节拍的公开 HTTP 状态；首次检查 pending，随后实际无图/零评论归档完成，后续无变化检查只更新检查时间。时间替身只替换外部时钟，真实 SQLite、HTML/JSON 解析、归档及 HTTP 均执行。受控 45 秒不是实际等待 45 秒，也不证明长期运行稳定性。
+
+## 24 编辑同步与版本提交
+
+沿用普通 HTML 的安全 JSON/AUTHOR 解析和同一归档执行链，不新增来源采集器。检查的 `observed`/`revision`、实际正文 HTML 版本及各分项 checkpoint 分开保存：
+
+- 正文 checkpoint 绑定执行时实际读取的可信 HTML 编辑版本，不把领取时的版本套给重新获取的正文。两者不匹配时本轮目标仍 pending，后续固定检查确认版本后可继续。旧执行期间的新检查保持最新观察；管理 `parts.text/media` 针对最新检查版本，不能用旧归档成功冒充新工作完成。归档自身的 observed 仍表示执行阶段实际处理的观察。
+- 编辑仅更新正文/动态图来源；collector 不重扫已完成的根评论/回复，只处理初始化和未完成评论重试。显式 initial 保留既有完整初始化/重试能力，计数变化的周期登记由 #25 接续。
+- 编辑未知/error 保留旧可信值；已有正文在新版本失败后的无可信版本重试不得替换旧成功正文、媒体来源或 checkpoint。首次无编辑标记仍可初始化，分钟精度不补秒，发布时间不由编辑时间补齐。
+- 每次目标领取新增持久、内部、不经 HTTP 返回的 `claim_token`；完成需同时匹配该领取令牌。观察 revision 不替代领取 fencing；同版本重开重新领取、旧迟到完成/失败和重复完成均不能清新任务。归档内容继续由 generation fencing，媒体继续由已有逐图令牌 fencing。API 启动不恢复 running，只有取得采集进程锁后才恢复。
+- 正文成功不表示评论/媒体成功；未配置 OSS 的有图目标仍 pending。无新编辑信号时仍可恢复失败分项；重复 execute 对 complete 目标不再次请求来源。
+
+专项测试：`uv run pytest backend/tests/test_versioned_edit_sync.py -q`。原始虚构 HTML 在 `tests/fixtures/versioned_edit/`，覆盖同 pub_ts 不同编辑时间、脚本/模块换序、分钟/空白、相对文案、无效日期/无日期、恶意非 JSON、发布时间缺失、正文/图片改变但信号相同。通过公开 collector、真实 SQLite 关闭重开和 HTTP 验证新旧交错、同/不同观察代次的恢复 fencing、观察后/页面读取中/详情等待/正文提交后中断以及分项失败恢复；不 mock 内部模块。
+
+逐片 red→green 已复现并修复四项：编辑重扫评论令 complete 变 pending；旧版本完成后管理分项仍是假 success；旧领取迟到把新 running 清成 pending；新正文失败后未知版本重试将旧正文替换。其他新增安全解析/恢复场景首跑已通过，属于既有行为回归，不计为修复 red。补充通过 sqlite3 外部连接工厂在真实归档观察事务 commit 前失败／commit 后 ACK 丢失，以及外部 Clock 在全部分项提交后、目标 finish 前中断；重开恢复不需要新信号、不重复已完成评论请求。该 commit 故障不是正文 checkpoint 事务故障，ACK 丢失／控制流中断不冒称硬断电；真实自然多次编辑、同分钟漏检、实际编辑→OSS 联动及持续运行仍未验证。
 
 ## 应用工厂与传输边界
 
@@ -130,7 +144,7 @@ initial 在根／回复独立提交后处理评论图；正文受限不阻断实
 
 ## SQLite 与安全
 
-schema 顺序：v1 身份/配置、v2 targets、v3 archives/generation、v4 持久分页、v5 cursor 资源/过期/索引、v6 根评论及独立持久评论页、v7 回复／逐根同步状态／回复持久页、v8 媒体尝试令牌及归档文档媒体字段、v9 评论 owner 尝试标识与旧根来源 pending 回填、v10 持久目标检查/观察/工作/时间/独立错误。v0–v9 短事务迁移到 v10，冲突回滚、未来版本拒绝启动；旧 v4 无限期 cursor 被失效，但归档不删。每次操作独立连接并启用外键，等待锁最多 2 秒；数据库操作在线程池执行，网络不进事务。删除配置只 cascade 指定关联，绝不 cascade 身份或归档。
+schema 顺序：v1 身份/配置、v2 targets、v3 archives/generation、v4 持久分页、v5 cursor 资源/过期/索引、v6 根评论及独立持久评论页、v7 回复／逐根同步状态／回复持久页、v8 媒体尝试令牌及归档文档媒体字段、v9 评论 owner 尝试标识与旧根来源 pending 回填、v10 持久目标检查/观察/工作/时间/独立错误、v11 目标领取 fencing 令牌。v0–v10 短事务迁移到 v11，冲突回滚、未来版本拒绝启动；旧 v4 无限期 cursor 被失效，但归档不删。每次操作独立连接并启用外键，等待锁最多 2 秒；数据库操作在线程池执行，网络不进事务。删除配置只 cascade 指定关联，绝不 cascade 身份或归档。
 
 错误响应使用固定错误码与提示，不记录请求体、上游原文或异常秘密。HTTPX/HTTPCore、OSS SDK、Requests/urllib3 传输日志及 Uvicorn access 日志禁用，部署代理也应避免记录敏感查询。本票测试不读取真实 Cookie、不执行/导入参考脚本、不请求真实上游。
 

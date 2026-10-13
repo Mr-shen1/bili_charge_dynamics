@@ -453,7 +453,9 @@ def test_body_failure_keeps_parsed_metadata_and_newer_unknown_version_stays_pend
         item["modules"]["module_dynamic"]["major"]["opus"]["summary"] = {"text": "摘要不能作为正文"}
         assert client.post("/api/sync/initial", json={"uid": UID}).json()["failed"] == 1
         saved = client.get("/api/archive/dynamics/123").json()
-        assert saved["text"] == "unknown newer body"
+        # #24：无可信实际版本的重试不能替换旧成功正文或冒领 checkpoint。
+        assert saved["text"] == baseline["text"]
+        assert saved["last_attempt"] == "failed"
         assert saved["observed_version"] == pending["observed_version"]
         assert saved["synced_version"] == baseline["synced_version"]
         assert saved["work"]["text"] == "pending"
