@@ -182,3 +182,89 @@ test('未上传与上传失败保留原位且不影响正文，断源及删除�
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('实际评论图片 HTTP→Adapter→详情：两个纯图评论组与动态图独立，逐图状态及断源重开保留', async ({ page }) => {
+  const directory = await mkdtemp(join(tmpdir(), 'bili-comment-media-live-'));
+  const database = join(directory, 'archive.sqlite');
+  const env = { FIXTURE_MEDIA: 'mixed', FIXTURE_ROOT_COMMENTS: '1', FIXTURE_COMMENT_MEDIA: '1' };
+  const commentsPath = `/api/archive/dynamics/${dynamicId}/comments`;
+  let api: ChildProcess | undefined;
+  try {
+    api = await startApi(database, { ...factory, env });
+    await initialize(page);
+    const pending = await (await page.request.get(`${commentsPath}?sort=hot&limit=20`)).json();
+    const first = pending.items.find((item: { id: string }) => item.id === '45');
+    expect(first.media).toHaveLength(4);
+    expect(first.text).toBe('');
+    expect(first.media.every((image: { status: string; public_url: string | null }) => image.status === 'pending' && image.public_url === null)).toBe(true);
+    await stopApi(api);
+    expect(logsOf(api)).not.toContain('FICTIONAL_SECRET');
+    api = await startApi(database, { ...factory, env: { ...env, FIXTURE_MEDIA_UPLOADER: '1' } });
+    for (const [index, succeeded, failed] of [[0, 1, 0], [1, 0, 1]] as const) {
+      const result = await page.request.post(`/api/sync/media/${dynamicId}/comments/45?media_id=${first.media[index].id}`);
+      expect(result.ok()).toBe(true);
+      expect(await result.json()).toEqual({ processed: 1, succeeded, failed });
+    }
+    expect((await page.request.post(`/api/sync/media/${dynamicId}/comments/44`)).ok()).toBe(true);
+    const dynamic = await (await page.request.get(`/api/archive/dynamics/${dynamicId}`)).json();
+    expect((await page.request.post(`/api/sync/media/${dynamicId}?media_id=${dynamic.media[0].id}`)).ok()).toBe(true);
+    const batch = await (await page.request.get(`${commentsPath}?sort=hot&limit=20`)).json();
+    const mixed = batch.items.find((item: { id: string }) => item.id === '45');
+    const latest = await (await page.request.get(`${commentsPath}?sort=latest&limit=20`)).json();
+    const single = latest.items.find((item: { id: string }) => item.id === '44');
+    expect(mixed.media).toMatchObject([
+      { owner: { type: 'comment', id: '45' }, status: 'success' },
+      { status: 'failed', public_url: null, error: 'MEDIA_UPLOAD_FAILED' },
+      { status: 'pending', public_url: null }, { status: 'pending', public_url: null },
+    ]);
+    expect(mixed.media.map((image: { id: string }) => image.id)).toEqual(first.media.map((image: { id: string }) => image.id));
+    expect(single.media).toMatchObject([{ owner: { type: 'comment', id: '44' }, status: 'success' }]);
+    const { sources, browserWrites } = await imageBoundary(page);
+    await page.goto(`/dynamics/${dynamicId}`);
+    const row = page.locator('[data-reading-id="comment:45"]');
+    const group = row.getByRole('group', { name: '评论图片', exact: true });
+    await expect(group.getByRole('button', { name: /^预览图片/ })).toHaveCount(4);
+    await expect(row.getByText('暂无评论内容', { exact: true })).toHaveCount(0);
+    await expect(group.getByText('图片归档失败', { exact: true })).toBeVisible();
+    await expect(group.getByText('图片待归档', { exact: true })).toHaveCount(2);
+    const trigger = group.getByRole('button', { name: '预览图片 2', exact: true });
+    await trigger.click();
+    const preview = page.getByRole('dialog', { name: '图片预览' });
+    await expect(preview.getByText('2 / 4', { exact: true })).toBeVisible();
+    await expect(preview.getByText('图片归档失败', { exact: true })).toBeVisible();
+    await page.keyboard.press('ArrowLeft');
+    await expect(preview.getByRole('img')).toHaveAttribute('src', mixed.media[0].public_url);
+    await page.goBack();
+    await expect(preview).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+    await page.goForward();
+    await expect(preview.getByText('1 / 4', { exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: '最新', exact: true }).click();
+    const singleTrigger = page.locator('[data-reading-id="comment:44"]').getByRole('button', { name: '预览图片 1', exact: true });
+    await singleTrigger.click();
+    await expect(preview.getByText('1 / 1', { exact: true })).toBeVisible();
+    await expect(preview.getByRole('img')).toHaveAttribute('src', single.media[0].public_url);
+    expect(single.media[0].public_url).not.toBe(mixed.media[0].public_url);
+    await page.keyboard.press('Escape');
+    expect((await page.request.delete(`/api/manage/ups/${uid}/monitor`)).status()).toBe(204);
+    await stopApi(api);
+    expect(logsOf(api)).not.toContain('FICTIONAL_SECRET');
+    api = await startApi(database, { ...factory, env: { ...env, FIXTURE_OFFLINE: '1' } });
+    await page.reload();
+    await expect(group.getByRole('img')).toHaveAttribute('src', mixed.media[0].public_url);
+    const reopened = await (await page.request.get(`${commentsPath}?sort=hot&limit=20`)).json();
+    expect(reopened.items.find((item: { id: string }) => item.id === '45').media).toEqual(mixed.media);
+    expect(sources).toContain(mixed.media[0].public_url);
+    expect(sources).toContain(single.media[0].public_url);
+    expect(sources.filter(url => url.includes('hdslb.com') || url.includes('source-business') || url.includes('/api/'))).toEqual([]);
+    expect(browserWrites).toEqual([]);
+    expect(await page.locator('body').innerText()).not.toContain('FICTIONAL_SECRET');
+    await page.goto('about:blank');
+    await stopApi(api);
+    expect(logsOf(api)).not.toContain('FICTIONAL_SECRET');
+  } finally {
+    if (api) await stopApi(api);
+    await rm(directory, { recursive: true, force: true });
+  }
+});

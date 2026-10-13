@@ -41,6 +41,14 @@ def create_app():
     files = {"9101": "normal", "9102": "empty", "9103": "restricted", "9104": "failed"}
     roots = json.loads((FIXTURES / "root-comments.json").read_text()) if os.environ.get("FIXTURE_ROOT_COMMENTS") == "1" else None
     replies = json.loads((FIXTURES / "replies.json").read_text()) if os.environ.get("FIXTURE_REPLIES") == "1" else None
+    if os.environ.get("FIXTURE_COMMENT_MEDIA") == "1":
+        assert roots is not None and media_mode == "mixed"
+        for root in roots["data"]["replies"]:
+            if root["rpid_str"] in ("45", "44"):
+                sources = media_sources + [MEDIA_SOURCE] if root["rpid_str"] == "45" else [MEDIA_SOURCE]
+                root["content"] = {"message": "", "pictures": [
+                    {"img_src": url, "img_width": 800, "img_height": 1200} for url in sources
+                ]}
     if replies is not None:
         assert roots is not None
         root_id = replies["data"]["root"]["rpid_str"]

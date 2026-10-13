@@ -8,6 +8,7 @@ import { FoldableText } from './FoldableText';
 import { ReplySection } from './ReplySection';
 import styles from './Dynamics.module.css';
 import { useDiscussionVisit } from './DiscussionVisit';
+import { ImageGrid } from '../images/ImageGrid';
 
 const unarchivedMessage = '评论尚未归档；来源计数不代表本地已有评论。';
 
@@ -91,9 +92,10 @@ function CommentSortView({ reader, dynamicId, authorId, sort, onSettled, restart
         <Identity user={comment.author} />
         {comment.author.id === authorId && <span className={styles.upBadge}>UP主</span>}
         <time className={styles.time} dateTime={comment.publishedAt ?? undefined}>{displayTime(comment.publishedAt)}</time>
-        {(comment.text.trim() || !comment.pendingMediaCount) && <FoldableText text={comment.text.trim() ? comment.text : '暂无评论内容'} subject="评论"
+        {(comment.text.trim() || (!comment.images?.length && !comment.pendingMediaCount)) && <FoldableText text={comment.text.trim() ? comment.text : '暂无评论内容'} subject="评论"
           expanded={expanded[comment.id] ?? false}
           toggle={() => setExpanded(previous => ({ ...previous, [comment.id]: !previous[comment.id] }))} />}
+        {!!comment.images?.length && <ImageGrid owner={{ type: 'comment', id: comment.id }} images={comment.images} list={false} />}
         {!!comment.pendingMediaCount && <p role="status">评论图片待归档（{comment.pendingMediaCount} 张）。</p>}
         <p className={styles.count}>点赞 {comment.likeCount ?? '—'}</p>
         <p className={styles.count}>回复 {comment.replyCount ?? '—'}</p>

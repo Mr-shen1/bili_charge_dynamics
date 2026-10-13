@@ -56,14 +56,15 @@ export interface Comment {
   readonly text: string;
   readonly likeCount: number | null;
   readonly replyCount: number | null;
-  // 来源图片尚未上传；不提供可展示的业务图片 URL。
+  readonly images?: readonly DynamicImage[];
+  // 尚无可展示关联的来源图片数；逐图上传状态由 images 表达。
   readonly pendingMediaCount?: number;
 }
 
 export const replyPreviewSize = 3;
 export const replyAppendSize = 10;
 
-export interface Reply extends Omit<Comment, 'replyCount' | 'pendingMediaCount'> {
+export interface Reply extends Omit<Comment, 'replyCount' | 'pendingMediaCount' | 'images'> {
   readonly replyTo: User | null;
 }
 
