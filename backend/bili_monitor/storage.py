@@ -26,6 +26,29 @@ def _merge_comment(previous, observed):
     return document
 
 
+def _comment_media_version(count):
+    # 来源计数只标识实际根同步版本，不用于检测图片/评论编辑。
+    return f"comments:{count}" if count is not None else None
+
+
+def _observe_root_media(document, count):
+    observed = _comment_media_version(count)
+    if observed is not None or "observed_version" not in document:
+        document["observed_version"] = observed
+    document.setdefault("work", {}).setdefault("media", "pending")
+    if document["observed_version"] != document.get("media_version"):
+        document["work"]["media"] = "pending"
+
+
+def _reconcile_root_media(document, sources, count, observed_count):
+    _observe_root_media(document, observed_count)
+    version = _comment_media_version(count)
+    if sources is not None:
+        reconcile_media(document, sources, version, owner_type="comment")
+    elif "media" not in document:
+        reconcile_media(document, [], version, empty_confirmed=False, owner_type="comment")
+
+
 def _freeze_pages(documents, limit):
     pages = [documents[i:i + limit] for i in range(0, len(documents), limit)] or [[]]
     tokens = [uuid4().hex for _ in pages]
@@ -54,7 +77,7 @@ class Store:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 version = connection.execute("PRAGMA user_version").fetchone()[0]
-                if version > 8:
+                if version > 9:
                     raise RuntimeError("Unsupported database schema version")
                 if version == 0:
                     connection.execute("""CREATE TABLE identities (
@@ -140,7 +163,19 @@ class Store:
                                         empty_confirmed=document.get("content_state") == "success")
                         connection.execute("UPDATE archives SET document = ? WHERE id = ?",
                                            (json.dumps(document, ensure_ascii=False), row["id"]))
-                connection.execute("PRAGMA user_version = 8")
+                if version < 9:
+                    connection.execute("ALTER TABLE media_attempts ADD COLUMN root_id TEXT NOT NULL DEFAULT ''")
+                    for row in connection.execute("SELECT dynamic_id, id, document FROM root_comments").fetchall():
+                        document = json.loads(row["document"])
+                        archive = json.loads(connection.execute(
+                            "SELECT document FROM archives WHERE id = ?", (row["dynamic_id"],)
+                        ).fetchone()[0])
+                        sources = document.get("media_sources") or None
+                        _reconcile_root_media(document, sources, archive.get("synced_root_comment_count"),
+                                              archive.get("source_comment_count"))
+                        connection.execute("UPDATE root_comments SET document = ? WHERE dynamic_id = ? AND id = ?",
+                                           (json.dumps(document, ensure_ascii=False), row["dynamic_id"], row["id"]))
+                connection.execute("PRAGMA user_version = 9")
                 connection.commit()
             except BaseException:
                 connection.rollback()
@@ -358,6 +393,16 @@ class Store:
                 if "author" in updates:
                     updates["author"] = _merge_known(document["author"], updates["author"])
                 document.update(updates)
+                if updates.get("source_comment_count") is not None:
+                    count = updates["source_comment_count"]
+                    # 与动态观察原子提交，防止旧上传在两次提交间误清新工作。
+                    # 未变观察的根已由观察/来源协调保持 observed != media ⇒ pending，不重复写回。
+                    for root in connection.execute("""SELECT id, document FROM root_comments WHERE dynamic_id = ?
+                        AND json_extract(document, '$.observed_version') IS NOT ?""",
+                        (id, _comment_media_version(count))).fetchall():
+                        root_document = json.loads(root["document"])
+                        _observe_root_media(root_document, count)
+                        self._write_media_owner(connection, id, root["id"], root_document)
                 if "media_sources" in updates:
                     reconcile_media(document, updates["media_sources"], updates.get("observed_version"))
                     self._prune_media_attempts(connection, id, document["media"])
@@ -407,51 +452,73 @@ class Store:
                 connection.rollback()
                 raise
 
-    def _prune_media_attempts(self, connection, id, media):
-        # 来源切换后废弃旧令牌；当前组崩溃留下的令牌仍可由重试取代。
-        connection.execute("""DELETE FROM media_attempts WHERE dynamic_id = ?
-            AND media_id NOT IN (SELECT value FROM json_each(?))""",
-                           (id, json.dumps([item["id"] for item in media])))
+    def read_media_owner(self, id, root_id=None):
+        with self.connection() as connection:
+            return self._read_media_owner(connection, id, root_id)
 
-    def claim_media(self, id, media_id):
+    def _read_media_owner(self, connection, id, root_id):
+        if root_id is None:
+            row = connection.execute("SELECT document FROM archives WHERE id = ?", (id,)).fetchone()
+        else:
+            row = connection.execute("SELECT document FROM root_comments WHERE dynamic_id = ? AND id = ?",
+                                     (id, root_id)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def _write_media_owner(self, connection, id, root_id, document):
+        value = json.dumps(document, ensure_ascii=False)
+        if root_id is None:
+            connection.execute("UPDATE archives SET document = ? WHERE id = ?", (value, id))
+        else:
+            connection.execute("UPDATE root_comments SET document = ? WHERE dynamic_id = ? AND id = ?",
+                               (value, id, root_id))
+
+    def media_root_ids(self, id):
+        with self.connection() as connection:
+            return [row[0] for row in connection.execute(
+                "SELECT id FROM root_comments WHERE dynamic_id = ? ORDER BY id COLLATE BINARY", (id,)
+            )]
+
+    def _prune_media_attempts(self, connection, id, media, root_id=None):
+        # 来源切换后废弃旧令牌；当前组崩溃留下的令牌仍可由重试取代。
+        connection.execute("""DELETE FROM media_attempts WHERE dynamic_id = ? AND root_id = ?
+            AND media_id NOT IN (SELECT value FROM json_each(?))""",
+                           (id, root_id or "", json.dumps([item["id"] for item in media])))
+
+    def claim_media(self, id, media_id, root_id=None):
         with self.connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
-                row = connection.execute("SELECT document FROM archives WHERE id = ?", (id,)).fetchone()
-                document = json.loads(row[0]) if row else None
+                document = self._read_media_owner(connection, id, root_id)
                 item = next((item for item in document["media"] if item["id"] == media_id), None) if document else None
                 if item is None or item["status"] == "success":
                     connection.commit()
                     return None
                 token = uuid4().hex
-                connection.execute("""INSERT INTO media_attempts VALUES (?, ?, ?)
-                    ON CONFLICT(dynamic_id, media_id) DO UPDATE SET token = excluded.token""", (id, media_id, token))
+                connection.execute("""INSERT INTO media_attempts(dynamic_id, media_id, token, root_id) VALUES (?, ?, ?, ?)
+                    ON CONFLICT(dynamic_id, media_id) DO UPDATE SET token = excluded.token""", (id, media_id, token, root_id or ""))
                 item.update(status="pending", error=None)
                 document["media_last_attempt"] = "pending"
-                connection.execute("UPDATE archives SET document = ? WHERE id = ?",
-                                   (json.dumps(document, ensure_ascii=False), id))
+                self._write_media_owner(connection, id, root_id, document)
                 connection.commit()
                 return token
             except BaseException:
                 connection.rollback()
                 raise
 
-    def finish_media(self, id, media_id, token, public_url, error):
+    def finish_media(self, id, media_id, token, public_url, error, root_id=None):
         with self.connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
-                row = connection.execute("SELECT document FROM archives WHERE id = ?", (id,)).fetchone()
-                document = json.loads(row[0]) if row else None
+                document = self._read_media_owner(connection, id, root_id)
                 item = next((item for item in document["media"] if item["id"] == media_id), None) if document else None
-                claimed = connection.execute("DELETE FROM media_attempts WHERE dynamic_id = ? AND media_id = ? AND token = ?",
-                                             (id, media_id, token)).rowcount
+                claimed = connection.execute("DELETE FROM media_attempts WHERE dynamic_id = ? AND media_id = ? AND token = ? AND root_id = ?",
+                                             (id, media_id, token, root_id or "")).rowcount
                 if item is None or not claimed:
                     connection.commit()
                     return False
                 item.update(public_url=public_url, status="failed" if error else "success", error=error)
                 refresh_media_progress(document)
-                connection.execute("UPDATE archives SET document = ? WHERE id = ?",
-                                   (json.dumps(document, ensure_ascii=False), id))
+                self._write_media_owner(connection, id, root_id, document)
                 connection.commit()
                 return True
             except BaseException:
@@ -461,8 +528,8 @@ class Store:
     def begin_roots(self, id, generation):
         return self._change_roots(id, generation, "pending", None, [])
 
-    def save_roots(self, id, generation, documents):
-        return self._change_roots(id, generation, "pending", None, documents)
+    def save_roots(self, id, generation, documents, observed_count):
+        return self._change_roots(id, generation, "pending", observed_count, documents)
 
     def finish_roots(self, id, generation, status, observed_count):
         return self._change_roots(id, generation, status, observed_count, [])
@@ -480,8 +547,11 @@ class Store:
                     previous = connection.execute(
                         "SELECT document FROM root_comments WHERE dynamic_id = ? AND id = ?", (id, document["id"])
                     ).fetchone()
+                    sources = document["media_sources"]
                     if previous is not None:
                         document = _merge_comment(json.loads(previous[0]), document)
+                    _reconcile_root_media(document, sources, observed_count, archive.get("source_comment_count"))
+                    self._prune_media_attempts(connection, id, document["media"], document["id"])
                     if document["media_sources"] is None:
                         document["media_sources"] = []
                     connection.execute("""INSERT INTO root_comments(dynamic_id, id, document) VALUES (?, ?, ?)

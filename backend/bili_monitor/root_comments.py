@@ -122,14 +122,14 @@ async def sync_roots(store, client, id, generation):
             baseline = counts
             if ids and not set(ids) - seen:
                 raise ValueError("Comment pagination did not advance")
-            if not await to_thread.run_sync(store.save_roots, id, generation, documents):
+            if not await to_thread.run_sync(store.save_roots, id, generation, documents, observed_count):
                 return
             roots.update({document["id"]: document["source_reply_count"] for document in documents})
             if not ids:
                 if number > 1:
                     # 对候选空尾页复查；瞬时空、后续页失败或计数变化不能推进成功。
                     confirmation, confirmed_ids, confirmed_counts = await fetch_root_page(client, id, locator, number)
-                    if not await to_thread.run_sync(store.save_roots, id, generation, confirmation):
+                    if not await to_thread.run_sync(store.save_roots, id, generation, confirmation, observed_count):
                         return
                     if confirmed_ids or confirmed_counts != baseline:
                         raise ValueError("Unstable empty comment tail")

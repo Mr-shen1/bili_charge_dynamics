@@ -1,6 +1,6 @@
-# 指定目标、首次归档与归档读取接口（02 / 13 / 15 / 17 / 19 后端）
+# 指定目标、首次归档与归档读取接口（02 / 13 / 15 / 17 / 19 / 21 后端）
 
-02 交付指定目标的首次正文归档和基础读取；13 后端扩展全部／单 UP 读取与持久身份列表；15 增加已有根评论首次归档及最热／最新读取，17 补齐楼中楼来源分页与持久读取。19 增加动态图下载、OSS 上传与独立重试；不包含近期目标选择、周期检查或评论图上传，前端 Adapter／最小路由契约见 [archive-api-client.md](archive-api-client.md)，具体自动化证据见 [13 验收记录](../../../.scratch/backend-integration/acceptance-13.md)。管理身份及配置契约见 [management-api.md](management-api.md)，来源证据及限制见 [backend-feasibility.md](../evidence/backend-feasibility.md)。
+02 交付指定目标的首次正文归档和基础读取；13 后端扩展全部／单 UP 读取与持久身份列表；15 增加已有根评论首次归档及最热／最新读取，17 补齐楼中楼来源分页与持久读取。19 增加动态图下载、OSS 上传与独立重试，21 将共用媒体能力接入一级评论；不包含近期目标选择、周期检查或评论图页面，前端 Adapter／最小路由契约见 [archive-api-client.md](archive-api-client.md)，具体自动化证据见 [13 验收记录](../../../.scratch/backend-integration/acceptance-13.md)。管理身份及配置契约见 [management-api.md](management-api.md)，来源证据及限制见 [backend-feasibility.md](../evidence/backend-feasibility.md)。
 
 ## 公开边界
 
@@ -10,7 +10,8 @@
 | `POST /api/manage/ups/{uid}/targets` | `{id: string}` | `{id: string}`，仅在来源作者确认匹配后关联 |
 | `DELETE /api/manage/ups/{uid}/targets/{id}` | 无 | `204`，只解除关联，不删除归档 |
 | `POST /api/sync/initial` | `{uid: string}` | `{processed, succeeded, failed}`，仅正文统计；媒体独立保存 |
-| `POST /api/sync/media/{id}` | 可选 `media_id` 查询参数 | `{processed, succeeded, failed}`，仅媒体尝试统计，不重读正文 |
+| `POST /api/sync/media/{id}` | 可选 `media_id` 查询参数 | `{processed, succeeded, failed}`，仅动态图媒体尝试统计，不重读正文 |
+| `POST /api/sync/media/{id}/comments/{root_id}` | 可选 `media_id` 查询参数 | `{processed, succeeded, failed}`，仅该根评论媒体尝试统计，不重读根页／正文 |
 | `GET /api/archive/ups` | 无 | `{ups: [{id: string, nickname: string \| null, avatar_url: string \| null}]}` |
 | `GET /api/archive/dynamics` | `scope=all\|up`、条件必需的 `uid`、`limit`、可选 `cursor` | `{items: Archive[], next_cursor: string \| null}` |
 | `GET /api/archive/dynamics/{id}` | 无 | `Archive`；本地不存在时 `404` |
@@ -79,7 +80,7 @@ curl --fail-with-body -X POST http://127.0.0.1:8000/api/sync/initial \
 
 `id`、`dynamic_id`、`author.id` 均为字符串（未知作者 ID 为 null）；`author:{id,nickname,avatar_url}` 允许未知信息。`published_at` 为明确 `+08:00` 秒精度时间或 null；`text` 为普通文本或 null（缺失），真实空字符串不补内容。`like_count` 和 `source_reply_count` 分别取 `like/rcount`，非负整数或 null，未知不等于零。后续缺失观察不覆盖已有可信计数、时间、文本或作者资料；缺失 pictures 字段不擦除已有图片元信息。
 
-`root_id/parent_id` 对根评论为字符串 `"0"`，`comment_locator` 保留回复查询所需资源；`media_sources:[{url,width,height}]` 按 `content.pictures` 顺序保留来源及可用尺寸，不包含 OSS 上传成功承诺，不用于生产业务图回退。回复、上传及页面接入由后续票负责。
+`root_id/parent_id` 对根评论为字符串 `"0"`，`comment_locator` 保留回复查询所需资源；`media_sources:[{url,width,height}]` 按 `content.pictures` 顺序保留来源及可用尺寸，不包含 OSS 上传成功承诺，不用于生产业务图回退。17 补齐回复；21 新增下文评论媒体字段与上传；页面图片接入仍由 #22 负责。
 
 ### 读取、排序与 cursor 恢复
 
@@ -159,6 +160,41 @@ initial 仍只统计正文，媒体下载/上传不使正文成功倒退；可�
 v7→v8 增加内部媒体尝试表并将旧来源初始化为未上传关联，旧正文、评论／回复及来源不删；不会由旧文本成功推断图片上传成功。有效的动态／评论／回复 cursor 内容不重写：旧动态 cursor 可能没有新字段，新首批和 detail 读取当前媒体状态。媒体更新不改变已冻结页的完整内容、顺序、scope／批量或 15 分钟 TTL。
 
 真实接入采用固定版本 `oss2==2.19.1` 和 V4 签名，服务端环境、公开读前提及安全风险见 [后端 README](../../../backend/README.md#19-oss-服务端配置)。可控 HTTP 下载、模拟 OSS、真实 SDK 签名 PUT、失败／交错／重开和网络暂停读写证据见 [19 验收记录](../../../.scratch/backend-integration/acceptance-19.md)；真实云对象可用性归 #34，页面网格／预览与生产 Adapter 图片映射归 #20，评论 owner 扩展归 #21。
+
+## 21 一级评论媒体归档与独立恢复
+
+### 评论 owner、公开结果与重试
+
+initial 在根评论与必要回复提交后独立处理已保存根评论的媒体，复用 19 的下载器、OSS uploader、公开 URL 校验、固定错误及逐图领取／完成协议。根／回复成功不等待图片；某张图失败不回退评论 checkpoint。正文受限或网页无权提示不阻断可读评论图。不归档真实回复及内嵌回复预览图片。
+
+RootComment 新增 `media`、`previous_media`、`observed_version`、`media_version`、`synced_media_version`、`media_last_attempt` 和 `work:{media:pending|success}`：
+
+- `media` 按来源顺序保存全部关联，每项字段与 19 一致，`owner:{type:"comment",id:根评论ID}`，父动态由根的 `dynamic_id` 给出。评论查找与提交均绑定 `(dynamic_id,root_id)`；即使评论／动态 ID 或来源 URL 相同也不共用图片组。对象 key 使用独立的 `dynamics/{id}/comments/{root_id}/…` 命名空间。
+- 未上传与失败项仍在 `media` 中，`public_url=null`，保留顺序与尺寸；纯图评论的 `text=""` 不表示整条评论无内容。成功项仅返回服务端接受的完整公开 URL，无业务来源 URL 回退、代理、前端拼接或签名续期。
+- `previous_media` 只保留被替换组中的旧成功关联及公开 URL，不冒充当前图成功；没有对象回收或物理去重。
+- `media_last_attempt` 为当前组的 `pending|success|failed`，`work.media` 只说明该评论媒体是否完成当前可信观察；不使用／改写动态的 `work.media`，也不借用根／回复完成状态。
+
+`POST /api/sync/media/{id}/comments/{root_id}` 仅读本地该评论当前组，按来源顺序重试未成功项；`?media_id=` 只选择该组一张图。已成功项跳过，未配置 uploader 返回零。统计及参数校验沿用 19；未知父动态、根或其他 owner 的媒体 ID 返回 `404 NOT_FOUND`，非法 ID、未知／重复 query 返回 `422 INVALID_INPUT`。不请求上游根页、正文或计数，不依赖监控配置仍存在；停止／删目标／删配置后原评论媒体保留且仍可恢复。此运维／测试入口无鉴权，不从页面读取或刷新调用。
+
+### 实际处理版本与失败保留
+
+评论来源没有可信的编辑时间。评论媒体版本使用本次根同步开始处理的来源动态总数，编码为 `comments:<非负整数>`；未知为 null，不能用本地根数、当前时间或动态正文编辑时间补值。`observed_version` 在可信新计数观察时独立保存，即使根页随后失败；`media_version` 只在实际取得该根的 pictures 后更新，整个组成功才推进其实际 `synced_media_version`。旧组可被显式重试完成，但版本落后时不能清除新工作；initial 跳过落后于可信观察的媒体组。
+
+计数未知不阻断实际可读图片的独立上传完成；此时媒体可成功但 checkpoint 版本仍为 null，不代表计数观察成功或有精确编辑版本。明确空组的媒体 success 是来源已确认无图，不要求无意义的网络上传；新观察后的 `media_last_attempt` 可保留旧组实际结果，应结合 `work.media` 判断新工作。
+
+这只是来源计数版本的提交协议，不增加周期检查／计数触发器（#25/#30 接续），不比较图片字节／哈希检测编辑。数量抵消、纯编辑且计数不变、同计数同 URL 下字节变化仍可能漏检；计数未知不能证明精确编辑版本。实际根同步取得不同来源／位置时会协调关联，但不将来源差异另作检查信号。
+
+相同版本／位置／来源的重复同步复用关联、顺序及既有成功／失败状态；计数新版本即使 URL 相同也建立新关联并重新上传。缺失 `pictures` 是未观察到，不擦除当前来源／旧成功媒体，也不确认首次成功空；明确 `pictures:[]` 才提交空组。根分页失败沿用 15 的逐页保留，不删除旧媒体或推进根假成功；已取得页的评论图可独立处理。
+
+领取／完成复用持久尝试令牌，并同时校验动态、根、当前关联及 token。新组或同关联的新尝试拒绝旧成功／旧失败；每次 PUT key 不同，旧请求不能物理覆写已发布的新对象。废弃令牌仅按 owner 清理，动态图来源切换不会删评论的在途令牌。网络下载及 OSS PUT 在短事务外，重开／进程退出后 pending 可重新领取。
+
+### v8→v9 与冻结读取
+
+v9 为媒体尝试表增加根 owner 标识（旧动态图尝试保持空根标识），将已有根评论来源回填为独立 pending 关联，不从评论文本成功推断上传成功。空旧来源无法还原是否缺失 pictures，保守保持未确认空；有图组绑定旧根成功计数 checkpoint，新观察更高／不同则仍 pending。既有正文、根／回复、动态图及成功公开 URL 不改写，不因迁移删除归档。
+
+评论媒体仍经现有根评论 GET 读取。新首批冻结当时完整媒体状态；上传或来源更新只影响新的首批，不改写有效的旧根／回复／动态 cursor 内容、顺序、绑定或有效期。旧冻结根页可能没有新增字段，不据此推断已上传。
+
+自动化证据见 [21 验收记录](../../../.scratch/backend-integration/acceptance-21.md)。本票不交付 #22 图片预览／纯图 UI、#25/#30 自动计数联动、回复图片、真实 OSS 操作、图片变体／CDN或对象回收。
 
 ## 安全及证据
 

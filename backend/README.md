@@ -1,6 +1,6 @@
-# 票据 01–02 / 13 / 15 / 17 / 19 后端
+# 票据 01–02 / 13 / 15 / 17 / 19 / 21 后端
 
-提供 UP 身份/配置管理、指定动态关联、显式一次初始化及 SQLite 归档读取。支持根评论采集、最热／最新归档分页、完整楼中楼归档读取，以及动态图下载／OSS 上传和独立重试；没有周期调度、近期目标发现或评论图上传，不宣称全部归档完成。管理基础契约见 `docs/backend/api/management-api.md`，02 测试证据见 [backend-acceptance-02.md](../.scratch/backend-integration/evidence/backend-acceptance-02.md)，字段依据见 [source-protocol-evidence.md](../docs/backend/evidence/source-protocol-evidence.md)。
+提供 UP 身份/配置管理、指定动态关联、显式一次初始化及 SQLite 归档读取。支持根评论采集、最热／最新归档分页、完整楼中楼归档读取，以及动态图／一级评论图共用下载、OSS 上传和独立重试；没有周期调度、近期目标发现或评论图页面，不宣称全部归档完成。管理基础契约见 `docs/backend/api/management-api.md`，02 测试证据见 [backend-acceptance-02.md](../.scratch/backend-integration/evidence/backend-acceptance-02.md)，字段依据见 [source-protocol-evidence.md](../docs/backend/evidence/source-protocol-evidence.md)。
 
 ## 运行
 
@@ -96,15 +96,24 @@ initial 在本轮根页成功后同步非零／未知回复数的根，完整来
 
 媒体重试同其他写入口一样无鉴权，须通过网络部署限制暴露；公开图可直接访问及外链，未来站点登录也不会自动保护。页面／生产 Adapter 图映射归 #20，评论媒体归 #21，周期重试归后续调度票。
 
+## 21 一级评论媒体
+
+initial 在根／回复独立提交后处理评论图；正文受限不阻断实际可读评论图，评论文本成功不等待每图上传。RootComment 返回全部有序 `media`、旧成功 `previous_media`、独立状态／实际计数版本／checkpoint；纯图评论保留空正文及未上传图片，不回退业务来源 URL。评论 owner 与动态图隔离，不增加回复图片。
+
+`POST /api/sync/media/{dynamicId}/comments/{rootId}` 可独立恢复该根未完成媒体，`?media_id=<当前关联ID>` 只重试一张。无需重新读取正文／根页或新计数信号，停止／删除配置后仍可恢复保留归档；不从页面读取触发。共用本页的 OSS 服务端配置，不复制上传器，不执行真实云操作。版本由根同步实际处理的动态来源计数给出，未知不补值；新观察、实际来源组和已成功组分别保存。旧版本完成及较旧尝试不能清新工作或替换关联，同计数同 URL 下字节编辑仍可能漏检。
+
+完整 owner、来源缺失／空组、版本提交、迁移和冻结 cursor 契约见 [21 归档契约](../docs/backend/api/archive-api.md#21-一级评论媒体归档与独立恢复)，自动化证据见 [21 验收](../.scratch/backend-integration/acceptance-21.md)。图片 UI／预览归 #22，周期计数联动归 #25/#30；没有对象回收、图片变体或 CDN。本入口继承无鉴权和公开 OSS URL 风险。
+
 ## SQLite 与安全
 
-schema 顺序：v1 身份/配置、v2 targets、v3 archives/generation、v4 持久分页、v5 cursor 资源/过期/索引、v6 根评论及独立持久评论页、v7 回复／逐根同步状态／回复持久页、v8 媒体尝试令牌及归档文档媒体字段。v0–v7 短事务迁移到 v8，冲突回滚、未来版本拒绝启动；旧 v4 无限期 cursor 被失效，但归档不删。每次操作独立连接并启用外键，等待锁最多 2 秒；数据库操作在线程池执行，网络不进事务。删除配置只 cascade 指定关联，绝不 cascade 身份或归档。
+schema 顺序：v1 身份/配置、v2 targets、v3 archives/generation、v4 持久分页、v5 cursor 资源/过期/索引、v6 根评论及独立持久评论页、v7 回复／逐根同步状态／回复持久页、v8 媒体尝试令牌及归档文档媒体字段、v9 评论 owner 尝试标识与旧根来源 pending 回填。v0–v8 短事务迁移到 v9，冲突回滚、未来版本拒绝启动；旧 v4 无限期 cursor 被失效，但归档不删。每次操作独立连接并启用外键，等待锁最多 2 秒；数据库操作在线程池执行，网络不进事务。删除配置只 cascade 指定关联，绝不 cascade 身份或归档。
 
 错误响应使用固定错误码与提示，不记录请求体、上游原文或异常秘密。HTTPX/HTTPCore、OSS SDK、Requests/urllib3 传输日志及 Uvicorn access 日志禁用，部署代理也应避免记录敏感查询。本票测试不读取真实 Cookie、不执行/导入参考脚本、不请求真实上游。
 
 ## 测试与 E2E 装配
 
 ```sh
+uv run pytest backend/tests/test_comment_media.py -q
 uv run pytest backend/tests/test_dynamic_media.py -q
 uv run pytest backend/tests/test_replies.py -q
 uv run pytest backend/tests/test_root_comments.py -q
@@ -128,4 +137,4 @@ BILI_DATABASE_PATH=/tmp/bili-management-e2e.sqlite uv run uvicorn backend.tests.
 
 ## 限制
 
-有限结构证据和虚构 fixture 不证明上游长期可用或完整全文覆盖。分钟编辑精度漏检已接受；本阶段无周期／近期／评论图上传，无真实云上传、持续调度或 2GB 容量结论。分页冻结全量响应会有临时内存/SQLite 写入成本，15 分钟窗口内频繁新访问会放大磁盘与写竞争；过期删除不保证文件缩小，不宣称容量治理。服务器墙钟回拨可能延长过期判断，生产时钟需正常同步。
+有限结构证据和虚构 fixture 不证明上游长期可用或完整全文覆盖。分钟编辑精度漏检已接受；本阶段无周期／近期／评论图页面，无真实云上传、持续调度或 2GB 容量结论。分页冻结全量响应会有临时内存/SQLite 写入成本，15 分钟窗口内频繁新访问会放大磁盘与写竞争；过期删除不保证文件缩小，不宣称容量治理。服务器墙钟回拨可能延长过期判断，生产时钟需正常同步。

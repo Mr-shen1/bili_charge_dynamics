@@ -157,6 +157,15 @@ def create_app(
         validate_query(request, ("media_id",))
         return await sync_media(store, application.state.downloader, application.state.media_uploader, id, media_id=media_id)
 
+    @application.post("/api/sync/media/{id}/comments/{root_id}")
+    async def retry_comment_media(
+        id: UID, root_id: UID, request: Request,
+        media_id: Annotated[str | None, Query(pattern=r"^[a-f0-9]{32}$", min_length=32, max_length=32)] = None,
+    ):
+        validate_query(request, ("media_id",))
+        return await sync_media(store, application.state.downloader, application.state.media_uploader,
+                                id, media_id=media_id, root_id=root_id)
+
     @application.get("/api/archive/ups")
     async def archive_ups(request: Request):
         validate_query(request)

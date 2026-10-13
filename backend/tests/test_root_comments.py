@@ -34,13 +34,22 @@ def test_initial_archives_existing_roots_independently_of_restricted_body(tmp_pa
         assert saved["synced_root_comment_count"] == 7
         roots = client.get(COMMENTS).json()
         assert roots["next_cursor"] is None
-        assert roots["items"][0] == {
+        root = roots["items"][0]
+        media_id = root["media"][0]["id"]
+        assert len(media_id) == 32 and all(character in "0123456789abcdef" for character in media_id)
+        assert root == {
             "id": "900719925474099312346", "dynamic_id": "123",
             "author": {"id": UID, "nickname": "虚构星海", "avatar_url": "https://example.invalid/avatar.png"},
             "published_at": "2026-10-09T10:38:16+08:00", "text": "已有根评论\n<b>只作文本</b> 🙂",
             "like_count": 8, "source_reply_count": 5,
             "root_id": "0", "parent_id": "0", "comment_locator": {"oid": "99123", "type": 17},
             "media_sources": [{"url": "https://example.invalid/comment.png", "width": 640, "height": 480}],
+            "work": {"media": "pending"}, "media_last_attempt": "pending",
+            "media_version": "comments:7", "observed_version": "comments:7",
+            "synced_media_version": None, "previous_media": [],
+            "media": [{"id": media_id, "owner": {"type": "comment", "id": "900719925474099312346"},
+                       "position": 0, "source_url": "https://example.invalid/comment.png", "width": 640, "height": 480,
+                       "version": "comments:7", "status": "pending", "public_url": None, "error": None}],
         }
         assert state["pages"] == [1, 2, 2]  # 短页也明确读至空页，不由总数猜结束。
         client.post("/api/sync/initial", json={"uid": UID})
