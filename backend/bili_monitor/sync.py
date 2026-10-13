@@ -22,7 +22,7 @@ async def initialize(store, client, uid, downloader=None, uploader=None):
     return result
 
 
-async def sync_target(store, client, uid, id, generation, downloader=None, uploader=None):
+async def sync_target(store, client, uid, id, generation, downloader=None, uploader=None, *, pending_comments_only=False):
     """执行已领取的单个目标；共享一次初始化和独立采集进程的归档能力。"""
     page_meta, body = {"edit_status": "error"}, None
     try:
@@ -51,8 +51,10 @@ async def sync_target(store, client, uid, id, generation, downloader=None, uploa
     succeeded = await to_thread.run_sync(
         store.finish_archive, id, generation, status, body, page_meta.get("observed_version")
     )
-    roots_result = await sync_roots(store, client, id, generation)
-    await sync_replies(store, client, id, generation, roots_result)
+    archive = await to_thread.run_sync(store.read_archive, id)
+    if not pending_comments_only or any(archive["work"][part] != "success" for part in ("comments", "replies")):
+        roots_result = await sync_roots(store, client, id, generation)
+        await sync_replies(store, client, id, generation, roots_result)
     await sync_media(store, downloader, uploader, id, current_only=True)
     for root_id in await to_thread.run_sync(store.media_root_ids, id):
         await sync_media(store, downloader, uploader, id, current_only=True, root_id=root_id)

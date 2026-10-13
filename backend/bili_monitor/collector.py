@@ -89,7 +89,8 @@ class Collector:
                 generation = await to_thread.run_sync(self.store.claim_archive, uid, id)
                 if generation is not None:
                     text_succeeded = await sync_target(
-                        self.store, self.client, uid, id, generation, self.downloader, self.uploader)
+                        self.store, self.client, uid, id, generation, self.downloader, self.uploader,
+                        pending_comments_only=True)
                     archive = await to_thread.run_sync(self.store.read_archive, id)
                     succeeded = (text_succeeded and all(value == "success" for value in archive["work"].values())
                                  and archive["synced_version"] == claim["observed"].get("observed_version"))
@@ -99,8 +100,9 @@ class Collector:
             except Exception:
                 # 不记录上游原文、路径或 SDK 异常；取消保留 running 供重启恢复。
                 pass
-            await to_thread.run_sync(self.store.finish_check_work, uid, id, claim["revision"],
-                                     succeeded, self.clock.now(), None if succeeded else "SYNC_INCOMPLETE")
+            await to_thread.run_sync(
+                lambda: self.store.finish_check_work(uid, id, claim["revision"], succeeded, self.clock.now(),
+                                                   None if succeeded else "SYNC_INCOMPLETE", token=claim["token"]))
 
     async def run(self):
         """从启动时刻起固定节拍；有限并发、忙即跳过，没有检查队列。"""
