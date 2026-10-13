@@ -29,3 +29,8 @@
 T3 从评论 JSON、可阻塞/失败下载和模拟上传贯通；T2 验证真实 SQLite/HTTP、跨 owner 隔离、纯图/未上传语义、版本交错、重开与保留。公开结果应能证明评论已成功但某图尚未完成，而非只有内部单测通过。
 
 ## Comments
+
+- 已实现从虚构根评论 JSON 到真实 SQLite／HTTP 的有序评论媒体归档，复用 #19 下载／OSS 上传与版本／尝试 fencing；新增 `POST /api/sync/media/{dynamicId}/comments/{rootId}` 独立整组／单图恢复。根／回复完成先于媒体，跨 owner 隔离、纯图 pending 存在性、失败保留、新观察／旧完成交错、重开／进程退出、迁移和冻结 cursor 均有公开测试。
+- 实施测试：`uv run pytest backend/tests/test_comment_media.py -q` 29 passed；`uv run pytest backend/tests -q` 274 passed；经 `nvm use` 执行 `pnpm typecheck`、`pnpm test`（20 files / 200 tests）、`pnpm build` 及 `git diff --check` 均通过。
+- 证据：[acceptance-21.md](../acceptance-21.md)；正式契约：[archive-api.md §21](../../../docs/backend/api/archive-api.md#21-一级评论媒体归档与独立恢复)。双轴审查结果将在最终交付记录补齐。
+- 未验证／范围：不执行真实 OSS、真实上游或真机验收；#22 评论图 UI／预览及 #25/#30 周期计数联动未交付。不增加回复图片、对象回收、图片变体／CDN；自动化不替代父票／AC 全部验收。

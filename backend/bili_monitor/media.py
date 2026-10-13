@@ -1,4 +1,4 @@
-"""动态图的独立外部 I/O；网络与上传均在 SQLite 事务外执行。"""
+"""动态图与根评论图共用的外部 I/O；网络与上传均在 SQLite 事务外执行。"""
 
 from uuid import uuid4
 from urllib.parse import urlsplit
@@ -46,7 +46,7 @@ def refresh_media_progress(document, *, empty_confirmed=True):
         document["synced_media_version"] = document["media_version"]
 
 
-def reconcile_media(document, sources, version, *, empty_confirmed=True):
+def reconcile_media(document, sources, version, *, empty_confirmed=True, owner_type="dynamic"):
     """只由实际提交正文/来源调用，不作为编辑检测器。"""
     previous = document.get("media", [])
     same_version = document.get("media_version") == version
@@ -56,7 +56,7 @@ def reconcile_media(document, sources, version, *, empty_confirmed=True):
                     and item["source_url"] == source["url"]), None)
         # 新版本的未完成关联用新 ID fencing；不能接受旧版本的迟到完成。
         item = dict(old) if old and same_version else {
-            "id": uuid4().hex, "owner": {"type": "dynamic", "id": document["id"]},
+            "id": uuid4().hex, "owner": {"type": owner_type, "id": document["id"]},
             "position": position, "source_url": source["url"],
             "public_url": None, "status": "pending", "error": None,
         }
@@ -89,8 +89,8 @@ class ImageDownloader:
         return response.content, content_type
 
 
-async def sync_media(store, downloader, uploader, id, current_only=False, media_id=None):
-    archive = await to_thread.run_sync(store.read_archive, id)
+async def sync_media(store, downloader, uploader, id, current_only=False, media_id=None, root_id=None):
+    archive = await to_thread.run_sync(store.read_media_owner, id, root_id)
     if archive is None:
         raise APIError("NOT_FOUND")
     items = archive["media"]
@@ -104,7 +104,7 @@ async def sync_media(store, downloader, uploader, id, current_only=False, media_
     for item in items:
         if item["status"] == "success":
             continue
-        token = await to_thread.run_sync(store.claim_media, id, item["id"])
+        token = await to_thread.run_sync(store.claim_media, id, item["id"], root_id)
         if token is None:
             continue
         result["processed"] += 1
@@ -112,13 +112,14 @@ async def sync_media(store, downloader, uploader, id, current_only=False, media_
         try:
             content, content_type = await downloader.download(item["source_url"])
             error = "MEDIA_UPLOAD_FAILED"
-            public_url = await uploader.upload(f"dynamics/{id}/{item['id']}/{token}", content, content_type)
+            owner_path = f"dynamics/{id}" if root_id is None else f"dynamics/{id}/comments/{root_id}"
+            public_url = await uploader.upload(f"{owner_path}/{item['id']}/{token}", content, content_type)
             if not is_archive_delivery_url(public_url):
                 raise ValueError("Invalid public media URL")
             error = None
         except Exception:
             # 不保存异常文本、HTTP headers、签名 URL 或 OSS 凭据。
             public_url = None
-        accepted = await to_thread.run_sync(store.finish_media, id, item["id"], token, public_url, error)
+        accepted = await to_thread.run_sync(store.finish_media, id, item["id"], token, public_url, error, root_id)
         result["succeeded" if accepted and error is None else "failed"] += 1
     return result

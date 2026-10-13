@@ -49,4 +49,6 @@ async def initialize(store, client, uid, downloader=None, uploader=None):
         roots_result = await sync_roots(store, client, id, generation)
         await sync_replies(store, client, id, generation, roots_result)
         await sync_media(store, downloader, uploader, id, current_only=True)
+        for root_id in await to_thread.run_sync(store.media_root_ids, id):
+            await sync_media(store, downloader, uploader, id, current_only=True, root_id=root_id)
     return result
