@@ -26,19 +26,27 @@ def _merge_comment(previous, observed):
     return document
 
 
-def _reconcile_root_media(document, sources, count, observed_count):
+def _comment_media_version(count):
     # 来源计数只标识实际根同步版本，不用于检测图片/评论编辑。
-    version = f"comments:{count}" if count is not None else None
-    observed = f"comments:{observed_count}" if observed_count is not None else None
+    return f"comments:{count}" if count is not None else None
+
+
+def _observe_root_media(document, count):
+    observed = _comment_media_version(count)
     if observed is not None or "observed_version" not in document:
         document["observed_version"] = observed
     document.setdefault("work", {}).setdefault("media", "pending")
+    if document["observed_version"] != document.get("media_version"):
+        document["work"]["media"] = "pending"
+
+
+def _reconcile_root_media(document, sources, count, observed_count):
+    _observe_root_media(document, observed_count)
+    version = _comment_media_version(count)
     if sources is not None:
         reconcile_media(document, sources, version, owner_type="comment")
     elif "media" not in document:
         reconcile_media(document, [], version, empty_confirmed=False, owner_type="comment")
-    if document["observed_version"] != document["media_version"]:
-        document["work"]["media"] = "pending"
 
 
 def _freeze_pages(documents, limit):
@@ -386,12 +394,13 @@ class Store:
                     updates["author"] = _merge_known(document["author"], updates["author"])
                 document.update(updates)
                 if updates.get("source_comment_count") is not None:
-                    version = f"comments:{updates['source_comment_count']}"
-                    for root in connection.execute("SELECT id, document FROM root_comments WHERE dynamic_id = ?", (id,)).fetchall():
+                    count = updates["source_comment_count"]
+                    # 与动态观察原子提交，防止旧上传在两次提交间误清新工作；不重写未变根。
+                    for root in connection.execute("""SELECT id, document FROM root_comments WHERE dynamic_id = ?
+                        AND json_extract(document, '$.observed_version') IS NOT ?""",
+                        (id, _comment_media_version(count))).fetchall():
                         root_document = json.loads(root["document"])
-                        root_document["observed_version"] = version
-                        if root_document["media_version"] != version:
-                            root_document["work"]["media"] = "pending"
+                        _observe_root_media(root_document, count)
                         self._write_media_owner(connection, id, root["id"], root_document)
                 if "media_sources" in updates:
                     reconcile_media(document, updates["media_sources"], updates.get("observed_version"))

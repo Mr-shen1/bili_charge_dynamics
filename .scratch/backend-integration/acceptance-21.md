@@ -39,8 +39,8 @@
 ```sh
 uv run pytest backend/tests/test_comment_media.py -q
 # 29 passed
-uv run pytest backend/tests/test_comment_media.py backend/tests/test_root_comments.py backend/tests/test_migrations.py backend/tests/test_dynamic_media.py -q
-# 补强新失败交错前 92 passed
+uv run pytest backend/tests/test_comment_media.py backend/tests/test_root_comments.py backend/tests/test_dynamic_media.py backend/tests/test_migrations.py -q
+# 审查补强后 100 passed
 pnpm typecheck
 # 切片期间多次 passed（Node 经 nvm use）
 ```
@@ -64,7 +64,21 @@ git diff --check
 
 ## 双轴审查
 
-审查基线为 `9dc370cbb2de5f48791e55bb62dc5874875d4181`，将通过两位 `review` 子代理分别核验 Standards 与 Spec，结果及处理将在交付前补齐。
+基线 `9dc370cbb2de5f48791e55bb62dc5874875d4181`，命令 `git diff 9dc370cbb2de5f48791e55bb62dc5874875d4181...HEAD`，初审提交 `ed66141`。两位 `review` 子代理并行分别核验，不合并／跨轴重排。
+
+### Standards
+
+明文硬违规 0，判断项 6：两个 HTTP 重试边界有相似参数校验／委派；评论版本编码与 pending 规则重复；新观察逐根回填增加事务规模；owner 在 API／SQL／DTO 采用不同表示及键形状；旧根 DTO 测试采用字段排除集；动态读取与 owner-aware 读取有一行查询重复。
+
+已统一版本编码与 `_observe_root_media` 规则；新观察只更新观察确实变化的根，避免重复全量 JSON 写回；根 DTO 恢复完整精确断言并验证不透明媒体 ID 格式。保留根观察与动态观察的同一原子事务，不能拆成两次提交引入旧上传误清新工作的窗口；事务中没有外部 I/O，根数相关数据库成本仍不作容量承诺。保留两个明确 HTTP owner 边界的局部校验，它们共享唯一上传协调器，不为两行相似校验增加纯转发 handler。owner 的 None／空根 SQL 标识仅在仓储边界映射，不引入额外类型框架；媒体关联 ID 为独立 UUID，`(dynamic_id,media_id)` 已唯一，root_id 作为归属条件及清理范围，未以来源评论 ID 作媒体主键。一行既有动态读取 SQL 的局部重复不另建空抽象。
+
+### Spec
+
+确证缺陷 0，范围扩张 0；核实实际版本、独立观察／checkpoint、缺失／空来源、版本／尝试 fencing、跨 owner、网络短事务、保留、迁移／冻结页及评论先完成。判断／边界提醒 3：计数未知时媒体可成功但没有可信版本；空组无上传也成功及新观察与旧 media_last_attempt 并置；历史成功关联增长。
+
+正式 API 契约补明：计数未知不阻断实际可读图片归档，媒体成功不代表计数观察成功，checkpoint 保持 null；明确空组是来源确认成功空，不需要网络上传；旧组实际结果须与当前 work.media 一起判断。历史关联增长为已接受的无回收边界，不增加治理范围。
+
+初审分轴总结：Standards 0 硬问题／6 判断项（主要为重复状态规则和事务规模）；Spec 0 确证问题／3 边界提醒（主要为未知计数与实际媒体成功的区别）。已处理主要规则重复、无变化写回和 DTO 精确断言，其余低影响取舍与风险如上保留。审查补强后专项／根／动态／迁移 100 项及 TypeScript typecheck 通过。
 
 ## 未验证及边界
 
