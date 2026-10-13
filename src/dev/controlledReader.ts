@@ -33,7 +33,7 @@ export function createControlledReader(base: DynamicReader, plan: ReadPlan): Dyn
     return !step.ignoreAbort && signal.aborted ? { status: 'cancelled' } : result;
   }
   return {
-    creator: base.creator,
+    ...base,
     async readReplies(input) {
       await Promise.resolve();
       if (input.signal.aborted) return { status: 'cancelled' };

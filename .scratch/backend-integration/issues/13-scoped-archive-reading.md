@@ -6,7 +6,7 @@
 
 **Blocked by:** [02](02-target-initial-archive.md)（用户确认已完成）
 
-**Status:** ready-for-agent
+**Status:** needs-triage
 
 ## 依据与交付边界
 
@@ -29,3 +29,11 @@
 T2 覆盖真实 SQLite/HTTP、更新中分页及身份保留；T1 对生产 Adapter 作传输契约测试，并至少一条实际 API→路由页面测试。提交协议说明、可复现测试命令与结果，证明两种 scope 的公开读取链路可用。
 
 ## Comments
+
+### 实现交付
+
+已交付全部／单 UP 的 SQLite→HTTP→生产 Adapter→最小路由分页链路，scope、身份 DTO、错误和 15 分钟冻结快照协议见 [归档接口](../../../docs/backend/api/archive-api.md) 与 [客户端契约](../../../docs/backend/api/archive-api-client.md)。复用 #02，保留其详情不存在、断源与独立 mock 回归；未实现 #14 完整选择条/卡片/历史恢复，也不关闭父 #03。
+
+可复现结果：`pnpm test --maxWorkers=2` 149/149、`uv run pytest backend/tests -q` 156/156；`pnpm typecheck` / `pnpm build` 通过。移除本机代理变量后 `pnpm test:e2e:archive` 2/2、`pnpm test:e2e:manage` 2/2、独立 mock `pnpm test:e2e` 102 通过（10 项仅 Nginx 按配置跳过）。完整命令、红绿过程、范围和限制见 [13 项目级验收](../acceptance-13.md) 与 [后端专项证据](../evidence/backend-acceptance-13.md)。
+
+本票自动化核验已交付，状态回到 needs-triage 供维护者收口；不把模拟浏览器当真机，不宣称真实上游、OSS、部署或持续运行验证。Standards 未发现硬性违反；Spec 两项 mock 排序/非法 UID 语义建议已按红绿回归修正，双轴分别记录在验收材料。

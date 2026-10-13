@@ -57,6 +57,7 @@ describe('真实归档基础页面', () => {
     let appends = 0;
     const queries: string[] = [];
     show(async url => {
+      if (url.endsWith('/ups')) return Response.json({ ups: [] });
       if (!url.includes('?')) return Response.json(items[24]);
       queries.push(url);
       if (url.includes('cursor=page2') && ++appends === 1) throw new Error('SECRET_TOKEN');
@@ -75,8 +76,8 @@ describe('真实归档基础页面', () => {
     await screen.findByText('归档第 25 条');
     expect(screen.getAllByRole('article')).toHaveLength(25);
     expect(screen.getByText('动态已加载完毕')).toBeInTheDocument();
-    expect(queries).toEqual(['/api/archive/dynamics?limit=10', '/api/archive/dynamics?limit=10&cursor=page2',
-      '/api/archive/dynamics?limit=10&cursor=page2', '/api/archive/dynamics?limit=10&cursor=page3']);
+    expect(queries).toEqual(['/api/archive/dynamics?limit=10&scope=all', '/api/archive/dynamics?limit=10&scope=all&cursor=page2',
+      '/api/archive/dynamics?limit=10&scope=all&cursor=page2', '/api/archive/dynamics?limit=10&scope=all&cursor=page3']);
     await user.click(within(screen.getAllByRole('article')[24]!).getByRole('button', { name: '查看详情' }));
     await screen.findByRole('heading', { name: '动态详情' });
     await user.click(screen.getByRole('button', { name: '返回列表' }));
@@ -86,7 +87,7 @@ describe('真实归档基础页面', () => {
   it('旧成功正文保持可读，来源/本地计数、分钟编辑、最后失败与待媒体独立表达；评论不虚构为空', async () => {
     const user = userEvent.setup();
     const urls: string[] = [];
-    show(async url => { urls.push(url); return Response.json(url.includes('?') ? { items: [archive], next_cursor: null } : archive); });
+    show(async url => { urls.push(url); return Response.json(url.endsWith('/ups') ? { ups: [] } : url.includes('?') ? { items: [archive], next_cursor: null } : archive); });
     expect(await screen.findByText(archive.text.replace(/\s+/g, ' '))).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '归档动态' })).toBeInTheDocument();
     expect(screen.getByText('2026-03-01 10:03:04')).toBeInTheDocument();
@@ -103,7 +104,7 @@ describe('真实归档基础页面', () => {
     expect(comments.getByText('评论尚未归档；来源计数不代表本地已有评论。')).toBeInTheDocument();
     expect(comments.queryByText('暂无评论')).not.toBeInTheDocument();
     expect(comments.queryByRole('button', { name: '最新' })).not.toBeInTheDocument();
-    expect(urls.every(url => url.startsWith('/api/archive/dynamics'))).toBe(true);
+    expect(urls.every(url => url.startsWith('/api/archive/dynamics') || url === '/api/archive/ups')).toBe(true);
     await user.click(screen.getByRole('button', { name: '返回列表' }));
     expect(screen.getByRole('heading', { name: '归档动态' })).toBeInTheDocument();
   });

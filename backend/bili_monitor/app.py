@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 import httpx
 from anyio import to_thread
 from fastapi import FastAPI, Query, Request, Response
-from typing import Annotated
+from typing import Annotated, Literal
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException
 
@@ -135,14 +135,23 @@ def create_app(
     async def initial_sync(body: AddUP):
         return await initialize(store, application.state.profiles, body.uid)
 
+    @application.get("/api/archive/ups")
+    async def archive_ups(request: Request):
+        validate_query(request)
+        return {"ups": await run_store(store.archive_ups)}
+
     @application.get("/api/archive/dynamics")
     async def list_archive(
         request: Request,
         limit: Annotated[int, Query(ge=1, le=10)] = 10,
         cursor: Annotated[str | None, Query(max_length=64)] = None,
+        scope: Literal["all", "up"] = "all",
+        uid: Annotated[UID | None, Query()] = None,
     ):
-        validate_query(request, ("limit", "cursor"))
-        return await run_store(store.list_archives, limit, cursor)
+        validate_query(request, ("scope", "uid", "limit", "cursor"))
+        if (scope == "all" and uid is not None) or (scope == "up" and uid is None):
+            raise APIError("INVALID_INPUT")
+        return await run_store(store.list_archives, limit, cursor, uid)
 
     @application.get("/api/archive/dynamics/{id}")
     async def read_archive(id: UID, request: Request):

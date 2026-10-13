@@ -1,6 +1,6 @@
-# 02 票：前端归档读取与指定目标
+# 前端归档读取与指定目标（02 / 13）
 
-本说明仅记录前端实现与 T1 证据，不代表后端 SQLite、上游协议、部署或真机验收通过。
+下列 02 记录保持原交付边界；13 增量契约及证据独立列在文末。前端 T1 不能替代后端 SQLite、上游协议、部署或真机验收。
 
 ## 装配与边界
 
@@ -87,4 +87,17 @@
 - 开发过程中 6 次 `pnpm typecheck` 通过；最终类型检查另通过。
 - `pnpm build` 通过；生成生产 bundle 有 `/api/archive/dynamics`，mock 正文标记“文字日记/图文日记/长评论”数量为 0。
 - `pnpm exec vite build --mode mock --outDir /tmp/02-mock-build` 通过；独立 mock bundle 包含原 mock 夹具。
-- 未在本任务执行 Playwright、真实上游、真实媒体上传、部署或真机测试；不据此声称整票完整验收通过。
+- 未在 02 前端任务执行 Playwright、真实上游、真实媒体上传、部署或真机测试；不据此声称整票完整验收通过。
+
+## 13 增量：显式 scope 与最小路由
+
+- `DynamicReader.readList` 必须传 `ArchiveScope = {kind:'all'} | {kind:'up',upId:string}`；生产 Adapter 与独立 mock 同契约，不再隐式以 `creator` 选择归档。`creator` 只保留为全部页标题的旧展示约定，各动态仍显示自己的实际 `author`。
+- 全部请求 `GET /api/archive/dynamics?limit=10&scope=all`；单 UP 请求 `?limit=10&scope=up&uid=123`；cursor 原样编码。Adapter 检查单 UP 响应的作者 UID，拒绝串 scope 的数据，不共享列表缓存。
+- `readUps({signal})` 映射 `GET /api/archive/ups` 的 `{ups:[{id,nickname,avatar_url}]}` 为 `User[]`，不读取监控启用名单；身份可空，未知不伪造。重复或非字符串身份 ID 拒绝为安全错误。
+- `404 UNKNOWN_UP` 映射 `{status:'error',reason:'unknown-up'}`，显示“UP 不存在”；已知空成功显示“暂无动态”。详情 `404` 继续独立映射 `not-found`；其他网络/HTTP/DTO 失败显示局部读取失败，未知路由显示“未找到页面”。不回显错误正文。
+- 带 cursor 的 `422 INVALID_INPUT` 映射 `invalid-cursor`，保留旧批并提示“分页已失效，请重新开始读取。”；仅显式“重新开始”请求无 cursor 首批，不自动恢复、假空或假结束。普通追加失败保留原 cursor，同批重试。
+- 首读冻结完整 scope 的内容/顺序，后续插入/更新只对新首读可见，15 分钟 TTL 不续期；跨 scope/UP/资源及不同 limit 拒绝。完整服务端协议见 [archive-api.md](archive-api.md#分页一致性与-cursor)。
+- `/` 和 `/ups/:upId` 均能直接打开、刷新、分页；最小身份链接导航使用持久身份。列表访问按页面访问 ID 与 scope 分隔，旧请求即使忽略取消也不能更新新访问或清掉其加载态。详情返回可追溯的单 UP 来源列表，未知来源仍安全返回首页。
+- 这是最小可用路由，不交付 #14 的选择条、卡片重排或完整跨 scope 历史恢复；不触上游、初始化、评论或媒体采集。
+
+13 的 T1/T2、真实 API→页面浏览器测试和可复现命令见 [13 验收记录](../../../.scratch/backend-integration/acceptance-13.md)；它们不代表部署、真实上游或真机通过。

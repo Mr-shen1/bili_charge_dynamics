@@ -20,7 +20,7 @@ describe('生产 ArchiveReader', () => {
     } });
   });
   it('空归档、404、失败不同；坏 DTO/HTTP/异常只返回安全错误', async () => {
-    expect(await createArchiveReader(async () => Response.json({ items: [], next_cursor: null })).readList({ limit: 10, signal }))
+    expect(await createArchiveReader(async () => Response.json({ items: [], next_cursor: null })).readList({ scope: { kind: 'all' }, limit: 10, signal }))
       .toEqual({ status: 'success', data: { items: [], nextCursor: null } });
     expect(await createArchiveReader(async () => new Response('SECRET_TOKEN', { status: 404 })).readDetail({ id: archive.id, signal }))
       .toEqual({ status: 'not-found' });
@@ -31,29 +31,29 @@ describe('生产 ArchiveReader', () => {
     for (const transport of [async () => new Response('SECRET_TOKEN'), async () => Response.json({ error: { message: 'SECRET_TOKEN' } }, { status: 500 }),
       async () => { throw new Error('SECRET_TOKEN'); }]) {
       const reader = createArchiveReader(transport);
-      expect(await reader.readList({ limit: 10, signal })).toEqual({ status: 'error' });
+      expect(await reader.readList({ scope: { kind: 'all' }, limit: 10, signal })).toEqual({ status: 'error' });
       expect(await reader.readDetail({ id: archive.id, signal })).toEqual({ status: 'error' });
     }
     for (const body of [{ items: [archive, archive], next_cursor: null }, { items: [archive], next_cursor: 1 }, { items: 'SECRET_TOKEN', next_cursor: null }]) {
-      expect(await createArchiveReader(async () => Response.json(body)).readList({ limit: 10, signal })).toEqual({ status: 'error' });
+      expect(await createArchiveReader(async () => Response.json(body)).readList({ scope: { kind: 'all' }, limit: 10, signal })).toEqual({ status: 'error' });
     }
   });
   it('取消优先于忽略 signal 的成功、失败及异常，预先取消不发请求', async () => {
     for (const response of [Response.json({ items: [archive], next_cursor: null }), new Response('SECRET_TOKEN', { status: 502 })]) {
       const controller = new AbortController();
       const reader = createArchiveReader(async () => { controller.abort(); return response; });
-      expect(await reader.readList({ limit: 10, signal: controller.signal })).toEqual({ status: 'cancelled' });
+      expect(await reader.readList({ scope: { kind: 'all' }, limit: 10, signal: controller.signal })).toEqual({ status: 'cancelled' });
     }
     const controller = new AbortController(); controller.abort();
     let calls = 0;
     const reader = createArchiveReader(async () => { calls++; throw new Error('SECRET_TOKEN'); });
     expect(await reader.readDetail({ id: archive.id, signal: controller.signal })).toEqual({ status: 'cancelled' });
-    expect(await reader.readList({ limit: 10, signal: controller.signal })).toEqual({ status: 'cancelled' });
+    expect(await reader.readList({ scope: { kind: 'all' }, limit: 10, signal: controller.signal })).toEqual({ status: 'cancelled' });
     expect(calls).toBe(0);
   });
   it('拒绝超出请求批量的列表，避免 API 异常把完整集合当单页展示', async () => {
     const reader = createArchiveReader(async () => Response.json({ items: Array.from({ length: 11 }, (_, i) => ({ ...archive, id: String(100 + i) })), next_cursor: null }));
-    expect(await reader.readList({ limit: 10, signal })).toEqual({ status: 'error' });
+    expect(await reader.readList({ scope: { kind: 'all' }, limit: 10, signal })).toEqual({ status: 'error' });
   });
   it('缺失身份、非法计数/日历时间安全兜底，不从编辑时间补发布时间', async () => {
     const reader = createArchiveReader(async () => Response.json({ ...archive,
@@ -77,7 +77,7 @@ describe('生产 ArchiveReader', () => {
       urls.push(url); expect(init.method).toBe('GET'); expect(init.signal).toBe(signal);
       return Response.json(url.includes('/9007') ? archive : { items: [archive], next_cursor: 'opaque+/=' });
     });
-    const first = await reader.readList({ limit: 10, signal });
+    const first = await reader.readList({ scope: { kind: 'all' }, limit: 10, signal });
     expect(first).toMatchObject({ status: 'success', data: { nextCursor: 'opaque+/=', items: [{
       id: '900719925474099312345', author: { id: '123', nickname: '归档作者', avatarUrl: null },
       publishedAt: '2026-03-01T10:03:04+08:00', images: [], commentCount: 501,
@@ -86,9 +86,9 @@ describe('生产 ArchiveReader', () => {
         commentLocator: { oid: '900719925474099312345', type: 17 }, observedVersion: 'v2', syncedVersion: 'v1',
         work: { text: 'pending', media: 'pending', comments: 'pending' } },
     }] } });
-    await reader.readList({ limit: 10, cursor: 'opaque+/=', signal });
+    await reader.readList({ scope: { kind: 'all' }, limit: 10, cursor: 'opaque+/=', signal });
     expect(await reader.readDetail({ id: archive.id, signal })).toMatchObject({ status: 'success', data: { text: archive.text } });
-    expect(urls).toEqual(['/api/archive/dynamics?limit=10', '/api/archive/dynamics?limit=10&cursor=opaque%2B%2F%3D', `/api/archive/dynamics/${archive.id}`]);
+    expect(urls).toEqual(['/api/archive/dynamics?limit=10&scope=all', '/api/archive/dynamics?limit=10&scope=all&cursor=opaque%2B%2F%3D', `/api/archive/dynamics/${archive.id}`]);
     expect(reader.creator.nickname).not.toBe('模拟 UP');
   });
 });

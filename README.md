@@ -14,7 +14,7 @@
 
 长图默认完整显示，可通过“适应宽度”按钮纵向阅读，再切回“完整显示”；按钮支持键盘。高宽比至少 2:1 提供长图模式，尺寸缺失时按加载后的自然尺寸识别。手机横向滑动切图，首尾不循环、单图不切换；纵向阅读不切图，切换图片后预览纵向位置归零。显示模式和最后查看图片保留于当前预览会话，关闭后浏览器前进可恢复；预览中刷新则替换清理失效标记并显示底层页面，不自动连续后退。
 
-详情历史返回按独立页面访问恢复评论排序、分页范围、回复及文字展开和阅读位置；同一动态的不同访问互不覆盖。未完成的读取返回后从原批次继续，看图不取消底层有效请求。数据与展开范围先恢复，再按稳定动态/评论/回复标识定位；用户主动滚动优先，刷新可重置，不写本地或会话存储。08 已提供 Nginx 静态交付配置；09 已对最终集成产物重新完成全量自动化回归和本机真实 Nginx 验证，补齐四宽度完整流程、列表图片几何、时区与逆序竞态证据。2026-10-12 用户明确将本期兼容目标收窄为 Linux Chrome 与 iPhone Safari，并补充实际版本及桌面键盘/焦点、iPhone 切图/长图滚动/返回隔离检查通过的反馈；结合已有自动化与交付证据，09 及本期已按这两目标完成验收。其他设备/浏览器不在本期兼容保证内，人工、模拟与自动化证据来源见 09 记录第 13 节。上述是历史 mock 阅读演示的验收，不代表新后端验收。当前默认 `/` 和详情使用真实归档 API；`/manage` 使用 FastAPI/SQLite 保存 UP 配置与指定目标、校验来源作者。02 增加公开一次初始化入口，保存指定集合的正文和独立时间；仍不包含评论采集、媒体上传或周期调度，不能将正文成功冒充全部归档完成。
+详情历史返回按独立页面访问恢复评论排序、分页范围、回复及文字展开和阅读位置；同一动态的不同访问互不覆盖。未完成的读取返回后从原批次继续，看图不取消底层有效请求。数据与展开范围先恢复，再按稳定动态/评论/回复标识定位；用户主动滚动优先，刷新可重置，不写本地或会话存储。08 已提供 Nginx 静态交付配置；09 已对最终集成产物重新完成全量自动化回归和本机真实 Nginx 验证，补齐四宽度完整流程、列表图片几何、时区与逆序竞态证据。2026-10-12 用户明确将本期兼容目标收窄为 Linux Chrome 与 iPhone Safari，并补充实际版本及桌面键盘/焦点、iPhone 切图/长图滚动/返回隔离检查通过的反馈；结合已有自动化与交付证据，09 及本期已按这两目标完成验收。其他设备/浏览器不在本期兼容保证内，人工、模拟与自动化证据来源见 09 记录第 13 节。上述是历史 mock 阅读演示的验收，不代表新后端验收。当前默认 `/`、`/ups/:upId` 和详情使用真实归档 API；`/manage` 使用 FastAPI/SQLite 保存 UP 配置与指定目标、校验来源作者。02 增加公开一次初始化入口，保存指定集合的正文和独立时间；仍不包含评论采集、媒体上传或周期调度，不能将正文成功冒充全部归档完成。
 
 ## 环境与运行
 
@@ -30,7 +30,7 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-默认列表：`http://localhost:5173/`，需要下面的 Python API；新数据库显示成功空归档。独立虚构演示使用 `pnpm dev --mode mock`，示例详情 `/dynamics/90071992547409931`；故障装配仍用 `pnpm dev:fault`。
+默认列表：`http://localhost:5173/`，需要下面的 Python API；新数据库显示成功空归档。单 UP 列表使用 `/ups/:upId`，最小范围导航来自持久身份，停用或删除监控不隐藏旧归档。独立虚构演示使用 `pnpm dev --mode mock`，示例详情 `/dynamics/90071992547409931`；故障装配仍用 `pnpm dev:fault`。
 
 如果环境没有 Corepack，可先按其官方安装说明准备 Corepack/pnpm；不需要将其作为应用依赖。生产前端只需要构建后的静态文件，不需要 Node.js 服务；管理功能另外运行 Python API。
 
@@ -69,7 +69,7 @@ pnpm build
 - `pnpm test:e2e`：启动显式 mock 开发服务器（4173）与专用故障服务器（4174），在桌面 Chromium 和 Pixel 7 模拟视口运行浏览器流程。
 - `uv run pytest backend/tests`：真实 FastAPI HTTP、隔离临时 SQLite、模拟上游 HTTP transport，覆盖迁移、身份和配置重开、失败保留及秘密脱敏。
 - `pnpm test:e2e:manage`：单独启动真实受测 Uvicorn API（4176）与 Vite（4175）；只替换上游传输，不 mock 数据库或生产管理映射。浏览器保存配置后关闭并重启 API，刷新验证同一临时数据库。测试装配 `backend.tests.live_app` 不是生产启动入口，不需要真实凭据。
-- `pnpm test:e2e:archive`：生产归档 Adapter、真实 Uvicorn 和临时 SQLite 经虚构 HTML/JSON fixture 穿透验证初始化与阅读、断源重开及删除保留；不访问真实上游。
+- `pnpm test:e2e:archive`：生产归档 Adapter、真实 Uvicorn 和临时 SQLite 经虚构 HTML/JSON fixture 穿透验证初始化与阅读、断源重开及删除保留；另用两 UP 共 25 条真实 SQLite 档案验证全部／单 UP 页面分页、刷新与身份保留，不访问真实上游。
 - `pnpm test:e2e:preview`：先 `build:mock`，再对显式 mock 静态产物运行历史阅读回归；不使用故障装配，不代替生产 Adapter 或 Nginx 验收。发布使用 `pnpm build`，不要发布 mock 产物。
 - `NGINX_BIN=/absolute/path/to/nginx NGINX_MIME_TYPES=/absolute/path/to/mime.types pnpm test:delivery`：在临时目录启动真实 Nginx，分别验证生产构建可复现/故障装配隔离，以及显式 mock 的历史 Nginx 阅读、资源错误/缓存与一次更新；不配置系统服务。准备步骤见下节。
 - `HTTP_ACCEPTANCE_URL=http://192.168.8.20:4180/ pnpm test:http`：对已启动的可信局域网 Nginx 显式 `build:mock` 产物验证真实非 localhost HTTP 的启动、UUID v4、详情/预览历史与刷新；先重新构建并更新站点副本，地址替换为实际私有 IPv4。与 `test:delivery` 配合执行，详见静态交付说明；不等于真机验收。
@@ -95,8 +95,10 @@ pnpm build
 - `src/images/`：图片网格与单图比例占位、单张加载/失败/原 URL 重试、按需预览、焦点约束和底层滚动锁。未知尺寸先稳定占位，加载后在框内使用实际比例，避免迟到加载移动阅读位置；会话只保存触发元素 ID，不保留失效 DOM 引用。关闭先解锁、恢复位置，再在底层解除 inert 后以 `preventScroll` 恢复焦点。支持长图完整/适宽阅读和触摸方向锁定；移动至少 12px 后判定方向，水平位移至少为纵向的 1.5 倍且结束时达到 50px 才切图，取消及多指触摸不切图。不增加自由/双指缩放。手势不直接操作 History API。
 - `src/dev/`：确定性开发/测试装配。`pnpm dev:fault` 使首批和第二批列表及各详情首次失败一次，重试恢复，并使用长昵称样例；受控读取 Adapter 可按动态/评论排序及动态/根评论注入延迟、取消、错误和忽略取消的结果；评论与回复的局部故障/乱序在公开页面测试中驱动，互不消费计划或取消请求。讨论第二批延迟供浏览器验证加载中离开及历史返回，不影响正常静态产物。通过编译配置切换，不提供公开故障 URL 参数或页面控制面板。即使 `pnpm build --mode fault`，也只装配生产归档 Reader，不带故障数据。显式 `build:mock` 仅用于历史回归，不是生产交付。
 
-路由采用 BrowserRouter：`/`、`/dynamics/:dynamicId`、`/manage`，其余为前端未找到页面。无有效站内来源时详情返回安全替换为列表首页；刷新后不沿用失效的内存来源。
+路由采用 BrowserRouter：`/`、`/ups/:upId`、`/dynamics/:dynamicId`、`/manage`，其余为前端未找到页面。无有效站内来源时详情返回安全替换为列表首页；刷新后不沿用失效的内存来源。
 
 ## 验收记录
+
+当前后端集成 #13 的 scope 读取协议、T1/T2 与实际 API→最小页面证据见 [13 验收记录](.scratch/backend-integration/acceptance-13.md)；它不代替下面的历史 mock 验收，也不表示 #14 导航改版、部署或真机完成。
 
 详见 [01 验收记录](.scratch/dynamics-viewer/acceptance-01.md)、[02 验收记录](.scratch/dynamics-viewer/acceptance-02.md)、[03 验收记录](.scratch/dynamics-viewer/acceptance-03.md)、[04 验收记录](.scratch/dynamics-viewer/acceptance-04.md)、[05 验收记录](.scratch/dynamics-viewer/acceptance-05.md)、[06 验收记录](.scratch/dynamics-viewer/acceptance-06.md)、[07 验收记录](.scratch/dynamics-viewer/acceptance-07.md)、[08 验收记录](.scratch/dynamics-viewer/acceptance-08.md) 与 [09 最终集成验收记录](.scratch/dynamics-viewer/acceptance-09.md)。06 手势使用 Chromium CDP 触摸输入和 Pixel 7 模拟视口验证，不代表真实 Android/iOS 触控验收。Vite 的开发/预览回退不代表 Nginx 验收；08 使用临时编译的 Nginx 1.28.0 实测，未操作生产环境。09 已实际复跑最终集成产物：Vitest 93/93、开发浏览器 102 通过（10 项仅 Nginx 跳过）、preview 94 通过（同样跳过 10 项）、真实 Nginx 104/104，以及构建重现/故障装配隔离/更新演练；Vite 不替代 Nginx。09 表内逐项记录通过及未验证；Linux Chrome / iPhone Safari 的实际版本、人工专项通过结果及最终验收收口见第 13 节，第 1–12 节保留历史过程。其他设备/浏览器已移出本期目标，不能据此宣称这些目标也通过。
