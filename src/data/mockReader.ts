@@ -1,8 +1,10 @@
 import { replyAppendSize, replyPreviewSize } from './contracts';
+import { isValidId } from './identifiers';
 import type { Comment, Dynamic, DynamicReader, ReadResult, Reply, User } from './contracts';
 
 export interface MockDataset {
   readonly creator: User;
+  readonly identities?: readonly User[];
   readonly dynamics: readonly Dynamic[];
   readonly comments?: Readonly<Record<string, readonly Comment[]>>;
   readonly replies?: Readonly<Record<string, Readonly<Record<string, readonly Reply[]>>>>;
@@ -60,13 +62,22 @@ export function createMockReader(dataset: MockDataset): DynamicReader {
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
 
+  const identities = [...new Map([dataset.creator, ...(dataset.identities ?? []), ...items.map(item => item.author)]
+    .map(user => [user.id, normalizeUser(user)])).values()].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   return {
     creator: normalizeUser(dataset.creator),
-    async readList({ limit, cursor, signal }) {
+    async readUps({ signal }) {
+      return signal.aborted ? { status: 'cancelled' } : { status: 'success', data: identities };
+    },
+    async readList({ scope, limit, cursor, signal }) {
       if (signal.aborted) return { status: 'cancelled' };
-      const prefix = `dynamics:${encodeURIComponent(dataset.creator.id)}:time-desc:`;
-      const size = Number.isFinite(limit) ? Math.max(1, Math.min(10, Math.floor(limit))) : 10;
-      return readBatch(items, prefix, cursor, size);
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 10 || scope.kind === 'up' && !isValidId(scope.upId)) return { status: 'error' };
+      if (scope.kind === 'up' && !identities.some(user => user.id === scope.upId)) return { status: 'error', reason: 'unknown-up' };
+      const size = limit;
+      const scopeKey = scope.kind === 'all' ? 'all' : `up:${encodeURIComponent(scope.upId)}`;
+      const prefix = `dynamics:${encodeURIComponent(dataset.creator.id)}:${scopeKey}:time-desc:${size}:`;
+      const result = readBatch(scope.kind === 'all' ? items : items.filter(item => item.author.id === scope.upId), prefix, cursor, size);
+      return result.status === 'error' ? { status: 'error', reason: 'invalid-cursor' } : result;
     },
     async readReplies({ dynamicId, rootId, limit, cursor, signal }) {
       if (signal.aborted) return { status: 'cancelled' };

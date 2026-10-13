@@ -1,4 +1,4 @@
-import type { ArchiveMetadata, ArchiveWorkState, DetailResult, Dynamic, DynamicBatch, DynamicReader, ReadResult } from './contracts';
+import type { ArchiveMetadata, ArchiveWorkState, DetailResult, Dynamic, DynamicBatch, DynamicReader, ReadResult, User } from './contracts';
 import { isValidId } from './identifiers';
 import { isRecord as record } from './guards';
 
@@ -70,21 +70,43 @@ export function createArchiveReader(transport: ArchiveTransport = (url, init) =>
   return {
     creator: { id: 'archive', nickname: '归档动态', avatarUrl: null },
     discussions: 'not-archived',
-    async readList({ limit, cursor, signal }): Promise<ReadResult<DynamicBatch>> {
+    async readUps({ signal }): Promise<ReadResult<readonly User[]>> {
+      if (signal.aborted) return { status: 'cancelled' };
+      try {
+        const response = await transport('/api/archive/ups', { method: 'GET', signal });
+        const body: unknown = await response.json();
+        if (signal.aborted) return { status: 'cancelled' };
+        if (response.status !== 200 || !record(body) || !Array.isArray(body.ups)) return failed;
+        const users: User[] = [];
+        for (const raw of body.ups) {
+          if (!record(raw) || !isValidId(raw.id) || users.some(user => user.id === raw.id)) return failed;
+          users.push({ id: raw.id, nickname: typeof raw.nickname === 'string' && raw.nickname.trim() ? raw.nickname : null,
+            avatarUrl: url(raw.avatar_url) });
+        }
+        return { status: 'success', data: users };
+      } catch { return signal.aborted ? { status: 'cancelled' } : failed; }
+    },
+    async readList({ scope, limit, cursor, signal }): Promise<ReadResult<DynamicBatch>> {
       if (signal.aborted) return { status: 'cancelled' };
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > 10) return failed;
-      const query = new URLSearchParams({ limit: String(limit) });
+      if (scope.kind === 'up' && !isValidId(scope.upId)) return failed;
+      const query = new URLSearchParams({ limit: String(limit), scope: scope.kind });
+      if (scope.kind === 'up') query.set('uid', scope.upId);
       if (cursor != null) query.set('cursor', cursor);
       try {
         const response = await transport(`/api/archive/dynamics?${query}`, { method: 'GET', signal });
         const body: unknown = await response.json();
         if (signal.aborted) return { status: 'cancelled' };
+        if (record(body) && record(body.error)) {
+          if (scope.kind === 'up' && response.status === 404 && body.error.code === 'UNKNOWN_UP') return { status: 'error', reason: 'unknown-up' };
+          if (cursor != null && response.status === 422 && body.error.code === 'INVALID_INPUT') return { status: 'error', reason: 'invalid-cursor' };
+        }
         if (response.status !== 200 || !record(body) || !Array.isArray(body.items) || body.items.length > limit
           || !(body.next_cursor === null || typeof body.next_cursor === 'string')) return failed;
         const items: Dynamic[] = [];
         for (const raw of body.items) {
           const item = parseArchive(raw);
-          if (!item || items.some(existing => existing.id === item.id)) return failed;
+          if (!item || scope.kind === 'up' && item.author.id !== scope.upId || items.some(existing => existing.id === item.id)) return failed;
           items.push(item);
         }
         return { status: 'success', data: { items, nextCursor: body.next_cursor } };

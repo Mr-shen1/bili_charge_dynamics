@@ -62,6 +62,12 @@ test('正文选择、头像昵称不跳转；键盘操作可聚焦且焦点可�
   });
   await expect(page).toHaveURL(/\/$/);
   expect(await page.evaluate(() => window.getSelection()?.toString())).toContain('第八行');
+  // 最小 scope 导航排在卡片之前，逐项检查真实键盘顺序，而非假定首个控件仍是展开。
+  await page.getByRole('main').focus();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('link', { name: '全部归档', exact: true })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('navigation', { name: '归档范围' }).getByRole('link', { name: '纸飞机', exact: true })).toBeFocused();
   await page.keyboard.press('Tab');
   const expand = card.getByRole('button', { name: '展开正文' });
   await expect(expand).toBeFocused();

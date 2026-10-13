@@ -10,12 +10,12 @@ describe('统一动态读取接口', () => {
       text: String(i), commentCount: 0,
     })).reverse() });
     const signal = new AbortController().signal;
-    const first = await reader.readList({ limit: 10, signal });
+    const first = await reader.readList({ scope: { kind: 'all' }, limit: 10, signal });
     if (first.status !== 'success') throw new Error('Expected success');
-    const second = await reader.readList({ limit: 10, signal, cursor: first.data.nextCursor });
+    const second = await reader.readList({ scope: { kind: 'all' }, limit: 10, signal, cursor: first.data.nextCursor });
     if (second.status !== 'success') throw new Error('Expected success');
-    expect(second).toEqual(await reader.readList({ limit: 10, signal, cursor: first.data.nextCursor }));
-    const third = await reader.readList({ limit: 10, signal, cursor: second.data.nextCursor });
+    expect(second).toEqual(await reader.readList({ scope: { kind: 'all' }, limit: 10, signal, cursor: first.data.nextCursor }));
+    const third = await reader.readList({ scope: { kind: 'all' }, limit: 10, signal, cursor: second.data.nextCursor });
     if (third.status !== 'success') throw new Error('Expected success');
     expect([first.data.items.length, second.data.items.length, third.data.items.length]).toEqual([10, 10, 5]);
     expect([...first.data.items, ...second.data.items, ...third.data.items].map(item => item.id)).toEqual([
@@ -23,9 +23,9 @@ describe('统一动态读取接口', () => {
       '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24',
     ]);
     expect(third.data.nextCursor).toBeNull();
-    expect(await reader.readList({ limit: 10, signal, cursor: 'comments:10' })).toEqual({ status: 'error' });
+    expect(await reader.readList({ scope: { kind: 'all' }, limit: 10, signal, cursor: 'comments:10' })).toEqual({ status: 'error', reason: 'invalid-cursor' });
     const anotherCreator = createMockReader({ creator: { ...creator, id: 'another' }, dynamics: [] });
-    expect(await anotherCreator.readList({ limit: 10, signal, cursor: first.data.nextCursor })).toEqual({ status: 'error' });
+    expect(await anotherCreator.readList({ scope: { kind: 'all' }, limit: 10, signal, cursor: first.data.nextCursor })).toEqual({ status: 'error', reason: 'invalid-cursor' });
   });
   it('缺失或无效时间/计数保留为空，零值保留；未知详情与取消读取语义不同', async () => {
     const reader = createMockReader({ creator, dynamics: [
@@ -35,7 +35,7 @@ describe('统一动态读取接口', () => {
       { id: 'zero', author: creator, publishedAt: '2026-01-01T00:00:00+08:00', text: '', commentCount: 0 },
     ] });
     const signal = new AbortController().signal;
-    const result = await reader.readList({ limit: 10, signal });
+    const result = await reader.readList({ scope: { kind: 'all' }, limit: 10, signal });
     if (result.status !== 'success') throw new Error('Expected success');
     expect(result.data.items.map(item => [item.id, item.publishedAt, item.commentCount])).toEqual([
       ['zero', '2025-12-31T16:00:00.000Z', 0],
@@ -46,7 +46,7 @@ describe('统一动态读取接口', () => {
     const controller = new AbortController();
     controller.abort();
     expect(await reader.readDetail({ id: 'unknown', signal: controller.signal })).toEqual({ status: 'cancelled' });
-    expect(await reader.readList({ limit: 10, signal: controller.signal })).toEqual({ status: 'cancelled' });
+    expect(await reader.readList({ scope: { kind: 'all' }, limit: 10, signal: controller.signal })).toEqual({ status: 'cancelled' });
   });
   it('对完整集合按明确时刻倒序读取最多十条，并以字符串 ID 打破并列', async () => {
     const reader = createMockReader({ creator, dynamics: [
@@ -57,7 +57,7 @@ describe('统一动态读取接口', () => {
       })),
       { id: '90071992547409931', author: creator, publishedAt: '2026-01-11T08:00:01+08:00', text: '并列', commentCount: 0 },
     ] });
-    const result = await reader.readList({ limit: 10, signal: new AbortController().signal });
+    const result = await reader.readList({ scope: { kind: 'all' }, limit: 10, signal: new AbortController().signal });
     expect(result.status).toBe('success');
     if (result.status !== 'success') throw new Error('Expected success');
     expect(result.data.items.map(item => item.id)).toEqual([

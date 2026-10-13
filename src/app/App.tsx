@@ -10,6 +10,7 @@ import type { ManagementApi } from '../manage/managementApi';
 export function App({ reader, manageApi }: { reader: DynamicReader; manageApi?: ManagementApi }) {
   return <SessionProvider><Routes>
     <Route path="/" element={<ListPage reader={reader} />} />
+    <Route path="/ups/:upId" element={<ListPage reader={reader} />} />
     <Route path="/dynamics/:dynamicId" element={<DetailPage reader={reader} />} />
     <Route path="/manage" element={<ManagePage api={manageApi} />} />
     <Route path="*" element={<NotFoundPage />} />

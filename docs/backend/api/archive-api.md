@@ -1,6 +1,6 @@
-# 指定目标与首次归档接口（02）
+# 指定目标、首次归档与 scope 读取接口（02 / 13 后端）
 
-本票只交付指定目标的首次正文归档和基础读取，不包含近期目标选择、周期检查、评论采集或媒体上传。管理身份及配置契约见 [management-api.md](management-api.md)，来源证据及限制见 [backend-feasibility.md](../evidence/backend-feasibility.md)。
+02 交付指定目标的首次正文归档和基础读取；13 后端扩展全部／单 UP 读取与持久身份列表。不包含近期目标选择、周期检查、评论采集或媒体上传，前端 Adapter／最小路由契约见 [archive-api-client.md](archive-api-client.md)，具体自动化证据见 [13 验收记录](../../../.scratch/backend-integration/acceptance-13.md)。管理身份及配置契约见 [management-api.md](management-api.md)，来源证据及限制见 [backend-feasibility.md](../evidence/backend-feasibility.md)。
 
 ## 公开边界
 
@@ -10,12 +10,31 @@
 | `POST /api/manage/ups/{uid}/targets` | `{id: string}` | `{id: string}`，仅在来源作者确认匹配后关联 |
 | `DELETE /api/manage/ups/{uid}/targets/{id}` | 无 | `204`，只解除关联，不删除归档 |
 | `POST /api/sync/initial` | `{uid: string}` | `{processed, succeeded, failed}`，各值为实际处理数 |
-| `GET /api/archive/dynamics` | `limit`、可选 `cursor` | `{items: Archive[], next_cursor: string \| null}` |
+| `GET /api/archive/ups` | 无 | `{ups: [{id: string, nickname: string \| null, avatar_url: string \| null}]}` |
+| `GET /api/archive/dynamics` | `scope=all\|up`、条件必需的 `uid`、`limit`、可选 `cursor` | `{items: Archive[], next_cursor: string \| null}` |
 | `GET /api/archive/dynamics/{id}` | 无 | `Archive`；本地不存在时 `404` |
 
 UID 和动态 ID 必须是十进制字符串，不经 JavaScript Number 转换。不符返回 `409 TARGET_AUTHOR_MISMATCH`，无法确认返回 `502 TARGET_UNVERIFIED`；都不建立关联。上游请求不在数据库事务内，错误只返回固定脱敏提示，不传递上游响应、URL、请求头或异常文本。
 
 初始化入口面向执行者及测试，不从页面挂载、读取或刷新调用；没有手动刷新 UI。`succeeded` 仅计正文成功（含成功空），正文受限属于本次未成功而计入 `failed`，具体受限/失败由归档状态区分。只处理已启用且已保存为 `specified` 的关联集合，不补入近期或作者的其他动态。停止、删除监控配置或解除目标后，保留身份和历史归档。浏览器 list/detail 只读取 SQLite，即使上游不可用也不触发采集。
+
+### 归档读取 scope、身份与错误
+
+- `GET /api/archive/dynamics?scope=all` 对全部保留归档排序分页；旧请求省略 `scope` 等价于 `all`。`all` 禁止携带 `uid`（包括空值），不按监控状态筛选。
+- `GET /api/archive/dynamics?scope=up&uid=202` 只读取该 UP 的完整保留归档，按数据库归属 UID 过滤。`up` 必须携带合法 UID 字符串：1–128 位 ASCII 十进制数字，首位 1–9，不接受前导零、符号、空白、科学计数法或 Number 转换。
+- 未持久保存的合法 UID 返回 `404 UNKNOWN_UP`；已知身份即使没有归档，也返回 `200 {items: [], next_cursor: null}`。本地详情不存在仍独立返回 `404 NOT_FOUND`，上游不可用不会让已有详情变成不存在。
+- `GET /api/archive/ups` 返回全部持久身份，包括停用、删除监控配置及已知空身份；按 ID 的 BINARY 字符串升序排列。DTO 只含 `id`、`nickname`、`avatar_url`，不含监控配置，也不请求上游刷新资料；可空昵称／头像原样保留。
+- `limit` 默认 10，范围 1–10。非法 scope／UID／limit、未知或重复查询参数返回 `422 INVALID_INPUT`。身份列表及详情均不接受查询参数。
+
+### 分页一致性与 cursor
+
+动态在完整 scope 集合内按 `published_at DESC`（`null` 后置）、`id COLLATE BINARY ASC` 排序，ID 不转数字，编辑时间不参与排序。全部集合跨 UP 排序后分页，不能将各 UP 的页面拼接为全局页面。
+
+首批读取在同一 SQLite 短事务内冻结当时该 scope 的**全部顺序与完整 Archive 内容**，后续页持久保存。之后插入、更新时间或正文不会加入／改写旧快照；重新请求不带 cursor 的首批才能看到最新归档。cursor 重读返回同一批及相同的 `next_cursor`，应用／数据库关闭重开不使未过期 cursor 失效。最后一批 `next_cursor` 为 `null`，调用方不再追加请求；失败不推进 cursor，可按原 cursor 重试。
+
+cursor 是不透明标记，绑定动态资源、scope（单 UP 包含 UID）、固定排序及首批 `limit`。全局旧 cursor 与显式 `scope=all` 完全互通；不能在全部／单 UP 或不同 UP 之间复用，也不能用于身份、详情、目标或评论资源。格式无效、伪造、跨 scope／资源、改变 limit 均明确返回 `422 INVALID_INPUT`，不静默开启新快照。
+
+快照从首批创建起有效 **15 分钟**，续页不延长期限；到期时（包括恰满 900 秒）返回 `422 INVALID_INPUT`，过期页由启动或列表读取回收，归档本身不删除。调用方需显式重读首批，不把失效视为成功空或结束。此增量沿用现有 v5 持久页结构，不迁移或作废仍有效的旧全局 cursor；不承诺大集合内存／存储容量或长期阅读快照。
 
 ### 执行一次
 

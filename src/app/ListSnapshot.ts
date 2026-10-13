@@ -1,7 +1,8 @@
-import type { DynamicBatch } from '../data/contracts';
+import type { DynamicBatch, ReadResult } from '../data/contracts';
 
 export interface ListReadState {
   readonly data: DynamicBatch | null;
+  readonly reason?: Extract<ReadResult<DynamicBatch>, { status: 'error' }>['reason'];
   readonly status: 'loading' | 'success' | 'error' | 'cancelled';
 }
 

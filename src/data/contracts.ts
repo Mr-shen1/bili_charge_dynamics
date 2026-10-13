@@ -72,9 +72,11 @@ export interface DynamicBatch {
   readonly nextCursor: string | null;
 }
 
+export type ArchiveScope = { readonly kind: 'all' } | { readonly kind: 'up'; readonly upId: string };
+
 export type ReadResult<T> =
   | { readonly status: 'success'; readonly data: T }
-  | { readonly status: 'error'; readonly reason?: 'not-archived' }
+  | { readonly status: 'error'; readonly reason?: 'not-archived' | 'unknown-up' | 'invalid-cursor' }
   | { readonly status: 'cancelled' };
 
 export type DetailResult = ReadResult<Dynamic> | { readonly status: 'not-found' };
@@ -83,7 +85,8 @@ export interface DynamicReader {
   readonly creator: User;
   readonly discussions?: 'not-archived';
   readReplies(input: { readonly dynamicId: string; readonly rootId: string; readonly limit: number; readonly cursor?: string | null; readonly signal: AbortSignal }): Promise<ReadResult<ReplyBatch>>;
-  readList(input: { readonly limit: number; readonly cursor?: string | null; readonly signal: AbortSignal }): Promise<ReadResult<DynamicBatch>>;
+  readUps(input: { readonly signal: AbortSignal }): Promise<ReadResult<readonly User[]>>;
+  readList(input: { readonly scope: ArchiveScope; readonly limit: number; readonly cursor?: string | null; readonly signal: AbortSignal }): Promise<ReadResult<DynamicBatch>>;
   readDetail(input: { readonly id: string; readonly signal: AbortSignal }): Promise<DetailResult>;
   readComments(input: { readonly dynamicId: string; readonly sort: CommentSort; readonly cursor?: string | null; readonly signal: AbortSignal }): Promise<ReadResult<CommentBatch>>;
 }

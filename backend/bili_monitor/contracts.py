@@ -37,6 +37,7 @@ class MonitorConfig(BaseModel):
 ERRORS = {
     "INVALID_INPUT": (422, "输入无效"),
     "NOT_FOUND": (404, "未找到身份或监控配置"),
+    "UNKNOWN_UP": (404, "未找到 UP 身份"),
     "ALREADY_MONITORED": (409, "已存在监控配置"),
     "PROFILE_UNAVAILABLE": (502, "无法取得完整公开资料"),
     "TARGET_AUTHOR_MISMATCH": (409, "动态作者与所选 UP 不符"),

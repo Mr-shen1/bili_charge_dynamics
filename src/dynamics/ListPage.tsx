@@ -1,5 +1,7 @@
-import { useLayoutEffect, useRef, useState } from 'react';
-import type { DynamicReader } from '../data/contracts';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useParams } from 'react-router';
+import { ArchiveNavigation } from './ArchiveNavigation';
+import type { ArchiveScope, DynamicReader } from '../data/contracts';
 import { DynamicContent, Identity } from './DynamicContent';
 import { useAppNavigation } from '../app/Navigation';
 import { captureReadingPosition, restoreReadingPosition } from '../app/readingPosition';
@@ -10,12 +12,14 @@ import { ReadNotice } from './ReadNotice';
 
 export function ListPage({ reader }: { reader: DynamicReader }) {
   const { pageEntryId } = useAppNavigation();
-  return <ListVisit key={pageEntryId} reader={reader} />;
+  const { upId } = useParams();
+  const scope = useMemo<ArchiveScope>(() => upId === undefined ? { kind: 'all' } : { kind: 'up', upId }, [upId]);
+  return <ListVisit key={`${pageEntryId}:${upId ?? 'all'}`} reader={reader} scope={scope} />;
 }
 
-function ListVisit({ reader }: { reader: DynamicReader }) {
+function ListVisit({ reader, scope }: { reader: DynamicReader; scope: ArchiveScope }) {
   const { pageEntryId, openDetail, listSnapshot, saveListSnapshot } = useAppNavigation();
-  const { state, load } = useListRead(reader, listSnapshot?.read);
+  const { state, load } = useListRead(reader, scope, listSnapshot?.read);
   const [expanded, setExpanded] = useState<Readonly<Record<string, boolean>>>(listSnapshot?.expanded ?? {});
   const root = useRef<HTMLElement>(null);
   const initialPosition = useRef(listSnapshot?.position ?? null);
@@ -36,9 +40,15 @@ function ListVisit({ reader }: { reader: DynamicReader }) {
 
   return <main ref={root} tabIndex={-1} className={styles.page}>
     <header className={styles.header}>
-      <Identity user={reader.creator} heading />
+      {scope.kind === 'all' ? <Identity user={reader.creator} heading /> : <h1>UP {scope.upId} 归档</h1>}
+      <ArchiveNavigation reader={reader} scope={scope} />
     </header>
-    {!state.data && <ReadNotice status={state.status} area="动态列表" retry={load} />}
+    {state.reason === 'invalid-cursor' && <section>
+      <p role="alert">分页已失效，请重新开始读取。</p>
+      <button className={styles.button} type="button" onClick={() => void load(true)}>重新开始</button>
+    </section>}
+    {state.reason === 'unknown-up' ? <p role="status">UP 不存在</p>
+      : !state.data && state.reason !== 'invalid-cursor' && <ReadNotice status={state.status} area="动态列表" retry={() => void load()} />}
     {state.data?.items.length === 0 && <p role="status">暂无动态</p>}
     {state.data?.items.map(dynamic => <article className={styles.card} key={dynamic.id} data-reading-id={dynamic.id}>
       <DynamicContent dynamic={dynamic} navigateToComments={() => openDetail(dynamic.id, 'comments')} folding={{ expanded: expanded[dynamic.id] ?? false,
@@ -49,7 +59,7 @@ function ListVisit({ reader }: { reader: DynamicReader }) {
     {state.data && state.data.items.length > 0 && (state.data.nextCursor === null
       ? <p role="status">动态已加载完毕</p>
       : <section aria-label="动态追加">
-        {state.status !== 'success' && <ReadNotice status={state.status} area="动态追加" retry={load} />}
+        {state.status !== 'success' && state.reason !== 'invalid-cursor' && <ReadNotice status={state.status} area="动态追加" retry={() => void load()} />}
         {(state.status === 'success' || state.status === 'loading') && <button className={styles.button}
           type="button" disabled={state.status === 'loading'} onClick={() => void load()}>加载更多</button>}
       </section>)}

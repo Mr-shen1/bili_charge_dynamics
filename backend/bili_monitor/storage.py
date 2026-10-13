@@ -105,6 +105,13 @@ class Store:
             for row in rows
         ]
 
+    def archive_ups(self):
+        with self.connection() as connection:
+            return [dict(row) for row in connection.execute(
+                """SELECT uid AS id, name AS nickname, avatar_url FROM identities
+                ORDER BY uid COLLATE BINARY"""
+            )]
+
     def add(self, uid, name, avatar_url):
         with self.connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -184,9 +191,15 @@ class Store:
             row = connection.execute("SELECT document FROM archives WHERE id = ?", (id,)).fetchone()
         return json.loads(row[0]) if row else None
 
-    def list_archives(self, limit=10, cursor=None):
+    def list_archives(self, limit=10, cursor=None, uid=None):
+        # 保留已发布的全局 resource，使旧 cursor 与显式 all 互通。
+        resource = ARCHIVE_RESOURCE if uid is None else f"dynamics:up:{uid}:published-desc:id-binary:v1"
         now = int(time.time())
         with self.connection() as connection:
+            if uid is not None and not connection.execute(
+                "SELECT 1 FROM identities WHERE uid = ?", (uid,)
+            ).fetchone():
+                raise APIError("UNKNOWN_UP")
             # 启动与每次列表读取回收过期页；不保留进程内长期快照。
             connection.execute("DELETE FROM archive_pages WHERE expires_at <= ?", (now,))
             if cursor is not None:
@@ -195,7 +208,7 @@ class Store:
                 row = connection.execute(
                     """SELECT document FROM archive_pages WHERE token = ? AND batch_limit = ?
                     AND resource = ? AND expires_at > ?""",
-                    (cursor, limit, ARCHIVE_RESOURCE, now),
+                    (cursor, limit, resource, now),
                 ).fetchone()
                 if row is None:
                     raise APIError("INVALID_INPUT")
@@ -204,7 +217,10 @@ class Store:
             try:
                 # 同一短事务中冻结完整内容、顺序和批量；cursor 重读/重开不受更新影响。
                 documents = [json.loads(row[0]) for row in connection.execute(
-                    "SELECT document FROM archives ORDER BY json_extract(document, '$.published_at') DESC, id COLLATE BINARY"
+                    "SELECT document FROM archives"
+                    + (" WHERE uid = ?" if uid is not None else "")
+                    + " ORDER BY json_extract(document, '$.published_at') DESC, id COLLATE BINARY ASC",
+                    (uid,) if uid is not None else (),
                 )]
                 pages = [documents[i:i + limit] for i in range(0, len(documents), limit)] or [[]]
                 tokens = [uuid4().hex for _ in pages]
@@ -213,7 +229,7 @@ class Store:
                 for token, result in zip(tokens[1:], results[1:]):
                     connection.execute("""INSERT INTO archive_pages
                         (token, batch_limit, document, expires_at, resource) VALUES (?, ?, ?, ?, ?)""",
-                        (token, limit, json.dumps(result, ensure_ascii=False), now + SNAPSHOT_TTL_SECONDS, ARCHIVE_RESOURCE))
+                        (token, limit, json.dumps(result, ensure_ascii=False), now + SNAPSHOT_TTL_SECONDS, resource))
                 connection.commit()
                 return results[0]
             except BaseException:

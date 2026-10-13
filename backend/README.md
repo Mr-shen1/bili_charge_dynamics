@@ -1,4 +1,4 @@
-# 票据 01–02 后端
+# 票据 01–02 / 13 后端
 
 提供 UP 身份/配置管理、指定动态关联、显式一次初始化及 SQLite 归档读取。没有周期调度、近期目标发现、评论采集或 OSS 上传；不宣称全部归档完成。管理基础契约见 `docs/backend/api/management-api.md`，02 测试证据见 [backend-acceptance-02.md](../.scratch/backend-integration/evidence/backend-acceptance-02.md)，字段依据见 [source-protocol-evidence.md](../docs/backend/evidence/source-protocol-evidence.md)。
 
@@ -33,7 +33,9 @@ app = create_app(database_path, profile_transport=None)
 - `POST /api/manage/ups/{uid}/targets`，body `{id}` → `201 {id}`。每次请求（包括重复关联）都重新校验作者；确认后关联写入幂等，来源无法确认时仍返回 `502 TARGET_UNVERIFIED`。优先用 HTML AUTHOR 校验；页面无法验证时使用严格 code/id_str 的 detail JSON。可信作者不符返回 `409 TARGET_AUTHOR_MISMATCH`，不强行关联。
 - `DELETE /api/manage/ups/{uid}/targets/{id}` → `204`，幂等、不删归档。
 - `POST /api/sync/initial`，body `{uid}` → `{processed,succeeded,failed}`。仅处理该 UP 当前 enabled、specified 的关联集合，recent/停用/删配置返回零；未知 UID 返回 404。这是运维/测试一次执行入口，**不是前端阅读或刷新入口**，无定时任务和自动后台重试。
-- `GET /api/archive/dynamics?limit=10&cursor=…` → `{items:Archive[],next_cursor:string|null}`。本票只支持 all scope。
+- `GET /api/archive/dynamics?limit=10&cursor=…` → `{items:Archive[],next_cursor:string|null}`。02 原范围只支持 all；13 新增显式 `scope=all|up`，单 UP 必须带 `uid`，省略 scope 兼容 all。
+- `GET /api/archive/ups` → `{ups:[{id,nickname,avatar_url}]}`，包含停用／删除配置后的持久身份及已知空身份，不依赖启用名单。
+- `GET /api/archive/dynamics?scope=up&uid=202` → 仅该 UP 完整归档的独立分页；未知身份 `404 UNKNOWN_UP`，已知空为成功空列表。
 - `GET /api/archive/dynamics/{id}` → `Archive`，未知本地 ID 返回 404。以上归档读取只读 SQLite，不请求上游。
 
 Archive 字段保持前端约定：`id`、`author:{id,nickname,avatar_url}`、独立 `title`、`published_at`、`edited_at`、`edit_status`、`text`、`content_state`、`last_attempt`、`source_comment_count`、`local_comment_count`、`media_sources`、`comment_locator`、`observed_version`、`synced_version`、`work`。ID 全为字符串；发布时间为明确 `+08:00` 秒精度 ISO，编辑时间为 `+08:00` 分钟精度 ISO。未知为 null，不补当前时间，也不以编辑时间补发布。`local_comment_count` 固定 0，绝不代替来源数。
@@ -55,7 +57,7 @@ Archive 字段保持前端约定：`id`、`author:{id,nickname,avatar_url}`、�
 
 首批在 SQLite 短事务内冻结集合、完整响应内容和顺序，后续页持久保存到 SQLite。cursor 是不可推导的随机令牌，绑定 `dynamics/all/发布时间降序+ID BINARY/批量/该次快照`。插入、发布时间更新和正文修改只影响新的首批；旧 cursor 在有效期内重读、重开均返回原批，范围内不重不漏。detail 始终读当前归档，不绑定 list 快照。
 
-快照从首次读取开始固定 **15 分钟** 有效，不续期；启动及每次 list 回收过期页，不用长期进程内缓存。结束返回 null。归档列表请求中的伪造、过期、跨资源 cursor、批量不符、未知 query 参数及重复 query 参数均返回 `422 INVALID_INPUT`，不静默另开快照。过期应重新从无 cursor 的首批开始，不将新首批拼入旧阅读快照。本票没有单 UP scope；后续 03 须显式扩展资源绑定。
+快照从首次读取开始固定 **15 分钟** 有效，不续期；启动及每次 list 回收过期页，不用长期进程内缓存。结束返回 null。归档列表请求中的伪造、过期、跨资源 cursor、批量不符、未知 query 参数及重复 query 参数均返回 `422 INVALID_INPUT`，不静默另开快照。过期应重新从无 cursor 的首批开始，不将新首批拼入旧阅读快照。13 已扩展单 UP scope：cursor 额外绑定 UID，跨 all/up 或不同 UP 明确拒绝；不改变 v5 schema 或仍有效的旧全局 cursor。详见 [scope 协议](../docs/backend/api/archive-api.md) 与 [13 验收](../.scratch/backend-integration/acceptance-13.md)。
 
 ## SQLite 与安全
 
@@ -66,6 +68,7 @@ schema 顺序：v1 身份/配置、v2 targets、v3 archives/generation、v4 持�
 ## 测试与 E2E 装配
 
 ```sh
+uv run pytest backend/tests/test_scoped_archive.py -q
 uv run pytest backend/tests/test_initial_archive.py -q
 uv run pytest backend/tests/test_full_archive.py -q
 uv run pytest backend/tests/test_migrations.py -q

@@ -38,6 +38,10 @@ type SessionAction = { type: 'register'; entry: PageEntry }
   | { type: 'move-preview'; previewId: string; offset: number }
   | { type: 'preview-mode'; previewId: string; mode: PreviewSession['displayMode'] };
 
+function isListPath(path: string): boolean {
+  return path === '/' || /^\/ups\/[^/]+$/.test(path);
+}
+
 function reduceSession(state: Session, action: SessionAction): Session {
   if (action.type === 'open-preview') {
     return { ...state, previews: { ...state.previews, [action.preview.previewId]: action.preview } };
@@ -71,7 +75,7 @@ function reduceSession(state: Session, action: SessionAction): Session {
       [action.pageEntryId]: { ...entry, detailSnapshot: action.snapshot },
     } };
   }
-  if (entry.path !== '/') return state;
+  if (!isListPath(entry.path)) return state;
   return { ...state, entries: { ...state.entries,
     [action.pageEntryId]: { ...entry, listSnapshot: action.snapshot },
   } };
@@ -177,7 +181,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const next: PageEntry = {
         pageEntryId: createUuid(), path: `/dynamics/${encodeURIComponent(id)}`, detailTarget: target,
         // 来源关系仅在本模块从有效列表直接 PUSH 时建立；按地址初始化不会创建。
-        sourcePageEntryId: validEntry?.path === '/' ? validEntry.pageEntryId : null,
+        sourcePageEntryId: validEntry && isListPath(validEntry.path) ? validEntry.pageEntryId : null,
       };
       dispatch({ type: 'register', entry: next });
       void navigate(next.path, { state: { sessionId: session.sessionId, pageEntryId: next.pageEntryId } });
@@ -186,7 +190,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const source = validEntry?.sourcePageEntryId ? session.entries[validEntry.sourcePageEntryId] : undefined;
       // 当前元数据已通过会话、登记记录和路径验证；该关系证明由列表直接 PUSH。
       // 刷新/未知导航不在内存登记表中，不能仅凭 history.length 或外来 path 后退。
-      if (source?.path === '/' && validEntry?.path.startsWith('/dynamics/')) {
+      if (source && isListPath(source.path) && validEntry?.path.startsWith('/dynamics/')) {
         void navigate(-1);
       } else {
         // 无有效内存来源时替换为首页，绝不盲目离站。
