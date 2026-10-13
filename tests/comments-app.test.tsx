@@ -221,6 +221,29 @@ it('首次、目标排序及追加错误各自局部重试，追加保留内容�
   expect(retried?.cursor).toBeUndefined();
 });
 
+it('评论标记失效保留内容，显式重新开始丢弃旧批和展开，不重试失效标记', async () => {
+  const user = userEvent.setup();
+  const base = createMockReader({ creator, dynamics: [dynamic] });
+  const controlled = createControlledReader(base, { comments: { d: { hot: [
+    { result: { status: 'success', data: { items: [comment], nextCursor: 'lost-cursor' } } },
+    { result: { status: 'error', reason: 'invalid-cursor' } },
+    { result: { status: 'success', data: { items: [{ ...comment, id: 'fresh', text: '新快照首批' }], nextCursor: null } } },
+  ] } } });
+  const requests: Parameters<DynamicReader['readComments']>[0][] = [];
+  show({ ...controlled, readComments(input) { requests.push(input); return controlled.readComments(input); } });
+  const area = await screen.findByRole('region', { name: '评论区' });
+  await within(area).findByText(/第一行/);
+  await user.click(within(area).getByRole('button', { name: '加载更多评论' }));
+  expect(await within(area).findByRole('alert')).toHaveTextContent('评论读取标记无效');
+  expect(within(area).getByText(/第一行/)).toBeVisible();
+  expect(within(area).queryByRole('button', { name: '重试' })).not.toBeInTheDocument();
+  await user.click(within(area).getByRole('button', { name: '重新开始读取' }));
+  expect(await within(area).findByText('新快照首批')).toBeVisible();
+  expect(within(area).queryByText(/第一行/)).not.toBeInTheDocument();
+  expect(requests.map(request => request.cursor)).toEqual([undefined, 'lost-cursor', undefined]);
+  expect(screen.getByText('上方动态保持完整')).toBeVisible();
+});
+
 it('两种排序20、20、5连续读完，切换丢弃旧进度但保留上方动态节点', async () => {
   const user = userEvent.setup();
   show(createMockReader({ creator, dynamics: [dynamic], comments: { d: Array.from({ length: 45 }, (_, i) => ({

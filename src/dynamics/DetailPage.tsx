@@ -7,9 +7,9 @@ import styles from './Dynamics.module.css';
 
 import { useInitialRead } from './useInitialRead';
 import { ReadNotice } from './ReadNotice';
-import { CommentSection } from './CommentSection';
+import { CommentSection, locateComments } from './CommentSection';
 import { DiscussionVisitContext } from './DiscussionVisit';
-import type { CommentSnapshot } from '../app/DetailSnapshot';
+import { emptyCommentSnapshot, type CommentSnapshot } from '../app/DetailSnapshot';
 import { captureReadingPosition, restoreReadingPosition } from '../app/readingPosition';
 
 export function DetailPage({ reader }: { reader: DynamicReader }) {
@@ -20,10 +20,9 @@ export function DetailPage({ reader }: { reader: DynamicReader }) {
 function DetailVisit({ reader }: { reader: DynamicReader }) {
   const { dynamicId = '' } = useParams();
   const { pageEntryId, returnToList, detailTarget, detailSnapshot, saveDetailSnapshot } = useAppNavigation();
-  const discussion = useRef<CommentSnapshot>(detailSnapshot?.comments ?? {
-    sort: 'hot', read: { status: 'loading', data: null }, expanded: {}, replies: {},
-  });
+  const discussion = useRef<CommentSnapshot>(detailSnapshot?.comments ?? emptyCommentSnapshot());
   const root = useRef<HTMLElement>(null);
+  const comments = useRef<HTMLElement>(null);
   const initial = useRef(detailSnapshot);
   const entryAllowed = useRef(true);
   const canLocateEntry = useCallback(() => entryAllowed.current, []);
@@ -51,10 +50,11 @@ function DetailVisit({ reader }: { reader: DynamicReader }) {
     <ReadNotice status={state.status} area="动态详情" retry={retry} />
     {state.status === 'not-found' && <p role="status">动态不存在或不可用</p>}
     {state.status === 'success' && <>
-      <article className={styles.card} data-reading-id={`dynamic:${dynamicId}`}><DynamicContent dynamic={state.data} /></article>
+      <article className={styles.card} data-reading-id={`dynamic:${dynamicId}`}><DynamicContent dynamic={state.data}
+        navigateToComments={() => locateComments(comments.current)} /></article>
       <DiscussionVisitContext.Provider value={discussion}>
         {/* 只用挂载时的快照判断入口，StrictMode 清理生成的草稿不能改写主动意图。 */}
-        <CommentSection reader={reader} dynamicId={dynamicId} authorId={state.data.author.id} canLocateEntry={canLocateEntry} initialTarget={initial.current ? 'top' : detailTarget} />
+        <CommentSection rootRef={comments} reader={reader} dynamicId={dynamicId} authorId={state.data.author.id} archive={state.data.archive} canLocateEntry={canLocateEntry} initialTarget={initial.current ? 'top' : detailTarget} />
       </DiscussionVisitContext.Provider>
     </>}
   </main>;

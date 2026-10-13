@@ -32,6 +32,8 @@ export interface ArchiveMetadata {
   readonly contentState: 'success' | 'restricted' | 'failed';
   readonly lastAttempt: 'success' | 'restricted' | 'failed';
   readonly localCommentCount: number;
+  readonly localReplyCount?: number | null;
+  readonly rootCommentsLastAttempt?: 'pending' | 'success' | 'failed' | 'unconfirmed';
   readonly mediaSources: readonly { readonly url: string; readonly width: number | null; readonly height: number | null }[];
   readonly commentLocator: Readonly<Record<string, unknown>> | null;
   readonly observedVersion: string | null;
@@ -48,12 +50,14 @@ export interface Comment {
   readonly text: string;
   readonly likeCount: number | null;
   readonly replyCount: number | null;
+  // 来源图片尚未上传；不提供可展示的业务图片 URL。
+  readonly pendingMediaCount?: number;
 }
 
 export const replyPreviewSize = 3;
 export const replyAppendSize = 10;
 
-export interface Reply extends Omit<Comment, 'replyCount'> {
+export interface Reply extends Omit<Comment, 'replyCount' | 'pendingMediaCount'> {
   readonly replyTo: User | null;
 }
 
@@ -84,6 +88,7 @@ export type DetailResult = ReadResult<Dynamic> | { readonly status: 'not-found' 
 export interface DynamicReader {
   readonly creator: User;
   readonly discussions?: 'not-archived';
+  readonly replies?: 'not-archived';
   readReplies(input: { readonly dynamicId: string; readonly rootId: string; readonly limit: number; readonly cursor?: string | null; readonly signal: AbortSignal }): Promise<ReadResult<ReplyBatch>>;
   readUps(input: { readonly signal: AbortSignal }): Promise<ReadResult<readonly User[]>>;
   readList(input: { readonly scope: ArchiveScope; readonly limit: number; readonly cursor?: string | null; readonly signal: AbortSignal }): Promise<ReadResult<DynamicBatch>>;

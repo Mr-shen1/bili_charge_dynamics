@@ -5,14 +5,82 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../src/app/App';
 import { createArchiveReader, type ArchiveTransport } from '../src/data/archiveReader';
 import { archive } from './fixtures/archive';
+import { rootComment } from './fixtures/rootComment';
 
 function show(transport: ArchiveTransport, path = '/') {
   return render(<MemoryRouter initialEntries={[path]}><App reader={createArchiveReader(transport)} /></MemoryRouter>);
 }
 describe('真实归档基础页面', () => {
+  it('生产评论完整采用服务端顺序20/20/5，失败重读同批、结束不请求、回复尚未归档不伪造', async () => {
+    const user = userEvent.setup();
+    // 顺序故意与点赞相反；页面不能重排当前批次冒充服务端全局排序。
+    const items = Array.from({ length: 45 }, (_, index) => ({ ...rootComment,
+      id: String(200 + index), text: `服务端评论 ${index}`, like_count: index }));
+    const urls: string[] = [];
+    let failed = false;
+    show(async url => {
+      if (!url.includes('/comments?')) return Response.json({ ...archive, local_comment_count: 45,
+        local_reply_count: 0, root_comments_last_attempt: 'success', work: { ...archive.work, comments: 'success' } });
+      urls.push(url);
+      if (url.includes('cursor=second') && !failed) { failed = true; throw new Error('SECRET_TOKEN'); }
+      const offset = url.includes('cursor=second') ? 20 : url.includes('cursor=last') ? 40 : 0;
+      return Response.json({ items: items.slice(offset, offset + 20), next_cursor: offset === 0 ? 'second' : offset === 20 ? 'last' : null });
+    }, `/dynamics/${archive.id}`);
+    const area = await screen.findByRole('region', { name: '评论区' });
+    await within(area).findByText('服务端评论 19');
+    expect(within(area).getAllByRole('listitem')).toHaveLength(20);
+    expect(within(area).getAllByRole('listitem')[0]).toHaveTextContent('服务端评论 0');
+    expect(within(area).getAllByText('回复尚未归档。')).toHaveLength(20);
+    expect(within(area).queryByRole('button', { name: /展开回复/ })).not.toBeInTheDocument();
+    await user.dblClick(within(area).getByRole('button', { name: '加载更多评论' }));
+    expect(await within(area).findByRole('alert')).toHaveTextContent('最热评论追加读取失败');
+    expect(within(area).getAllByRole('listitem')).toHaveLength(20);
+    expect(document.body).not.toHaveTextContent('SECRET_TOKEN');
+    await user.click(within(area).getByRole('button', { name: '重试' }));
+    await within(area).findByText('服务端评论 39');
+    expect(within(area).getAllByRole('listitem')).toHaveLength(40);
+    await user.click(within(area).getByRole('button', { name: '加载更多评论' }));
+    await within(area).findByText('服务端评论 44');
+    expect(within(area).getAllByRole('listitem')).toHaveLength(45);
+    expect(within(area).getByText('评论已加载完毕')).toBeVisible();
+    expect(within(area).queryByRole('button', { name: '加载更多评论' })).not.toBeInTheDocument();
+    expect(urls).toEqual([
+      `/api/archive/dynamics/${archive.id}/comments?sort=hot&limit=20`,
+      `/api/archive/dynamics/${archive.id}/comments?sort=hot&limit=20&cursor=second`,
+      `/api/archive/dynamics/${archive.id}/comments?sort=hot&limit=20&cursor=second`,
+      `/api/archive/dynamics/${archive.id}/comments?sort=hot&limit=20&cursor=last`,
+    ]);
+    expect(screen.getByText('本地已归档回复：0')).toBeVisible();
+    expect(screen.getByRole('button', { name: '来源评论 501' })).toBeVisible();
+  });
+  it.each([
+    ['success', '暂无评论'], ['pending', '评论尚未归档'], ['failed', '评论尚未归档'], ['unconfirmed', '评论尚未归档'],
+  ] as const)('成功空批在根归档%s状态下区别于未归档，来源未知不补本地数', async (attempt, message) => {
+    show(async url => Response.json(url.includes('/comments?') ? { items: [], next_cursor: null }
+      : { ...archive, source_comment_count: null, local_reply_count: 0, root_comments_last_attempt: attempt }), `/dynamics/${archive.id}`);
+    const area = await screen.findByRole('region', { name: '评论区' });
+    expect(await within(area).findByText(new RegExp(message))).toBeVisible();
+    expect(within(area).queryByText(attempt === 'success' ? /评论尚未归档/ : '暂无评论')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '来源评论 —' })).toBeVisible();
+    expect(screen.getByText('本地已归档一级评论：0')).toBeVisible();
+    expect(screen.getByText('本地已归档回复：0')).toBeVisible();
+  });
+  it('评论图片仅提示未归档，纯图不伪装空正文，不加载来源业务图；未知作者不误标UP', async () => {
+    show(async url => Response.json(url.includes('/comments?') ? { items: [{ ...rootComment,
+      author: { id: null, nickname: '归档作者', avatar_url: 'javascript:alert(1)' }, text: null,
+      media_sources: [{ url: 'https://upstream.example.test/comment.jpg', width: 100, height: 100 }],
+    }], next_cursor: null } : { ...archive, local_comment_count: 1 }), `/dynamics/${archive.id}`);
+    const area = await screen.findByRole('region', { name: '评论区' });
+    expect(await within(area).findByText('评论图片待归档（1 张）。')).toBeVisible();
+    expect(within(area).queryByText('暂无评论内容')).not.toBeInTheDocument();
+    expect(within(area).queryByText('UP主')).not.toBeInTheDocument();
+    expect(within(area).getByRole('img')).toHaveAttribute('src', '/default-avatar.svg');
+    expect(document.querySelector('img[src="https://upstream.example.test/comment.jpg"]')).toBeNull();
+  });
   it('整卡进入详情，身份和选中文字不导航，移除旧详情按钮并保留独立气泡入口', async () => {
     const user = userEvent.setup();
     show(async url => Response.json(url.endsWith('/ups') ? { ups: [] }
+      : url.includes('/comments?') ? { items: [], next_cursor: null }
       : url.includes('?') ? { items: [archive], next_cursor: null } : archive));
     const card = await screen.findByRole('article');
     const entry = within(card).getByRole('link', { name: `阅读全文 ${archive.id}` });
@@ -41,7 +109,8 @@ describe('真实归档基础页面', () => {
     const bubble = screen.getByRole('button', { name: '来源评论 501' });
     expect(bubble.querySelector('svg')).not.toBeNull();
     await user.click(bubble);
-    expect(await screen.findByRole('region', { name: '评论区' })).toHaveTextContent('评论尚未归档');
+    const comments = await screen.findByRole('region', { name: '评论区' });
+    expect(await within(comments).findByText(/评论尚未归档/)).toBeVisible();
   });
   it('归档标题独立安全展示，不冒充正文或执行标签', async () => {
     show(async () => Response.json({ ...archive, title: '虚构标题 <img src=x onerror=alert(1)>' }), `/dynamics/${archive.id}`);
@@ -120,7 +189,9 @@ describe('真实归档基础页面', () => {
   it('旧成功正文保持可读，来源/本地计数、分钟编辑、最后失败与待媒体独立表达；评论不虚构为空', async () => {
     const user = userEvent.setup();
     const urls: string[] = [];
-    show(async url => { urls.push(url); return Response.json(url.endsWith('/ups') ? { ups: [] } : url.includes('?') ? { items: [archive], next_cursor: null } : archive); });
+    show(async url => { urls.push(url); return Response.json(url.endsWith('/ups') ? { ups: [] }
+      : url.includes('/comments?') ? { items: [], next_cursor: null }
+      : url.includes('?') ? { items: [archive], next_cursor: null } : archive); });
     expect(await screen.findByText(archive.text.replace(/\s+/g, ' '))).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '全部动态' })).toBeInTheDocument();
     expect(screen.getByText('2026-03-01 10:03:04')).toBeInTheDocument();
@@ -134,9 +205,9 @@ describe('真实归档基础页面', () => {
     expect(document.querySelector('img[src="https://upstream.example.test/image.jpg"]')).toBeNull();
     await user.click(screen.getByRole('link', { name: `阅读全文 ${archive.id}` }));
     const comments = within(screen.getByRole('region', { name: '评论区' }));
-    expect(comments.getByText('评论尚未归档；来源计数不代表本地已有评论。')).toBeInTheDocument();
+    expect(await comments.findByText('评论尚未归档；来源计数不代表本地已有评论。')).toBeInTheDocument();
     expect(comments.queryByText('暂无评论')).not.toBeInTheDocument();
-    expect(comments.queryByRole('button', { name: '最新' })).not.toBeInTheDocument();
+    expect(comments.getByRole('button', { name: '最新' })).toBeEnabled();
     expect(urls.every(url => url.startsWith('/api/archive/dynamics') || url === '/api/archive/ups')).toBe(true);
     await user.click(screen.getByRole('button', { name: '返回列表' }));
     expect(screen.getByRole('heading', { name: '全部动态' })).toBeInTheDocument();

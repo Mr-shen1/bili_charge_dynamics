@@ -41,7 +41,8 @@ export function useDiscussionRead<T extends { readonly id: string }>(
         update({ status: 'success', data: {
           items: [...(previous?.items ?? []), ...additions], nextCursor: result.data.nextCursor,
         } });
-      } else update({ data: previous, status: result.status });
+      } else update({ data: previous, status: result.status,
+        ...(result.status === 'error' ? { reason: result.reason } : {}) });
     } catch {
       if (valid()) update({ data: previous, status: 'error' });
     } finally {
