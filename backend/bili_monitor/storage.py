@@ -395,7 +395,8 @@ class Store:
                 document.update(updates)
                 if updates.get("source_comment_count") is not None:
                     count = updates["source_comment_count"]
-                    # 与动态观察原子提交，防止旧上传在两次提交间误清新工作；不重写未变根。
+                    # 与动态观察原子提交，防止旧上传在两次提交间误清新工作。
+                    # 未变观察的根已由观察/来源协调保持 observed != media ⇒ pending，不重复写回。
                     for root in connection.execute("""SELECT id, document FROM root_comments WHERE dynamic_id = ?
                         AND json_extract(document, '$.observed_version') IS NOT ?""",
                         (id, _comment_media_version(count))).fetchall():
