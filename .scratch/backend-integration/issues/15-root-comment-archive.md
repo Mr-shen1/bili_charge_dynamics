@@ -6,7 +6,7 @@
 
 **Blocked by:** [02](02-target-initial-archive.md)（用户确认已完成）
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 ## 依据与交付边界
 
@@ -31,3 +31,11 @@
 T3 用原始 JSON fixtures、来源中途页失败、受限正文和重试穿透执行入口；T2 用真实 SQLite/HTTP 验证排序、计数、分页、重开及保留。以公开归档/状态证明结果，不绑定 SQL 列或私有函数；HTTP 读取不调用上游。
 
 ## Comments
+
+已实现 T2/T3 公开初始入口 → 原始根评论 JSON → v6 SQLite → 归档 HTTP，新增 locator 兼容、独立根状态／计数、最热／最新冻结分页和 CURSOR_INVALID 恢复契约。正式契约见 [archive-api.md](../../../docs/backend/api/archive-api.md#15-根评论契约)，本票证据见 [acceptance-15.md](../acceptance-15.md)。不自动勾选父票 AC 或宣称回复／媒体／页面／周期完成。
+
+验证：`uv run pytest backend/tests/test_root_comments.py -q` 25 通过；`uv run pytest backend/tests -q` 181 通过；nvm 下 `pnpm typecheck`、`pnpm test`（163）、`pnpm build` 通过；`pnpm test:e2e:manage` 2、`pnpm test:e2e:archive` 4 通过。默认 `pnpm test:e2e` 被已有服务占用 4173 阻塞，未终止用户服务；`git diff --check` 通过。
+
+未验证：匿名来源可用性、真实全量分页／长期稳定／计数跨类型口径、正式真机及容量；评论快照不设 TTL／回收，有存储增长风险。API 无鉴权、OSS 未上传的边界不变。待人工按证据核验本票。
+
+双轴 review 后已修正缺失评论图字段导致旧元信息丢失、空尾页需复查、旧归档新增根状态默认值，并收敛重复分页／作者／图片映射。补充瞬时空尾页公开测试；最终 181 后端、163 前端及 2+4 浏览器回归通过。分轴发现与处置见验收记录，根成功不冒充回复或媒体成功。

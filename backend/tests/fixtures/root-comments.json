@@ -1,0 +1,25 @@
+{
+  "code": 0,
+  "message": "0",
+  "data": {
+    "page": {"num": 1, "size": 20, "count": 2, "acount": 7},
+    "upper": {"mid": 900719925474099312345, "top": null},
+    "hots": [],
+    "replies": [
+      {
+        "rpid": 900719925474099312346, "rpid_str": "900719925474099312346",
+        "oid": 99123, "type": 17, "root": 0, "root_str": "0", "parent": 0, "parent_str": "0",
+        "ctime": 1791513496, "like": 8, "rcount": 5,
+        "member": {"mid": "900719925474099312345", "uname": "虚构星海", "avatar": "https://example.invalid/avatar.png"},
+        "content": {"message": "已有根评论\n<b>只作文本</b> 🙂", "pictures": [{"img_src": "https://example.invalid/comment.png", "img_width": 640, "img_height": 480}]},
+        "replies": [{"rpid_str": "777", "root_str": "900719925474099312346", "content": {"message": "本票不采回复预览"}}]
+      },
+      {
+        "rpid_str": "2", "oid": 99123, "type": 17, "root": 0, "parent": 0,
+        "ctime": 1791513495, "like": 0, "rcount": 0,
+        "member": {"mid": "202", "uname": "虚构读者", "avatar": null},
+        "content": {"message": "", "pictures": []}, "replies": null
+      }
+    ]
+  }
+}

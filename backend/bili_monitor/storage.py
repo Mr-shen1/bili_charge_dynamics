@@ -15,6 +15,18 @@ SNAPSHOT_TTL_SECONDS = 15 * 60
 ARCHIVE_RESOURCE = "dynamics:all:published-desc:id-binary:v1"
 
 
+def _merge_known(previous, observed):
+    return {**previous, **{key: value for key, value in observed.items() if value is not None}}
+
+
+def _freeze_pages(documents, limit):
+    pages = [documents[i:i + limit] for i in range(0, len(documents), limit)] or [[]]
+    tokens = [uuid4().hex for _ in pages]
+    results = [{"items": page, "next_cursor": tokens[i + 1] if i + 1 < len(pages) else None}
+               for i, page in enumerate(pages)]
+    return results[0], list(zip(tokens[1:], results[1:]))
+
+
 class Store:
     def __init__(self, path):
         self.path = str(path)
@@ -35,7 +47,7 @@ class Store:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 version = connection.execute("PRAGMA user_version").fetchone()[0]
-                if version > 5:
+                if version > 6:
                     raise RuntimeError("Unsupported database schema version")
                 if version == 0:
                     connection.execute("""CREATE TABLE identities (
@@ -67,7 +79,27 @@ class Store:
                     connection.execute(f"ALTER TABLE archive_pages ADD COLUMN resource TEXT NOT NULL DEFAULT '{ARCHIVE_RESOURCE}'")
                     connection.execute("CREATE INDEX archive_pages_expiry ON archive_pages(expires_at)")
                 connection.execute("DELETE FROM archive_pages WHERE expires_at <= ?", (int(time.time()),))
-                connection.execute("PRAGMA user_version = 5")
+                if version < 6:
+                    connection.execute("""CREATE TABLE root_comments (
+                        dynamic_id TEXT NOT NULL REFERENCES archives(id),
+                        id TEXT NOT NULL, document TEXT NOT NULL,
+                        PRIMARY KEY(dynamic_id, id)
+                    )""")
+                    connection.execute("""CREATE TABLE root_comment_pages (
+                        token TEXT PRIMARY KEY, resource TEXT NOT NULL,
+                        batch_limit INTEGER NOT NULL, document TEXT NOT NULL
+                    )""")
+                    # 为旧归档补齐新增状态；旧动态 cursor 的冻结内容不重写。
+                    for row in connection.execute("SELECT id, document FROM archives").fetchall():
+                        document = json.loads(row["document"])
+                        document.setdefault("local_reply_count", 0)
+                        document.setdefault("root_comments_last_attempt", "pending")
+                        document.setdefault("synced_root_comment_count", None)
+                        document.setdefault("work", {}).setdefault("comments", "pending")
+                        document["work"].setdefault("replies", "pending")
+                        connection.execute("UPDATE archives SET document = ? WHERE id = ?",
+                                           (json.dumps(document, ensure_ascii=False), row["id"]))
+                connection.execute("PRAGMA user_version = 6")
                 connection.commit()
             except BaseException:
                 connection.rollback()
@@ -222,16 +254,13 @@ class Store:
                     + " ORDER BY json_extract(document, '$.published_at') DESC, id COLLATE BINARY ASC",
                     (uid,) if uid is not None else (),
                 )]
-                pages = [documents[i:i + limit] for i in range(0, len(documents), limit)] or [[]]
-                tokens = [uuid4().hex for _ in pages]
-                results = [{"items": page, "next_cursor": tokens[i + 1] if i + 1 < len(pages) else None}
-                           for i, page in enumerate(pages)]
-                for token, result in zip(tokens[1:], results[1:]):
+                first, following = _freeze_pages(documents, limit)
+                for token, result in following:
                     connection.execute("""INSERT INTO archive_pages
                         (token, batch_limit, document, expires_at, resource) VALUES (?, ?, ?, ?, ?)""",
                         (token, limit, json.dumps(result, ensure_ascii=False), now + SNAPSHOT_TTL_SECONDS, resource))
                 connection.commit()
-                return results[0]
+                return first
             except BaseException:
                 connection.rollback()
                 raise
@@ -282,9 +311,7 @@ class Store:
                 if document["content_state"] == "success":
                     updates.pop("media_sources", None)
                 if "author" in updates:
-                    updates["author"] = {**document["author"], **{
-                        key: value for key, value in updates["author"].items() if value is not None
-                    }}
+                    updates["author"] = _merge_known(document["author"], updates["author"])
                 document.update(updates)
                 if document["observed_version"] != document["synced_version"]:
                     document["work"]["text"] = "pending"
@@ -324,6 +351,92 @@ class Store:
                 connection.commit()
                 # 只有当前可信观察版本已提交 checkpoint 才计正文成功。
                 return status == "success" and document["work"]["text"] == "success"
+            except BaseException:
+                connection.rollback()
+                raise
+
+    def begin_roots(self, id, generation):
+        return self._change_roots(id, generation, "pending", None, [])
+
+    def save_roots(self, id, generation, documents):
+        return self._change_roots(id, generation, "pending", None, documents)
+
+    def finish_roots(self, id, generation, status, observed_count):
+        return self._change_roots(id, generation, status, observed_count, [])
+
+    def _change_roots(self, id, generation, status, observed_count, documents):
+        with self.connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                row = connection.execute("SELECT document FROM archives WHERE id = ? AND generation = ?", (id, generation)).fetchone()
+                if row is None:
+                    connection.commit()
+                    return False
+                archive = json.loads(row[0])
+                for document in documents:
+                    previous = connection.execute(
+                        "SELECT document FROM root_comments WHERE dynamic_id = ? AND id = ?", (id, document["id"])
+                    ).fetchone()
+                    if previous is not None:
+                        saved = json.loads(previous[0])
+                        document = {**document, **{
+                            key: saved.get(key) for key in ("like_count", "source_reply_count", "published_at", "text")
+                            if document.get(key) is None
+                        }}
+                        document["author"] = _merge_known(saved["author"], document["author"])
+                        if document["media_sources"] is None:
+                            document["media_sources"] = saved["media_sources"]
+                    if document["media_sources"] is None:
+                        document["media_sources"] = []
+                    connection.execute("""INSERT INTO root_comments(dynamic_id, id, document) VALUES (?, ?, ?)
+                        ON CONFLICT(dynamic_id, id) DO UPDATE SET document = excluded.document""",
+                        (id, document["id"], json.dumps(document, ensure_ascii=False)))
+                archive["local_comment_count"] = connection.execute(
+                    "SELECT count(*) FROM root_comments WHERE dynamic_id = ?", (id,)
+                ).fetchone()[0]
+                archive.setdefault("local_reply_count", 0)
+                archive["work"].setdefault("replies", "pending")
+                archive["root_comments_last_attempt"] = status
+                archive.setdefault("synced_root_comment_count", None)
+                archive["work"]["comments"] = "pending"
+                if status == "success":
+                    archive["synced_root_comment_count"] = observed_count
+                    if archive.get("source_comment_count") == observed_count:
+                        archive["work"]["comments"] = "success"
+                connection.execute("UPDATE archives SET document = ? WHERE id = ? AND generation = ?",
+                                   (json.dumps(archive, ensure_ascii=False), id, generation))
+                connection.commit()
+                return True
+            except BaseException:
+                connection.rollback()
+                raise
+
+    def list_roots(self, id, sort="hot", limit=20, cursor=None):
+        resource = f"root-comments:{id}:{sort}:v1"
+        with self.connection() as connection:
+            if not connection.execute("SELECT 1 FROM archives WHERE id = ?", (id,)).fetchone():
+                raise APIError("NOT_FOUND")
+            if cursor is not None:
+                if re.fullmatch(r"[a-f0-9]{32}", cursor) is None:
+                    raise APIError("CURSOR_INVALID")
+                row = connection.execute("""SELECT document FROM root_comment_pages
+                    WHERE token = ? AND resource = ? AND batch_limit = ?""", (cursor, resource, limit)).fetchone()
+                if row is None:
+                    raise APIError("CURSOR_INVALID")
+                return json.loads(row[0])
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                documents = [json.loads(row[0]) for row in connection.execute(
+                    "SELECT document FROM root_comments WHERE dynamic_id = ? ORDER BY "
+                    + ("json_extract(document, '$.like_count') DESC, " if sort == "hot" else "")
+                    + "json_extract(document, '$.published_at') DESC, id COLLATE BINARY ASC", (id,)
+                )]
+                first, following = _freeze_pages(documents, limit)
+                for token, result in following:
+                    connection.execute("INSERT INTO root_comment_pages VALUES (?, ?, ?, ?)",
+                                       (token, resource, limit, json.dumps(result, ensure_ascii=False)))
+                connection.commit()
+                return first
             except BaseException:
                 connection.rollback()
                 raise

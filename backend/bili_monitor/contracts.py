@@ -36,6 +36,7 @@ class MonitorConfig(BaseModel):
 
 ERRORS = {
     "INVALID_INPUT": (422, "输入无效"),
+    "CURSOR_INVALID": (422, "评论读取标记无效，请重新开始读取"),
     "NOT_FOUND": (404, "未找到身份或监控配置"),
     "UNKNOWN_UP": (404, "未找到 UP 身份"),
     "ALREADY_MONITORED": (409, "已存在监控配置"),
