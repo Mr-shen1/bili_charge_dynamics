@@ -299,7 +299,10 @@ def test_preexisting_v5_global_cursor_remains_readable_with_implicit_and_explici
                 response = client.get(ARCHIVE, params=params)
                 assert response.status_code == 200
                 assert response.json() == batch
-            assert client.get(ARCHIVE + "/123").json() == saved
+            assert client.get(ARCHIVE + "/123").json() == {
+                **saved, "local_reply_count": 0, "root_comments_last_attempt": "pending",
+                "synced_root_comment_count": None, "work": {"comments": "pending", "replies": "pending"},
+            }
             assert client.get(ARCHIVE, params={"scope": "up", "uid": UID, "cursor": token}).status_code == 422
             assert client.get(UPS).json() == {"ups": [{"id": UID, "nickname": None, "avatar_url": None}]}
     assert calls == []

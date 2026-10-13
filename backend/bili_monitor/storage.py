@@ -15,6 +15,18 @@ SNAPSHOT_TTL_SECONDS = 15 * 60
 ARCHIVE_RESOURCE = "dynamics:all:published-desc:id-binary:v1"
 
 
+def _merge_known(previous, observed):
+    return {**previous, **{key: value for key, value in observed.items() if value is not None}}
+
+
+def _freeze_pages(documents, limit):
+    pages = [documents[i:i + limit] for i in range(0, len(documents), limit)] or [[]]
+    tokens = [uuid4().hex for _ in pages]
+    results = [{"items": page, "next_cursor": tokens[i + 1] if i + 1 < len(pages) else None}
+               for i, page in enumerate(pages)]
+    return results[0], list(zip(tokens[1:], results[1:]))
+
+
 class Store:
     def __init__(self, path):
         self.path = str(path)
@@ -77,6 +89,16 @@ class Store:
                         token TEXT PRIMARY KEY, resource TEXT NOT NULL,
                         batch_limit INTEGER NOT NULL, document TEXT NOT NULL
                     )""")
+                    # 为旧归档补齐新增状态；旧动态 cursor 的冻结内容不重写。
+                    for row in connection.execute("SELECT id, document FROM archives").fetchall():
+                        document = json.loads(row["document"])
+                        document.setdefault("local_reply_count", 0)
+                        document.setdefault("root_comments_last_attempt", "pending")
+                        document.setdefault("synced_root_comment_count", None)
+                        document.setdefault("work", {}).setdefault("comments", "pending")
+                        document["work"].setdefault("replies", "pending")
+                        connection.execute("UPDATE archives SET document = ? WHERE id = ?",
+                                           (json.dumps(document, ensure_ascii=False), row["id"]))
                 connection.execute("PRAGMA user_version = 6")
                 connection.commit()
             except BaseException:
@@ -232,16 +254,13 @@ class Store:
                     + " ORDER BY json_extract(document, '$.published_at') DESC, id COLLATE BINARY ASC",
                     (uid,) if uid is not None else (),
                 )]
-                pages = [documents[i:i + limit] for i in range(0, len(documents), limit)] or [[]]
-                tokens = [uuid4().hex for _ in pages]
-                results = [{"items": page, "next_cursor": tokens[i + 1] if i + 1 < len(pages) else None}
-                           for i, page in enumerate(pages)]
-                for token, result in zip(tokens[1:], results[1:]):
+                first, following = _freeze_pages(documents, limit)
+                for token, result in following:
                     connection.execute("""INSERT INTO archive_pages
                         (token, batch_limit, document, expires_at, resource) VALUES (?, ?, ?, ?, ?)""",
                         (token, limit, json.dumps(result, ensure_ascii=False), now + SNAPSHOT_TTL_SECONDS, resource))
                 connection.commit()
-                return results[0]
+                return first
             except BaseException:
                 connection.rollback()
                 raise
@@ -292,9 +311,7 @@ class Store:
                 if document["content_state"] == "success":
                     updates.pop("media_sources", None)
                 if "author" in updates:
-                    updates["author"] = {**document["author"], **{
-                        key: value for key, value in updates["author"].items() if value is not None
-                    }}
+                    updates["author"] = _merge_known(document["author"], updates["author"])
                 document.update(updates)
                 if document["observed_version"] != document["synced_version"]:
                     document["work"]["text"] = "pending"
@@ -366,9 +383,11 @@ class Store:
                             key: saved.get(key) for key in ("like_count", "source_reply_count", "published_at", "text")
                             if document.get(key) is None
                         }}
-                        document["author"] = {**saved["author"], **{
-                            key: value for key, value in document["author"].items() if value is not None
-                        }}
+                        document["author"] = _merge_known(saved["author"], document["author"])
+                        if document["media_sources"] is None:
+                            document["media_sources"] = saved["media_sources"]
+                    if document["media_sources"] is None:
+                        document["media_sources"] = []
                     connection.execute("""INSERT INTO root_comments(dynamic_id, id, document) VALUES (?, ?, ?)
                         ON CONFLICT(dynamic_id, id) DO UPDATE SET document = excluded.document""",
                         (id, document["id"], json.dumps(document, ensure_ascii=False)))
@@ -412,15 +431,12 @@ class Store:
                     + ("json_extract(document, '$.like_count') DESC, " if sort == "hot" else "")
                     + "json_extract(document, '$.published_at') DESC, id COLLATE BINARY ASC", (id,)
                 )]
-                pages = [documents[i:i + limit] for i in range(0, len(documents), limit)] or [[]]
-                tokens = [uuid4().hex for _ in pages]
-                results = [{"items": page, "next_cursor": tokens[i + 1] if i + 1 < len(pages) else None}
-                           for i, page in enumerate(pages)]
-                for token, result in zip(tokens[1:], results[1:]):
+                first, following = _freeze_pages(documents, limit)
+                for token, result in following:
                     connection.execute("INSERT INTO root_comment_pages VALUES (?, ?, ?, ?)",
                                        (token, resource, limit, json.dumps(result, ensure_ascii=False)))
                 connection.commit()
-                return results[0]
+                return first
             except BaseException:
                 connection.rollback()
                 raise

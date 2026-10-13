@@ -91,7 +91,7 @@ def test_initial_archives_existing_roots_independently_of_restricted_body(tmp_pa
             "root_id": "0", "parent_id": "0", "comment_locator": {"oid": "99123", "type": 17},
             "media_sources": [{"url": "https://example.invalid/comment.png", "width": 640, "height": 480}],
         }
-        assert state["pages"] == [1, 2]  # 短页也明确读至空页，不由总数猜结束。
+        assert state["pages"] == [1, 2, 2]  # 短页也明确读至空页，不由总数猜结束。
         client.post("/api/sync/initial", json={"uid": UID})
         assert client.get(COMMENTS).json() == roots
     with archive_client(path) as client:
@@ -175,7 +175,7 @@ def test_complete_sort_then_20_20_5_frozen_pages_survive_updates_and_reopen(tmp_
     with archive_client(path, source_handler(state)) as client:
         prepare(client)
         client.post("/api/sync/initial", json={"uid": UID})
-        assert state["pages"] == [1, 2, 3, 4]
+        assert state["pages"] == [1, 2, 3, 4, 4]
         first = client.get(COMMENTS, params={"sort": sort}).json()
         assert [item["id"] for item in first["items"]] == expected[:20]
         assert first["next_cursor"] is not None
@@ -312,7 +312,9 @@ def test_v5_locator_and_dynamic_cursor_survive_upgrade_and_root_retry(tmp_path):
                          (token, json.dumps({"items": [old], "next_cursor": None}), "dynamics:all:published-desc:id-binary:v1"))
     state = {"detail_fail": True}
     with archive_client(path, source_handler(state)) as client:
-        assert client.get(ARCHIVE).json() == old
+        upgraded = client.get(ARCHIVE).json()
+        assert upgraded == {**old, "local_reply_count": 0, "root_comments_last_attempt": "pending",
+                            "synced_root_comment_count": None, "work": {**old["work"], "replies": "pending"}}
         client.post("/api/sync/initial", json={"uid": UID})
         assert client.get(ARCHIVE).json()["comment_locator"] == {"oid": "99123", "type": 17}
         assert client.get(ARCHIVE).json()["work"]["comments"] == "success"
@@ -403,11 +405,12 @@ def test_missing_optional_observations_do_not_erase_trusted_root_metadata(tmp_pa
         state["payload"] = root_fixture()
         root = state["payload"]["data"]["replies"][0]
         root.update(like=None, rcount="invalid", ctime=None, member={})
+        root["content"].pop("pictures")
         state["basic"] = {"comment_id_str": "0", "comment_type": False}
         state["unknown_count"] = True
         client.post("/api/sync/initial", json={"uid": UID})
         saved = client.get(COMMENTS).json()["items"][0]
-        for key in ("like_count", "source_reply_count", "published_at", "author"):
+        for key in ("like_count", "source_reply_count", "published_at", "author", "media_sources"):
             assert saved[key] == old[key]
         assert client.get(ARCHIVE).json()["source_comment_count"] == 7
         assert client.get(ARCHIVE).json()["work"]["comments"] == "success"
@@ -423,3 +426,28 @@ def test_first_unknown_dynamic_count_stays_unknown_not_local_or_zero(tmp_path):
         assert saved["synced_root_comment_count"] is None
         assert saved["local_comment_count"] == 2
         assert saved["work"]["comments"] == "success"  # 只证明根页，不证明来源计数观察成功。
+
+
+def test_transient_empty_tail_is_not_premature_completion(tmp_path):
+    state = {"roots": forty_five_roots()}
+    normal = source_handler(state)
+    empty_once = False
+    def handler(request):
+        nonlocal empty_once
+        response = normal(request)
+        if request.url.path == "/x/v2/reply" and request.url.params["pn"] == "2" and not empty_once:
+            empty_once = True
+            payload = response.json()
+            payload["data"]["replies"] = None
+            return httpx.Response(200, json=payload)
+        return response
+    with archive_client(tmp_path / "transient.sqlite", handler) as client:
+        prepare(client)
+        client.post("/api/sync/initial", json={"uid": UID})
+        saved = client.get(ARCHIVE).json()
+        assert saved["work"]["comments"] == "pending"
+        assert saved["synced_root_comment_count"] is None
+        assert saved["local_comment_count"] == 40  # 复查已取得的下一页也保留，不伪造本轮成功。
+        client.post("/api/sync/initial", json={"uid": UID})
+        assert client.get(ARCHIVE).json()["local_comment_count"] == 45
+        assert client.get(ARCHIVE).json()["work"]["comments"] == "success"

@@ -3,16 +3,16 @@
 from anyio import to_thread
 
 from .identifiers import is_valid_id
-from .source import published_time, safe_url
+from .source import media_sources, published_time, safe_url
 
 
 def nonnegative(value):
     return value if type(value) is int and value >= 0 else None
 
 
-def source_id(value, *, zero=False):
+def source_id(value, *, allow_zero=False):
     value = str(value) if type(value) is int else value
-    if (zero and value == "0") or is_valid_id(value):
+    if (allow_zero and value == "0") or is_valid_id(value):
         return value
     raise ValueError("Invalid comment ID")
 
@@ -24,8 +24,8 @@ def valid_locator(locator):
 
 def root_document(reply, dynamic_id, locator):
     id = source_id(reply.get("rpid_str", reply.get("rpid")))
-    root = source_id(reply.get("root_str", reply.get("root")), zero=True)
-    parent = source_id(reply.get("parent_str", reply.get("parent")), zero=True)
+    root = source_id(reply.get("root_str", reply.get("root")), allow_zero=True)
+    parent = source_id(reply.get("parent_str", reply.get("parent")), allow_zero=True)
     if root != "0" or parent != "0":
         raise ValueError("Not a root comment")
     if "oid" in reply and source_id(reply["oid"]) != locator["oid"]:
@@ -36,18 +36,8 @@ def root_document(reply, dynamic_id, locator):
     text = content.get("message")
     if text is not None and not isinstance(text, str):
         raise ValueError("Invalid comment text")
-    pictures = content.get("pictures", [])
-    if not isinstance(pictures, list):
-        raise ValueError("Invalid comment pictures")
-    media = []
-    for picture in pictures:
-        url = safe_url(picture.get("img_src"), allow_http=True)
-        if url is None:
-            raise ValueError("Invalid comment media URL")
-        media.append({"url": url, **{
-            key: picture.get("img_" + key) if type(picture.get("img_" + key)) is int and picture["img_" + key] > 0 else None
-            for key in ("width", "height")
-        }})
+    # 缺字段不是来源确认无图；仓储会保留旧元信息，新评论仍公开空数组。
+    media = media_sources(content["pictures"], "img_src", "img_") if "pictures" in content else None
     member = reply.get("member") or {}
     mid = member.get("mid")
     try:
@@ -128,6 +118,13 @@ async def sync_roots(store, client, id, generation):
             if not await to_thread.run_sync(store.save_roots, id, generation, documents):
                 return
             if not ids:
+                if number > 1:
+                    # 对候选空尾页复查；瞬时空、后续页失败或计数变化不能推进成功。
+                    confirmation, confirmed_ids, confirmed_counts = await fetch_root_page(client, id, locator, number)
+                    if not await to_thread.run_sync(store.save_roots, id, generation, confirmation):
+                        return
+                    if confirmed_ids or confirmed_counts != baseline:
+                        raise ValueError("Unstable empty comment tail")
                 break
             seen.update(ids)
             number += 1

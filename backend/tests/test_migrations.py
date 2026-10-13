@@ -120,6 +120,8 @@ def test_v4_indefinite_cursor_is_invalidated_without_losing_archive(tmp_path):
         database.execute("INSERT INTO identities VALUES (?, NULL, NULL)", (UID,))
         database.execute("INSERT INTO archives VALUES ('123', ?, ?, 0)", (UID, json.dumps(saved)))
         database.execute("INSERT INTO archive_pages VALUES (?, 10, ?)", (token, json.dumps({"items": [saved], "next_cursor": None})))
+    saved = {**saved, "local_reply_count": 0, "root_comments_last_attempt": "pending",
+             "synced_root_comment_count": None, "work": {"comments": "pending", "replies": "pending"}}
     with client_for(path) as client:
         assert client.get("/api/archive/dynamics", params={"cursor": token}).status_code == 422
         assert client.get("/api/archive/dynamics/123").json() == saved

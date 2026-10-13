@@ -69,13 +69,13 @@ curl --fail-with-body -X POST http://127.0.0.1:8000/api/sync/initial \
 - `root_comments_last_attempt` 为 `pending`、`success`、`failed` 或 `unconfirmed`；`work.comments` 为 `pending|success`。领取根工作时先持久保存 pending，任一必要页失败仍 pending；关闭重开后再次 initial 可在无新信号时重试。
 - `synced_root_comment_count` 只在所有必要根页归档成功后保存本轮开始的动态来源计数（未知仍 null）；失败不推进旧 checkpoint。未知计数不阻断实际可读根页，但根页成功不代表计数观察、回复或媒体成功。generation 条件提交拒绝较旧执行覆盖新记录／完成状态。
 - 复用已归档的 `comment_locator:{oid:string,type:positive integer}`；新 detail 定位缺失／无效或请求失败不清掉旧 locator。没有可信 locator 则 unconfirmed，不用动态 ID 猜 oid，不请求伪造资源。
-- `/x/v2/reply` 使用 locator、`sort=0`、`ps=20`、递增 `pn`。普通根页、第一页 `upper.top` 及 `hots` 幂等去重保存，不采条目内嵌回复预览。短页仍读下一页直到明确空页；不由有口径争议的 `page.count` 推算页数。第一页 count 非零却无任何根数据、缺失 replies／分页计数、业务／网络／结构错误、连续页计数变化或分页不前进均失败，而不是成功空。
+- `/x/v2/reply` 使用 locator、`sort=0`、`ps=20`、递增 `pn`。普通根页、第一页 `upper.top` 及 `hots` 幂等去重保存，不采条目内嵌回复预览。短页仍读下一页直到明确空页，非首屏的空尾页再读取同页确认；复查非空、失败或计数变化均保留已得内容并留待重试，不提前宣布结束。不由有口径争议的 `page.count` 推算页数。第一页 count 非零却无任何根数据、缺失 replies／分页计数、业务／网络／结构错误、连续页计数变化或分页不前进均失败，而不是成功空。
 - `module_stat.comment.count`（HTML STAT 可作为独立观察）仍是动态来源总数。`page.count/acount` 仅用于当前接口分页校验，不覆盖动态信号，也不假设跨接口永久相等。明确 count=0 且根集合空是成功空；不会清除历史根记录。来源分页不是事务快照，未引起计数变化的上游挪动可能漏检，真实全量及长期稳定性尚未验证。
 - 正文 BLOCKED、网页评论无权提示不阻断评论接口；接口明确拒绝统一记录根分项 failed，不冒充空或承诺绕权。每页独立短事务保存，失败保留已取得内容和旧记录；停止、删除配置／目标、来源消失均不删评论。
 
 ### RootComment DTO
 
-`id`、`dynamic_id`、`author.id` 均为字符串（未知作者 ID 为 null）；`author:{id,nickname,avatar_url}` 允许未知信息。`published_at` 为明确 `+08:00` 秒精度时间或 null；`text` 为普通文本或 null（缺失），真实空字符串不补内容。`like_count` 和 `source_reply_count` 分别取 `like/rcount`，非负整数或 null，未知不等于零。后续缺失观察不覆盖已有可信计数、时间、文本或作者资料。
+`id`、`dynamic_id`、`author.id` 均为字符串（未知作者 ID 为 null）；`author:{id,nickname,avatar_url}` 允许未知信息。`published_at` 为明确 `+08:00` 秒精度时间或 null；`text` 为普通文本或 null（缺失），真实空字符串不补内容。`like_count` 和 `source_reply_count` 分别取 `like/rcount`，非负整数或 null，未知不等于零。后续缺失观察不覆盖已有可信计数、时间、文本或作者资料；缺失 pictures 字段不擦除已有图片元信息。
 
 `root_id/parent_id` 对根评论为字符串 `"0"`，`comment_locator` 保留回复查询所需资源；`media_sources:[{url,width,height}]` 按 `content.pictures` 顺序保留来源及可用尺寸，不包含 OSS 上传成功承诺，不用于生产业务图回退。回复、上传及页面接入由后续票负责。
 
@@ -87,7 +87,7 @@ curl --fail-with-body -X POST http://127.0.0.1:8000/api/sync/initial \
 
 首批在同一短事务冻结全部根评论**内容、顺序及批量**，后续批保存到 SQLite；插入、更新只影响新首批。cursor 绑定根资源、动态、排序、limit 和该次快照；重读／数据库重开返回原批及同一 next_cursor。结束返回 null，不产生下一批。普通网络／`503 STORAGE_UNAVAILABLE` 失败不推进 cursor，原 cursor 重试同批。
 
-15 的评论快照**不设 TTL**，不沿用动态列表的 15 分钟过期。伪造、格式错误、跨父级／排序／资源、改变批量、数据库恢复后丢失的标记返回 `422 CURSOR_INVALID`（固定提示“评论读取标记无效，请重新开始读取”）；不能重试同标记恢复，须显式不带 cursor 开始新快照并丢弃旧分页视图，不静默拼接新旧批。普通启动及 v5→v6 迁移不失效有效的动态 cursor。持久评论快照会持续占用空间，本票无回收、容量或无限存储承诺。
+15 的评论快照**不设 TTL**，不沿用动态列表的 15 分钟过期。伪造、格式错误、跨父级／排序／资源、改变批量、数据库恢复后丢失的标记返回 `422 CURSOR_INVALID`（固定提示“评论读取标记无效，请重新开始读取”）；不能重试同标记恢复，须显式不带 cursor 开始新快照并丢弃旧分页视图，不静默拼接新旧批。v5→v6 为旧归档详情／新的列表补齐上述新增根状态，旧冻结的动态分页内容保持原样（可能尚无新增字段）；普通启动及迁移不失效有效的动态 cursor。持久评论快照会持续占用空间，本票无回收、容量或无限存储承诺。
 
 自动化证据见 [15 验收记录](../../../.scratch/backend-integration/acceptance-15.md)，静态协议依据见 [来源协议证据](../evidence/source-protocol-evidence.md#15-根评论协议)。
 

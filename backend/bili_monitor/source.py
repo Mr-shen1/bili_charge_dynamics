@@ -149,7 +149,7 @@ def safe_url(value, *, allow_http=False):
     return None
 
 
-def media_sources(pictures, url_field="url"):
+def media_sources(pictures, url_field="url", dimension_prefix=""):
     if not isinstance(pictures, list):
         raise ValueError("Invalid pictures")
     media = []
@@ -158,7 +158,8 @@ def media_sources(pictures, url_field="url"):
         if url is None:
             raise ValueError("Invalid media URL")
         media.append({"url": url, **{
-            key: picture[key] if type(picture.get(key)) is int and picture[key] > 0 else None
+            key: picture[dimension_prefix + key]
+            if type(picture.get(dimension_prefix + key)) is int and picture[dimension_prefix + key] > 0 else None
             for key in ("width", "height")
         }})
     return media
