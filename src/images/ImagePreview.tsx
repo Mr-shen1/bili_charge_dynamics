@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent } from 'react';
-import type { DynamicImage } from '../data/contracts';
+import type { DynamicImage, ImageOwner } from '../data/contracts';
 import styles from './Images.module.css';
 import { ContentImage } from './ContentImage';
 
@@ -7,11 +7,6 @@ const gestureDirectionThreshold = 12;
 const imageSwipeThreshold = 50;
 const horizontalDominanceRatio = 1.5;
 const longImageHeightRatio = 2;
-
-export interface ImageOwner {
-  readonly type: 'dynamic' | 'comment';
-  readonly id: string;
-}
 
 export interface PreviewSession {
   readonly owner: ImageOwner;

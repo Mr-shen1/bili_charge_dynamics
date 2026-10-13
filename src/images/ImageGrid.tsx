@@ -1,8 +1,7 @@
-import type { DynamicImage } from '../data/contracts';
+import type { DynamicImage, ImageOwner } from '../data/contracts';
 import styles from './Images.module.css';
 import { useAppNavigation } from '../app/Navigation';
 import { ContentImage } from './ContentImage';
-import type { ImageOwner } from './ImagePreview';
 
 const listThumbnailLimit = 9;
 

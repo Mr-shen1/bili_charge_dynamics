@@ -105,7 +105,27 @@ git diff --check
 
 最终日志 `/tmp/22-typecheck-final.log`、`/tmp/22-unit-final.log`、`/tmp/22-backend-final.log`、`/tmp/22-archive-browser-final.log`、`/tmp/22-manage-browser-final.log`、`/tmp/22-mock-browser-final.log`、`/tmp/22-preview-final.log`、`/tmp/22-build-final.log`；顺序运行套件避免争用，不更改测试超时掩盖失败。
 
-双轴代码审查待独立 review 代理核验后补录。
+### 规范轴
+
+两个 `review` 子代理并行独立审查，固定基线 `74db54699742ba9456be068600b1a9b6f2f5d261`，初审提交 `22ce2db`；命令 `git diff 74db54699742ba9456be068600b1a9b6f2f5d261...HEAD`。审查只读、未独立运行测试。
+
+硬违规0，判断项5：
+1. 内联owner字段对与既有ImageOwner重复：已把ImageOwner移到共享数据契约，由Adapter/网格/导航/预览共用，不让数据层依赖UI层。
+2. 可选images缺省含义可能不同：已明确评论和动态一样，未提供等价空集合；旧来源存在性由pendingMediaCount单独保留，不把undefined当另一种隐式图片状态。
+3. pendingMediaCount名称可能误解为全部上传pending：保留既有公开字段兼容 #16/mock，不为本票重命名所有旧调用方；注释与§22明确其只计未关联来源，当前图pending/failed由images表达。
+4. 媒体存在性谓词/夹具混合条件可读性：已提取每评论hasText/hasMedia并给长图条件加括号，不引入空模块或另一状态真值。
+5. 建议needs-triage改ready-for-human：未采纳。仓库标签原文明定后者“Requires human implementation”，本票已实施完，仅待维护者核验，沿 #20 的收口约定保留needs-triage；不把审查判断当成硬规则。
+
+### 规格轴
+
+确证缺失/错误0、范围扩张0，观察3：
+1. §16历史pendingMediaCount与本次增量语义：已在§22显式区分历史全来源计数与现在未关联位置，不重写 #16 交付证据。
+2. T2没有同时呈现同ID的两个评论/动态图：同ID/相同媒体ID隔离由生产T1明确覆盖，实际T2贯通两根及动态图的独立公开URL/逐图状态/重开；票据只要求至少一条实际T2，不扩成无关全量矩阵。
+3. 混合当前关联及剩余来源会有网格和待归档聚合提示：两者表达不同位置，保留，不把未关联来源误吞或假装都已有当前关联。
+
+分轴汇总：规范轴0硬违规/5判断（主要为共享类型及命名），规格轴0确证缺陷/3观察（主要为历史文档语义）；已补强可操作项，其余有明确保留理由。
+
+审查补强后顺序重跑全部套件：typecheck、评论图单文件2项、前端204项、后端274项、生产归档浏览器27项、管理2项、mock开发104项与静态preview96项、生产build及diff检查再次通过；两个mock浏览器套件各10条Nginx专项仍按配置跳过。没有未修的确证缺陷。复测日志 `/tmp/22-unit-reviewed-final.log`、`/tmp/22-backend-reviewed-final.log`、`/tmp/22-archive-reviewed-final.log`、`/tmp/22-manage-reviewed-final.log`、`/tmp/22-mock-reviewed-final.log`、`/tmp/22-preview-reviewed-final.log`、`/tmp/22-build-reviewed-final.log`；不将静态审查冒充测试执行。
 
 ## 未验证
 

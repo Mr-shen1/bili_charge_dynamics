@@ -1,4 +1,4 @@
-import type { ArchiveMetadata, ArchiveWorkState, Comment, CommentBatch, DetailResult, Dynamic, DynamicImage, DynamicBatch, DynamicReader, ReadResult, Reply, ReplyBatch, User } from './contracts';
+import type { ArchiveMetadata, ArchiveWorkState, Comment, CommentBatch, DetailResult, Dynamic, DynamicImage, ImageOwner, DynamicBatch, DynamicReader, ReadResult, Reply, ReplyBatch, User } from './contracts';
 import { replyAppendSize, replyPreviewSize } from './contracts';
 import { isValidId } from './identifiers';
 import { isRecord as record } from './guards';
@@ -42,7 +42,7 @@ function version(value: unknown): value is string | null {
 function mediaStatus(value: unknown): value is NonNullable<DynamicImage['archiveStatus']> {
   return value === 'pending' || value === 'success' || value === 'failed';
 }
-function parseImages(raw: unknown, owner: { type: 'dynamic' | 'comment'; id: string }): DynamicImage[] {
+function parseImages(raw: unknown, owner: ImageOwner): DynamicImage[] {
   // 旧冻结 cursor 未携带 media；绝不由 media_sources 推断上传成功。
   if (!Array.isArray(raw)) return [];
   const images: DynamicImage[] = [];

@@ -10,7 +10,7 @@ function comment(id: string, size: number, text = '', nickname = `评论作者 $
     id: `image-1004-${position}`, owner: { type: 'comment', id }, position,
     source_url: `https://source.example.test/comments/${id}/${position}.jpg`,
     width: id === '1007' ? null : 600,
-    height: id === '1007' ? null : id === '1001' || id === '1004' && position === 11 ? 2400 : 450,
+    height: id === '1007' ? null : id === '1001' || (id === '1004' && position === 11) ? 2400 : 450,
     version: 'v1', status: id === '2003' && position === 0 ? 'pending' : id === '2003' && position === 1 ? 'failed' : 'success',
     public_url: id === '2003' && position < 2 ? null : commentImageUrl(id, position),
     error: id === '2003' && position === 1 ? 'MEDIA_UPLOAD_FAILED' : null,
