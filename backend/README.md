@@ -1,6 +1,6 @@
-# 票据 01–02 / 13 / 15 后端
+# 票据 01–02 / 13 / 15 / 17 后端
 
-提供 UP 身份/配置管理、指定动态关联、显式一次初始化及 SQLite 归档读取。增加根评论采集和最热／最新归档分页；没有周期调度、近期目标发现、回复采集或 OSS 上传；不宣称全部归档完成。管理基础契约见 `docs/backend/api/management-api.md`，02 测试证据见 [backend-acceptance-02.md](../.scratch/backend-integration/evidence/backend-acceptance-02.md)，字段依据见 [source-protocol-evidence.md](../docs/backend/evidence/source-protocol-evidence.md)。
+提供 UP 身份/配置管理、指定动态关联、显式一次初始化及 SQLite 归档读取。增加根评论采集、最热／最新归档分页和完整楼中楼归档读取；没有周期调度、近期目标发现或 OSS 上传；不宣称全部归档完成。管理基础契约见 `docs/backend/api/management-api.md`，02 测试证据见 [backend-acceptance-02.md](../.scratch/backend-integration/evidence/backend-acceptance-02.md)，字段依据见 [source-protocol-evidence.md](../docs/backend/evidence/source-protocol-evidence.md)。
 
 ## 运行
 
@@ -23,7 +23,7 @@ from backend.bili_monitor.app import create_app
 app = create_app(database_path, profile_transport=None)
 ```
 
-工厂不打开数据库，ASGI lifespan 启动时迁移。`profile_transport` 是唯一可替换的外部 HTTP transport，覆盖 card、detail、`/opus/{id}` 页面及 `/x/v2/reply` 根评论页；测试使用 `httpx.MockTransport`，不替换解析、同步或存储。使用包含 lifespan 的服务器或 `with TestClient(app)`。
+工厂不打开数据库，ASGI lifespan 启动时迁移。`profile_transport` 是唯一可替换的外部 HTTP transport，覆盖 card、detail、`/opus/{id}` 页面、`/x/v2/reply` 根评论页及 `/x/v2/reply/reply` 楼中楼页；测试使用 `httpx.MockTransport`，不替换解析、同步或存储。使用包含 lifespan 的服务器或 `with TestClient(app)`。
 
 生产请求公开 card、通用动态 detail、普通 opus HTML 及根评论页码接口；超时 10 秒，不跟随重定向、不使用环境代理，无 Cookie/凭据输入。不会绕过受限正文，不依赖 `opus/detail` JSON 或 ignored 原脚本。
 
@@ -38,7 +38,7 @@ app = create_app(database_path, profile_transport=None)
 - `GET /api/archive/dynamics?scope=up&uid=202` → 仅该 UP 完整归档的独立分页；未知身份 `404 UNKNOWN_UP`，已知空为成功空列表。
 - `GET /api/archive/dynamics/{id}` → `Archive`，未知本地 ID 返回 404。以上归档读取只读 SQLite，不请求上游。
 
-Archive 字段保持前端约定：`id`、`author:{id,nickname,avatar_url}`、独立 `title`、`published_at`、`edited_at`、`edit_status`、`text`、`content_state`、`last_attempt`、`source_comment_count`、`local_comment_count`、`media_sources`、`comment_locator`、`observed_version`、`synced_version`、`work`。ID 全为字符串；发布时间为明确 `+08:00` 秒精度 ISO，编辑时间为 `+08:00` 分钟精度 ISO。未知为 null，不补当前时间，也不以编辑时间补发布。15 的 `local_comment_count` 为真实本地根数，新增 `local_reply_count`（本阶段 0），绝不代替来源数。根分项状态见下节。
+Archive 字段保持前端约定：`id`、`author:{id,nickname,avatar_url}`、独立 `title`、`published_at`、`edited_at`、`edit_status`、`text`、`content_state`、`last_attempt`、`source_comment_count`、`local_comment_count`、`media_sources`、`comment_locator`、`observed_version`、`synced_version`、`work`。ID 全为字符串；发布时间为明确 `+08:00` 秒精度 ISO，编辑时间为 `+08:00` 分钟精度 ISO。未知为 null，不补当前时间，也不以编辑时间补发布。15 的 `local_comment_count` 为真实本地根数，17 的 `local_reply_count` 为真实本地回复数，绝不代替来源数。根分项状态见下节。
 
 ### 初始化、正文和版本
 
@@ -48,7 +48,7 @@ Archive 字段保持前端约定：`id`、`author:{id,nickname,avatar_url}`、�
 - 首次无编辑信号仍保存正文（observed/synced 可均为 null）。普通相对文案、空白或正文/图片差异不触发更新；可信编辑分钟变化或待重试工作才替换正文。不做正文哈希或图片差异检测。
 - 未知/error 编辑信号保留旧可信 edited_at/observed。正文失败/受限保留旧成功正文、内容状态及媒体；有效零计数可保存，无效计数不覆盖旧可信值。
 - observed 在网络完成前独立持久化，synced 仅绑定本次实际成功处理的 HTML 编辑版本；未知版本不能冒领旧 pending。每次执行用 SQLite generation 条件提交，旧执行不能覆盖较新观察/正文，也不能清掉较新 pending。
-- 正文失败保留 pending；关闭重开后再次 initial，即使编辑信号没变也可重试。15 独立读取根评论，回复及媒体仍 pending，无上传或完整采集成功冒充。
+- 正文失败保留 pending；关闭重开后再次 initial，即使编辑信号没变也可重试。15 独立读取根评论，17 补齐回复分页，媒体仍独立 pending；根成功不冒充整轮成功。
 - 停止、删目标、删配置只阻止后续领取，不取消已领取请求；身份及归档保留。
 
 ### 排序、快照与 cursor
@@ -67,15 +67,24 @@ Archive 字段保持前端约定：`id`、`author:{id,nickname,avatar_url}`、�
 
 新增 Archive 字段 `local_reply_count`、`root_comments_last_attempt`、`synced_root_comment_count`，以及独立 `work.replies`。`work.comments=success` 只证明根分页成功，不代表回复／媒体／来源计数观察成功。DTO、计数映射、错误和分页限制见 [归档契约](../docs/backend/api/archive-api.md#15-根评论契约)；自动化证据见 [15 验收](../.scratch/backend-integration/acceptance-15.md)。
 
+## 17 楼中楼
+
+initial 在本轮根页成功后同步非零／未知回复数的根，完整来源分页不使用内嵌预览。逐根失败保留成功部分及旧归档；无新信号时可再次 initial 重试。`work.comments` 仅根页，`work.replies` 为回复页，整轮成功由 `comments_last_attempt/synced_comment_count` 表达；正文和媒体独立。
+
+`GET /api/archive/dynamics/{id}/comments/{root_id}/replies` 首批最多 3、续批最多 10（可省略 limit，显式仅分别允许3／10）。完整同根集合按时间正序、null 后置、ID BINARY 字符串升序，冻结内容、顺序、目标和来源／本地计数。cursor 绑定动态／根／回复资源／固定批量／上下文，不设 TTL，重开仍可重读；失效须显式重开首批，普通读取失败可重试原 cursor，不静默混合新旧范围。
+
+逐根读取同时返回来源回复数、本地完整数、最近尝试及成功数；首次失败空本地数不冒充成功空。目标作者只由同根 parent 对应归档解析；找不到则 null，不以 @ 提及者伪造。完整 DTO、错误与证据见 [归档契约](../docs/backend/api/archive-api.md#17-楼中楼完整归档与读取) 与 [17 验收](../.scratch/backend-integration/acceptance-17.md)。不交付 #18 页面展开/历史恢复。
+
 ## SQLite 与安全
 
-schema 顺序：v1 身份/配置、v2 targets、v3 archives/generation、v4 持久分页、v5 cursor 资源/过期/索引、v6 根评论及独立持久评论页。v0–v5 短事务迁移到 v6，冲突回滚、未来版本拒绝启动；旧 v4 无限期 cursor 被失效，但归档不删。每次操作独立连接并启用外键，等待锁最多 2 秒；数据库操作在线程池执行，网络不进事务。删除配置只 cascade 指定关联，绝不 cascade 身份或归档。
+schema 顺序：v1 身份/配置、v2 targets、v3 archives/generation、v4 持久分页、v5 cursor 资源/过期/索引、v6 根评论及独立持久评论页、v7 回复／逐根同步状态／回复持久页。v0–v6 短事务迁移到 v7，冲突回滚、未来版本拒绝启动；旧 v4 无限期 cursor 被失效，但归档不删。每次操作独立连接并启用外键，等待锁最多 2 秒；数据库操作在线程池执行，网络不进事务。删除配置只 cascade 指定关联，绝不 cascade 身份或归档。
 
 错误响应使用固定错误码与提示，不记录请求体、上游原文或异常秘密。HTTPX/HTTPCore 传输日志及 Uvicorn access 日志禁用，部署代理也应避免记录敏感查询。本票测试不读取真实 Cookie、不执行/导入参考脚本、不请求真实上游。
 
 ## 测试与 E2E 装配
 
 ```sh
+uv run pytest backend/tests/test_replies.py -q
 uv run pytest backend/tests/test_root_comments.py -q
 uv run pytest backend/tests/test_scoped_archive.py -q
 uv run pytest backend/tests/test_initial_archive.py -q
@@ -97,4 +106,4 @@ BILI_DATABASE_PATH=/tmp/bili-management-e2e.sqlite uv run uvicorn backend.tests.
 
 ## 限制
 
-有限结构证据和虚构 fixture 不证明上游长期可用或完整全文覆盖。分钟编辑精度漏检已接受；本阶段无周期/近期/回复/上传，无持续调度或 2GB 容量结论。分页冻结全量响应会有临时内存/SQLite 写入成本，15 分钟窗口内频繁新访问会放大磁盘与写竞争；过期删除不保证文件缩小，不宣称容量治理。服务器墙钟回拨可能延长过期判断，生产时钟需正常同步。
+有限结构证据和虚构 fixture 不证明上游长期可用或完整全文覆盖。分钟编辑精度漏检已接受；本阶段无周期/近期/上传，无持续调度或 2GB 容量结论。分页冻结全量响应会有临时内存/SQLite 写入成本，15 分钟窗口内频繁新访问会放大磁盘与写竞争；过期删除不保证文件缩小，不宣称容量治理。服务器墙钟回拨可能延长过期判断，生产时钟需正常同步。

@@ -171,6 +171,18 @@ def create_app(
         validate_query(request, ("sort", "limit", "cursor"))
         return await run_store(store.list_roots, id, sort, limit, cursor)
 
+    @application.get("/api/archive/dynamics/{id}/comments/{root_id}/replies")
+    async def read_replies(
+        id: UID, root_id: UID, request: Request,
+        limit: Annotated[int | None, Query(ge=1, le=10)] = None,
+        cursor: Annotated[str | None, Query(max_length=64)] = None,
+    ):
+        validate_query(request, ("limit", "cursor"))
+        expected_limit = 3 if cursor is None else 10
+        if limit is not None and limit != expected_limit:
+            raise APIError("INVALID_INPUT" if cursor is None else "CURSOR_INVALID")
+        return await run_store(store.list_replies, id, root_id, cursor)
+
     return application
 
 

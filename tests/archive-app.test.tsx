@@ -11,11 +11,11 @@ function show(transport: ArchiveTransport, path = '/') {
   return render(<MemoryRouter initialEntries={[path]}><App reader={createArchiveReader(transport)} /></MemoryRouter>);
 }
 describe('真实归档基础页面', () => {
-  it('生产评论完整采用服务端顺序20/20/5，失败重读同批、结束不请求、回复尚未归档不伪造', async () => {
+  it('生产根评论完整采用服务端顺序20/20/5，失败重读同批、结束不请求，来源零回复不展开', async () => {
     const user = userEvent.setup();
     // 顺序故意与点赞相反；页面不能重排当前批次冒充服务端全局排序。
     const items = Array.from({ length: 45 }, (_, index) => ({ ...rootComment,
-      id: String(200 + index), text: `服务端评论 ${index}`, like_count: index }));
+      id: String(200 + index), text: `服务端评论 ${index}`, like_count: index, source_reply_count: 0 }));
     const urls: string[] = [];
     let failed = false;
     show(async url => {
@@ -30,7 +30,7 @@ describe('真实归档基础页面', () => {
     await within(area).findByText('服务端评论 19');
     expect(within(area).getAllByRole('listitem')).toHaveLength(20);
     expect(within(area).getAllByRole('listitem')[0]).toHaveTextContent('服务端评论 0');
-    expect(within(area).getAllByText('回复尚未归档。')).toHaveLength(20);
+    expect(within(area).queryByRole('region', { name: /回复区/ })).not.toBeInTheDocument();
     expect(within(area).queryByRole('button', { name: /展开回复/ })).not.toBeInTheDocument();
     await user.dblClick(within(area).getByRole('button', { name: '加载更多评论' }));
     expect(await within(area).findByRole('alert')).toHaveTextContent('最热评论追加读取失败');

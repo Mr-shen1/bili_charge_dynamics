@@ -38,6 +38,14 @@
 
 `backend/tests/fixtures/root-comments.json` 是结构真实、身份／内容虚构的原始输入：动态 123 的定位 oid=99123/type=17，两个根、总数 7、回复数 5、置顶／热评结构及有序图片；测试基于该原始协议结构构造多页、空、拒绝、缺失及 45 根排序样例。不是抓取真实响应，也不是匿名可用性证据。固定文档提到 Cookie／APP 认证，本票生产传输不添加凭据；匿名可用性、各类型计数、真实全量及长期可用性仍未验证。
 
+## 17 楼中楼协议
+
+通过 searchcode 核对公开镜像快照 SHA 与既有 commit `cfc5fddcc8a94b74d91970bb5b4eaeb349addc47` 一致。固定 [list.md:1559–1637](https://github.com/alittlehuaji/bilibili-api-collect-mirror/blob/cfc5fddcc8a94b74d91970bb5b4eaeb349addc47/docs/comment/list.md#L1559-L1637) 定义 `/x/v2/reply/reply` 的 oid/type/root、pn、ps 和 data.page/root/replies；page.count 是该根二级评论数，不是页数。ps 请求20，每页最多20，按必要分页遍历，不用根页三条预览替代。
+
+同快照 [readme.md:47–90](https://github.com/alittlehuaji/bilibili-api-collect-mirror/blob/cfc5fddcc8a94b74d91970bb5b4eaeb349addc47/docs/comment/readme.md#L47-L90) 定义 rpid_str/root_str/parent_str、ctime/like/member；[readme.md:220–234](https://github.com/alittlehuaji/bilibili-api-collect-mirror/blob/cfc5fddcc8a94b74d91970bb5b4eaeb349addc47/docs/comment/readme.md#L220-L234) 的 content.members 是 @ 提及者，不是 parent 作者。目标仅通过同根 parent 关联条目 member 解析，跨页在本地完整集合关联，缺失则未知。
+
+`backend/tests/fixtures/replies.json` 为结构真实且身份／内容虚构的固定输入，含大字符串 ID、直接回复根、回复另一回复、目标缺失和 @ 提及者。公开 initial 经生产解析写入真实 SQLite，测试构造25条、多页失败和重开读取。生产传输不增加 Cookie、APP 认证或绕权；第三方文档标注认证方式不证明匿名可用性。来源扫描不是并发事务快照，真实全量、计数口径和长期可用性未验证。
+
 ## 验证范围
 
-fixture 所有身份、内容、媒体 URL、错误秘密均虚构；结构保持不代表覆盖全部上游变体。`BLOCKED` 仅限制正文，不能据此跳过独立评论读取。02 阶段未采评论；15 增加根采集，但仍不采回复、不上传媒体、不访问真实来源，不宣称长期稳定或全部归档完成。
+fixture 所有身份、内容、媒体 URL、错误秘密均虚构；结构保持不代表覆盖全部上游变体。`BLOCKED` 仅限制正文，不能据此跳过独立评论读取。02 阶段未采评论；15 增加根采集，17 增加必要回复分页；仍不上传媒体、不访问真实来源，不宣称长期稳定或全部归档完成。

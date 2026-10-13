@@ -19,6 +19,12 @@ def _merge_known(previous, observed):
     return {**previous, **{key: value for key, value in observed.items() if value is not None}}
 
 
+def _merge_comment(previous, observed):
+    document = _merge_known(previous, observed)
+    document["author"] = _merge_known(previous["author"], observed["author"])
+    return document
+
+
 def _freeze_pages(documents, limit):
     pages = [documents[i:i + limit] for i in range(0, len(documents), limit)] or [[]]
     tokens = [uuid4().hex for _ in pages]
@@ -47,7 +53,7 @@ class Store:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 version = connection.execute("PRAGMA user_version").fetchone()[0]
-                if version > 6:
+                if version > 7:
                     raise RuntimeError("Unsupported database schema version")
                 if version == 0:
                     connection.execute("""CREATE TABLE identities (
@@ -99,7 +105,30 @@ class Store:
                         document["work"].setdefault("replies", "pending")
                         connection.execute("UPDATE archives SET document = ? WHERE id = ?",
                                            (json.dumps(document, ensure_ascii=False), row["id"]))
-                connection.execute("PRAGMA user_version = 6")
+                if version < 7:
+                    connection.execute("""CREATE TABLE replies (
+                        dynamic_id TEXT NOT NULL, root_id TEXT NOT NULL,
+                        id TEXT NOT NULL, document TEXT NOT NULL,
+                        PRIMARY KEY(dynamic_id, root_id, id),
+                        FOREIGN KEY(dynamic_id, root_id) REFERENCES root_comments(dynamic_id, id)
+                    )""")
+                    connection.execute("""CREATE TABLE reply_sync (
+                        dynamic_id TEXT NOT NULL, root_id TEXT NOT NULL, status TEXT NOT NULL,
+                        synced_source_reply_count INTEGER,
+                        PRIMARY KEY(dynamic_id, root_id),
+                        FOREIGN KEY(dynamic_id, root_id) REFERENCES root_comments(dynamic_id, id)
+                    )""")
+                    connection.execute("""CREATE TABLE reply_pages (
+                        token TEXT PRIMARY KEY, resource TEXT NOT NULL, document TEXT NOT NULL
+                    )""")
+                    for row in connection.execute("SELECT id, document FROM archives").fetchall():
+                        document = json.loads(row["document"])
+                        document.update({"replies_last_attempt": "pending", "comments_last_attempt": "pending",
+                                         "synced_comment_count": None, "synced_reply_comment_count": None})
+                        document.setdefault("work", {})["replies"] = "pending"
+                        connection.execute("UPDATE archives SET document = ? WHERE id = ?",
+                                           (json.dumps(document, ensure_ascii=False), row["id"]))
+                connection.execute("PRAGMA user_version = 7")
                 connection.commit()
             except BaseException:
                 connection.rollback()
@@ -275,7 +304,9 @@ class Store:
             "source_comment_count": None, "local_comment_count": 0,
             "media_sources": [], "comment_locator": None,
             "observed_version": None, "synced_version": None,
-            "work": {"text": "pending", "media": "pending", "comments": "pending"},
+            "local_reply_count": 0, "replies_last_attempt": "pending", "comments_last_attempt": "pending",
+            "synced_comment_count": None, "synced_reply_comment_count": None,
+            "work": {"text": "pending", "media": "pending", "comments": "pending", "replies": "pending"},
         }
         with self.connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -378,14 +409,7 @@ class Store:
                         "SELECT document FROM root_comments WHERE dynamic_id = ? AND id = ?", (id, document["id"])
                     ).fetchone()
                     if previous is not None:
-                        saved = json.loads(previous[0])
-                        document = {**document, **{
-                            key: saved.get(key) for key in ("like_count", "source_reply_count", "published_at", "text")
-                            if document.get(key) is None
-                        }}
-                        document["author"] = _merge_known(saved["author"], document["author"])
-                        if document["media_sources"] is None:
-                            document["media_sources"] = saved["media_sources"]
+                        document = _merge_comment(json.loads(previous[0]), document)
                     if document["media_sources"] is None:
                         document["media_sources"] = []
                     connection.execute("""INSERT INTO root_comments(dynamic_id, id, document) VALUES (?, ?, ?)
@@ -395,10 +419,12 @@ class Store:
                     "SELECT count(*) FROM root_comments WHERE dynamic_id = ?", (id,)
                 ).fetchone()[0]
                 archive.setdefault("local_reply_count", 0)
-                archive["work"].setdefault("replies", "pending")
                 archive["root_comments_last_attempt"] = status
                 archive.setdefault("synced_root_comment_count", None)
                 archive["work"]["comments"] = "pending"
+                archive["work"]["replies"] = "pending"
+                archive["replies_last_attempt"] = "pending"
+                archive["comments_last_attempt"] = "pending" if status in ("pending", "success") else status
                 if status == "success":
                     archive["synced_root_comment_count"] = observed_count
                     if archive.get("source_comment_count") == observed_count:
@@ -437,6 +463,132 @@ class Store:
                                        (token, resource, limit, json.dumps(result, ensure_ascii=False)))
                 connection.commit()
                 return first
+            except BaseException:
+                connection.rollback()
+                raise
+
+    def roots_for_replies(self, id, ids):
+        with self.connection() as connection:
+            documents = (json.loads(row[0]) for row in connection.execute(
+                "SELECT document FROM root_comments WHERE dynamic_id = ? ORDER BY id COLLATE BINARY", (id,)
+            ))
+            return [document for document in documents if document["id"] in ids]
+
+    def change_reply_root(self, id, generation, root_id, status, count=None):
+        with self.connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                if not connection.execute("SELECT 1 FROM archives WHERE id = ? AND generation = ?", (id, generation)).fetchone():
+                    connection.commit()
+                    return False
+                connection.execute("""INSERT INTO reply_sync VALUES (?, ?, ?, ?)
+                    ON CONFLICT(dynamic_id, root_id) DO UPDATE SET status = excluded.status,
+                    synced_source_reply_count = CASE WHEN excluded.status = 'success'
+                    THEN excluded.synced_source_reply_count ELSE reply_sync.synced_source_reply_count END""",
+                    (id, root_id, status, count))
+                connection.commit()
+                return True
+            except BaseException:
+                connection.rollback()
+                raise
+
+    def save_replies(self, id, generation, root_id, documents, count):
+        return self._change_replies(id, generation, "pending", None, root_id, documents, count)
+
+    def finish_replies(self, id, generation, status, observed_count):
+        return self._change_replies(id, generation, status, observed_count, None, [], None)
+
+    def _change_replies(self, id, generation, status, observed_count, root_id, documents, count):
+        with self.connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                row = connection.execute("SELECT document FROM archives WHERE id = ? AND generation = ?", (id, generation)).fetchone()
+                if row is None:
+                    connection.commit()
+                    return False
+                archive = json.loads(row[0])
+                for document in documents:
+                    previous = connection.execute(
+                        "SELECT document FROM replies WHERE dynamic_id = ? AND root_id = ? AND id = ?",
+                        (id, root_id, document["id"])
+                    ).fetchone()
+                    if previous is not None:
+                        document = _merge_comment(json.loads(previous[0]), document)
+                    connection.execute("""INSERT INTO replies VALUES (?, ?, ?, ?)
+                        ON CONFLICT(dynamic_id, root_id, id) DO UPDATE SET document = excluded.document""",
+                        (id, root_id, document["id"], json.dumps(document, ensure_ascii=False)))
+                if root_id is not None and count is not None:
+                    root = json.loads(connection.execute(
+                        "SELECT document FROM root_comments WHERE dynamic_id = ? AND id = ?", (id, root_id)
+                    ).fetchone()[0])
+                    root["source_reply_count"] = count
+                    connection.execute("UPDATE root_comments SET document = ? WHERE dynamic_id = ? AND id = ?",
+                                       (json.dumps(root, ensure_ascii=False), id, root_id))
+                archive["local_reply_count"] = connection.execute(
+                    "SELECT count(*) FROM replies WHERE dynamic_id = ?", (id,)
+                ).fetchone()[0]
+                archive["replies_last_attempt"] = status
+                archive["work"]["replies"] = "pending"
+                if status == "success":
+                    archive["synced_reply_comment_count"] = observed_count
+                    if archive.get("source_comment_count") == observed_count:
+                        archive["work"]["replies"] = "success"
+                    if archive["work"]["comments"] == archive["work"]["replies"] == "success":
+                        archive["comments_last_attempt"] = "success"
+                        archive["synced_comment_count"] = observed_count
+                elif status != "pending" and archive.get("root_comments_last_attempt") == "success":
+                    archive["comments_last_attempt"] = status
+                connection.execute("UPDATE archives SET document = ? WHERE id = ? AND generation = ?",
+                                   (json.dumps(archive, ensure_ascii=False), id, generation))
+                connection.commit()
+                return True
+            except BaseException:
+                connection.rollback()
+                raise
+
+    def list_replies(self, id, root_id, cursor=None):
+        resource = f"replies:{id}:{root_id}:time-asc:id-binary:3-10:v1"
+        with self.connection() as connection:
+            row = connection.execute("SELECT document FROM root_comments WHERE dynamic_id = ? AND id = ?", (id, root_id)).fetchone()
+            if row is None:
+                raise APIError("NOT_FOUND")
+            if cursor is not None:
+                if re.fullmatch(r"[a-f0-9]{32}", cursor) is None:
+                    raise APIError("CURSOR_INVALID")
+                saved = connection.execute("SELECT document FROM reply_pages WHERE token = ? AND resource = ?", (cursor, resource)).fetchone()
+                if saved is None:
+                    raise APIError("CURSOR_INVALID")
+                return json.loads(saved[0])
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                root = json.loads(connection.execute(
+                    "SELECT document FROM root_comments WHERE dynamic_id = ? AND id = ?", (id, root_id)
+                ).fetchone()[0])
+                documents = [json.loads(row[0]) for row in connection.execute(
+                    """SELECT document FROM replies WHERE dynamic_id = ? AND root_id = ? ORDER BY
+                    json_extract(document, '$.published_at') IS NULL ASC,
+                    json_extract(document, '$.published_at') ASC, id COLLATE BINARY ASC""", (id, root_id)
+                )]
+                authors = {item["id"]: item["author"] for item in [root] + documents}
+                for document in documents:
+                    author = authors.get(document["parent_id"])
+                    document["reply_to"] = author if author and author.get("id") is not None else None
+                # 预览与追加是同一持久读取上下文，不按首批大小切所有后续页。
+                first, following = _freeze_pages(documents[3:], 10)
+                result = {"items": documents[:3], "next_cursor": uuid4().hex if documents[3:] else None}
+                pages = [(result["next_cursor"], first)] + following if documents[3:] else []
+                progress = connection.execute("SELECT status, synced_source_reply_count FROM reply_sync WHERE dynamic_id = ? AND root_id = ?",
+                                              (id, root_id)).fetchone()
+                metadata = {"source_reply_count": root.get("source_reply_count"), "local_reply_count": len(documents),
+                            "replies_last_attempt": progress["status"] if progress else "pending",
+                            "synced_source_reply_count": progress["synced_source_reply_count"] if progress else None}
+                result.update(metadata)
+                for token, page in pages:
+                    page.update(metadata)
+                    connection.execute("INSERT INTO reply_pages VALUES (?, ?, ?)",
+                                       (token, resource, json.dumps(page, ensure_ascii=False)))
+                connection.commit()
+                return result
             except BaseException:
                 connection.rollback()
                 raise

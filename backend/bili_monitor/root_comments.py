@@ -22,12 +22,9 @@ def valid_locator(locator):
             and type(locator.get("type")) is int and locator["type"] > 0)
 
 
-def root_document(reply, dynamic_id, locator):
+def comment_fields(reply, dynamic_id, locator):
+    """根与回复共用的来源身份／文本字段，不涉及层级或业务图片。"""
     id = source_id(reply.get("rpid_str", reply.get("rpid")))
-    root = source_id(reply.get("root_str", reply.get("root")), allow_zero=True)
-    parent = source_id(reply.get("parent_str", reply.get("parent")), allow_zero=True)
-    if root != "0" or parent != "0":
-        raise ValueError("Not a root comment")
     if "oid" in reply and source_id(reply["oid"]) != locator["oid"]:
         raise ValueError("Mismatched comment resource")
     if "type" in reply and (type(reply["type"]) is not int or reply["type"] != locator["type"]):
@@ -36,8 +33,6 @@ def root_document(reply, dynamic_id, locator):
     text = content.get("message")
     if text is not None and not isinstance(text, str):
         raise ValueError("Invalid comment text")
-    # 缺字段不是来源确认无图；仓储会保留旧元信息，新评论仍公开空数组。
-    media = media_sources(content["pictures"], "img_src", "img_") if "pictures" in content else None
     member = reply.get("member") or {}
     mid = member.get("mid")
     try:
@@ -49,9 +44,21 @@ def root_document(reply, dynamic_id, locator):
         "author": {"id": mid, "nickname": member.get("uname") if isinstance(member.get("uname"), str) else None,
                    "avatar_url": safe_url(member.get("avatar"))},
         "published_at": published_time(reply.get("ctime")), "text": text,
-        "like_count": nonnegative(reply.get("like")), "source_reply_count": nonnegative(reply.get("rcount")),
-        "root_id": root, "parent_id": parent, "comment_locator": locator, "media_sources": media,
+        "like_count": nonnegative(reply.get("like")),
     }
+
+
+def root_document(reply, dynamic_id, locator):
+    root = source_id(reply.get("root_str", reply.get("root")), allow_zero=True)
+    parent = source_id(reply.get("parent_str", reply.get("parent")), allow_zero=True)
+    if root != "0" or parent != "0":
+        raise ValueError("Not a root comment")
+    document = comment_fields(reply, dynamic_id, locator)
+    content = reply["content"]
+    # 缺字段不是来源确认无图；仓储会保留旧元信息，新评论仍公开空数组。
+    media = media_sources(content["pictures"], "img_src", "img_") if "pictures" in content else None
+    return {**document, "source_reply_count": nonnegative(reply.get("rcount")),
+            "root_id": root, "parent_id": parent, "comment_locator": locator, "media_sources": media}
 
 
 async def fetch_root_page(client, dynamic_id, locator, number):
@@ -107,7 +114,7 @@ async def sync_roots(store, client, id, generation):
     if not await to_thread.run_sync(store.begin_roots, id, generation):
         return
     try:
-        number, baseline, seen = 1, None, set()
+        number, baseline, seen, roots = 1, None, set(), {}
         while True:
             documents, ids, counts = await fetch_root_page(client, id, locator, number)
             if baseline is not None and counts != baseline:
@@ -117,6 +124,7 @@ async def sync_roots(store, client, id, generation):
                 raise ValueError("Comment pagination did not advance")
             if not await to_thread.run_sync(store.save_roots, id, generation, documents):
                 return
+            roots.update({document["id"]: document["source_reply_count"] for document in documents})
             if not ids:
                 if number > 1:
                     # 对候选空尾页复查；瞬时空、后续页失败或计数变化不能推进成功。
@@ -131,4 +139,5 @@ async def sync_roots(store, client, id, generation):
     except Exception:
         await to_thread.run_sync(store.finish_roots, id, generation, "failed", None)
         return
-    await to_thread.run_sync(store.finish_roots, id, generation, "success", observed_count)
+    if await to_thread.run_sync(store.finish_roots, id, generation, "success", observed_count):
+        return roots, observed_count

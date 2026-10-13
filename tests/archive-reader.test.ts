@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createArchiveReader } from '../src/data/archiveReader';
 
 import { archive } from './fixtures/archive';
@@ -11,7 +11,200 @@ const rootComment = {
   comment_locator: { oid: '900719925474099312345', type: 17 },
   media_sources: [{ url: 'https://upstream.example.test/comment.jpg', width: 800, height: 600 }],
 };
+const reply = {
+  id: '900719925474099399999', dynamic_id: archive.id, root_id: rootComment.id, parent_id: rootComment.id,
+  author: rootComment.author, published_at: rootComment.published_at, text: rootComment.text,
+  like_count: 0, reply_to: { id: '456', nickname: '回复目标', avatar_url: 'https://avatar.example.test/target.jpg' },
+};
 describe('生产 ArchiveReader', () => {
+  it('回复来源数、本地数与逐根失败元信息独立，不把首次失败当已成功空归档', async () => {
+    const reader = createArchiveReader(async () => Response.json({ items: [], next_cursor: null,
+      source_reply_count: null, local_reply_count: 0, replies_last_attempt: 'failed', synced_source_reply_count: null }));
+    expect(await reader.readReplies({ dynamicId: archive.id, rootId: rootComment.id, limit: 3, signal })).toEqual({ status: 'success', data: {
+      items: [], nextCursor: null, sourceReplyCount: null, localReplyCount: 0, repliesLastAttempt: 'failed', syncedSourceReplyCount: null,
+    } });
+  });
+  it('回复 DTO 通过真实 Adapter 映射大 ID、普通文本和目标作者，未知目标不伪造', async () => {
+    const reader = createArchiveReader(async () => Response.json({ items: [reply, { ...reply, id: '2', parent_id: null,
+      author: { id: null, nickname: null, avatar_url: null }, text: null, published_at: null,
+      like_count: null, reply_to: null }], next_cursor: null }));
+    expect(await reader.readReplies({ dynamicId: archive.id, rootId: rootComment.id, limit: 3, signal })).toEqual({ status: 'success', data: {
+      items: [{ id: '900719925474099399999', author: { id: '123', nickname: '归档作者', avatarUrl: 'https://avatar.example.test/user.jpg' },
+        publishedAt: '2026-03-01T12:03:04+08:00', text: '<script>not executable</script>\n评论 😀 https://example.test',
+        likeCount: 0, replyTo: { id: '456', nickname: '回复目标', avatarUrl: 'https://avatar.example.test/target.jpg' } },
+      { id: '2', author: { id: '', nickname: null, avatarUrl: null }, publishedAt: null, text: '', likeCount: null, replyTo: null }],
+      nextCursor: null,
+    } });
+  });
+  it('25 条回复保持服务端顺序，累计 3/13/23/25，cursor 编码且无客户端 TTL', async () => {
+    const pages = [
+      [reply, { ...reply, id: '9' }, { ...reply, id: '10' }],
+      Array.from({ length: 10 }, (_, i) => ({ ...reply, id: String(11 + i) })),
+      Array.from({ length: 10 }, (_, i) => ({ ...reply, id: String(21 + i) })),
+      [{ ...reply, id: '31' }, { ...reply, id: '32' }],
+    ];
+    const requests: string[] = [];
+    const cursors = ['opaque+/=', 'second?&=', 'last#%=', null];
+    const reader = createArchiveReader(async (url, init) => {
+      expect(init).toEqual({ method: 'GET', signal });
+      requests.push(url);
+      const cursor = new URL(url, 'https://archive.example.test').searchParams.get('cursor');
+      const index = cursor === null ? 0 : cursors.indexOf(cursor) + 1;
+      return Response.json({ items: pages[index], next_cursor: cursors[index] });
+    });
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-03-01T00:00:00Z'));
+      const first = await reader.readReplies({ dynamicId: archive.id, rootId: rootComment.id, limit: 3, cursor: null, signal });
+      expect(first).toMatchObject({ status: 'success', data: { nextCursor: 'opaque+/=' } });
+      vi.setSystemTime(new Date('2026-03-03T00:00:00Z'));
+      const second = await reader.readReplies({ dynamicId: archive.id, rootId: rootComment.id, limit: 10, cursor: 'opaque+/=', signal });
+      const third = await reader.readReplies({ dynamicId: archive.id, rootId: rootComment.id, limit: 10, cursor: 'second?&=', signal });
+      const last = await reader.readReplies({ dynamicId: archive.id, rootId: rootComment.id, limit: 10, cursor: 'last#%=', signal });
+      const ids: string[] = [];
+      const sizes: number[] = [];
+      for (const result of [first, second, third, last]) {
+        expect(result.status).toBe('success');
+        if (result.status === 'success') ids.push(...result.data.items.map(item => item.id));
+        sizes.push(ids.length);
+      }
+      expect(sizes).toEqual([3, 13, 23, 25]);
+      expect(ids).toEqual(['900719925474099399999', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20',
+        '21', '22', '23', '24', '25', '26', '27', '28', '29', '30', '31', '32']);
+      expect(last).toMatchObject({ status: 'success', data: { nextCursor: null } });
+      expect(requests).toEqual([
+        '/api/archive/dynamics/900719925474099312345/comments/900719925474099398765/replies?limit=3',
+        '/api/archive/dynamics/900719925474099312345/comments/900719925474099398765/replies?limit=10&cursor=opaque%2B%2F%3D',
+        '/api/archive/dynamics/900719925474099312345/comments/900719925474099398765/replies?limit=10&cursor=second%3F%26%3D',
+        '/api/archive/dynamics/900719925474099312345/comments/900719925474099398765/replies?limit=10&cursor=last%23%25%3D',
+      ]);
+      expect(await reader.readReplies({ dynamicId: archive.id, rootId: rootComment.id, limit: 10, cursor: 'opaque+/=', signal })).toEqual(second);
+    } finally { vi.useRealTimers(); }
+  });
+  it('回复普通失败保留原 cursor 可重试，不自动改首批或伪装成功空', async () => {
+    for (const fail of [async () => new Response('SECRET_TOKEN'),
+      async () => Response.json({ error: { code: 'STORAGE_UNAVAILABLE', message: 'SECRET_TOKEN' } }, { status: 503 }),
+      async () => { throw new Error('SECRET_TOKEN'); }]) {
+      const requests: string[] = [];
+      const reader = createArchiveReader(async url => {
+        requests.push(url);
+        return requests.length === 1 ? fail() : Response.json({ items: [reply], next_cursor: null });
+      });
+      const input = { dynamicId: archive.id, rootId: rootComment.id, limit: 10, cursor: 'same+/=', signal };
+      expect(await reader.readReplies(input)).toEqual({ status: 'error' });
+      expect(await reader.readReplies(input)).toMatchObject({ status: 'success', data: { items: [{ id: reply.id }], nextCursor: null } });
+      expect(requests).toEqual([
+        '/api/archive/dynamics/900719925474099312345/comments/900719925474099398765/replies?limit=10&cursor=same%2B%2F%3D',
+        '/api/archive/dynamics/900719925474099312345/comments/900719925474099398765/replies?limit=10&cursor=same%2B%2F%3D',
+      ]);
+    }
+  });
+  it('回复预先取消不发 HTTP，忽略 signal 的传输/JSON 成功、失败、异常仍以取消优先', async () => {
+    const cancelled = new AbortController(); cancelled.abort();
+    const requests: string[] = [];
+    const reader = createArchiveReader(async url => { requests.push(url); throw new Error('SECRET_TOKEN'); });
+    expect(await reader.readReplies({ dynamicId: archive.id, rootId: rootComment.id, limit: 3, signal: cancelled.signal })).toEqual({ status: 'cancelled' });
+    expect(requests).toEqual([]);
+    for (const response of [Response.json({ items: [reply], next_cursor: null }),
+      Response.json({ error: { code: 'CURSOR_INVALID', message: 'SECRET_TOKEN' } }, { status: 422 }), new Response('SECRET_TOKEN')]) {
+      const controller = new AbortController();
+      const late = createArchiveReader(async () => { controller.abort(); return response; });
+      expect(await late.readReplies({ dynamicId: archive.id, rootId: rootComment.id, limit: 3, signal: controller.signal })).toEqual({ status: 'cancelled' });
+    }
+    const controller = new AbortController();
+    const throwing = createArchiveReader(async () => { controller.abort(); throw new Error('SECRET_TOKEN'); });
+    expect(await throwing.readReplies({ dynamicId: archive.id, rootId: rootComment.id, limit: 3, signal: controller.signal })).toEqual({ status: 'cancelled' });
+    for (const rejects of [false, true]) {
+      const duringJson = new AbortController();
+      const response = Response.json({});
+      response.json = async () => {
+        duringJson.abort();
+        if (rejects) throw new Error('SECRET_TOKEN');
+        return { items: [reply], next_cursor: null };
+      };
+      expect(await createArchiveReader(async () => response).readReplies({ dynamicId: archive.id, rootId: rootComment.id, limit: 3, signal: duringJson.signal }))
+        .toEqual({ status: 'cancelled' });
+    }
+  });
+  it('回复与目标作者缺失信息独立兜底，头像/时间安全处理且不暴露回复图片', async () => {
+    for (const avatar_url of ['javascript:SECRET_TOKEN', 'data:image/svg+xml,SECRET_TOKEN', 'http://avatar.example.test/user.jpg',
+      'https://user:SECRET_TOKEN@avatar.example.test/user.jpg', '//avatar.example.test/user.jpg']) {
+      const reader = createArchiveReader(async () => Response.json({ items: [{ ...reply, text: '',
+        author: { ...reply.author, nickname: ' ', avatar_url },
+        reply_to: { id: null, nickname: ' ', avatar_url }, published_at: '2026-02-30T12:03:04+08:00',
+        media_sources: [{ url: 'javascript:SECRET_TOKEN' }],
+      }], next_cursor: null }));
+      expect(await reader.readReplies({ dynamicId: archive.id, rootId: rootComment.id, limit: 3, signal })).toEqual({ status: 'success', data: {
+        items: [{ id: '900719925474099399999', author: { id: '123', nickname: null, avatarUrl: null },
+          text: '', publishedAt: null, likeCount: 0, replyTo: null }], nextCursor: null,
+      } });
+    }
+  });
+  it('回复仅将 HTTP 422 CURSOR_INVALID 映射为标记无效，不重读首批或回显错误', async () => {
+    for (const [status, code, reason] of [
+      [422, 'CURSOR_INVALID', 'invalid-cursor'], [422, 'INVALID_INPUT', undefined],
+      [503, 'CURSOR_INVALID', undefined], [404, 'NOT_FOUND', undefined], [200, 'CURSOR_INVALID', undefined],
+    ] as const) {
+      const requests: string[] = [];
+      const reader = createArchiveReader(async url => {
+        requests.push(url); return Response.json({ error: { code, message: 'SECRET_TOKEN' } }, { status });
+      });
+      expect(await reader.readReplies({ dynamicId: archive.id, rootId: rootComment.id, limit: 10, cursor: 'broken+/=', signal }))
+        .toEqual(reason ? { status: 'error', reason } : { status: 'error' });
+      expect(requests).toEqual(['/api/archive/dynamics/900719925474099312345/comments/900719925474099398765/replies?limit=10&cursor=broken%2B%2F%3D']);
+    }
+  });
+  it('回复坏 DTO 整批拒绝：重复项、批量溢出、串父级、非法关系和缺字段', async () => {
+    const malformed = [null, {}, { ...reply, id: 123 }, { ...reply, id: '01' }, { ...reply, id: rootComment.id },
+      { ...reply, dynamic_id: '999' }, { ...reply, dynamic_id: Number(archive.id) },
+      { ...reply, root_id: '999' }, { ...reply, root_id: Number(rootComment.id) },
+      { ...reply, parent_id: '0' }, { ...reply, parent_id: 123 }, { ...reply, parent_id: undefined }, { ...reply, parent_id: reply.id },
+      { ...reply, author: null }, { ...reply, author: { ...reply.author, id: 123 } },
+      { ...reply, author: { ...reply.author, nickname: undefined } }, { ...reply, author: { ...reply.author, avatar_url: {} } },
+      { ...reply, text: undefined }, { ...reply, text: {} }, { ...reply, published_at: 123 }, { ...reply, published_at: undefined },
+      ...[-1, 1.5, '3', undefined, Number.MAX_SAFE_INTEGER + 1].map(value => ({ ...reply, like_count: value })),
+      { ...reply, reply_to: undefined }, { ...reply, reply_to: [] }, { ...reply, reply_to: {} },
+      { ...reply, reply_to: { ...reply.reply_to, id: 123 } }, { ...reply, reply_to: { ...reply.reply_to, nickname: 123 } },
+      { ...reply, reply_to: { ...reply.reply_to, avatar_url: undefined } },
+    ];
+    for (const item of malformed) {
+      const reader = createArchiveReader(async () => Response.json({ items: [{ ...reply, id: '888' }, item], next_cursor: null }));
+      expect(await reader.readReplies({ dynamicId: archive.id, rootId: rootComment.id, limit: 3, signal })).toEqual({ status: 'error' });
+    }
+    for (const limit of [3, 10]) {
+      for (const body of [null, { items: {}, next_cursor: null }, { items: [reply, reply], next_cursor: null },
+        { items: [], next_cursor: undefined }, { items: [], next_cursor: 1 },
+        { items: Array.from({ length: limit + 1 }, (_, i) => ({ ...reply, id: String(100 + i) })), next_cursor: null }]) {
+        const reader = createArchiveReader(async () => Response.json(body));
+        expect(await reader.readReplies({ dynamicId: archive.id, rootId: rootComment.id, limit, cursor: limit === 10 ? 'opaque' : null, signal }))
+          .toEqual({ status: 'error' });
+      }
+    }
+  });
+  it('回复输入在 HTTP 前验证字符串父级与 cursor，并固定首3续10', async () => {
+    const requests: string[] = [];
+    const reader = createArchiveReader(async url => { requests.push(url); return Response.json({ items: [], next_cursor: null }); });
+    const input = { dynamicId: archive.id, rootId: rootComment.id, limit: 3, signal };
+    for (const id of ['../SECRET_TOKEN', '01', '0', '1'.repeat(129)]) {
+      expect(await reader.readReplies({ ...input, dynamicId: id })).toEqual({ status: 'error' });
+      expect(await reader.readReplies({ ...input, rootId: id })).toEqual({ status: 'error' });
+    }
+    // @ts-expect-error Verify runtime IDs are not coerced into strings.
+    expect(await reader.readReplies({ ...input, rootId: 123 })).toEqual({ status: 'error' });
+    // @ts-expect-error Verify runtime IDs are not coerced into strings.
+    expect(await reader.readReplies({ ...input, dynamicId: 123 })).toEqual({ status: 'error' });
+    // @ts-expect-error An opaque cursor must remain a string.
+    expect(await reader.readReplies({ ...input, cursor: 123 })).toEqual({ status: 'error' });
+    for (const limit of [0, 1, 2, 4, 10, 11, 3.5, NaN, Infinity]) {
+      expect(await reader.readReplies({ ...input, limit })).toEqual({ status: 'error' });
+    }
+    for (const limit of [0, 3, 9, 11, 10.5]) {
+      expect(await reader.readReplies({ ...input, limit, cursor: 'opaque' })).toEqual({ status: 'error' });
+    }
+    // @ts-expect-error Numeric strings are not valid batch sizes.
+    expect(await reader.readReplies({ ...input, limit: '3' })).toEqual({ status: 'error' });
+    expect(requests).toEqual([]);
+  });
   it('根评论 DTO 映射保持大 ID、普通文本、来源回复数，不展示来源图片', async () => {
     const reader = createArchiveReader(async () => Response.json({ items: [rootComment], next_cursor: null }));
     expect(await reader.readComments({ dynamicId: archive.id, sort: 'hot', signal })).toEqual({ status: 'success', data: {
@@ -175,6 +368,38 @@ describe('生产 ArchiveReader', () => {
     const throwing = createArchiveReader(async () => { controller.abort(); throw new Error('SECRET_TOKEN'); });
     expect(await throwing.readComments({ dynamicId: archive.id, sort: 'hot', signal: controller.signal })).toEqual({ status: 'cancelled' });
   });
+  it('Archive 回复工作、整轮/回复尝试与 checkpoint 独立映射，旧冻结 DTO 仍可读', async () => {
+    for (const replies of ['pending', 'success'] as const) {
+      const dto = { ...archive, local_comment_count: 45, local_reply_count: 25,
+        comments_last_attempt: 'failed', replies_last_attempt: 'success',
+        synced_comment_count: 70, synced_reply_comment_count: null,
+        work: { ...archive.work, comments: 'pending', replies } };
+      const reader = createArchiveReader(async url => Response.json(url.includes('?') ? { items: [dto], next_cursor: null } : dto));
+      const expected = { archive: { localCommentCount: 45, localReplyCount: 25,
+        commentsLastAttempt: 'failed', repliesLastAttempt: 'success', syncedCommentCount: 70, syncedReplyCommentCount: null,
+        work: { comments: 'pending', replies } } };
+      expect(await reader.readDetail({ id: archive.id, signal })).toMatchObject({ status: 'success', data: expected });
+      expect(await reader.readList({ scope: { kind: 'all' }, limit: 10, signal })).toMatchObject({ status: 'success', data: { items: [expected] } });
+    }
+    const oldReader = createArchiveReader(async url => Response.json(url.includes('?') ? { items: [archive], next_cursor: null } : archive));
+    const oldDetail = await oldReader.readDetail({ id: archive.id, signal });
+    expect(oldDetail.status).toBe('success');
+    if (oldDetail.status === 'success') {
+      expect(oldDetail.data.archive?.commentsLastAttempt).toBeUndefined();
+      expect(oldDetail.data.archive?.repliesLastAttempt).toBeUndefined();
+      expect(oldDetail.data.archive?.syncedCommentCount).toBeUndefined();
+      expect(oldDetail.data.archive?.syncedReplyCommentCount).toBeUndefined();
+      expect(oldDetail.data.archive?.work.replies).toBeUndefined();
+    }
+    expect(await oldReader.readList({ scope: { kind: 'all' }, limit: 10, signal })).toMatchObject({ status: 'success' });
+    for (const patch of [{ work: { ...archive.work, replies: 'failed' } }, { work: { ...archive.work, replies: null } },
+      { comments_last_attempt: 'SECRET_TOKEN' }, { replies_last_attempt: 123 },
+      { synced_comment_count: -1 }, { synced_comment_count: '70' },
+      { synced_reply_comment_count: 1.5 }, { synced_reply_comment_count: Number.MAX_SAFE_INTEGER + 1 }]) {
+      expect(await createArchiveReader(async () => Response.json({ ...archive, ...patch })).readDetail({ id: archive.id, signal }))
+        .toEqual({ status: 'error' });
+    }
+  });
   it('接受媒体/评论分项状态，但不要求它们永远 pending', async () => {
     const reader = createArchiveReader(async () => Response.json({ ...archive,
       work: { text: 'success', media: 'success', comments: 'failed' },
@@ -236,14 +461,15 @@ describe('生产 ArchiveReader', () => {
       archive: { editedAt: '2026-03-02T13:01+08:00' },
     } });
   });
-  it('生产根评论解除全局未归档能力，回复仍未归档且不发 HTTP', async () => {
+  it('生产根评论和回复均可读，成功空不冒充未归档', async () => {
     const requests: string[] = [];
     const reader = createArchiveReader(async url => { requests.push(url); return Response.json({ items: [], next_cursor: null }); });
     expect(reader.discussions).toBeUndefined();
-    expect(reader.replies).toBe('not-archived');
+    expect(reader.replies).toBeUndefined();
     expect(await reader.readComments({ dynamicId: archive.id, sort: 'hot', signal })).toEqual({ status: 'success', data: { items: [], nextCursor: null } });
-    expect(await reader.readReplies({ dynamicId: archive.id, rootId: '1', limit: 3, signal })).toEqual({ status: 'error', reason: 'not-archived' });
-    expect(requests).toEqual(['/api/archive/dynamics/900719925474099312345/comments?sort=hot&limit=20']);
+    expect(await reader.readReplies({ dynamicId: archive.id, rootId: '1', limit: 3, signal })).toEqual({ status: 'success', data: { items: [], nextCursor: null } });
+    expect(requests).toEqual(['/api/archive/dynamics/900719925474099312345/comments?sort=hot&limit=20',
+      '/api/archive/dynamics/900719925474099312345/comments/1/replies?limit=3']);
   });
   it('只读归档 GET，原样传不透明 cursor 与字符串 ID，保留 metadata 但不展示来源业务图', async () => {
     const urls: string[] = [];

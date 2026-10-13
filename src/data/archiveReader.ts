@@ -1,4 +1,5 @@
-import type { ArchiveMetadata, ArchiveWorkState, Comment, CommentBatch, DetailResult, Dynamic, DynamicBatch, DynamicReader, ReadResult, User } from './contracts';
+import type { ArchiveMetadata, ArchiveWorkState, Comment, CommentBatch, DetailResult, Dynamic, DynamicBatch, DynamicReader, ReadResult, Reply, ReplyBatch, User } from './contracts';
+import { replyAppendSize, replyPreviewSize } from './contracts';
 import { isValidId } from './identifiers';
 import { isRecord as record } from './guards';
 
@@ -32,6 +33,9 @@ function editStatus(value: unknown): value is ArchiveMetadata['editStatus'] {
 function workState(value: unknown): value is ArchiveWorkState {
   return value === 'pending' || value === 'success' || value === 'restricted' || value === 'failed';
 }
+function commentAttempt(value: unknown): value is NonNullable<ArchiveMetadata['commentsLastAttempt']> {
+  return value === 'pending' || value === 'success' || value === 'failed' || value === 'unconfirmed';
+}
 function version(value: unknown): value is string | null {
   return value === null || typeof value === 'string';
 }
@@ -43,7 +47,12 @@ function parseArchive(raw: unknown): Dynamic | null {
     || !(raw.comment_locator === null || record(raw.comment_locator))
     || !version(raw.observed_version) || !version(raw.synced_version)
     || !record(raw.work) || !workState(raw.work.text)
-    || !workState(raw.work.media) || !workState(raw.work.comments)) return null;
+    || !workState(raw.work.media) || !workState(raw.work.comments)
+    || !(raw.work.replies === undefined || raw.work.replies === 'pending' || raw.work.replies === 'success')
+    || !(raw.comments_last_attempt === undefined || commentAttempt(raw.comments_last_attempt))
+    || !(raw.replies_last_attempt === undefined || commentAttempt(raw.replies_last_attempt))
+    || !(raw.synced_comment_count === undefined || raw.synced_comment_count === null || count(raw.synced_comment_count) !== null)
+    || !(raw.synced_reply_comment_count === undefined || raw.synced_reply_comment_count === null || count(raw.synced_reply_comment_count) !== null)) return null;
   const mediaSources: ArchiveMetadata['mediaSources'][number][] = [];
   for (const source of raw.media_sources) {
     if (!record(source)) return null;
@@ -63,9 +72,13 @@ function parseArchive(raw: unknown): Dynamic | null {
       localReplyCount: count(raw.local_reply_count),
       rootCommentsLastAttempt: raw.root_comments_last_attempt === 'pending' || raw.root_comments_last_attempt === 'success'
         || raw.root_comments_last_attempt === 'failed' || raw.root_comments_last_attempt === 'unconfirmed' ? raw.root_comments_last_attempt : undefined,
+      commentsLastAttempt: raw.comments_last_attempt,
+      repliesLastAttempt: raw.replies_last_attempt,
+      syncedCommentCount: raw.synced_comment_count === undefined ? undefined : count(raw.synced_comment_count),
+      syncedReplyCommentCount: raw.synced_reply_comment_count === undefined ? undefined : count(raw.synced_reply_comment_count),
       mediaSources,
       commentLocator: raw.comment_locator, observedVersion: raw.observed_version, syncedVersion: raw.synced_version,
-      work: { text: raw.work.text, media: raw.work.media, comments: raw.work.comments } },
+      work: { text: raw.work.text, media: raw.work.media, comments: raw.work.comments, replies: raw.work.replies } },
   };
 }
 
@@ -95,11 +108,27 @@ function parseComment(raw: unknown, dynamicId: string): Comment | null {
   };
 }
 
+function parseReplyAuthor(raw: unknown): User | null {
+  if (!record(raw) || !(raw.id === null || isValidId(raw.id))
+    || !version(raw.nickname) || !version(raw.avatar_url)) return null;
+  return { id: raw.id ?? '', nickname: typeof raw.nickname === 'string' && raw.nickname.trim() ? raw.nickname : null,
+    avatarUrl: url(raw.avatar_url) };
+}
+function parseReply(raw: unknown, dynamicId: string, rootId: string): Reply | null {
+  if (!record(raw) || !isValidId(raw.id) || raw.id === rootId || raw.dynamic_id !== dynamicId || raw.root_id !== rootId
+    || !(raw.parent_id === null || isValidId(raw.parent_id)) || raw.parent_id === raw.id || !version(raw.text) || !version(raw.published_at)
+    || !(raw.like_count === null || count(raw.like_count) !== null)) return null;
+  const author = parseReplyAuthor(raw.author);
+  const replyTo = raw.reply_to === null ? null : parseReplyAuthor(raw.reply_to);
+  if (!author || raw.reply_to !== null && !replyTo) return null;
+  return { id: raw.id, author, publishedAt: time(raw.published_at), text: raw.text ?? '',
+    likeCount: count(raw.like_count), replyTo: replyTo?.id ? replyTo : null };
+}
+
 /** 只读本地归档。传输替身不绕过生产 DTO 映射；错误响应/异常永不回显。 */
 export function createArchiveReader(transport: ArchiveTransport = (url, init) => fetch(url, init)): DynamicReader {
   return {
     creator: { id: 'archive', nickname: '归档动态', avatarUrl: null },
-    replies: 'not-archived',
     async readUps({ signal }): Promise<ReadResult<readonly User[]>> {
       if (signal.aborted) return { status: 'cancelled' };
       try {
@@ -178,6 +207,37 @@ export function createArchiveReader(transport: ArchiveTransport = (url, init) =>
         return { status: 'success', data: { items, nextCursor: body.next_cursor } };
       } catch { return signal.aborted ? { status: 'cancelled' } : failed; }
     },
-    async readReplies({ signal }) { return signal.aborted ? { status: 'cancelled' } : { status: 'error', reason: 'not-archived' }; },
+    async readReplies({ dynamicId, rootId, limit, cursor, signal }): Promise<ReadResult<ReplyBatch>> {
+      if (signal.aborted) return { status: 'cancelled' };
+      if (!isValidId(dynamicId) || !isValidId(rootId) || !(cursor == null || typeof cursor === 'string')
+        || limit !== (cursor == null ? replyPreviewSize : replyAppendSize)) return failed;
+      const query = new URLSearchParams({ limit: String(limit) });
+      if (cursor != null) query.set('cursor', cursor);
+      try {
+        const response = await transport(`/api/archive/dynamics/${dynamicId}/comments/${rootId}/replies?${query}`, { method: 'GET', signal });
+        const body: unknown = await response.json();
+        if (signal.aborted) return { status: 'cancelled' };
+        if (response.status === 422 && record(body) && record(body.error) && body.error.code === 'CURSOR_INVALID')
+          return { status: 'error', reason: 'invalid-cursor' };
+        if (response.status !== 200 || !record(body) || !Array.isArray(body.items)
+          || body.items.length > limit || !(body.next_cursor === null || typeof body.next_cursor === 'string')) return failed;
+        if (body.replies_last_attempt !== undefined && !commentAttempt(body.replies_last_attempt)) return failed;
+        for (const key of ['source_reply_count', 'local_reply_count', 'synced_source_reply_count']) {
+          if (body[key] !== undefined && body[key] !== null && count(body[key]) === null) return failed;
+        }
+        const items: Reply[] = [];
+        for (const raw of body.items) {
+          const item = parseReply(raw, dynamicId, rootId);
+          if (!item || items.some(existing => existing.id === item.id)) return failed;
+          items.push(item);
+        }
+        return { status: 'success', data: { items, nextCursor: body.next_cursor,
+          ...(body.source_reply_count !== undefined ? { sourceReplyCount: count(body.source_reply_count) } : {}),
+          ...(body.local_reply_count !== undefined ? { localReplyCount: count(body.local_reply_count) } : {}),
+          ...(commentAttempt(body.replies_last_attempt) ? { repliesLastAttempt: body.replies_last_attempt } : {}),
+          ...(body.synced_source_reply_count !== undefined ? { syncedSourceReplyCount: count(body.synced_source_reply_count) } : {}),
+        } };
+      } catch { return signal.aborted ? { status: 'cancelled' } : failed; }
+    },
   };
 }

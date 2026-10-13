@@ -1,6 +1,6 @@
-# 前端归档读取与指定目标（02 / 13 / 16）
+# 前端归档读取与指定目标（02 / 13 / 16 / 17）
 
-下列 02 记录保持原交付边界；13、16 增量契约及证据独立列在文末。生产根评论能力以 16 增量为准，02 的全局讨论未归档描述仅为历史交付记录。前端 T1 不能替代后端 SQLite、上游协议、部署或真机验收。
+下列 02 记录保持原交付边界；13、16、17 增量契约及证据独立列在文末。生产根评论能力以 16 增量为准，02 的全局讨论未归档描述仅为历史交付记录。前端 T1 不能替代后端 SQLite、上游协议、部署或真机验收。
 
 ## 装配与边界
 
@@ -143,3 +143,12 @@
 另外追加两项既有行为回归（普通失败同 cursor 重试、取消优先），直接通过，未虚报新增 RED。最终 `pnpm test tests/archive-reader.test.ts` **18/18 通过**，`pnpm typecheck` 通过；过程日志为 `/tmp/16-adapter-01-red.log` 至 `/tmp/16-adapter-11-green.log`，最终日志为 `/tmp/16-adapter-final-unit.log`、`/tmp/16-adapter-typecheck.log`。
 
 上述仅为 Adapter 单元证据，不声称 RTL、浏览器、实际 SQLite/HTTP→详情、部署、真实上游或真机已经通过；这些由 #16 主票独立验收记录追踪。
+
+## 17 增量：生产回复 Adapter
+
+- `readReplies({dynamicId,rootId,limit,cursor,signal})` 只 GET `/api/archive/dynamics/{id}/comments/{root_id}/replies`，固定首3／续10，ID与 cursor 原样字符串编码；替换16阶段 not-archived stub，不隐式初始化或访问上游。
+- 回复 DTO 整批校验父动态／根、字符串 ID、可空 parent、作者／目标、文本、时间、点赞、页大小和重复项，保持服务端顺序。未知目标作者为 replyTo:null，不创造空 ID 的 @ 用户；未知回复作者仍按既有 User 空ID语义，不冒用 UP。
+- ReplyBatch 可选保留 sourceReplyCount、localReplyCount、repliesLastAttempt、syncedSourceReplyCount；来源未知／本地零／逐根失败独立。HTTP成功空 items 不证明采集成功，#18 页面须结合这些状态，不以本地零或来源数量推断。
+- Archive 增量可选保留 work.replies、整轮／回复尝试及成功计数，旧冻结 DTO 缺字段仍可读。
+- 无客户端 TTL；仅 HTTP422＋CURSOR_INVALID 映射 invalid-cursor，须显式重新开始，普通错误重试同批。取消优先，不回显异常秘密，不自动改 cursor、重读或预加载。
+- T1 为真实 Adapter＋HTTP传输替身，覆盖3/13/23/25、计数／状态、缺关系、安全校验、取消、错误／原cursor重试。后端 T2/T3 与测试结果见 [17验收](../../../.scratch/backend-integration/acceptance-17.md)。#18 展开／收起／历史恢复、正式浏览器与真实来源仍另票。
