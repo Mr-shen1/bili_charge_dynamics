@@ -1,24 +1,9 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { swipePreview as swipe } from '../e2e-support/touch';
 
 const fourId = '90071992547409934';
 const manyId = '90071992547409936';
 const singleId = '90071992547409932';
-
-// Chromium CDP 输入真实 touch 事件，交给浏览器产生 PointerEvent 和原生纵向滚动；不是 DOM dispatchEvent。
-async function swipe(page: Page, dx: number, dy: number) {
-  const stage = (await page.getByRole('region', { name: '预览图片阅读区域' }).boundingBox())!;
-  const x = stage.x + stage.width / 2;
-  const y = stage.y + stage.height / 2;
-  const input = await page.context().newCDPSession(page);
-  await input.send('Emulation.setTouchEmulationEnabled', { enabled: true });
-  await input.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y, id: 1 }] });
-  for (let step = 1; step <= 10; step++) {
-    await input.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x + dx * step / 10, y: y + dy * step / 10, id: 1 }] });
-    await page.waitForTimeout(20); // 给原生触摸滚动连续输入帧，不用延迟猜测断言结果。
-  }
-  await input.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  await input.detach();
-}
 
 test('触摸横向切图不循环、单图不切换；长图纵向原生阅读不误切图且不滚动底层', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 800 });

@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useLayoutEffect, use
 import type { ListSnapshot } from './ListSnapshot';
 import type { DetailSnapshot } from './DetailSnapshot';
 import type { DynamicImage } from '../data/contracts';
-import { ImagePreview, type PreviewSession } from '../images/ImagePreview';
+import { ImagePreview, type ImageOwner, type PreviewSession } from '../images/ImagePreview';
 import { useLocation, useNavigate } from 'react-router';
 
 interface PageEntry {
@@ -27,7 +27,7 @@ interface Navigation {
   saveDetailSnapshot(pageEntryId: string, snapshot: DetailSnapshot): void;
   openDetail(id: string, target?: 'top' | 'comments'): void;
   returnToList(): void;
-  openImages(images: readonly DynamicImage[], index: number, trigger: HTMLElement): void;
+  openImages(owner: ImageOwner, images: readonly DynamicImage[], index: number, trigger: HTMLElement): void;
 }
 const NavigationContext = createContext<Navigation | null>(null);
 
@@ -168,10 +168,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     detailTarget: entry.detailTarget ?? 'top',
     saveListSnapshot,
     saveDetailSnapshot,
-    openImages(images, index, trigger) {
+    openImages(owner, images, index, trigger) {
       if (!validEntry || previewId || !images[index]) return;
       const next: PreviewSession = { previewId: createUuid(), pageEntryId: validEntry.pageEntryId,
-        images, currentIndex: index, displayMode: 'contain', triggerId: trigger.id };
+        owner, images, currentIndex: index, displayMode: 'contain', triggerId: trigger.id };
       dispatch({ type: 'open-preview', preview: next });
       void navigate(location.pathname + location.search + location.hash, {
         state: { sessionId: session.sessionId, pageEntryId: validEntry.pageEntryId, previewId: next.previewId },

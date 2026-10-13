@@ -17,6 +17,54 @@ const reply = {
   like_count: 0, reply_to: { id: '456', nickname: '回复目标', avatar_url: 'https://avatar.example.test/target.jpg' },
 };
 describe('生产 ArchiveReader', () => {
+  it('保留当前媒体整组、顺序和上传状态，只暴露成功的公开 URL，不回退来源或旧组', async () => {
+    const publicUrl = 'https://oss.example.test/bucket/a%20b.jpg?literal=1';
+    const media = Array.from({ length: 12 }, (_, position) => ({
+      id: `media-${position}`, owner: { type: 'dynamic', id: archive.id }, position,
+      source_url: `https://upstream.example.test/${position}.jpg`, width: position === 0 ? 800 : null,
+      height: position === 0 ? 1200 : null, version: 'v2',
+      status: position === 1 ? 'pending' : position === 2 ? 'failed' : 'success',
+      public_url: position === 1 || position === 2 ? null : publicUrl,
+      error: position === 2 ? 'MEDIA_UPLOAD_FAILED' : null,
+    }));
+    const raw = { ...archive, media, previous_media: [{ ...media[0], id: 'previous', public_url: 'https://old.example.test/old.jpg' }] };
+    const reader = createArchiveReader(async path => Response.json(path.includes('?') ? { items: [raw], next_cursor: null } : raw));
+    const detail = await reader.readDetail({ id: archive.id, signal });
+    expect(detail).toMatchObject({ status: 'success', data: { text: archive.text, images: [
+      { id: 'media-0', thumbnailUrl: publicUrl, previewUrl: publicUrl, width: 800, height: 1200, archiveStatus: 'success' },
+      { id: 'media-1', thumbnailUrl: null, previewUrl: null, width: null, height: null, archiveStatus: 'pending' },
+      { id: 'media-2', thumbnailUrl: null, previewUrl: null, width: null, height: null, archiveStatus: 'failed' },
+      ...Array.from({ length: 9 }, (_, i) => ({ id: `media-${i + 3}`, thumbnailUrl: publicUrl, previewUrl: publicUrl,
+        width: null, height: null, archiveStatus: 'success' })),
+    ] } });
+    if (detail.status !== 'success') throw new Error('Expected readable detail');
+    expect(await reader.readList({ scope: { kind: 'all' }, limit: 10, signal })).toEqual({ status: 'success',
+      data: { items: [detail.data], nextCursor: null } });
+  });
+  it('图片地址损坏局部降级，不伤正文；未成功公开地址、来源、旧组与异 owner 永不补图', async () => {
+    const media = {
+      id: 'image-1', owner: { type: 'dynamic', id: archive.id }, position: 0,
+      source_url: 'https://source.example.test/not-a-fallback.jpg', width: null, height: null,
+      version: null, status: 'success', public_url: 'https://oss.example.test/accepted.jpg', error: null,
+    };
+    for (const public_url of ['http://oss.example.test/insecure.jpg', 'javascript:SECRET_TOKEN', 'data:image/svg+xml,SECRET_TOKEN',
+      'https://user:SECRET_TOKEN@oss.example.test/image.jpg', '//oss.example.test/image.jpg', null]) {
+      const reader = createArchiveReader(async () => Response.json({ ...archive, media: [{ ...media, public_url }] }));
+      expect(await reader.readDetail({ id: archive.id, signal })).toMatchObject({ status: 'success', data: {
+        text: archive.text, images: [{ id: 'image-1', archiveStatus: 'success', thumbnailUrl: null, previewUrl: null }],
+      } });
+    }
+    for (const status of ['pending', 'failed']) {
+      expect(await createArchiveReader(async () => Response.json({ ...archive, media: [{ ...media, status }] }))
+        .readDetail({ id: archive.id, signal })).toMatchObject({ status: 'success', data: {
+          images: [{ archiveStatus: status, thumbnailUrl: null, previewUrl: null }],
+        } });
+    }
+    for (const owner of [{ type: 'comment', id: archive.id }, { type: 'dynamic', id: '999' }]) {
+      expect(await createArchiveReader(async () => Response.json({ ...archive, media: [{ ...media, owner }], previous_media: [media] }))
+        .readDetail({ id: archive.id, signal })).toMatchObject({ status: 'success', data: { text: archive.text, images: [] } });
+    }
+  });
   it('回复来源数、本地数与逐根失败元信息独立，不把首次失败当已成功空归档', async () => {
     const reader = createArchiveReader(async () => Response.json({ items: [], next_cursor: null,
       source_reply_count: null, local_reply_count: 0, replies_last_attempt: 'failed', synced_source_reply_count: null }));

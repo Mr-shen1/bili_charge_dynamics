@@ -9,10 +9,35 @@ import httpx
 from backend.bili_monitor.app import create_app as production_app
 
 FIXTURES = Path(__file__).parent / "fixtures"
+MEDIA_SOURCE = "https://i0.hdslb.com/e2e-media/success.svg"
+MEDIA_BYTES = b'<svg xmlns="http://www.w3.org/2000/svg" width="80" height="120"/>'
+FAILED_MEDIA_BYTES = MEDIA_BYTES.replace(b'width="80"', b'data-fixture="failed" width="80"')
+
+
+class FixtureMediaUploader:
+    async def upload(self, key, content, content_type):
+        assert content_type == "image/svg+xml"
+        if content == FAILED_MEDIA_BYTES:
+            raise RuntimeError("FICTIONAL_SECRET_MEDIA_UPLOAD_FAILURE")
+        assert content == MEDIA_BYTES
+        return f"https://archive-media.example.invalid/objects/{key}.svg"
 
 
 def create_app():
     attempts = {}
+    media_mode = os.environ.get("FIXTURE_MEDIA")
+    media_fixture = media_mode in ("single", "mixed")
+    media_sources = [MEDIA_SOURCE] if media_mode == "single" else [
+        MEDIA_SOURCE, "https://i0.hdslb.com/e2e-media/failed.svg", "https://i0.hdslb.com/e2e-media/pending.svg",
+    ]
+
+    def with_media(fixture_text):
+        # 保留真实协议结构，让生产 HTML/JSON 解析取得同一有序来源组。
+        picture = '{"url":"https://example.invalid/source-business.jpg","width":800,"height":1200}'
+        replacement = ",".join(json.dumps({"url": url, "width": 800, "height": 1200}) for url in media_sources)
+        assert picture in fixture_text
+        return fixture_text.replace(picture, replacement)
+
     files = {"9101": "normal", "9102": "empty", "9103": "restricted", "9104": "failed"}
     roots = json.loads((FIXTURES / "root-comments.json").read_text()) if os.environ.get("FIXTURE_ROOT_COMMENTS") == "1" else None
     replies = json.loads((FIXTURES / "replies.json").read_text()) if os.environ.get("FIXTURE_REPLIES") == "1" else None
@@ -66,7 +91,10 @@ def create_app():
                 return httpx.Response(200, json=document)
             attempts[dynamic_id] = attempts.get(dynamic_id, 0) + 1
             if dynamic_id in files:
-                document = json.loads((FIXTURES / f"{files[dynamic_id]}.json").read_text())
+                fixture_text = (FIXTURES / f"{files[dynamic_id]}.json").read_text()
+                if media_fixture and dynamic_id == "9101":
+                    fixture_text = with_media(fixture_text)
+                document = json.loads(fixture_text)
                 if roots is not None and dynamic_id == "9101":
                     document["data"]["item"]["modules"]["module_stat"]["comment"]["count"] = 501
                 return httpx.Response(200, json=document)
@@ -78,6 +106,8 @@ def create_app():
             attempts[page_key] = attempts.get(page_key, 0) + 1
             page_file = "empty.html" if dynamic_id == "9102" else "restricted.html" if dynamic_id == "9103" else "edited.html"
             document = (FIXTURES / page_file).read_text().replace('"9101"', json.dumps(dynamic_id))
+            if media_fixture and dynamic_id == "9101":
+                document = with_media(document)
             if roots is not None and dynamic_id == "9101":
                 document = document.replace('"count":7', '"count":501')
                 long_text = "\n".join(f"详情完整正文第 {line} 行 🙂" for line in range(1, 41))
@@ -87,4 +117,16 @@ def create_app():
             return httpx.Response(200, text=document, headers={"content-type": "text/html"})
         raise AssertionError("Unexpected upstream route")
 
-    return production_app(os.environ["BILI_DATABASE_PATH"], profile_transport=httpx.MockTransport(upstream))
+    def media_download(request):
+        if os.environ.get("FIXTURE_OFFLINE") == "1":
+            raise httpx.ConnectError("FICTIONAL_SECRET_MEDIA_OFFLINE", request=request)
+        assert media_fixture and str(request.url) in media_sources
+        content = FAILED_MEDIA_BYTES if request.url.path.endswith("/failed.svg") else MEDIA_BYTES
+        return httpx.Response(200, content=content, headers={"content-type": "image/svg+xml"})
+
+    return production_app(
+        os.environ["BILI_DATABASE_PATH"],
+        profile_transport=httpx.MockTransport(upstream),
+        media_transport=httpx.MockTransport(media_download),
+        media_uploader=FixtureMediaUploader() if os.environ.get("FIXTURE_MEDIA_UPLOADER") == "1" else None,
+    )

@@ -8,7 +8,13 @@ const imageSwipeThreshold = 50;
 const horizontalDominanceRatio = 1.5;
 const longImageHeightRatio = 2;
 
+export interface ImageOwner {
+  readonly type: 'dynamic' | 'comment';
+  readonly id: string;
+}
+
 export interface PreviewSession {
+  readonly owner: ImageOwner;
   readonly previewId: string;
   readonly pageEntryId: string;
   readonly images: readonly DynamicImage[];

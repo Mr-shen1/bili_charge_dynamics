@@ -1,4 +1,4 @@
-import type { ArchiveMetadata, ArchiveWorkState, Comment, CommentBatch, DetailResult, Dynamic, DynamicBatch, DynamicReader, ReadResult, Reply, ReplyBatch, User } from './contracts';
+import type { ArchiveMetadata, ArchiveWorkState, Comment, CommentBatch, DetailResult, Dynamic, DynamicImage, DynamicBatch, DynamicReader, ReadResult, Reply, ReplyBatch, User } from './contracts';
 import { replyAppendSize, replyPreviewSize } from './contracts';
 import { isValidId } from './identifiers';
 import { isRecord as record } from './guards';
@@ -39,6 +39,23 @@ function commentAttempt(value: unknown): value is NonNullable<ArchiveMetadata['c
 function version(value: unknown): value is string | null {
   return value === null || typeof value === 'string';
 }
+function mediaStatus(value: unknown): value is NonNullable<DynamicImage['archiveStatus']> {
+  return value === 'pending' || value === 'success' || value === 'failed';
+}
+function parseImages(raw: unknown, dynamicId: string): DynamicImage[] {
+  // 旧冻结 cursor 未携带 media；绝不由 media_sources 推断上传成功。
+  if (!Array.isArray(raw)) return [];
+  const images: DynamicImage[] = [];
+  for (const item of raw) {
+    if (!record(item) || typeof item.id !== 'string' || !item.id || images.some(image => image.id === item.id)
+      || !record(item.owner) || item.owner.type !== 'dynamic' || item.owner.id !== dynamicId
+      || !mediaStatus(item.status)) continue;
+    const publicUrl = item.status === 'success' ? url(item.public_url) : null;
+    images.push({ id: item.id, thumbnailUrl: publicUrl, previewUrl: publicUrl,
+      width: count(item.width) || null, height: count(item.height) || null, archiveStatus: item.status });
+  }
+  return images;
+}
 function parseArchive(raw: unknown): Dynamic | null {
   if (!record(raw) || !isValidId(raw.id) || !record(raw.author) || !isValidId(raw.author.id)
     || typeof raw.text !== 'string' || !contentState(raw.content_state) || !contentState(raw.last_attempt)
@@ -65,7 +82,7 @@ function parseArchive(raw: unknown): Dynamic | null {
     id: raw.id,
     author: { id: raw.author.id, nickname: typeof raw.author.nickname === 'string' && raw.author.nickname.trim() ? raw.author.nickname : null,
       avatarUrl: url(raw.author.avatar_url) },
-    publishedAt: time(raw.published_at), text: raw.text, commentCount: count(raw.source_comment_count), images: [],
+    publishedAt: time(raw.published_at), text: raw.text, commentCount: count(raw.source_comment_count), images: parseImages(raw.media, raw.id),
     archive: { title: typeof raw.title === 'string' && raw.title.trim() ? raw.title : null,
       editedAt: time(raw.edited_at, true), editStatus: status, contentState: raw.content_state,
       lastAttempt: raw.last_attempt, localCommentCount: Number(raw.local_comment_count),
