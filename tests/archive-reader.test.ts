@@ -17,6 +17,57 @@ const reply = {
   like_count: 0, reply_to: { id: '456', nickname: '回复目标', avatar_url: 'https://avatar.example.test/target.jpg' },
 };
 describe('生产 ArchiveReader', () => {
+  it('根评论保留自己的有序图片组与上传状态，不混入动态、其他根评论或回复', async () => {
+    const publicUrl = 'https://oss.example.test/comment/a%20b.jpg';
+    const media = [
+      { id: 'comment-third', owner: { type: 'comment', id: rootComment.id }, status: 'success', public_url: publicUrl, width: 800, height: 2400 },
+      { id: 'comment-first', owner: { type: 'comment', id: rootComment.id }, status: 'pending', public_url: publicUrl, width: null, height: null },
+      { id: 'comment-second', owner: { type: 'comment', id: rootComment.id }, status: 'failed', public_url: publicUrl, width: 400, height: 300 },
+      { id: 'dynamic', owner: { type: 'dynamic', id: archive.id }, status: 'success', public_url: publicUrl },
+      { id: 'other-root', owner: { type: 'comment', id: '999' }, status: 'success', public_url: publicUrl },
+      { id: 'reply', owner: { type: 'reply', id: rootComment.id }, status: 'success', public_url: publicUrl },
+    ];
+    const reader = createArchiveReader(async () => Response.json({ items: [{ ...rootComment, text: '',
+      media_sources: media.slice(0, 3).map(() => ({ url: 'https://source.example.test/not-a-fallback.jpg', width: null, height: null })),
+      media, previous_media: [media[0]] }], next_cursor: null }));
+    expect(await reader.readComments({ dynamicId: archive.id, sort: 'hot', signal })).toMatchObject({ status: 'success', data: {
+      items: [{ id: rootComment.id, text: '', pendingMediaCount: 0, images: [
+        { id: 'comment-third', thumbnailUrl: publicUrl, previewUrl: publicUrl, width: 800, height: 2400, archiveStatus: 'success' },
+        { id: 'comment-first', thumbnailUrl: null, previewUrl: null, width: null, height: null, archiveStatus: 'pending' },
+        { id: 'comment-second', thumbnailUrl: null, previewUrl: null, width: 400, height: 300, archiveStatus: 'failed' },
+      ] }], nextCursor: null,
+    } });
+  });
+  it('评论十二图不截断，坏地址局部降级，旧冻结来源仍待归档且不回退旧成功组', async () => {
+    const media = Array.from({ length: 12 }, (_, index) => ({ id: `comment-${index}`,
+      owner: { type: 'comment', id: rootComment.id }, status: 'success',
+      public_url: 'https://oss.example.test/comment.jpg', width: null, height: null }));
+    const read = (item: unknown) => createArchiveReader(async () => Response.json({ items: [item], next_cursor: null }))
+      .readComments({ dynamicId: archive.id, sort: 'hot', signal });
+    const full = await read({ ...rootComment, media });
+    if (full.status !== 'success') throw new Error('Expected readable comments');
+    expect(full.data.items[0]?.images).toHaveLength(12);
+    expect(full.data.items[0]?.images?.map(image => image.id)).toEqual([
+      'comment-0', 'comment-1', 'comment-2', 'comment-3', 'comment-4', 'comment-5',
+      'comment-6', 'comment-7', 'comment-8', 'comment-9', 'comment-10', 'comment-11',
+    ]);
+    for (const public_url of ['http://oss.example.test/image.jpg', 'javascript:FICTIONAL_SECRET',
+      'https://user:FICTIONAL_SECRET@oss.example.test/image.jpg', '//oss.example.test/image.jpg', null]) {
+      expect(await read({ ...rootComment, media: [{ ...media[0], public_url }] })).toMatchObject({ status: 'success', data: {
+        items: [{ text: rootComment.text, images: [{ archiveStatus: 'success', thumbnailUrl: null, previewUrl: null }] }],
+      } });
+    }
+    expect(await read({ ...rootComment, media: [media[0], media[0], { ...media[0], id: '', status: 'success' },
+      { ...media[0], id: 'invalid-status', status: 'unknown' }] })).toMatchObject({ status: 'success', data: {
+        items: [{ images: [{ id: 'comment-0' }] }],
+      } });
+    expect(await read({ ...rootComment, previous_media: media })).toMatchObject({ status: 'success', data: {
+      items: [{ pendingMediaCount: 1 }],
+    } });
+    const legacy = await read({ ...rootComment, previous_media: media });
+    if (legacy.status !== 'success') throw new Error('Expected readable legacy comments');
+    expect(legacy.data.items[0]?.images).toBeUndefined();
+  });
   it('保留当前媒体整组、顺序和上传状态，只暴露成功的公开 URL，不回退来源或旧组', async () => {
     const publicUrl = 'https://oss.example.test/bucket/a%20b.jpg?literal=1';
     const media = Array.from({ length: 12 }, (_, position) => ({

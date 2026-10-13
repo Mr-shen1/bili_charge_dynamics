@@ -42,13 +42,13 @@ function version(value: unknown): value is string | null {
 function mediaStatus(value: unknown): value is NonNullable<DynamicImage['archiveStatus']> {
   return value === 'pending' || value === 'success' || value === 'failed';
 }
-function parseImages(raw: unknown, dynamicId: string): DynamicImage[] {
+function parseImages(raw: unknown, owner: { type: 'dynamic' | 'comment'; id: string }): DynamicImage[] {
   // 旧冻结 cursor 未携带 media；绝不由 media_sources 推断上传成功。
   if (!Array.isArray(raw)) return [];
   const images: DynamicImage[] = [];
   for (const item of raw) {
     if (!record(item) || typeof item.id !== 'string' || !item.id || images.some(image => image.id === item.id)
-      || !record(item.owner) || item.owner.type !== 'dynamic' || item.owner.id !== dynamicId
+      || !record(item.owner) || item.owner.type !== owner.type || item.owner.id !== owner.id
       || !mediaStatus(item.status)) continue;
     const publicUrl = item.status === 'success' ? url(item.public_url) : null;
     images.push({ id: item.id, thumbnailUrl: publicUrl, previewUrl: publicUrl,
@@ -82,7 +82,7 @@ function parseArchive(raw: unknown): Dynamic | null {
     id: raw.id,
     author: { id: raw.author.id, nickname: typeof raw.author.nickname === 'string' && raw.author.nickname.trim() ? raw.author.nickname : null,
       avatarUrl: url(raw.author.avatar_url) },
-    publishedAt: time(raw.published_at), text: raw.text, commentCount: count(raw.source_comment_count), images: parseImages(raw.media, raw.id),
+    publishedAt: time(raw.published_at), text: raw.text, commentCount: count(raw.source_comment_count), images: parseImages(raw.media, { type: 'dynamic', id: raw.id }),
     archive: { title: typeof raw.title === 'string' && raw.title.trim() ? raw.title : null,
       editedAt: time(raw.edited_at, true), editStatus: status, contentState: raw.content_state,
       lastAttempt: raw.last_attempt, localCommentCount: Number(raw.local_comment_count),
@@ -113,6 +113,7 @@ function parseComment(raw: unknown, dynamicId: string): Comment | null {
       || !(source.width === null || count(source.width) !== null)
       || !(source.height === null || count(source.height) !== null)) return null;
   }
+  const images = parseImages(raw.media, { type: 'comment', id: raw.id });
   return {
     // 未知身份使用非合法来源 ID，永远不匹配合法动态作者 ID。
     id: raw.id, author: { id: raw.author.id ?? '',
@@ -120,8 +121,9 @@ function parseComment(raw: unknown, dynamicId: string): Comment | null {
       avatarUrl: url(raw.author.avatar_url) },
     publishedAt: time(raw.published_at), text: raw.text ?? '',
     likeCount: count(raw.like_count), replyCount: count(raw.source_reply_count),
-    // #16 只保留待归档数，不暴露/请求来源 URL；图片读取由 #22 负责。
-    pendingMediaCount: raw.media_sources.length,
+    // 旧冻结评论只含来源元信息时仍表达待归档，不回退来源 URL。
+    ...(raw.media === undefined ? {} : { images }),
+    pendingMediaCount: Math.max(0, raw.media_sources.length - images.length),
   };
 }
 
