@@ -6,7 +6,7 @@
 
 **Blocked by:** [15](15-root-comment-archive.md)
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 ## 依据与交付边界
 
@@ -29,3 +29,11 @@
 T3 从结构真实 JSON 穿透根回复同步、回复中途页失败和无新信号重试；T2 用真实 SQLite/HTTP 验证父级、排序、cursor、重开和保留。以公开状态确认整轮完成不会早于所有必要根/回复页成功。
 
 ## Comments
+
+已实现原始楼中楼JSON → 公开initial → v7真实SQLite → 回复HTTP及生产Adapter：必要来源分页、动态／根／作者／parent关系、逐根状态和整轮checkpoint、失败无新信号重试、迁移／重开／生命周期保留。首3续10持久内容快照无TTL，cursor绑定动态／根／资源／读取上下文；普通读取失败原批重试，失效须显式重新开始，不静默混合范围。
+
+契约见 [归档API](../../../docs/backend/api/archive-api.md#17-楼中楼完整归档与读取)，实施协议见 [计划](../reply-protocol-plan.md)，自动化与分轴审查证据见 [acceptance-17.md](../acceptance-17.md)。初审规范轴6项判断性发现、规格轴1项确证及1项边界提醒已分别处理；不自动勾选父票AC，也不宣称#18页面／#25调度／媒体已完成。
+
+最终验证：`uv run pytest backend/tests -q` 208通过；回复／根／迁移定向61通过（回复27项）。nvm下 `pnpm exec vitest run tests/archive-reader.test.ts` 28通过、`pnpm test` 190通过、`pnpm typecheck`、`pnpm build`、`git diff --check`通过。全量首次发现旧DTO新增字段及已移除stub断言，修正测试装配后重跑通过。另以RED/GREEN修复旧零→新未知时可能跳过必要回复页：仅本轮原始根观察明确零才可省略来源页。
+
+未验证：本票Playwright、正式真机、真实匿名上游／权限／全量／计数口径／长期稳定、OSS和容量。持久回复快照无TTL／回收，存在增长风险；API无鉴权边界不变。#18仍须验证生产逐根状态、展开与cursor／历史恢复。待人工按本票证据核验。

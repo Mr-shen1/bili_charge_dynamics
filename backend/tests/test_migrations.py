@@ -23,18 +23,18 @@ def test_empty_unversioned_database_migrates_and_reopens(tmp_path):
     with client_for(path) as client:
         assert client.get(BASE).json() == saved
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 6
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 7
 
 
 def test_future_database_refuses_startup_without_downgrading(tmp_path, caplog):
     path = tmp_path / "FICTIONAL_SECRET_FUTURE.sqlite"
     with sqlite3.connect(path) as database:
-        database.execute("PRAGMA user_version = 7")
+        database.execute("PRAGMA user_version = 8")
     with pytest.raises(RuntimeError, match="Unsupported database schema version"):
         with client_for(path):
             pytest.fail("A future schema must not serve requests")
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 7
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 8
     assert "FICTIONAL_SECRET" not in caplog.text
 
 
@@ -121,7 +121,9 @@ def test_v4_indefinite_cursor_is_invalidated_without_losing_archive(tmp_path):
         database.execute("INSERT INTO archives VALUES ('123', ?, ?, 0)", (UID, json.dumps(saved)))
         database.execute("INSERT INTO archive_pages VALUES (?, 10, ?)", (token, json.dumps({"items": [saved], "next_cursor": None})))
     saved = {**saved, "local_reply_count": 0, "root_comments_last_attempt": "pending",
-             "synced_root_comment_count": None, "work": {"comments": "pending", "replies": "pending"}}
+             "synced_root_comment_count": None, "work": {"comments": "pending", "replies": "pending"},
+             "replies_last_attempt": "pending", "comments_last_attempt": "pending",
+             "synced_comment_count": None, "synced_reply_comment_count": None}
     with client_for(path) as client:
         assert client.get("/api/archive/dynamics", params={"cursor": token}).status_code == 422
         assert client.get("/api/archive/dynamics/123").json() == saved

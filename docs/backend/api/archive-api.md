@@ -1,6 +1,6 @@
-# 指定目标、首次归档与归档读取接口（02 / 13 / 15 后端）
+# 指定目标、首次归档与归档读取接口（02 / 13 / 15 / 17 后端）
 
-02 交付指定目标的首次正文归档和基础读取；13 后端扩展全部／单 UP 读取与持久身份列表；15 增加已有根评论首次归档及最热／最新读取。不包含近期目标选择、周期检查、回复采集或媒体上传，前端 Adapter／最小路由契约见 [archive-api-client.md](archive-api-client.md)，具体自动化证据见 [13 验收记录](../../../.scratch/backend-integration/acceptance-13.md)。管理身份及配置契约见 [management-api.md](management-api.md)，来源证据及限制见 [backend-feasibility.md](../evidence/backend-feasibility.md)。
+02 交付指定目标的首次正文归档和基础读取；13 后端扩展全部／单 UP 读取与持久身份列表；15 增加已有根评论首次归档及最热／最新读取，17 补齐楼中楼来源分页与持久读取。不包含近期目标选择、周期检查或媒体上传，前端 Adapter／最小路由契约见 [archive-api-client.md](archive-api-client.md)，具体自动化证据见 [13 验收记录](../../../.scratch/backend-integration/acceptance-13.md)。管理身份及配置契约见 [management-api.md](management-api.md)，来源证据及限制见 [backend-feasibility.md](../evidence/backend-feasibility.md)。
 
 ## 公开边界
 
@@ -14,6 +14,7 @@
 | `GET /api/archive/dynamics` | `scope=all\|up`、条件必需的 `uid`、`limit`、可选 `cursor` | `{items: Archive[], next_cursor: string \| null}` |
 | `GET /api/archive/dynamics/{id}` | 无 | `Archive`；本地不存在时 `404` |
 | `GET /api/archive/dynamics/{id}/comments` | `sort=hot\|latest`、`limit`、可选 `cursor` | `{items: RootComment[], next_cursor: string \| null}` |
+| `GET /api/archive/dynamics/{id}/comments/{root_id}/replies` | 首批 `limit=3`，续批 `limit=10`，可选 `cursor` | `{items: Reply[], next_cursor, source_reply_count, local_reply_count, replies_last_attempt, synced_source_reply_count}` |
 
 UID 和动态 ID 必须是十进制字符串，不经 JavaScript Number 转换。不符返回 `409 TARGET_AUTHOR_MISMATCH`，无法确认返回 `502 TARGET_UNVERIFIED`；都不建立关联。上游请求不在数据库事务内，错误只返回固定脱敏提示，不传递上游响应、URL、请求头或异常文本。
 
@@ -56,9 +57,9 @@ curl --fail-with-body -X POST http://127.0.0.1:8000/api/sync/initial \
 - `published_at` 是独立的绝对北京时间，明确 `+08:00`，精度到秒；未知为 `null`，不使用编辑时间补值。
 - `edited_at` 仅来自页面 HTML 的 `__INITIAL_STATE__.detail.modules`，按 `MODULE_TYPE_AUTHOR` 读取“编辑于”日期时间。保存来源时区和分钟精度；没有标记不是“确认未编辑”。`edit_status` 为 `observed`、`unknown` 或 `error`，未知/失败不清除旧可信值。
 - `title` 是可空独立标题；`text`、`content_state` 表达成功正文（包括成功空）、受限或失败；`last_attempt` 独立描述最近尝试。失败不覆盖旧成功正文。OPUS 的通用 detail `summary` 不是全文证据；全文来自页面 CONTENT 的有序段落，未取得全文不以摘要冒充成功归档。
-- `source_comment_count` 为动态来源总数（含根评论和回复，可未知），`local_comment_count` 为本地已归档根评论数，15 新增 `local_reply_count`（本阶段为 0，未采回复）。三者不互相替代；错误不覆盖旧可信值。
+- `source_comment_count` 为动态来源总数（含根评论和回复，可未知），`local_comment_count` 为本地已归档根评论数，15 新增 `local_reply_count`（15 阶段为 0；17 起为真实本地回复数）。三者不互相替代；错误不覆盖旧可信值。
 - `media_sources` 保存顺序、来源 URL 和可用尺寸；`comment_locator` 保存后续评论定位信息。本票不上传媒体，浏览器不把来源业务图当作已归档图片。
-- `observed_version` 与 `synced_version` 分开，`work.text` 仅在对应版本成功时推进。15 的 `work.comments` 仅表示根评论分项，新增 `work.replies` 独立待处理，`work.media` 仍待处理。观察成功、正文成功或根评论成功不代表全部归档完成。
+- `observed_version` 与 `synced_version` 分开，`work.text` 仅在对应版本成功时推进。15 的 `work.comments` 仅表示根评论分项，17 的 `work.replies` 表示该轮必要回复分项；`work.media` 仍独立待处理。观察成功、正文成功或根评论成功不代表全部归档完成。
 
 ## 15 根评论契约
 
@@ -90,6 +91,43 @@ curl --fail-with-body -X POST http://127.0.0.1:8000/api/sync/initial \
 15 的评论快照**不设 TTL**，不沿用动态列表的 15 分钟过期。伪造、格式错误、跨父级／排序／资源、改变批量、数据库恢复后丢失的标记返回 `422 CURSOR_INVALID`（固定提示“评论读取标记无效，请重新开始读取”）；不能重试同标记恢复，须显式不带 cursor 开始新快照并丢弃旧分页视图，不静默拼接新旧批。v5→v6 为旧归档详情／新的列表补齐上述新增根状态，旧冻结的动态分页内容保持原样（可能尚无新增字段）；普通启动及迁移不失效有效的动态 cursor。持久评论快照会持续占用空间，本票无回收、容量或无限存储承诺。
 
 自动化证据见 [15 验收记录](../../../.scratch/backend-integration/acceptance-15.md)，静态协议依据见 [来源协议证据](../evidence/source-protocol-evidence.md#15-根评论协议)。
+
+## 17 楼中楼完整归档与读取
+
+### 来源、逐根及整轮成功
+
+沿用公开 initial 和正文统计口径，在根页成功后遍历本轮根集合；本轮原始根响应明确回复数为零的根无需请求回复页，非零或未知均独立请求（持久旧零不能代替新的未知观察） `/x/v2/reply/reply`（可信 locator 的 oid/type、根 ID、ps=20、递增 pn）。不保存根页内嵌的三条预览，不扫描其他动态或补入历史目标。
+
+响应必须确认根／资源／页码／批量／有效非负 `page.count` 与条目关系；完整读取至明确空页，非首屏空尾页复读确认，短页不提前结束。页间 count 变化、重复页、不前进、结构／业务／HTTP 失败，或本轮唯一回复数与该 count 不符均为失败；已取得页以独立短事务保留。来源页不是事务快照，未引起 count 变化的来源移动仍可能漏检；真实权限和长期全量须另证。`page.count` 仅代表该根来源回复数，不覆盖动态评论观察数。
+
+Archive 新增：
+
+- `replies_last_attempt`：该轮回复分项的 `pending|success|failed|unconfirmed`；根页未成功时回复未确认。
+- `comments_last_attempt`：整轮根＋回复状态；任何必要根／回复页失败均不为 success。
+- `synced_reply_comment_count`：仅该轮必要回复页全部成功后提交其开始处理的动态来源计数。
+- `synced_comment_count`：仅根与回复分项均成功、处理观察版本仍匹配时提交整轮 checkpoint。未知观察成功后仍为 null，不伪造零。
+
+`work.comments` 继续仅证明 #15 根页，根页成功可以先于回复；`work.replies` 在回复失败时 pending。领取根工作先持久标记整轮／回复 pending，失败保留旧 checkpoint 与归档；停止、删除配置／目标不删除数据。逐根尝试与成功来源回复数独立持久保存；单根失败不阻断其他根，HTTP 可携带失败状态。重复 initial 幂等，关闭重开后无新信号也能重试；generation 拒绝旧执行覆盖新记录／成功状态。网络等待不持有 SQLite 事务。
+
+### Reply DTO 与独立计数
+
+`id/dynamic_id/root_id` 必为字符串；`parent_id` 为可用目标条目字符串 ID 或 null。`author:{id,nickname,avatar_url}` 允许缺失，时间为明确 `+08:00` 秒精度或 null；`text/like_count` 区分未知与真实空／零。后续未知不擦除旧可信作者、正文、时间、点赞和 parent；不增加回复图片。
+
+`reply_to` 为同根 parent 对应条目的作者对象，或 null。根与跨页回复目标均从完整本地集合解析；目标不存在／无可确认作者 ID 时不拼伪造作者，`content.members` 只是 @ 提及者，不能作为关系证据。目标作者与内容在首读一并冻结。
+
+回复批次独立返回 `source_reply_count`（根来源数，可 null）、`local_reply_count`（完整该根本地数，含保留历史）、`replies_last_attempt`（逐根状态，尚未处理为 pending）、`synced_source_reply_count`（该根最近成功页集合的来源数，可 null）。这些元信息与 items 一并冻结，不以加载条数替代本地数，也不因本地为零宣称已成功空归档。
+
+### HTTP、排序与 cursor
+
+父动态或根不在本地对应关系中为 `404 NOT_FOUND`。首批固定最多 3、续批固定最多 10；`limit` 可省略，分别等价于 3／10，显式值只允许对应批量。首批非法批量、未知／重复 query 返回 `422 INVALID_INPUT`；续批改变批量为 `422 CURSOR_INVALID`（超出 Query 允许域的值仍 INVALID_INPUT）。调用方累计可读 3/13/23/25，结束为 next_cursor=null。
+
+完整同根集合先按时间升序、时间 null 后置、ID BINARY 字符串升序排序，不转数字或使用语言环境比较。首批短事务冻结全部内容／目标／计数／顺序；更新和插入只对新首批可见，旧 cursor 不重不漏。持久 cursor 绑定回复资源、动态、根、时间正序、固定 3→10 批量和该次读取上下文；重读原批与数据库重开返回相同内容及 next_cursor。
+
+回复快照**不设 TTL**，不沿用动态列表 15 分钟；普通传输／503 STORAGE_UNAVAILABLE 失败保留原 cursor 可重试。格式无效、伪造、跨根／动态／资源、读取上下文因数据库恢复而缺失返回 `422 CURSOR_INVALID`，使用既有固定提示“评论读取标记无效，请重新开始读取”。须显式无 cursor 开始新快照并替换旧分页视图，不静默拼接另一范围。无回收／容量承诺，持久快照有增长风险。
+
+v6→v7 新增回复、逐根状态与回复分页表，旧根记录及有效根／动态 cursor 内容不改写；旧 Archive 补齐 pending 和 null 状态，不能从旧根成功推断整轮成功。生产 Adapter 现支持 readReplies 并保留可选计数／状态，页面展开／收起及历史恢复由 #18。
+
+自动化证据见 [17 验收记录](../../../.scratch/backend-integration/acceptance-17.md)，固定资料见 [来源协议证据](../evidence/source-protocol-evidence.md#17-楼中楼协议)。
 
 ## 安全及证据
 

@@ -200,6 +200,8 @@ def test_readable_full_page_archives_metadata_media_locator_and_version_idempote
             "title": None, "text": "虚构全文\n第二行 <b>仍是文本</b> 🙂", "content_state": "success", "last_attempt": "success",
             "source_comment_count": 7, "local_comment_count": 0, "local_reply_count": 0,
             "root_comments_last_attempt": "failed", "synced_root_comment_count": None,
+            "comments_last_attempt": "failed", "replies_last_attempt": "unconfirmed",
+            "synced_comment_count": None, "synced_reply_comment_count": None,
             "media_sources": [{"url": "https://example.invalid/first.png", "width": 640, "height": 480},
                               {"url": "https://example.invalid/second.png", "width": 200, "height": 1200}],
             "comment_locator": {"oid": "99123", "type": 17},

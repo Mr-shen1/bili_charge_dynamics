@@ -34,11 +34,15 @@ export interface ArchiveMetadata {
   readonly localCommentCount: number;
   readonly localReplyCount?: number | null;
   readonly rootCommentsLastAttempt?: 'pending' | 'success' | 'failed' | 'unconfirmed';
+  readonly commentsLastAttempt?: 'pending' | 'success' | 'failed' | 'unconfirmed';
+  readonly repliesLastAttempt?: 'pending' | 'success' | 'failed' | 'unconfirmed';
+  readonly syncedCommentCount?: number | null;
+  readonly syncedReplyCommentCount?: number | null;
   readonly mediaSources: readonly { readonly url: string; readonly width: number | null; readonly height: number | null }[];
   readonly commentLocator: Readonly<Record<string, unknown>> | null;
   readonly observedVersion: string | null;
   readonly syncedVersion: string | null;
-  readonly work: { readonly text: ArchiveWorkState; readonly media: ArchiveWorkState; readonly comments: ArchiveWorkState };
+  readonly work: { readonly text: ArchiveWorkState; readonly media: ArchiveWorkState; readonly comments: ArchiveWorkState; readonly replies?: 'pending' | 'success' };
 }
 
 export type CommentSort = 'hot' | 'latest';
@@ -64,6 +68,10 @@ export interface Reply extends Omit<Comment, 'replyCount' | 'pendingMediaCount'>
 export interface ReplyBatch {
   readonly items: readonly Reply[];
   readonly nextCursor: string | null;
+  readonly sourceReplyCount?: number | null;
+  readonly localReplyCount?: number | null;
+  readonly repliesLastAttempt?: 'pending' | 'success' | 'failed' | 'unconfirmed';
+  readonly syncedSourceReplyCount?: number | null;
 }
 
 export interface CommentBatch {

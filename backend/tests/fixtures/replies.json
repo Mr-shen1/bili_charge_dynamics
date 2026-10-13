@@ -1,0 +1,19 @@
+{
+  "code": 0, "message": "0",
+  "data": {
+    "page": {"num": 1, "size": 20, "count": 5},
+    "root": {
+      "rpid_str": "900719925474099312346", "oid": 99123, "type": 17,
+      "root_str": "0", "parent_str": "0", "rcount": 5,
+      "member": {"mid": "900719925474099312345", "uname": "虚构星海", "avatar": "https://example.invalid/avatar.png"},
+      "content": {"message": "已有根评论"}
+    },
+    "replies": [
+      {"rpid_str": "900719925474099312350", "oid": 99123, "type": 17, "root_str": "900719925474099312346", "parent_str": "900719925474099312346", "ctime": 1791513500, "like": 1, "member": {"mid": "202", "uname": "虚构读者", "avatar": null}, "content": {"message": "已有回复 <b>文本</b> 🙂"}},
+      {"rpid_str": "900719925474099312351", "oid": 99123, "type": 17, "root_str": "900719925474099312346", "parent_str": "900719925474099312350", "ctime": 1791513501, "like": 0, "member": {"mid": "303", "uname": "虚构对话者", "avatar": null}, "content": {"message": "跨回复对话", "members": [{"mid": "404", "uname": "仅被提及者"}]}},
+      {"rpid_str": "900719925474099312352", "oid": 99123, "type": 17, "root_str": "900719925474099312346", "parent_str": "888", "ctime": 1791513502, "like": 0, "member": {}, "content": {"message": "目标不在归档"}},
+      {"rpid_str": "900719925474099312353", "oid": 99123, "type": 17, "root_str": "900719925474099312346", "parent_str": "900719925474099312346", "ctime": 1791513503, "like": 0, "member": {"mid": "202", "uname": "虚构读者"}, "content": {"message": "第四条"}},
+      {"rpid_str": "900719925474099312354", "oid": 99123, "type": 17, "root_str": "900719925474099312346", "parent_str": "900719925474099312346", "ctime": 1791513504, "like": 0, "member": {"mid": "202", "uname": "虚构读者"}, "content": {"message": "第五条"}}
+    ]
+  }
+}
