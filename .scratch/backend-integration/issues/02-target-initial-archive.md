@@ -9,8 +9,8 @@
 ## 依据
 
 - [父规格](../spec.md)：故事 3、10–15、32–35、41、42、44、47、50–52、55、57、60、64；I1–I3、I5、I6、I8–I10、I12；T1–T3。
-- [SRS](../../../docs/SRS.md)：FR-02–FR-05、FR-11–FR-15、FR-17–FR-19、DR-01、DR-02、DR-04、DR-05、NFR-04、NFR-05；AC-03、AC-04、AC-13–AC-15、AC-17、AC-18、AC-22、AC-24、AC-26、AC-28、AC-29（首次正文与目标范围）。
-- [HLD](../../../docs/HLD.md)：第 2.1–2.3、3、9.3 节；[参考与证据边界](../../../docs/backend-feasibility.md)。
+- [SRS](../../../docs/product/SRS.md)：FR-02–FR-05、FR-11–FR-15、FR-17–FR-19、DR-01、DR-02、DR-04、DR-05、NFR-04、NFR-05；AC-03、AC-04、AC-13–AC-15、AC-17、AC-18、AC-22、AC-24、AC-26、AC-28、AC-29（首次正文与目标范围）。
+- [HLD](../../../docs/design/HLD.md)：第 2.1–2.3、3、9.3 节；[参考与证据边界](../../../docs/backend/evidence/backend-feasibility.md)。
 
 ## 核验标准
 

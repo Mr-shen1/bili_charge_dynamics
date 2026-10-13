@@ -1,6 +1,6 @@
 # 票据 01–02 后端
 
-提供 UP 身份/配置管理、指定动态关联、显式一次初始化及 SQLite 归档读取。没有周期调度、近期目标发现、评论采集或 OSS 上传；不宣称全部归档完成。管理基础契约见 `docs/management-api.md`，02 测试证据见 [acceptance-02.md](acceptance-02.md)，字段依据见 [PROTOCOL_EVIDENCE.md](PROTOCOL_EVIDENCE.md)。
+提供 UP 身份/配置管理、指定动态关联、显式一次初始化及 SQLite 归档读取。没有周期调度、近期目标发现、评论采集或 OSS 上传；不宣称全部归档完成。管理基础契约见 `docs/backend/api/management-api.md`，02 测试证据见 [backend-acceptance-02.md](../.scratch/backend-integration/evidence/backend-acceptance-02.md)，字段依据见 [source-protocol-evidence.md](../docs/backend/evidence/source-protocol-evidence.md)。
 
 ## 运行
 

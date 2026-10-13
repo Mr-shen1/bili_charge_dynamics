@@ -2,15 +2,26 @@
 
 **What to build:** 阅读者默认在 `/` 浏览所有 UP 的保留归档，通过横向头像昵称选择条进入 `/ups/:upId`；列表先全局排序再分页，卡片以 B站裁剪样式展示实际作者，点击或键盘进入详情顶部，跨范围返回恢复各自阅读进度。
 
-**Blocked by:** [02: 指定动态首次归档与阅读](02-target-initial-archive.md)
+**Blocked by:** [13: scope 读取](13-scoped-archive-reading.md)、[14: 导航与卡片](14-scope-navigation-cards.md)
 
-**Status:** ready-for-agent
+**Status:** needs-triage
+
+**票据角色:** 汇总（等待维护者根据子票证据核验收口，不直接派工实施）
+
+## 执行拆分（汇总票，不直接派工）
+
+原业务前置 #02 已由用户确认完成。以下子票共同覆盖本票原清单；本票状态仅为分诊标签，不表示实现完成。统一规则与顺序见[执行计划](../implementation-plan.md)。
+
+- [13](13-scoped-archive-reading.md)：真实 SQLite/HTTP→生产 Adapter→最小 scope 路由，负责全局排序、cursor、一致性及身份保留；依赖 #02。
+- [14](14-scope-navigation-cards.md)：选择条、卡片/气泡、六行布局、四宽度及跨 scope/访问恢复；依赖 #13。
+
+两票交付后核对下列原验收范围，不能只完成 API 或只换 UI 就关闭本汇总票。
 
 ## 依据
 
 - [父规格](../spec.md)：故事 1–17、28–35、45、46、60–63；I3、I8–I11；T1、T2。
-- [SRS](../../../docs/SRS.md)：FR-01–FR-05、FR-10–FR-13、FR-19、DR-01、DR-02、NFR-01–NFR-04；AC-01–AC-05、AC-12–AC-18、AC-21、AC-29、AC-31（本票范围）。
-- [HLD](../../../docs/HLD.md)：第 3–6、8、9 节；[UI 文字规范](../../../docs/ui-reference.md)。
+- [SRS](../../../docs/product/SRS.md)：FR-01–FR-05、FR-10–FR-13、FR-19、DR-01、DR-02、NFR-01–NFR-04；AC-01–AC-05、AC-12–AC-18、AC-21、AC-29、AC-31（本票范围）。
+- [HLD](../../../docs/design/HLD.md)：第 3–6、8、9 节；[UI 文字规范](../../../docs/design/ui-reference.md)。
 
 ## 核验标准
 

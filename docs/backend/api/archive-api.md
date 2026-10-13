@@ -1,6 +1,6 @@
 # 指定目标与首次归档接口（02）
 
-本票只交付指定目标的首次正文归档和基础读取，不包含近期目标选择、周期检查、评论采集或媒体上传。管理身份及配置契约见 [management-api.md](management-api.md)，来源证据及限制见 [backend-feasibility.md](backend-feasibility.md)。
+本票只交付指定目标的首次正文归档和基础读取，不包含近期目标选择、周期检查、评论采集或媒体上传。管理身份及配置契约见 [management-api.md](management-api.md)，来源证据及限制见 [backend-feasibility.md](../evidence/backend-feasibility.md)。
 
 ## 公开边界
 
@@ -19,7 +19,7 @@ UID 和动态 ID 必须是十进制字符串，不经 JavaScript Number 转换�
 
 ### 执行一次
 
-先启动 [后端 API](../backend/README.md)，在 `/manage` 保存 UP、指定模式和已通过归属校验的目标，再由执行者显式调用：
+先启动 [后端 API](../../../backend/README.md)，在 `/manage` 保存 UP、指定模式和已通过归属校验的目标，再由执行者显式调用：
 
 ```sh
 # 替换为已保存的字符串 UID；这里只是虚构示例。

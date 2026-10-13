@@ -20,4 +20,4 @@
 
 这些公开文档描述 opus/detail JSON 的模块结构，不是当前 SSR HTML 的官方契约；仅佐证已记录 HTML 样本所用的结构，不访问该曾返回412的接口，也不证明所有网页提供完整内容。
 
-编辑信号依据仍只来自普通页面 HTML，见 [PROTOCOL_EVIDENCE.md](../backend/PROTOCOL_EVIDENCE.md)，不改用通用 detail 的显示时间，也不依赖曾返回412的 opus/detail JSON。
+编辑信号依据仍只来自普通页面 HTML，见 [source-protocol-evidence.md](source-protocol-evidence.md)，不改用通用 detail 的显示时间，也不依赖曾返回412的 opus/detail JSON。

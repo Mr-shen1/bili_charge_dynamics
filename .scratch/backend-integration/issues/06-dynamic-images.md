@@ -2,15 +2,26 @@
 
 **What to build:** 已选动态的全部图片经服务端下载并上传公开 OSS，阅读者通过实际归档 API 在基础列表和详情查看有序图片、预览及长图；某张上传或浏览器加载失败只影响该图，关闭预览后阅读位置和焦点保持。
 
-**Blocked by:** [02: 指定动态首次归档与阅读](02-target-initial-archive.md)
+**Blocked by:** [19: 动态媒体归档](19-dynamic-media-archive.md)、[20: 动态图阅读](20-dynamic-image-reading.md)
 
-**Status:** ready-for-agent
+**Status:** needs-triage
+
+**票据角色:** 汇总（等待维护者根据子票证据核验收口，不直接派工实施）
+
+## 执行拆分（汇总票，不直接派工）
+
+原业务前置 #02 已由用户确认完成。统一规则见[执行计划](../implementation-plan.md)，分诊标签不表示完成。
+
+- [19](19-dynamic-media-archive.md)：服务端下载/上传、媒体 owner/顺序、版本提交、独立重试与真实 HTTP；依赖 #02，自动化使用模拟 OSS。
+- [20](20-dynamic-image-reading.md)：生产 Adapter、网格、按需预览、长图、历史/焦点及浏览器坏图；依赖 #19，不等待新多 UP 列表。
+
+两票共同覆盖下列原清单；周期编辑自动联动在 #30 验证，真实云上传另由 #34 取证，不由模拟成功代替。
 
 ## 依据
 
 - [父规格](../spec.md)：故事 22–27、32、33、35、58、59、63、64；I3、I4、I7、I9–I12；T1–T3。
-- [SRS](../../../docs/SRS.md)：FR-02、FR-08–FR-12、FR-19、FR-20、DR-03–DR-05、NFR-02–NFR-04；AC-09–AC-12、AC-14–AC-18、AC-28–AC-30、AC-32（动态图范围）。
-- [HLD](../../../docs/HLD.md)：第 2.2、3.5、7–9 节。
+- [SRS](../../../docs/product/SRS.md)：FR-02、FR-08–FR-12、FR-19、FR-20、DR-03–DR-05、NFR-02–NFR-04；AC-09–AC-12、AC-14–AC-18、AC-28–AC-30、AC-32（动态图范围）。
+- [HLD](../../../docs/design/HLD.md)：第 2.2、3.5、7–9 节。
 
 ## 核验标准
 

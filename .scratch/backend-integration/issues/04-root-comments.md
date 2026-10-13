@@ -2,15 +2,26 @@
 
 **What to build:** 已选目标经公开首次同步入口保存实际可读的一级评论，阅读者在已有动态详情中看到 B站风格评论区，可切最热/最新并每批读取 20 条；正文受限或评论同步局部失败不影响已有内容阅读。
 
-**Blocked by:** [02: 指定动态首次归档与阅读](02-target-initial-archive.md)
+**Blocked by:** [15: 根评论归档](15-root-comment-archive.md)、[16: 评论区阅读](16-root-comment-reading.md)
 
-**Status:** ready-for-agent
+**Status:** needs-triage
+
+**票据角色:** 汇总（等待维护者根据子票证据核验收口，不直接派工实施）
+
+## 执行拆分（汇总票，不直接派工）
+
+原业务前置 #02 已由用户确认完成。统一规则与顺序见[执行计划](../implementation-plan.md)，分诊标签不表示完成。
+
+- [15](15-root-comment-archive.md)：协议 fixture→首次同步→真实 SQLite→分页 HTTP，负责根页失败/重开及根评论分项成功；依赖 #02。
+- [16](16-root-comment-reading.md)：生产 Adapter→已有详情，负责排序、20/20/5、作者标识、局部态和访问恢复；依赖 #15，不等待 #03 的列表改版。
+
+两票共同核对下列原清单；回复、图片和周期触发仍由对应后续票负责。
 
 ## 依据
 
 - [父规格](../spec.md)：故事 4、7、9、12–15、18、19、30、32–35、42、47、54、55、60；I5、I6、I8–I12；T1–T3。
-- [SRS](../../../docs/SRS.md)：FR-01–FR-04、FR-06、FR-10–FR-12、FR-18、FR-19、DR-01、DR-02、DR-04、DR-05、NFR-02、NFR-04；AC-01–AC-04、AC-06、AC-07、AC-12、AC-14、AC-15、AC-18、AC-24、AC-28、AC-31（根评论范围）。
-- [HLD](../../../docs/HLD.md)：第 2.3、3–6、9、10 节；[UI 文字规范](../../../docs/ui-reference.md)。
+- [SRS](../../../docs/product/SRS.md)：FR-01–FR-04、FR-06、FR-10–FR-12、FR-18、FR-19、DR-01、DR-02、DR-04、DR-05、NFR-02、NFR-04；AC-01–AC-04、AC-06、AC-07、AC-12、AC-14、AC-15、AC-18、AC-24、AC-28、AC-31（根评论范围）。
+- [HLD](../../../docs/design/HLD.md)：第 2.3、3–6、9、10 节；[UI 文字规范](../../../docs/design/ui-reference.md)。
 
 ## 核验标准
 

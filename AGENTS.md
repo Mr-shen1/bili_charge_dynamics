@@ -8,6 +8,10 @@ Issues and specs are tracked as Markdown in `.scratch/<feature-slug>/`. See `doc
 
 Use the default labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
 
+### Project docs
+
+需求、设计、接口、交付或票据规划：先从 `docs/README.md` 定位并阅读相关原文，再开展工作；该索引也说明正式文档与 `.scratch/` 任务证据的归属。
+
 ### Domain docs
 
 Single-context layout. See `docs/agents/domain.md`.

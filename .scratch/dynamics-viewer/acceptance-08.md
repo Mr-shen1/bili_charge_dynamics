@@ -1,6 +1,6 @@
 # 08 验收记录：静态产物直接访问与资源交付
 
-范围：[任务 08](issues/08-static-delivery.md)，参考[实施规格](spec.md)、[SRS](../../docs/SRS.md)、[HLD](../../docs/HLD.md)、README 和 acceptance-01 至 acceptance-07。只补静态交付机制，不重做 01–07、不提前实施 09。
+范围：[任务 08](issues/08-static-delivery.md)，参考[实施规格](spec.md)、[SRS](../../docs/product/SRS.md)、[HLD](../../docs/design/HLD.md)、README 和 acceptance-01 至 acceptance-07。只补静态交付机制，不重做 01–07、不提前实施 09。
 
 ## 基线与环境
 
@@ -13,7 +13,7 @@
 ## 交付内容
 
 - `deploy/nginx.conf`：入口重新验证、明确资源命名空间、哈希与版本图片长期缓存、未版本化资源重新验证、缺失资源 404 + no-store；SPA 页面回退不按扩展名分类。
-- `docs/static-delivery.md`：固定工具构建流程、Nginx 使用/验证步骤、缓存与素材路径契约、保留旧资源和原子发布切换、本期素材与后续 OSS/容量边界。README 已链接说明及验收记录。
+- `docs/deployment/static-delivery.md`：固定工具构建流程、Nginx 使用/验证步骤、缓存与素材路径契约、保留旧资源和原子发布切换、本期素材与后续 OSS/容量边界。README 已链接说明及验收记录。
 - `scripts/verify-static-delivery.mjs` / `pnpm test:delivery`：非特权独立 Nginx 上运行正常产物回归；临时同输入重建与 fault 构建模式隔离检查；实际构建更新及浏览器刷新演练。不添加新应用接口或运行时服务，不自动配置真实部署。
 - `tests/e2e/static-delivery.spec.ts`：沿用 HTTP/浏览器公开入口验证交付；只在 Nginx 目标运行，不把 Vite 行为充当 Nginx 证据。`playwright.config.ts` 增加外部 Nginx 目标，排除独立开发故障测试，不启动 Vite。
 

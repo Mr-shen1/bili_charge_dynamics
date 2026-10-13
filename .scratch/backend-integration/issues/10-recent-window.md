@@ -2,15 +2,26 @@
 
 **What to build:** 用户为各 UP 选择近期 N 模式后，采集进程沿用原充电图文识别规则逐页凑足 N 条合格目标或直到耗尽，新目标通过已有首次同步入口初始化；移出窗口只停止监控，旧归档仍可读。
 
-**Blocked by:** [08: 固定 15 秒检查与编辑同步](08-periodic-edit-sync.md)
+**Blocked by:** [27: 分页发现](27-recent-target-discovery.md)、[28: 窗口生命周期](28-recent-window-lifecycle.md)
 
-**Status:** ready-for-agent
+**Status:** needs-triage
+
+**票据角色:** 汇总（等待维护者根据子票证据核验收口，不直接派工实施）
+
+## 执行拆分（汇总票，不直接派工）
+
+原业务前置 [08](08-periodic-edit-sync.md) 细化为调度与版本同步能力；发现可先行，不必等正文 UI。统一规则见[执行计划](../implementation-plan.md)，分诊标签不表示完成。
+
+- [27](27-recent-target-discovery.md)：原识别规则跨页凑 N、可信发现结果/错误持久化与管理 HTTP；依赖 #23。
+- [28](28-recent-window-lifecycle.md)：可信结果发布窗口、新目标公共同步、移出/重纳入/旧发现迟到及管理展示；依赖 #24、#27。
+
+两票共同覆盖下列原清单；参考识别材料缺失时须报告并取得脱敏材料，不臆造规则或把失败当耗尽。
 
 ## 依据
 
 - [父规格](../spec.md)：故事 38–42、44、45、47、48、57、67；I1–I4；T2、T3。
-- [SRS](../../../docs/SRS.md)：FR-14–FR-16、FR-18、FR-19、DR-04、DR-05、NFR-05；AC-22–AC-25、AC-29、AC-33（近期目标范围）。
-- [HLD](../../../docs/HLD.md)：第 2.1、2.2、3.5、10.3 节；[脚本经验与证据边界](../../../docs/backend-feasibility.md)。
+- [SRS](../../../docs/product/SRS.md)：FR-14–FR-16、FR-18、FR-19、DR-04、DR-05、NFR-05；AC-22–AC-25、AC-29、AC-33（近期目标范围）。
+- [HLD](../../../docs/design/HLD.md)：第 2.1、2.2、3.5、10.3 节；[脚本经验与证据边界](../../../docs/backend/evidence/backend-feasibility.md)。
 
 ## 核验标准
 

@@ -1,6 +1,6 @@
 # 07 验收记录：在历史访问中继续阅读评论与回复
 
-范围：[任务 07](issues/07-restore-discussion-history.md)，参考[实施规格](spec.md)、[SRS](../../docs/SRS.md)、[HLD](../../docs/HLD.md)、README 及 acceptance-01 至 acceptance-06。只补详情访问快照及评论/回复/图片的组合恢复，不重做 01–06，不提前实现 08/09。
+范围：[任务 07](issues/07-restore-discussion-history.md)，参考[实施规格](spec.md)、[SRS](../../docs/product/SRS.md)、[HLD](../../docs/design/HLD.md)、README 及 acceptance-01 至 acceptance-06。只补详情访问快照及评论/回复/图片的组合恢复，不重做 01–06，不提前实现 08/09。
 
 ## 基线与环境
 

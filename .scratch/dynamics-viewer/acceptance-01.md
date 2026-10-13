@@ -1,6 +1,6 @@
 # 01 验收记录：打开动态列表并进入文字详情
 
-范围：[01](issues/01-browse-text-dynamics.md)，依据 [spec](spec.md)、[SRS](../../docs/SRS.md)、[HLD](../../docs/HLD.md)。仅记录文字浏览与基础装配，不代表整个动态浏览功能或完整 AC-01–AC-20 已验收。
+范围：[01](issues/01-browse-text-dynamics.md)，依据 [spec](spec.md)、[SRS](../../docs/product/SRS.md)、[HLD](../../docs/design/HLD.md)。仅记录文字浏览与基础装配，不代表整个动态浏览功能或完整 AC-01–AC-20 已验收。
 
 ## 环境
 
