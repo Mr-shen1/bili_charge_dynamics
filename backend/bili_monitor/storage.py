@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .contracts import APIError
 from .checks import CheckStore
+from .discovery_state import DiscoveryStore
 from .comment_status import comment_status, utc_now
 from .media import reconcile_media, refresh_media_progress
 
@@ -59,7 +60,7 @@ def _freeze_pages(documents, limit):
     return results[0], list(zip(tokens[1:], results[1:]))
 
 
-class Store(CheckStore):
+class Store(CheckStore, DiscoveryStore):
     def __init__(self, path):
         self.path = str(path)
 
@@ -79,7 +80,7 @@ class Store(CheckStore):
             connection.execute("BEGIN IMMEDIATE")
             try:
                 version = connection.execute("PRAGMA user_version").fetchone()[0]
-                if version > 11:
+                if version > 12:
                     raise RuntimeError("Unsupported database schema version")
                 if version == 0:
                     connection.execute("""CREATE TABLE identities (
@@ -191,7 +192,13 @@ class Store(CheckStore):
                 if version < 11:
                     # revision 是观察代次，不能 fencing 同一代次的重新领取。
                     connection.execute("ALTER TABLE target_checks ADD COLUMN claim_token TEXT")
-                connection.execute("PRAGMA user_version = 11")
+                if version < 12:
+                    connection.execute("""CREATE TABLE recent_discoveries (
+                        uid TEXT PRIMARY KEY REFERENCES identities(uid),
+                        status TEXT NOT NULL CHECK(status IN ('running', 'discovered', 'failed')),
+                        attempt TEXT NOT NULL, trusted_result TEXT, claim_token TEXT
+                    )""")
+                connection.execute("PRAGMA user_version = 12")
                 connection.commit()
             except BaseException:
                 connection.rollback()
@@ -263,7 +270,13 @@ class Store(CheckStore):
         return self.read(uid)[0]
 
     def update(self, uid, mode, recent_n, enabled):
-        with self.connection() as connection:
+        with self.connection() as connection, connection:
+            connection.execute("BEGIN IMMEDIATE")
+            previous = connection.execute(
+                "SELECT mode, recent_n, enabled FROM monitors WHERE uid = ?", (uid,)
+            ).fetchone()
+            if previous and tuple(previous) != (mode, recent_n, enabled):
+                self.stop_discovery(connection, uid)
             result = connection.execute(
                 "UPDATE monitors SET mode = ?, recent_n = ?, enabled = ? WHERE uid = ?",
                 (mode, recent_n, enabled, uid),
@@ -786,7 +799,8 @@ class Store(CheckStore):
                 raise
 
     def delete_monitor(self, uid):
-        with self.connection() as connection:
+        with self.connection() as connection, connection:
+            connection.execute("BEGIN IMMEDIATE")
             if (
                 connection.execute(
                     "SELECT 1 FROM identities WHERE uid = ?", (uid,)
@@ -794,4 +808,5 @@ class Store(CheckStore):
                 is None
             ):
                 raise APIError("NOT_FOUND")
+            self.stop_discovery(connection, uid)
             connection.execute("DELETE FROM monitors WHERE uid = ?", (uid,))

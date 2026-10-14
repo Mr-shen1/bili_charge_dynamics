@@ -56,6 +56,16 @@
 
 **证据限制：**第三方 count 字段说明只写“评论条数”，未明确枚举“根＋全部回复”；静态示例与列表示例也不是同一时点的事务快照。历史 235/501 样本只证明当次跨接口数字一致，不能证明精确包含范围、所有类型／权限下的等价、当前匿名可用性或真实全量。因此本票实现来源总数信号的结构映射和调度协议，不宣称已实测验证普遍根＋回复口径，不省略独立计数读取；精确计数口径与持续真实来源证据仍由 #34 限定授权核验。未请求真实 B站、未运行参考脚本、未读取任何凭据。
 
+## 27 近期 feed 发现
+
+开工时实际可读的 ignored 参考为 `script_demo/bili_charge_monitor.py:220–262`，本次仅静态核验必要函数，未执行/导入通知脚本、未读取凭据/配置。`fetch_dynamics` 使用 `/x/polymer/web-dynamic/v1/feed/space`、host_mid 与 offset，读取 data.items/has_more/offset；has_more 为真且无 items 或 offset 报分页不完整。原函数按原始候选数 max_items 截断，不能直接当作“凑 N 条合格目标”。
+
+原 `is_charge` 的两条 OR 规则为 `module_author.icon_badge.text == "充电专属"` 或 `module_dynamic.major.type == "MAJOR_TYPE_BLOCKED"`；没有正文关键词、OPUS/DRAW 类型、图片存在等条件。原 `1942–1949` 按数字 ID 升序处理已筛候选，是旧通知处理次序，未定义近期窗口算法；本票按来源顺序取首次出现的合格项，达到 N 停止，不新增 ID/时间排序或类型过滤。带标记的未知内容类型仍可成为候选，归档读取支持与候选资格不混同。
+
+公开第三方固定快照的空间动态字段链接及有限首屏证据见 [backend-feasibility.md](backend-feasibility.md)：历史只读到首屏、没有请求第二页，不能据此证明实时跨页行为。新增 tracked `backend/tests/fixtures/recent-feed*.json` 保留 code/data/items/modules/has_more/offset 结构、两种标记、可选字段、重复候选、普通项和大字符串 ID；身份、文字、游标均虚构。公共发现读取及 Collector→SQLite→HTTP 用这些协议输入验证累计和失败，不依赖本地 ignored 材料运行。
+
+原脚本通过 WBI 签名请求；本票沿用当前生产无凭据 HTTP transport，仅发送公开协议参数，不增加 WBI、Cookie、风控绕过或解锁逻辑。请求被拒绝如实失败，不替代识别、不伪耗尽。来源次序可能含置顶，扫描不是上游事务快照，不宣称按发布时间排序、并发更新下不漏项、真实匿名多页或长期可用；这些需要 #34 限定授权证据。完整错误与分页终止语义见 [近期发现契约](../api/discovery-api.md)。
+
 ## 验证范围
 
 fixture 所有身份、内容、媒体 URL、错误秘密均虚构；结构保持不代表覆盖全部上游变体。`BLOCKED` 仅限制正文，不能据此跳过独立评论读取。02 阶段未采评论；15 增加根采集，17 增加必要回复分页；仍不上传媒体、不访问真实来源，不宣称长期稳定或全部归档完成。

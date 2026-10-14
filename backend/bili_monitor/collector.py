@@ -54,8 +54,9 @@ def collector_lock(path):
 
 
 class Collector:
-    def __init__(self, store, client, downloader=None, uploader=None, *, clock=None, max_checks=4, max_syncs=4):
-        if max_checks < 1 or max_syncs < 1:
+    def __init__(self, store, client, downloader=None, uploader=None, *, clock=None,
+                 max_checks=4, max_syncs=4, max_discoveries=2):
+        if max_checks < 1 or max_syncs < 1 or max_discoveries < 1:
             raise ValueError("Invalid collector concurrency")
         self.store = store
         self.client = client
@@ -64,6 +65,33 @@ class Collector:
         self.clock = clock or SystemClock()
         self.max_checks = max_checks
         self.max_syncs = max_syncs
+        self.max_discoveries = max_discoveries
+
+    async def discover_once(self, uid):
+        """一次按 UP 发现；发布结果不等于内容归档或窗口初始化。"""
+        from .discovery import discover_recent, DiscoveryError, DiscoveryStopped
+
+        claim = await to_thread.run_sync(self.store.claim_discovery, uid, self.clock.now())
+        if claim is None:
+            return False
+        token = claim["token"]
+
+        async def should_continue():
+            return await to_thread.run_sync(self.store.discovery_claim_active, uid, token)
+
+        async def on_progress(ids):
+            await to_thread.run_sync(self.store.record_discovery_progress, uid, token, ids)
+
+        try:
+            result = await discover_recent(
+                self.client, uid, claim["recent_n"], should_continue=should_continue, on_progress=on_progress)
+        except DiscoveryStopped:
+            return False
+        except Exception as error:
+            code = error.code if isinstance(error, DiscoveryError) else "SOURCE_UNAVAILABLE"
+            await to_thread.run_sync(self.store.finish_discovery, uid, token, None, self.clock.now(), code)
+            return False
+        return await to_thread.run_sync(self.store.finish_discovery, uid, token, result, self.clock.now())
 
     async def check_once(self, uid, id):
         selected = await to_thread.run_sync(self.store.enabled_targets)
@@ -141,8 +169,9 @@ class Collector:
         with collector_lock(self.store.path):
             await to_thread.run_sync(self.store.migrate)
             await to_thread.run_sync(self.store.recover_check_work)
-            checks, executions = {}, {}
-            offset = sync_offset = 0
+            await to_thread.run_sync(self.store.recover_discoveries, self.clock.now())
+            checks, executions, discoveries = {}, {}, {}
+            offset = sync_offset = discovery_offset = 0
             deadline = self.clock.monotonic()
             try:
                 while True:
@@ -154,6 +183,20 @@ class Collector:
                         if task.done():
                             task.result()
                             del executions[key]
+                    for uid, task in list(discoveries.items()):
+                        if task.done():
+                            task.result()
+                            del discoveries[uid]
+                    recent_ups = await to_thread.run_sync(self.store.enabled_recent)
+                    if recent_ups:
+                        discovery_offset %= len(recent_ups)
+                        launched = 0
+                        for up in recent_ups[discovery_offset:] + recent_ups[:discovery_offset]:
+                            uid = up["uid"]
+                            if uid not in discoveries and len(discoveries) < self.max_discoveries:
+                                discoveries[uid] = asyncio.create_task(self.discover_once(uid))
+                                launched += 1
+                        discovery_offset = (discovery_offset + max(1, launched)) % len(recent_ups)
                     targets = await to_thread.run_sync(self.store.enabled_targets)
                     if targets:
                         offset %= len(targets)
@@ -182,7 +225,7 @@ class Collector:
                         deadline += (int((now - deadline) // CADENCE_SECONDS) + 1) * CADENCE_SECONDS
                     await self.clock.sleep(max(0, deadline - now))
             finally:
-                tasks = list(checks.values()) + list(executions.values())
+                tasks = list(checks.values()) + list(executions.values()) + list(discoveries.values())
                 for task in tasks:
                     task.cancel()
                 await asyncio.gather(*tasks, return_exceptions=True)
@@ -201,6 +244,8 @@ async def serve(database, *, once=False):
                     await to_thread.run_sync(collector.store.migrate)
                     for target in await to_thread.run_sync(collector.store.enabled_targets):
                         await collector.check_once(target["uid"], target["id"])
+                    for up in await to_thread.run_sync(collector.store.enabled_recent):
+                        await collector.discover_once(up["uid"])
                 return
             task = asyncio.create_task(collector.run())
             loop = asyncio.get_running_loop()
@@ -221,7 +266,7 @@ async def serve(database, *, once=False):
 def main():
     parser = argparse.ArgumentParser(description="Fixed-cadence collector")
     parser.add_argument("--database", default=os.environ.get("BILI_DATABASE_PATH", "backend/data/monitor.sqlite"))
-    parser.add_argument("--once", action="store_true", help="Record one check pass without executing sync")
+    parser.add_argument("--once", action="store_true", help="Record one check/discovery pass without executing sync")
     args = parser.parse_args()
     try:
         asyncio.run(serve(args.database, once=args.once))
