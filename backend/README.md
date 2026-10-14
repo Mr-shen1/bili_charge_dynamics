@@ -1,4 +1,4 @@
-# 票据 01–02 / 13 / 15 / 17 / 19 / 21 / 23–24 后端
+# 票据 01–02 / 13 / 15 / 17 / 19 / 21 / 23–25 后端
 
 提供 UP 身份/配置管理、指定动态关联、显式一次初始化及 SQLite 归档读取。支持根评论采集、最热／最新归档分页、完整楼中楼归档读取，以及动态图／一级评论图共用下载、OSS 上传和独立重试；23 新增独立进程的固定节拍检查；没有近期目标发现，不宣称全部归档完成。管理基础契约见 `docs/backend/api/management-api.md`，02 测试证据见 [backend-acceptance-02.md](../.scratch/backend-integration/evidence/backend-acceptance-02.md)，字段依据见 [source-protocol-evidence.md](../docs/backend/evidence/source-protocol-evidence.md)。
 
@@ -17,7 +17,7 @@ Python 使用 `.python-version` 固定的 3.12；FastAPI、HTTPX、Uvicorn 和 p
 
 ## 23 独立采集进程
 
-API 和采集进程使用同一 SQLite 路径，分别启动，不能增加多个采集进程。仅处理持久启用的指定目标，默认 4 个检查并发、一个独立串行归档阶段。固定 15 秒检查与慢同步分离，状态从 `GET /api/manage/ups/{uid}/checks` 读取；完整节拍、重启与状态语义见 [采集契约](../docs/backend/api/collector-api.md)。API 不内嵌定时器。
+API 和采集进程使用同一 SQLite 路径，分别启动，不能增加多个采集进程。仅处理持久启用的指定目标，默认最多 4 个同时检查、4 个独立目标同步；同目标不叠加，慢分页期间其他目标仍可检查／同步。固定 15 秒检查与慢同步分离，状态从 `GET /api/manage/ups/{uid}/checks` 读取；完整节拍、重启与状态语义见 [采集契约](../docs/backend/api/collector-api.md)。API 不内嵌定时器。
 
 ```sh
 # 前台运行；Ctrl-C 停止（也支持 kill -TERM <pid>）
@@ -44,7 +44,7 @@ uv run python -m backend.tests.collector_demo --database "$demo_dir/monitor.sqli
 沿用普通 HTML 的安全 JSON/AUTHOR 解析和同一归档执行链，不新增来源采集器。检查的 `observed`/`revision`、实际正文 HTML 版本及各分项 checkpoint 分开保存：
 
 - 正文 checkpoint 绑定执行时实际读取的可信 HTML 编辑版本，不把领取时的版本套给重新获取的正文。两者不匹配时本轮目标仍 pending，后续固定检查确认版本后可继续。旧执行期间的新检查保持最新观察；管理 `parts.text/media` 针对最新检查版本，不能用旧归档成功冒充新工作完成。归档自身的 observed 仍表示执行阶段实际处理的观察。
-- 编辑仅更新正文/动态图来源；collector 不重扫已完成整轮（根评论和回复均 success）的评论。根或回复任一未完成时，沿用既有完整根＋回复失败重试链；即使根已完成但回复失败，也会重新读取根页。不是纯正文编辑新增重扫策略。显式 initial 保留既有完整初始化/重试能力，计数变化的周期登记由 #25 接续。
+- 编辑仅更新正文/动态图来源；collector 不重扫已完成整轮（根评论和回复均 success）的评论。根或回复任一未完成时，沿用既有完整根＋回复失败重试链；即使根已完成但回复失败，也会重新读取根页。不是纯正文编辑新增重扫策略。显式 initial 保留既有完整初始化/重试能力，计数变化的周期登记见下节 #25。
 - 编辑未知/error 保留旧可信值；已有正文在新版本失败后的无可信版本重试不得替换旧成功正文、媒体来源或 checkpoint。首次无编辑标记仍可初始化，分钟精度不补秒，发布时间不由编辑时间补齐。
 - 每次目标领取新增持久、内部、不经 HTTP 返回的 `claim_token`；完成需同时匹配该领取令牌。观察 revision 不替代领取 fencing；同版本重开重新领取、旧迟到完成/失败和重复完成均不能清新任务。归档内容继续由 generation fencing，媒体继续由已有逐图令牌 fencing。API 启动不恢复 running，只有取得采集进程锁后才恢复。
 - 正文成功不表示评论/媒体成功；未配置 OSS 的有图目标仍 pending。无新编辑信号时仍可恢复失败分项；重复 execute 对 complete 目标不再次请求来源。
@@ -52,6 +52,16 @@ uv run python -m backend.tests.collector_demo --database "$demo_dir/monitor.sqli
 专项测试：`uv run pytest backend/tests/test_versioned_edit_sync.py -q`。原始虚构 HTML 在 `tests/fixtures/versioned_edit/`，覆盖同 pub_ts 不同编辑时间、脚本/模块换序、分钟/空白、相对文案、无效日期/无日期、恶意非 JSON、发布时间缺失、正文/图片改变但信号相同。通过公开 collector、真实 SQLite 关闭重开和 HTTP 验证新旧交错、同/不同观察代次的恢复 fencing、观察后/页面读取中/详情等待/正文提交后中断以及分项失败恢复；不 mock 内部模块。
 
 逐片 red→green 已复现并修复四项：编辑重扫评论令 complete 变 pending；旧版本完成后管理分项仍是假 success；旧领取迟到把新 running 清成 pending；新正文失败后未知版本重试将旧正文替换。其他新增安全解析/恢复场景首跑已通过，属于既有行为回归，不计为修复 red。补充通过 sqlite3 外部连接工厂在真实归档观察事务 commit 前失败／commit 后 ACK 丢失，以及外部 Clock 在全部分项提交后、目标 finish 前中断；重开恢复不需要新信号、不重复已完成评论请求。该 commit 故障不是正文 checkpoint 事务故障，ACK 丢失／控制流中断不冒称硬断电；真实自然多次编辑、同分钟漏检、实际编辑→OSS 联动及持续运行仍未验证。
+
+## 25 独立计数与根回复同步
+
+每次检查保留 `/x/v2/reply/count` 独立读取，使用已校验归属的评论 oid/type；首次缺少 locator 时从 detail 获取，之后复用可信持久定位。严格解析 `data.count`，网页／根页／本地计数不冒充独立结果。计数缺失、无效、业务拒绝或网络失败保留旧值和失败状态，不归零。协议来源、尚未实测证明的根＋回复精确包含口径见 [来源证据](../docs/backend/evidence/source-protocol-evidence.md#25-独立评论计数)。
+
+初始化、失败重试或可信总数变化才沿用原完整根＋必要回复分页；已有 ID 仍更新，不截断旧 ID，不自动回填全部动态。计数不变、纯正文／评论编辑和增删抵消不重扫；这些是已知漏检，不增每日校准或内容比对。网页失败／正文受限不阻断实际可读评论，实际接口拒绝如实 failed。评论工作绑定领取计数，旧完成保留其实际 checkpoint，不能清除同步期间登记的新计数工作；关闭重开无新信号可重试。
+
+checks HTTP 增量返回 `observed.comment_count_status`、`synced_comment_count`、`local_comment_count/local_reply_count`、`comments_last_attempt`；无归档的本地数为 null，不伪造零。`parts` 针对最新检查观察投影，旧评论成功不冒充新计数完成。计数与正文版本分开，成功正文不为纯评论工作重读；媒体仍独立，评论 checkpoint 成功不等于目标 complete。复用 #21 媒体待处理／上传，不另建 OSS。没有新增 schema，旧 v11 配置、归档、cursor 和工作原样保留。
+
+专项：`uv run pytest backend/tests/test_comment_count_sync.py -q`。真实 SQLite／HTTP、原始虚构 JSON、受控时钟验证独立计数、完整 45 根／25 回复分页、未知／零、增减／不变、故障重试、新旧计数交错，以及慢分页期间其他目标新工作仍推进。精确根＋回复口径、真实匿名权限、持续节拍、OSS 和正式设备仍未验证；不把 fixture 或历史样本当作真实全量证明。实现与测试结果见 [25 记录](../.scratch/backend-integration/acceptance-25.md)。
 
 ## 应用工厂与传输边界
 
@@ -61,9 +71,9 @@ from backend.bili_monitor.app import create_app
 app = create_app(database_path, profile_transport=None, media_transport=None, media_uploader=None)
 ```
 
-工厂不打开数据库，ASGI lifespan 启动时迁移。`profile_transport` 是来源协议的外部 HTTP transport，覆盖 card、detail、`/opus/{id}` 页面、`/x/v2/reply` 根评论页及 `/x/v2/reply/reply` 楼中楼页；测试使用 `httpx.MockTransport`，不替换解析、同步或存储。`media_transport` 只替换独立图片下载 HTTP，`media_uploader` 是异步 `upload(key, content, content_type) -> 完整公开URL` 的外部 OSS 边界，测试替身不替换媒体协调或数据库。未注入 uploader 时从服务端环境装配真实 OSS，全部配置缺失则保持待上传。使用包含 lifespan 的服务器或 `with TestClient(app)`。
+工厂不打开数据库，ASGI lifespan 启动时迁移。`profile_transport` 是来源协议的外部 HTTP transport，覆盖 card、detail、`/opus/{id}` 页面、`/x/v2/reply/count` 独立计数、`/x/v2/reply` 根评论页及 `/x/v2/reply/reply` 楼中楼页；测试使用 `httpx.MockTransport`，不替换解析、同步或存储。`media_transport` 只替换独立图片下载 HTTP，`media_uploader` 是异步 `upload(key, content, content_type) -> 完整公开URL` 的外部 OSS 边界，测试替身不替换媒体协调或数据库。未注入 uploader 时从服务端环境装配真实 OSS，全部配置缺失则保持待上传。使用包含 lifespan 的服务器或 `with TestClient(app)`。
 
-生产请求公开 card、通用动态 detail、普通 opus HTML 及根评论页码接口；超时 10 秒，不跟随重定向、不使用环境代理，无 Cookie/凭据输入。不会绕过受限正文，不依赖 `opus/detail` JSON 或 ignored 原脚本。
+生产请求公开 card、通用动态 detail、普通 opus HTML、独立评论计数及根／回复页码接口；超时 10 秒，不跟随重定向、不使用环境代理，无 Cookie/凭据输入。不会绕过受限正文，不依赖 `opus/detail` JSON 或 ignored 原脚本。
 
 ## 02 HTTP 合同
 
@@ -140,7 +150,7 @@ initial 在根／回复独立提交后处理评论图；正文受限不阻断实
 
 `POST /api/sync/media/{dynamicId}/comments/{rootId}` 可独立恢复该根未完成媒体，`?media_id=<当前关联ID>` 只重试一张。无需重新读取正文／根页或新计数信号，停止／删除配置后仍可恢复保留归档；不从页面读取触发。共用本页的 OSS 服务端配置，不复制上传器，不执行真实云操作。版本由根同步实际处理的动态来源计数给出，未知不补值；新观察、实际来源组和已成功组分别保存。旧版本完成及较旧尝试不能清新工作或替换关联，同计数同 URL 下字节编辑仍可能漏检。
 
-完整 owner、来源缺失／空组、版本提交、迁移和冻结 cursor 契约见 [21 归档契约](../docs/backend/api/archive-api.md#21-一级评论媒体归档与独立恢复)，自动化证据见 [21 验收](../.scratch/backend-integration/acceptance-21.md)。图片 UI／预览归 #22，周期计数联动归 #25/#30；没有对象回收、图片变体或 CDN。本入口继承无鉴权和公开 OSS URL 风险。
+完整 owner、来源缺失／空组、版本提交、迁移和冻结 cursor 契约见 [21 归档契约](../docs/backend/api/archive-api.md#21-一级评论媒体归档与独立恢复)，自动化证据见 [21 验收](../.scratch/backend-integration/acceptance-21.md)。图片 UI／预览归 #22，周期计数触发已由 #25 接入，最终媒体联动归 #30；没有对象回收、图片变体或 CDN。本入口继承无鉴权和公开 OSS URL 风险。
 
 ## SQLite 与安全
 
@@ -151,6 +161,7 @@ schema 顺序：v1 身份/配置、v2 targets、v3 archives/generation、v4 持�
 ## 测试与 E2E 装配
 
 ```sh
+uv run pytest backend/tests/test_comment_count_sync.py -q
 uv run pytest backend/tests/test_collector.py -q
 uv run pytest backend/tests/test_comment_media.py -q
 uv run pytest backend/tests/test_dynamic_media.py -q

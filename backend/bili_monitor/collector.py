@@ -14,7 +14,8 @@ from pathlib import Path
 
 from anyio import to_thread
 
-from .source import fetch_page, page_metadata
+from .source import fetch_page, page_metadata, fetch_detail
+from .root_comments import fetch_comment_count, valid_locator
 from .sync import sync_target
 from .media import ImageDownloader
 from .oss import OSSUploader
@@ -53,15 +54,16 @@ def collector_lock(path):
 
 
 class Collector:
-    def __init__(self, store, client, downloader=None, uploader=None, *, clock=None, max_checks=4):
-        if max_checks < 1:
-            raise ValueError("Invalid check concurrency")
+    def __init__(self, store, client, downloader=None, uploader=None, *, clock=None, max_checks=4, max_syncs=4):
+        if max_checks < 1 or max_syncs < 1:
+            raise ValueError("Invalid collector concurrency")
         self.store = store
         self.client = client
         self.downloader = downloader
         self.uploader = uploader
         self.clock = clock or SystemClock()
         self.max_checks = max_checks
+        self.max_syncs = max_syncs
 
     async def check_once(self, uid, id):
         selected = await to_thread.run_sync(self.store.enabled_targets)
@@ -74,35 +76,64 @@ class Collector:
                 error = "SIGNAL_INVALID"
         except Exception:
             error = "SOURCE_UNAVAILABLE"
-        return await to_thread.run_sync(self.store.record_check, uid, id, metadata, self.clock.now(), error)
+        # 定位可复用旧可信值；缺失时通过已校验归属的 detail 获取，不猜 oid。
+        checks = await to_thread.run_sync(self.store.read_checks, uid)
+        observed = next((item["observed"] for item in checks if item["id"] == id), {})
+        locator = observed.get("comment_locator")
+        if not valid_locator(locator):
+            try:
+                detail, _ = await fetch_detail(self.client, id, uid)
+                locator = detail.get("comment_locator")
+            except Exception:
+                pass
+        comments = {"comment_locator": locator, "comment_count_status": "failed"}
+        try:
+            comments["source_comment_count"] = await fetch_comment_count(self.client, locator)
+            comments["comment_count_status"] = "observed"
+        except Exception:
+            pass
+        # 网页计数不回退冒充独立计数读取成功；两项信号可各自失败。
+        if metadata is not None:
+            metadata.pop("source_comment_count", None)
+        return await to_thread.run_sync(lambda: self.store.record_check(
+            uid, id, metadata, self.clock.now(), error, comment_observation=comments))
 
     async def execute_pending(self):
         """一次领取遍历；失败留待下一节拍，不在本轮无限重试。"""
         targets = await to_thread.run_sync(self.store.pending_checks)
-        for target in targets:
-            uid, id = target["uid"], target["id"]
-            claim = await to_thread.run_sync(self.store.claim_check_work, uid, id)
-            if claim is None:
-                continue
-            succeeded = False
-            try:
-                generation = await to_thread.run_sync(self.store.claim_archive, uid, id)
-                if generation is not None:
-                    text_succeeded = await sync_target(
-                        self.store, self.client, uid, id, generation, self.downloader, self.uploader,
-                        pending_comments_only=True)
-                    archive = await to_thread.run_sync(self.store.read_archive, id)
-                    succeeded = (text_succeeded and all(value == "success" for value in archive["work"].values())
-                                 and archive["synced_version"] == claim["observed"].get("observed_version"))
-                    for root_id in await to_thread.run_sync(self.store.media_root_ids, id):
-                        root = await to_thread.run_sync(self.store.read_media_owner, id, root_id)
-                        succeeded = succeeded and root["work"]["media"] == "success"
-            except Exception:
-                # 不记录上游原文、路径或 SDK 异常；取消保留 running 供重启恢复。
-                pass
-            await to_thread.run_sync(
-                lambda: self.store.finish_check_work(uid, id, claim["revision"], succeeded, self.clock.now(),
-                                                   None if succeeded else "SYNC_INCOMPLETE", token=claim["token"]))
+        pending = iter(targets)
+
+        async def worker():
+            for target in pending:
+                await self._execute_target(target)
+
+        await asyncio.gather(*(worker() for _ in range(min(self.max_syncs, len(targets)))))
+
+    async def _execute_target(self, target):
+        uid, id = target["uid"], target["id"]
+        claim = await to_thread.run_sync(self.store.claim_check_work, uid, id)
+        if claim is None:
+            return
+        succeeded = False
+        try:
+            generation = await to_thread.run_sync(self.store.claim_archive, uid, id)
+            if generation is not None:
+                text_succeeded = await sync_target(
+                    self.store, self.client, uid, id, generation, self.downloader, self.uploader,
+                    pending_comments_only=True, comment_observation=claim["observed"])
+                archive = await to_thread.run_sync(self.store.read_archive, id)
+                succeeded = (text_succeeded and all(value == "success" for value in archive["work"].values())
+                             and archive["synced_version"] == claim["observed"].get("observed_version")
+                             and archive["synced_comment_count"] == claim["observed"].get("source_comment_count"))
+                for root_id in await to_thread.run_sync(self.store.media_root_ids, id):
+                    root = await to_thread.run_sync(self.store.read_media_owner, id, root_id)
+                    succeeded = succeeded and root["work"]["media"] == "success"
+        except Exception:
+            # 不记录上游原文、路径或 SDK 异常；取消保留 running 供重启恢复。
+            pass
+        await to_thread.run_sync(
+            lambda: self.store.finish_check_work(uid, id, claim["revision"], succeeded, self.clock.now(),
+                                               None if succeeded else "SYNC_INCOMPLETE", token=claim["token"]))
 
     async def run(self):
         """从启动时刻起固定节拍；有限并发、忙即跳过，没有检查队列。"""
@@ -110,8 +141,8 @@ class Collector:
         with collector_lock(self.store.path):
             await to_thread.run_sync(self.store.migrate)
             await to_thread.run_sync(self.store.recover_check_work)
-            checks, execution = {}, None
-            offset = 0
+            checks, executions = {}, {}
+            offset = sync_offset = 0
             deadline = self.clock.monotonic()
             try:
                 while True:
@@ -119,9 +150,10 @@ class Collector:
                         if task.done():
                             task.result()
                             del checks[key]
-                    if execution is not None and execution.done():
-                        execution.result()
-                        execution = None
+                    for key, task in list(executions.items()):
+                        if task.done():
+                            task.result()
+                            del executions[key]
                     targets = await to_thread.run_sync(self.store.enabled_targets)
                     if targets:
                         offset %= len(targets)
@@ -133,8 +165,16 @@ class Collector:
                                 checks[key] = asyncio.create_task(self.check_once(*key))
                                 launched += 1
                         offset = (offset + max(1, launched)) % len(targets)
-                    if execution is None:
-                        execution = asyncio.create_task(self.execute_pending())
+                    pending = await to_thread.run_sync(self.store.pending_checks)
+                    if pending:
+                        sync_offset %= len(pending)
+                        launched = 0
+                        for target in pending[sync_offset:] + pending[:sync_offset]:
+                            key = (target["uid"], target["id"])
+                            if key not in executions and len(executions) < self.max_syncs:
+                                executions[key] = asyncio.create_task(self._execute_target(target))
+                                launched += 1
+                        sync_offset = (sync_offset + max(1, launched)) % len(pending)
                     deadline += CADENCE_SECONDS
                     # 进程/事件循环停顿越过节拍时跳过错过的槽，绝不补发积压。
                     now = self.clock.monotonic()
@@ -142,7 +182,7 @@ class Collector:
                         deadline += (int((now - deadline) // CADENCE_SECONDS) + 1) * CADENCE_SECONDS
                     await self.clock.sleep(max(0, deadline - now))
             finally:
-                tasks = list(checks.values()) + ([execution] if execution is not None else [])
+                tasks = list(checks.values()) + list(executions.values())
                 for task in tasks:
                     task.cancel()
                 await asyncio.gather(*tasks, return_exceptions=True)

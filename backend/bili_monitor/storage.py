@@ -412,6 +412,8 @@ class Store(CheckStore):
                 document.update(updates)
                 if updates.get("source_comment_count") is not None:
                     count = updates["source_comment_count"]
+                    if count != document.get("synced_comment_count"):
+                        document["work"]["comments"] = document["work"]["replies"] = "pending"
                     # 与动态观察原子提交，防止旧上传在两次提交间误清新工作。
                     # 未变观察的根已由观察/来源协调保持 observed != media ⇒ pending，不重复写回。
                     for root in connection.execute("""SELECT id, document FROM root_comments WHERE dynamic_id = ?
