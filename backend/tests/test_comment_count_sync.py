@@ -3,6 +3,7 @@
 import asyncio
 import copy
 import json
+import sqlite3
 from pathlib import Path
 
 import httpx
@@ -59,6 +60,8 @@ class CommentSource:
             payload = copy.deepcopy(root_fixture() if is_root else self.reply_payload)
             items = self.roots if is_root else self.replies
             payload["data"]["page"].update(num=page, count=len(items))
+            if is_root:
+                payload["data"]["page"]["acount"] = len(self.roots) + len(self.replies)
             payload["data"]["replies"] = items[(page - 1) * 20:page * 20] or None
             return httpx.Response(200, json=payload)
         return empty_upstream(request)
@@ -547,5 +550,40 @@ def test_failed_count_observation_does_not_block_trusted_body_edit_or_rescan_com
             assert archive["synced_comment_count"] == 7
             assert state["parts"]["text"] == "success"
             assert source.scans() == []
+
+    asyncio.run(scenario())
+
+
+def test_legacy_complete_check_recovers_mismatched_comment_checkpoint_without_new_count(tmp_path):
+    path = tmp_path / "monitor.sqlite"
+    configured(path)
+    source = CommentSource()
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(source)) as client:
+            collector = Collector(Store(path), client)
+            await collector.check_once(UID, "123")
+            await collector.execute_pending()
+            state, archive = snapshot(path)
+            # 构造旧 v11 输入：#24 检查保存网页计数7，但初始化被 detail0覆盖，
+            # 旧目标完成判断没有核对评论计数。仅写迁移输入，结果仍经公开 HTTP 观察。
+            observed = dict(state["observed"])
+            observed.pop("comment_count_status")
+            for key in ("source_comment_count", "synced_root_comment_count",
+                        "synced_reply_comment_count", "synced_comment_count"):
+                archive[key] = 0
+            with sqlite3.connect(path) as database:
+                database.execute("UPDATE archives SET document = ? WHERE id = '123'", (json.dumps(archive),))
+                database.execute("UPDATE target_checks SET observed = ? WHERE id = '123'", (json.dumps(observed),))
+            await collector.check_once(UID, "123")
+            checked, _ = snapshot(path)
+            assert checked["observed"]["source_comment_count"] == 7
+            assert checked["revision"] == state["revision"]  # 信号没变，只恢复未完成工作。
+            assert checked["work"] == "pending"
+            await Collector(Store(path), client).execute_pending()
+            repaired, archive = snapshot(path)
+            assert repaired["work"] == "complete"
+            assert archive["synced_comment_count"] == 7
+            assert archive["local_comment_count"] == 2 and archive["local_reply_count"] == 5
 
     asyncio.run(scenario())

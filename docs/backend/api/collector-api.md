@@ -19,7 +19,7 @@
 | 字段 | 含义 |
 | --- | --- |
 | `id` / `active` | 动态字符串 ID / 当前是否启用且入选指定集合 |
-| `check_status` | `unchecked` 未检查；`checked` 首次/新可信版本；`unchanged` 未登记新版本；`failed` 任一来源／信号读取失败的检查聚合，不表示编辑和计数同时失败，分别查看 `observed.edit_status/comment_count_status`。可信另一信号仍可更新和登记工作 |
+| `check_status` | `unchecked` 未检查；`checked` 首次/新可信版本；`unchanged` 未登记新版本；`failed` 任一来源／信号读取失败的检查聚合，不表示编辑和计数同时失败，结合 `check_error` 与 `observed.edit_status/comment_count_status` 判断分项；网页读取失败时编辑观察保留旧值，不冒充本次网页读取成功。可信另一信号仍可更新和登记工作 |
 | `last_checked_at` | 最近一次检查完成时间；未检查为 null，不是配置保存时间 |
 | `observed` | 最近可信作者、发布时间、编辑版本、来源评论数与 locator；未知／失败不擦旧值。`comment_count_status=observed\|failed` 表示最近独立计数读取结果，未检查／旧记录可缺失；旧可信数与本次失败可同时存在。不含正文或图片 |
 | `revision` | 持久观察代次，未检查为 0；可信编辑或总数变化推进，正文差异／相对时间不推进 |
@@ -32,7 +32,7 @@
 | `check_error` | null、`SOURCE_UNAVAILABLE` 或 `SIGNAL_INVALID`；不回显来源原文 |
 | `sync_error` | null 或固定脱敏错误，通常 `SYNC_INCOMPLETE`；成功检查不会清除同步错误 |
 
-计数未知／失败与真实零不同：只有严格非负 JSON 整数（不接受布尔、字符串或小数）可成为新可信计数；无效值不触发假零扫描，也不清除已有工作。checks 与归档 GET 均只读，不调用上游。`unchanged` 不表示全部信号已知或同步成功，必须独立读取 work/错误/分项归档。`observed.edit_status` 表示最近信号可用性，旧可信 `observed_version` 可在 unknown/error 时保留。归档自身的 observed/synced 表示执行阶段处理过的版本；最新检查观察以 checks 为准，待执行时两者可以不同。
+计数未知／失败与真实零不同：只有严格非负 JSON 整数（不接受布尔、字符串或小数）可成为新可信计数；无效值不触发假零扫描，也不清除已有工作。checks 与归档 GET 均只读，不调用上游。`unchanged` 不表示全部信号已知或同步成功，必须独立读取 work/错误/分项归档。`observed.edit_status` 表示最近可解析网页的编辑信号可用性；网页读取失败时保留旧编辑观察，须结合本次 `check_error/check_status` 判断。旧可信 `observed_version` 可在 unknown/error 时保留。归档自身的 observed/synced 表示执行阶段处理过的版本；最新检查观察以 checks 为准，待执行时两者可以不同。
 
 管理 UP 的现有 `monitor.last_checked_at`、`last_succeeded_at` 分别为该 UP 持久目标记录的最大检查时间、最大实际成功时间，包含已移除历史；不表示该 UP 所有目标均已成功。时间为带时区 ISO（运行时 UTC）；来源发布时间和分钟编辑时间继续保留 `+08:00` 与原精度。
 
@@ -46,7 +46,7 @@
 
 ## 持久与停止
 
-schema v10 新增检查、可信 observed、revision、work、独立错误和时间；v11 新增目标领取内部 `claim_token`，同 revision 的重试也以令牌拒绝旧完成／失败，不经 HTTP 返回。完成清令牌，恢复中断领取时清令牌并回 pending。v0–v10 短事务迁移到 v11，保留旧配置/归档和未完成观察，未来版本拒绝。#25 复用已有 observed JSON、评论 checkpoint 和工作表，无新增 schema；旧归档首次登记仅在正文版本、评论计数 checkpoint 及所有实际分项均匹配时建立 complete 基线，不补造成功时间。已有归档未检查时读取其旧可信信号，首次登记将其作为保存基线；来源失败/未知不令旧版本从新状态接口消失，也不制造检查/成功时间。网络/媒体 I/O 不持有 SQLite 事务。
+schema v10 新增检查、可信 observed、revision、work、独立错误和时间；v11 新增目标领取内部 `claim_token`，同 revision 的重试也以令牌拒绝旧完成／失败，不经 HTTP 返回。完成清令牌，恢复中断领取时清令牌并回 pending。v0–v10 短事务迁移到 v11，保留旧配置/归档和未完成观察，未来版本拒绝。#25 复用已有 observed JSON、评论 checkpoint 和工作表，无新增 schema；旧归档首次登记仅在正文版本、评论计数 checkpoint 及所有实际分项均匹配时建立 complete 基线，不补造成功时间。旧 v11 已有 complete 记录也会在检查时核验实际 checkpoint；若旧完成判断遗漏计数匹配，即使信号不变也恢复 pending，不伪造新 revision 或成功时间。已有归档未检查时读取其旧可信信号，首次登记将其作为保存基线；来源失败/未知不令旧版本从新状态接口消失，也不制造检查/成功时间。网络/媒体 I/O 不持有 SQLite 事务。
 
 Linux/Unix 上使用同一数据库规范路径旁的 `.collector.lock` 文件与内核 flock，只运行一个采集进程；不能删除运行中的锁文件，不能用硬链接别名或多主机共享文件规避锁。退出/崩溃自动释放内核锁，文件可留存。采集运行入口取得锁后将中断 `running` 恢复为 pending；API 启动不恢复、不领取。`--once` 只检查登记，不执行归档或恢复执行工作。
 

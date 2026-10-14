@@ -138,6 +138,10 @@ class CheckStore:
                 work = "complete"
             elif changed and work != "running":
                 work = "pending"
+            elif (work == "complete" and comment_observation is not None
+                  and not archive_complete(connection, uid, id, observed)):
+                # 旧 v11 的整轮完成判断未核对计数；不变信号也要恢复真实未完成工作。
+                work = "pending"
             status = "failed" if failed else ("checked" if changed else "unchanged")
             connection.execute("""INSERT INTO target_checks
                 (uid, id, last_checked_at, check_status, observed, revision, work, check_error)

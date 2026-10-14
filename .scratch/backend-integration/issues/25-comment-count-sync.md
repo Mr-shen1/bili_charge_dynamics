@@ -31,5 +31,5 @@ T3 用原始 JSON、受控时钟和根/回复分页故障穿透触发与同步�
 ## Comments
 
 - 已实现独立 `/x/v2/reply/count` 读取、可信计数变化登记、领取计数绑定的完整根／回复同步；未知／失败不归零，失败可重开重试，旧完成不清新工作。正文与媒体独立，慢分页期间其他目标仍可检查和同步，checks HTTP 区分 observed／成功计数／本地数量／分项及脱敏错误。复用既有归档和 #21 媒体链，无新增 schema、默认校准、内容比对或旧 ID 截断。
-- T2/T3 新专项 35 passed，后端全量 362 passed；nvm 下 `pnpm typecheck`、前端全量 234 passed、`pnpm build` 及 `git diff --check` 通过。协议、红绿过程与证据边界见 [实施协议](../comment-count-protocol-plan.md)、[acceptance-25.md](../acceptance-25.md) 和 [来源协议证据](../../../docs/backend/evidence/source-protocol-evidence.md#25-独立评论计数)。Standards／Spec 双轴初审已完成：无成文硬违规；已合并重复元数据投影，并按 Spec 提示补红测修复显式 initial 覆盖已保存独立计数的跨入口缺陷，明确检查聚合 failed 与分项独立语义，正在补最终复核。
+- T2/T3 新专项 36 passed，后端全量 363 passed；nvm 下 `pnpm typecheck`、前端全量 234 passed、`pnpm build` 及 `git diff --check` 通过。协议、红绿过程与证据边界见 [实施协议](../comment-count-protocol-plan.md)、[acceptance-25.md](../acceptance-25.md) 和 [来源协议证据](../../../docs/backend/evidence/source-protocol-evidence.md#25-独立评论计数)。Standards／Spec 双轴初审已完成：无成文硬违规；已合并重复元数据投影，并按 Spec 提示补红测修复显式 initial 覆盖已保存独立计数的跨入口缺陷，明确检查聚合 failed 与分项独立语义。Spec 对 `92a13ab` 复核无残余确认缺陷；已补网页失败保留旧编辑观察的说明，并补旧 v11 已有 complete 计数不匹配的红测／恢复修正，交付前复核该小范围改动。
 - 等待人工复核：固定第三方资料仅证实 count endpoint／字段结构，未明确枚举“根＋全部回复”；历史 235/501 相等和虚构两根／五回复 fixture 不足以证明普遍包含口径。没有擅自省略独立读取或宣称此必需项已实测通过；精确口径须结合 #34 限定授权核验。未访问真实 B站／凭据／OSS，未做正式设备／持续运行／容量验收；不宣称本票全部核验或父 #09 完整验收。#26 UI、#30 最终媒体联动保持原归属。

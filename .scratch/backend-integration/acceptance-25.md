@@ -18,7 +18,7 @@
 
 ## T2／T3 验证
 
-`backend/tests/test_comment_count_sync.py`（22 项）：
+`backend/tests/test_comment_count_sync.py`（23 项）：
 
 - 原始独立计数 JSON 经公开 `Collector.check_once/execute_pending/run`、真实 SQLite 及 checks／归档 HTTP；独立数与网页／detail／根页不同、来源数大于本地数分别表达。
 - 真实零、未知首次、增加、减少、不变；纯正文编辑不重扫；纯评论编辑与增删抵消明确验证为已知漏检，不偷偷校准。
@@ -37,7 +37,7 @@
 - 整页无初始化 JSON、网页无权且计数未知时，仍从可信 detail locator 初始化实际可读根回复，不冒充正文成功。
 - 三目标、`max_syncs=2`、公开 execute 与固定 run 两种入口，网络暂停证明最多两目标同步、同目标不叠加；释放一个槽后第三目标可推进，检查持续，旧归档读写不阻塞。
 
-既有 #23/#24 测试只补新 count 传输和初次 locator 请求、明确执行阶段故障注入；不把 count 请求计为根分页重扫。旧基线测试新增正文匹配但评论 checkpoint 不匹配的情况，不能建立 complete 或补造成功时间。
+既有 #23/#24 测试只补新 count 传输和初次 locator 请求、明确执行阶段故障注入；不把 count 请求计为根分页重扫。旧基线测试新增正文匹配但评论 checkpoint 不匹配的情况，不能建立 complete 或补造成功时间。另构造旧 v11 已有 complete 但评论 checkpoint 与旧检查不同的输入，验证不变计数检查也能恢复真实 pending（revision 不虚增），重开完成后旧根／回复保留。
 
 ## Red → Green 与回归结果
 
@@ -47,12 +47,13 @@
 - 串行执行阻塞其他目标，随后整批等待又阻塞其他目标的新工作；两次红测后改为有限目标工作池与逐节拍独立领取。
 - 后端全量一次出现新增受控时钟测试超时：推进下一节拍前未等待前一检查与调度 sleep 完成，导致合法忙跳过。补外部时钟等待条件，不放宽超时；该场景连续单测 10 次通过，随后全量通过。
 - Spec 审查提出显式 initial 路径的范围疑问后，新增交互红测确认：detail 计数可覆盖已存在的独立计数，而下一相同检查不再登记。修为已有独立检查的 initial 绑定最近可信计数；未知仍未知。无独立检查的旧初始化不是本票的固定计数检查入口，保留其原协议并明确文档边界。
+- 复核兼容边界时补旧 v11 记录红测：旧目标 complete、观察7／评论 checkpoint0，在新计数仍7时不能永远跳过。修为检查核验真实归档匹配，恢复 pending 而不伪造新信号或成功时间。
 - 其余新异常／恢复场景初跑通过，作为回归证据，不冒称每项均发现新缺陷。
 
 已执行：
 
-- `uv run pytest backend/tests/test_comment_count_sync.py backend/tests/test_comment_count_recovery.py -q --tb=short`：35 passed。
-- `uv run pytest backend/tests -q --tb=short`：362 passed；既有 Starlette／OSS SDK deprecation warnings。
+- `uv run pytest backend/tests/test_comment_count_sync.py backend/tests/test_comment_count_recovery.py -q --tb=short`：36 passed。
+- `uv run pytest backend/tests -q --tb=short`：363 passed；既有 Starlette／OSS SDK deprecation warnings。
 - nvm 下 `pnpm typecheck` 多次通过；仓库未配置 Python 静态类型检查器，pytest 不冒称类型检查。
 - `pnpm test --maxWorkers=2`：22 文件、234 passed。
 - `pnpm build`、`git diff --check`：通过。
@@ -71,7 +72,7 @@
 
 初审无确认的实现缺陷，提出 2 项判断：显式 initial 仍有旧 STAT/detail 计数路径；计数失败令聚合 check failed 是否混淆分项。前者补交互红测后确认一个跨入口覆盖缺陷并修复：已有独立计数记录的 initial 绑定最近可信检查计数；无独立检查的 #02 初始化路径明确为旧兼容入口，不宣称其执行固定独立计数检查。后者保留“任一信号失败则检查聚合 failed”的现有语义，文档说明分项独立，新增原始协议回归证明计数失败不阻止可信正文编辑或触发评论重扫。
 
-精确根＋全部回复口径仍是已知未验证项，两轴均未将 fixtures 当真实平台证明。修正后请求 Spec 复核；结果随后补录。
+精确根＋全部回复口径仍是已知未验证项，两轴均未将 fixtures 当真实平台证明。修正 `92a13ab` 后 Spec 子代理复核：初审两点无残余确认缺陷，无新确认缺陷；保留 initial 使用最近可信计数而不是当前来源快照的既定节拍窗口。复核提出的文档精度提醒已修：网页读取失败时 `observed.edit_status` 保留旧值，需结合 `check_error/check_status`，不能仅凭旧编辑状态判断本次请求。随后补旧 v11 完成记录兼容红测与恢复修正，交付前继续复核该小范围改动。
 
 初审分别计数：Standards 0 硬违规、3 项判断建议（主要为调度生命周期）；Spec 2 项判断（主要为显式 initial 路径），其中交互缺陷经红测修正。两轴不合并排序。
 
