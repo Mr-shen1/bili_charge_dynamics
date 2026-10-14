@@ -24,10 +24,22 @@ def test_check_registers_unknown_initial_work_without_claiming_sync_success(tmp_
     html = readable_html(pictures=[]).replace("编辑于 2026年10月09日 13:01", "刚刚")
 
     async def check():
-        async with httpx.AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(200, text=html))) as client:
+        requests = []
+
+        def upstream(request):
+            requests.append(request.url.path)
+            if request.url.path.startswith("/opus/"):
+                return httpx.Response(200, text=html)
+            return empty_upstream(request)
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(upstream)) as client:
             collector = Collector(Store(path), client)
             await collector.check_once(UID, "123")
             await collector.check_once(UID, "123")
+        assert requests == [
+            "/opus/123", "/x/polymer/web-dynamic/v1/detail", "/x/v2/reply/count",
+            "/opus/123", "/x/v2/reply/count",
+        ]
 
     asyncio.run(check())
     with archive_client(path) as api:
@@ -124,10 +136,20 @@ def test_invalid_edit_signal_preserves_trusted_version_but_records_readable_sign
 
     async def scenario():
         html = readable_html()
-        async with httpx.AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(200, text=html))) as client:
+        count = 7
+
+        def upstream(request):
+            if request.url.path.startswith("/opus/"):
+                return httpx.Response(200, text=html)
+            if request.url.path == "/x/v2/reply/count":
+                return httpx.Response(200, json={"code": 0, "data": {"count": count}})
+            return empty_upstream(request)
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(upstream)) as client:
             collector = Collector(Store(path), client)
             await collector.check_once(UID, "123")
-            html = html.replace("编辑于 2026年10月09日 13:01", "编辑于 FICTIONAL_SECRET").replace('"count":7', '"count":9')
+            html = html.replace("编辑于 2026年10月09日 13:01", "编辑于 FICTIONAL_SECRET")
+            count = 9
             await collector.check_once(UID, "123")
 
     asyncio.run(scenario())
@@ -136,7 +158,9 @@ def test_invalid_edit_signal_preserves_trusted_version_but_records_readable_sign
         assert state["check_status"] == "failed"
         assert state["observed"]["observed_version"].endswith("13:01+08:00")
         assert state["observed"]["source_comment_count"] == 9
-        assert state["revision"] == 1
+        assert state["observed"]["comment_count_status"] == "observed"
+        assert state["revision"] == 2 and state["work"] == "pending"
+        assert state["last_succeeded_at"] is None
         assert "FICTIONAL_SECRET" not in api.get(CHECKS).text + caplog.text
 
 
@@ -158,7 +182,7 @@ def test_slow_sync_keeps_checking_and_old_completion_cannot_clear_new_work(tmp_p
                 if clock.value >= 30:
                     html = html.replace("13:01", "13:02")
                 return httpx.Response(200, text=html)
-            if request.url.path.endswith("/detail") and request.url.params["id"] == "123":
+            if clock.value >= 15 and request.url.path.endswith("/detail") and request.url.params["id"] == "123":
                 blocked.set()
                 await release.wait()
             return empty_upstream(request)
@@ -200,9 +224,10 @@ def test_runtime_restarts_interrupted_work_and_stop_blocks_new_requests(tmp_path
 
     async def interrupt():
         blocked = asyncio.Event()
+        executing = False
 
         async def upstream(request):
-            if request.url.path.endswith("/detail"):
+            if executing and request.url.path.endswith("/detail"):
                 blocked.set()
                 await asyncio.Event().wait()
             return empty_upstream(request)
@@ -210,6 +235,7 @@ def test_runtime_restarts_interrupted_work_and_stop_blocks_new_requests(tmp_path
         async with httpx.AsyncClient(transport=httpx.MockTransport(upstream)) as client:
             collector = Collector(Store(path), client)
             await collector.check_once(UID, "123")
+            executing = True
             task = asyncio.create_task(collector.execute_pending())
             await asyncio.wait_for(blocked.wait(), 3)
             task.cancel()

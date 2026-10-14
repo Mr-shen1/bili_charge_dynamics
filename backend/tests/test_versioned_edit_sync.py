@@ -135,7 +135,7 @@ def test_sync_commit_failure_preserves_old_body_and_retries_without_new_signal(t
             assert archive["text"] == "第二版"
             assert archive["synced_version"] == VERSION_2
             assert archive["comments_last_attempt"] == "success"
-            assert not any(url.startswith("/x/v2/reply") for url in requests)
+            assert not any(url in ("/x/v2/reply", "/x/v2/reply/reply") for url in requests)
             completed = snapshot(path)
             requests.clear()
             await reopened.execute_pending()
@@ -155,7 +155,7 @@ def test_edit_updates_body_without_rescanning_completed_comments(tmp_path):
         def upstream(request):
             if request.url.path.startswith("/opus/"):
                 return httpx.Response(200, text=fixture("v2" if edited else "v1"))
-            if edited and request.url.path.startswith("/x/v2/reply"):
+            if edited and request.url.path in ("/x/v2/reply", "/x/v2/reply/reply"):
                 raise AssertionError("Editing must not rescan completed comments")
             return empty_upstream(request)
 
@@ -183,12 +183,13 @@ def test_old_body_commits_its_version_without_hiding_new_observation(tmp_path):
 
     async def scenario():
         edited = False
+        executing = False
         blocked, release = asyncio.Event(), asyncio.Event()
 
         async def upstream(request):
             if request.url.path.startswith("/opus/"):
                 return httpx.Response(200, text=fixture("v2" if edited else "v1"))
-            if request.url.path.endswith("/detail") and not release.is_set():
+            if executing and request.url.path.endswith("/detail") and not release.is_set():
                 blocked.set()
                 await release.wait()
             return empty_upstream(request)
@@ -196,6 +197,7 @@ def test_old_body_commits_its_version_without_hiding_new_observation(tmp_path):
         async with httpx.AsyncClient(transport=httpx.MockTransport(upstream)) as client:
             collector = Collector(Store(path), client)
             await collector.check_once(UID, "123")
+            executing = True
             running = asyncio.create_task(collector.execute_pending())
             await asyncio.wait_for(blocked.wait(), 3)
             edited = True
@@ -227,15 +229,16 @@ def test_recovered_claim_is_fenced_from_late_old_execution(tmp_path, new_version
     async def scenario():
         old_blocked, old_release = asyncio.Event(), asyncio.Event()
         new_blocked, new_release = asyncio.Event(), asyncio.Event()
+        old_executing = new_executing = False
 
         async def old_upstream(request):
-            if request.url.path.endswith("/detail"):
+            if old_executing and request.url.path.endswith("/detail"):
                 old_blocked.set()
                 await old_release.wait()
             return empty_upstream(request)
 
         async def new_upstream(request):
-            if request.url.path.endswith("/detail"):
+            if new_executing and request.url.path.endswith("/detail"):
                 new_blocked.set()
                 await new_release.wait()
             response = empty_upstream(request)
@@ -248,11 +251,13 @@ def test_recovered_claim_is_fenced_from_late_old_execution(tmp_path, new_version
         ) as new_client:
             old = Collector(Store(path), old_client)
             await old.check_once(UID, "123")
+            old_executing = True
             old_task = asyncio.create_task(old.execute_pending())
             await asyncio.wait_for(old_blocked.wait(), 3)
             # 模拟重开恢复后仍有旧 I/O 回调迟到：只调用公开运行入口，不改任务表。
             restarted = Collector(Store(path), new_client, clock=ControlledClock())
             await restarted.check_once(UID, "123")
+            new_executing = True
             new_task = asyncio.create_task(restarted.run())
             try:
                 await asyncio.wait_for(new_blocked.wait(), 3)
@@ -560,8 +565,8 @@ def test_committed_archive_survives_interruption_before_target_finish_and_run_re
                 assert complete["sync_error"] is None
                 assert complete["parts"] == running["parts"]
                 assert archive == committed_archive
-                assert "/x/polymer/web-dynamic/v1/detail" in requests
-                assert not any(url.startswith("/x/v2/reply") for url in requests)
+                assert requests == ["/opus/123", "/x/v2/reply/count"]
+                assert not any(url in ("/x/v2/reply", "/x/v2/reply/reply") for url in requests)
 
                 requests.clear()
                 await reopened.execute_pending()
@@ -623,7 +628,12 @@ def test_v10_database_migrates_without_losing_archive_observation_or_pending_edi
             collector = Collector(Store(path), client)
             await collector.check_once(UID, "123")
             await collector.execute_pending()
-        async with httpx.AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(200, text=fixture("v2")))) as client:
+        def upstream(request):
+            if request.url.path.startswith("/opus/"):
+                return httpx.Response(200, text=fixture("v2"))
+            return empty_upstream(request)
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(upstream)) as client:
             await Collector(Store(path), client).check_once(UID, "123")
 
     asyncio.run(prepare())

@@ -212,7 +212,8 @@ def test_checks_unchecked_http_is_read_only_and_rejects_queries(tmp_path):
             {"id": id, "active": True, "last_checked_at": None, "last_succeeded_at": None,
              "check_status": "unchecked", "observed": {}, "revision": 0,
              "work": "pending", "check_error": None, "sync_error": None,
-             "synced_version": None,
+             "synced_version": None, "synced_comment_count": None,
+             "local_comment_count": None, "local_reply_count": None, "comments_last_attempt": "pending",
              "parts": dict.fromkeys(("text", "media", "comments", "replies", "comment_media"), "pending")} for id in ("123", "20")]
         assert client.get(f"{BASE}/999/checks").status_code == 404
         for query in ("?refresh=1", "?cursor=1&cursor=2"):
@@ -241,11 +242,12 @@ def test_check_signals_merge_revision_and_real_success_timestamps_over_http(tmp_
         "source_comment_count": 2, "author": {"id": UID, "nickname": None,
                                                 "avatar_url": "https://example.invalid/new.png"}}, second_time, None)
     assert store.record_check(UID, "456", {}, CHECKED_AT, None)
-    assert store.pending_checks() == [{"uid": UID, "id": "456"}]
+    assert store.pending_checks() == [{"uid": UID, "id": "123"}, {"uid": UID, "id": "456"}]
     with client_for(path) as client:
         current, unknown = get_checks(client)
-        assert current["check_status"] == "unchanged"
-        assert current["revision"] == 1 and current["work"] == "complete"
+        assert current["check_status"] == "checked"
+        assert current["revision"] == 2 and current["work"] == "pending"
+        assert current["last_succeeded_at"] == FINISHED_AT
         assert current["observed"]["observed_version"] == EDIT_VERSION
         assert current["observed"]["source_comment_count"] == 2
         assert current["observed"]["author"] == {"id": UID, "nickname": "可信昵称",
@@ -333,8 +335,9 @@ def test_inactive_targets_reject_stale_results_and_claims_but_keep_history(tmp_p
         assert store.pending_checks() == [{"uid": UID, "id": "123"}]
 
 
-@pytest.mark.parametrize("complete,same_version", [(True, True), (False, True), (True, False)])
-def test_existing_archive_baseline_does_not_fabricate_sync_time(tmp_path, complete, same_version):
+@pytest.mark.parametrize("complete,same_version,same_count", [
+    (True, True, True), (False, True, True), (True, False, True), (True, True, False)])
+def test_existing_archive_baseline_does_not_fabricate_sync_time(tmp_path, complete, same_version, same_count):
     import json
 
     path = tmp_path / "checks.sqlite"
@@ -344,6 +347,7 @@ def test_existing_archive_baseline_does_not_fabricate_sync_time(tmp_path, comple
     document = store.read_archive("123")
     document["observed_version"] = EDIT_VERSION if same_version else "older"
     document["synced_version"] = document["observed_version"]
+    document["source_comment_count"] = document["synced_comment_count"] = 1 if same_count else 0
     document["work"] = dict.fromkeys(("text", "media", "comments", "replies"), "success")
     if not complete:
         document["work"]["media"] = "pending"
@@ -352,7 +356,7 @@ def test_existing_archive_baseline_does_not_fabricate_sync_time(tmp_path, comple
     store.record_check(UID, "123", signals(), CHECKED_AT, None)
     with client_for(path) as client:
         current = get_checks(client)[0]
-        assert current["work"] == ("complete" if complete and same_version else "pending")
+        assert current["work"] == ("complete" if complete and same_version and same_count else "pending")
         assert current["last_succeeded_at"] is None
         assert client.get(f"{BASE}/{UID}").json()["monitor"]["last_succeeded_at"] is None
 

@@ -15,9 +15,10 @@ ARCHIVE_SIGNALS = """json_object(
     'edited_at', json_extract(a.document, '$.edited_at'),
     'edit_status', json_extract(a.document, '$.edit_status'),
     'observed_version', json_extract(a.document, '$.observed_version'),
-    'source_comment_count', json_extract(a.document, '$.source_comment_count'))"""
+    'source_comment_count', json_extract(a.document, '$.source_comment_count'),
+    'comment_locator', json_extract(a.document, '$.comment_locator'))"""
 SIGNALS = {"published_at", "edited_at", "edit_status", "observed_version",
-           "edited_version", "source_comment_count", "comment_locator"}
+           "edited_version", "source_comment_count", "comment_locator", "comment_count_status"}
 
 
 def safe_error(error):
@@ -69,7 +70,13 @@ def check_parts(row):
         parts["text"] = "pending"
     if version != row["media_version"]:
         parts["media"] = "pending"
-    return {**parts, "comment_media": row["comment_media"]}
+    count = observed.get("source_comment_count")
+    roots_current = count == row["synced_root_comment_count"]
+    if not roots_current:
+        parts["comments"] = "pending"
+    if count != row["synced_reply_comment_count"]:
+        parts["replies"] = "pending"
+    return {**parts, "comment_media": row["comment_media"] if roots_current else "pending"}
 
 
 def archive_complete(connection, uid, id, observed):
@@ -78,13 +85,14 @@ def archive_complete(connection, uid, id, observed):
     return connection.execute("""SELECT 1 FROM archives a WHERE a.uid = ? AND a.id = ?
         AND json_extract(a.document, '$.observed_version') IS ?
         AND json_extract(a.document, '$.synced_version') IS ?
+        AND json_extract(a.document, '$.synced_comment_count') IS ?
         AND json_extract(a.document, '$.work.text') = 'success'
         AND json_extract(a.document, '$.work.media') = 'success'
         AND json_extract(a.document, '$.work.comments') = 'success'
         AND json_extract(a.document, '$.work.replies') = 'success'
         AND NOT EXISTS (SELECT 1 FROM root_comments r WHERE r.dynamic_id = a.id
             AND json_extract(r.document, '$.work.media') IS NOT 'success')""",
-        (uid, id, version, version)).fetchone() is not None
+        (uid, id, version, version, observed.get("source_comment_count"))).fetchone() is not None
 
 
 class CheckStore:
@@ -97,7 +105,7 @@ class CheckStore:
                 WHERE m.enabled = 1 AND m.mode = 'specified'
                 ORDER BY t.uid COLLATE BINARY, t.id COLLATE BINARY""")]
 
-    def record_check(self, uid, id, metadata, checked_at, error=None):
+    def record_check(self, uid, id, metadata, checked_at, error=None, *, comment_observation=None):
         with transaction(self) as connection:
             if not connection.execute(ACTIVE_TARGET, (uid, id)).fetchone():
                 return False
@@ -115,14 +123,24 @@ class CheckStore:
                 error == "SIGNAL_INVALID" and metadata.get("edit_status") == "error"))
             observed = merge_signals(previous, metadata) if readable else previous
             version = None if failed else trusted_version(metadata)
-            # 未知信号不清除可信旧版本；计数和作者变化不推进 revision。
-            changed = row is None or (version is not None and version != (
+            if comment_observation is not None:
+                observed = merge_signals(observed, comment_observation)
+            # 可信总数是独立评论版本；失败/未知不清旧值，也不阻断其他可信信号。
+            count_changed = observed.get("source_comment_count") != previous.get("source_comment_count")
+            changed = row is None or count_changed or (version is not None and version != (
                 previous.get("edited_version") or previous.get("observed_version")))
+            if comment_observation is not None and comment_observation["comment_count_status"] != "observed":
+                failed = True
+                error = error or "SOURCE_UNAVAILABLE"
             revision = (row["revision"] + int(changed)) if row else 1
             work = row["work"] if row else "pending"
             if row is None and not failed and archive_complete(connection, uid, id, observed):
                 work = "complete"
             elif changed and work != "running":
+                work = "pending"
+            elif (work == "complete" and comment_observation is not None
+                  and not archive_complete(connection, uid, id, observed)):
+                # 旧 v11 的整轮完成判断未核对计数；不变信号也要恢复真实未完成工作。
                 work = "pending"
             status = "failed" if failed else ("checked" if changed else "unchanged")
             connection.execute("""INSERT INTO target_checks
@@ -148,6 +166,12 @@ class CheckStore:
                 json_extract(a.document, '$.work') AS parts,
                 json_extract(a.document, '$.synced_version') AS synced_version,
                 json_extract(a.document, '$.media_version') AS media_version,
+                json_extract(a.document, '$.synced_comment_count') AS synced_comment_count,
+                json_extract(a.document, '$.synced_root_comment_count') AS synced_root_comment_count,
+                json_extract(a.document, '$.synced_reply_comment_count') AS synced_reply_comment_count,
+                json_extract(a.document, '$.local_comment_count') AS local_comment_count,
+                json_extract(a.document, '$.local_reply_count') AS local_reply_count,
+                json_extract(a.document, '$.comments_last_attempt') AS comments_last_attempt,
                 CASE WHEN a.id IS NOT NULL AND json_extract(a.document, '$.work.comments') = 'success'
                     AND NOT EXISTS (SELECT 1 FROM root_comments r WHERE r.dynamic_id = a.id
                         AND json_extract(r.document, '$.work.media') IS NOT 'success')
@@ -169,6 +193,9 @@ class CheckStore:
                  "revision": row["revision"] or 0, "work": row["work"] or "pending",
                  "check_error": row["check_error"], "sync_error": row["sync_error"],
                  "synced_version": row["synced_version"],
+                 "synced_comment_count": row["synced_comment_count"],
+                 "local_comment_count": row["local_comment_count"], "local_reply_count": row["local_reply_count"],
+                 "comments_last_attempt": row["comments_last_attempt"] or "pending",
                  "parts": check_parts(row)} for row in rows]
 
     def pending_checks(self):
