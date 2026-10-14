@@ -4,6 +4,7 @@ import type { ManagedUp, ManagementApi, MonitorConfig } from './managementApi';
 import type { ManagementRequests } from './useManagementRequests';
 import { TargetManager } from './TargetManager';
 import { CheckStatusPanel } from './CheckStatusPanel';
+import { DiscoveryStatusPanel } from './DiscoveryStatusPanel';
 
 export function UpCard({ up, api, requests, onChange }: {
   up: ManagedUp; api: ManagementApi; requests: ManagementRequests; onChange(up: ManagedUp): void;
@@ -69,6 +70,7 @@ export function UpCard({ up, api, requests, onChange }: {
     <section className="manage-section" aria-label="监控配置">
       <h2>监控配置</h2>
       {up.monitor ? <>
+        <p>已保存模式：{up.monitor.mode === 'recent' ? '近期 N 条' : '指定动态 ID'}；N：{up.monitor.recentN}。</p>
         <div className="manage-control-row">
           <p>监控：{up.monitor.enabled ? '已启用' : '已停止'}</p>
           <button type="button" disabled={busy} onClick={() => void toggle()}>
@@ -108,6 +110,8 @@ export function UpCard({ up, api, requests, onChange }: {
         <h2>指定动态目标</h2>
         <p className="manage-muted">{up.monitor ? '近期模式按已保存的 N 值监控；切换指定模式可管理关联目标。' : '配置已删除，不再监控目标；已有归档保留。'}</p>
       </section>}
+    <DiscoveryStatusPanel key={`${up.uid}:${up.monitor?.mode}:${up.monitor?.recentN}:${up.monitor?.enabled}`}
+      uid={up.uid} api={api} />
     <CheckStatusPanel uid={up.uid} api={api} monitor={up.monitor} />
     <footer className="manage-section manage-footer">
       {up.monitor ? <div className="manage-actions">

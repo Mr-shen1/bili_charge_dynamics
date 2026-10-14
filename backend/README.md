@@ -1,6 +1,6 @@
-# 票据 01–02 / 13 / 15 / 17 / 19 / 21 / 23–27 后端
+# 票据 01–02 / 13 / 15 / 17 / 19 / 21 / 23–28 后端
 
-提供 UP 身份/配置管理、指定动态关联、显式一次初始化及 SQLite 归档读取。支持根评论采集、最热／最新归档分页、完整楼中楼归档读取，以及动态图／一级评论图共用下载、OSS 上传和独立重试；23 新增独立进程的固定节拍检查；27 增加原规则近期分页发现与持久状态，尚不将发现结果转为当前窗口或初始化归档（#28），不宣称全部归档完成。管理基础契约见 `docs/backend/api/management-api.md`，02 测试证据见 [backend-acceptance-02.md](../.scratch/backend-integration/evidence/backend-acceptance-02.md)，字段依据见 [source-protocol-evidence.md](../docs/backend/evidence/source-protocol-evidence.md)。
+提供 UP 身份/配置管理、指定动态关联、显式一次初始化及 SQLite 归档读取。支持根评论采集、最热／最新归档分页、完整楼中楼归档读取，以及动态图／一级评论图共用下载、OSS 上传和独立重试；23 新增独立进程的固定节拍检查；27 增加原规则近期分页发现与持久状态，28 将可信结果发布为当前窗口，并复用既有检查/初始化/根回复/媒体链；发现成功不宣称全部归档完成。管理基础契约见 `docs/backend/api/management-api.md`，02 测试证据见 [backend-acceptance-02.md](../.scratch/backend-integration/evidence/backend-acceptance-02.md)，字段依据见 [source-protocol-evidence.md](../docs/backend/evidence/source-protocol-evidence.md)。
 
 ## 运行
 
@@ -17,7 +17,7 @@ Python 使用 `.python-version` 固定的 3.12；FastAPI、HTTPX、Uvicorn 和 p
 
 ## 23 独立采集进程
 
-API 和采集进程使用同一 SQLite 路径，分别启动，不能增加多个采集进程。处理持久启用的指定目标检查/同步及近期 UP 发现，默认最多 4 个同时检查、4 个独立目标同步、2 个独立 UP 发现；同目标不叠加，慢分页期间其他目标仍可检查／同步。固定 15 秒检查与慢同步分离，状态从 `GET /api/manage/ups/{uid}/checks` 读取；完整节拍、重启与状态语义见 [采集契约](../docs/backend/api/collector-api.md)。API 不内嵌定时器。
+API 和采集进程使用同一 SQLite 路径，分别启动，不能增加多个采集进程。处理持久启用的指定集合或近期可信窗口的检查/同步，以及近期 UP 发现，默认最多 4 个同时检查、4 个独立目标同步、2 个独立 UP 发现；同目标不叠加，慢分页期间其他目标仍可检查／同步。固定 15 秒检查与慢同步分离，状态从 `GET /api/manage/ups/{uid}/checks` 读取；完整节拍、重启与状态语义见 [采集契约](../docs/backend/api/collector-api.md)。API 不内嵌定时器。
 
 ```sh
 # 前台运行；Ctrl-C 停止（也支持 kill -TERM <pid>）
@@ -26,7 +26,7 @@ BILI_DATABASE_PATH=/absolute/path/monitor.sqlite uv run python -m backend.bili_m
 uv run python -m backend.bili_monitor.collector --database /absolute/path/monitor.sqlite --once
 ```
 
-先通过管理 HTTP 配置启用的指定目标（mode 值为 `specified`）或近期 UP（默认 recent、N=10）。近期发现独立调度，`GET /api/manage/ups/{uid}/discovery` 只读查看本轮进度/错误与最近可信结果；不会把候选当成成功归档或混入指定 targets。完整契约见 [近期发现](../docs/backend/api/discovery-api.md)。配置、观察和待处理都持久化，退出时正在执行的工作保留，正常运行重启后恢复为待处理。锁文件位于数据库旁，运行时不要删除或使用硬链接别名。
+先通过管理 HTTP 配置启用的指定目标（mode 值为 `specified`）或近期 UP（默认 recent、N=10）。近期发现独立调度，`GET /api/manage/ups/{uid}/discovery` 只读查看本轮进度/错误、最近可信结果与 `current_ids` 当前启用窗口；N 改动后新发现成功前保留旧窗口，停用/指定模式/删配置时近期目标不再入选。不会把候选当成成功归档或混入指定 targets。完整契约见 [近期发现](../docs/backend/api/discovery-api.md)。配置、观察和待处理都持久化，退出时正在执行的工作保留，正常运行重启后恢复为待处理。锁文件位于数据库旁，运行时不要删除或使用硬链接别名。
 
 最小隔离演示（**仅测试装配，不访问真实上游、不读取 OSS 环境、不使用默认生产数据库**）：
 
@@ -194,4 +194,4 @@ BILI_DATABASE_PATH=/tmp/bili-management-e2e.sqlite uv run uvicorn backend.tests.
 
 ## 限制
 
-有限结构证据和虚构 fixture 不证明上游长期可用或完整全文覆盖。分钟编辑精度漏检已接受；本阶段已交付独立固定节拍进程，但无近期发现、真实云上传、长期实际稳定性或 2GB 容量结论。分页冻结全量响应会有临时内存/SQLite 写入成本，15 分钟窗口内频繁新访问会放大磁盘与写竞争；过期删除不保证文件缩小，不宣称容量治理。服务器墙钟回拨可能延长过期判断，生产时钟需正常同步。
+有限结构证据和虚构 fixture 不证明上游长期可用或完整全文覆盖。分钟编辑精度漏检已接受；本阶段已交付独立固定节拍进程，已用虚构 fixture 验证近期发现与窗口生命周期，但无真实云上传、长期实际稳定性或 2GB 容量结论。分页冻结全量响应会有临时内存/SQLite 写入成本，15 分钟窗口内频繁新访问会放大磁盘与写竞争；过期删除不保证文件缩小，不宣称容量治理。服务器墙钟回拨可能延长过期判断，生产时钟需正常同步。

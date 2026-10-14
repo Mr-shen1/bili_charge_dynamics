@@ -4,6 +4,7 @@ import copy
 import json
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
 from threading import Event
 
 import anyio
@@ -45,7 +46,17 @@ def reply_source(state):
     return handler
 
 
-def test_initial_archives_complete_replies_and_relations_after_reopen(tmp_path):
+def test_initial_archives_complete_replies_and_relations_after_reopen(tmp_path, monkeypatch):
+    class AdvancingTime(datetime):
+        tick = 0
+
+        @classmethod
+        def now(cls, tz=None):
+            cls.tick += 1
+            return datetime(2026, 10, 14, 12, 0, tzinfo=tz) + timedelta(seconds=cls.tick)
+
+    # 仅替换墙钟，稳定跨越秒边界；生产 HTTP、SQLite 和同步链都保持真实。
+    monkeypatch.setattr("backend.bili_monitor.comment_status.datetime", AdvancingTime)
     path, state = tmp_path / "replies.sqlite", {}
     with archive_client(path, reply_source(state)) as client:
         prepare(client)
@@ -71,7 +82,16 @@ def test_initial_archives_complete_replies_and_relations_after_reopen(tmp_path):
         assert saved["synced_comment_count"] == 7
         assert saved["work"]["media"] == "pending"
         client.post("/api/sync/initial", json={"uid": UID})
-        assert client.get(ARCHIVE).json() == saved
+        current = client.get(ARCHIVE).json()
+        expected = copy.deepcopy(saved)
+        # 显式 initial 会实际重扫评论；成功时间可推进，不能依赖两次恰好在同一秒。
+        # 内容、关系、checkpoint 等其他字段仍完整比较，重开则验证最新完整快照。
+        for field in ("root_comments_last_succeeded_at", "replies_last_succeeded_at", "comments_last_succeeded_at"):
+            assert current[field] >= saved[field]
+            assert current["comment_sync"][field] == current[field]
+            expected[field] = expected["comment_sync"][field] = current[field]
+        assert current == expected
+        saved = current
     with archive_client(path) as client:
         second = client.get(REPLIES, params={"cursor": first["next_cursor"], "limit": 10}).json()
         assert len(second["items"]) == 2

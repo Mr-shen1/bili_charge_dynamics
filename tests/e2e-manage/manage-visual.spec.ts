@@ -105,7 +105,7 @@ for (const width of [360, 390, 768, 1280]) {
       overflow: false, mainWidth: Math.min(716, width - 24), center: width / 2,
       background: 'rgb(209, 232, 231)', cardBackground: 'rgb(255, 255, 255)', radius: '4px',
       authorColor: 'rgb(251, 114, 153)', avatarWidth: 48, fontSize: '16px', lineHeight: '25px',
-      headings: ['虚构管理作者 🌸', '监控配置', '指定动态目标', '目标检查与归档状态'], cardGap: 8,
+      headings: ['虚构管理作者 🌸', '监控配置', '指定动态目标', '近期发现与当前窗口', '目标检查与归档状态'], cardGap: 8,
     });
     expect(measurements.minControlHeight).toBeGreaterThanOrEqual(44);
     expect(measurements.sectionBorders.every(color => color === 'rgb(227, 229, 231)')).toBe(true);

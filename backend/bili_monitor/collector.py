@@ -68,7 +68,7 @@ class Collector:
         self.max_discoveries = max_discoveries
 
     async def discover_once(self, uid):
-        """一次按 UP 发现；发布结果不等于内容归档或窗口初始化。"""
+        """一次按 UP 发现并发布可信窗口；首次工作仍经固定检查与独立归档阶段。"""
         from .discovery import discover_recent, DiscoveryError, DiscoveryStopped
 
         claim = await to_thread.run_sync(self.store.claim_discovery, uid, self.clock.now())

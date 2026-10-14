@@ -2,6 +2,7 @@ import { isValidId } from '../data/identifiers';
 import { isRecord as record } from '../data/guards';
 import { parseCheck, type TargetCheck } from '../data/checkStatus';
 import { timestamp } from '../data/timestamp';
+import { parseDiscovery, type DiscoveryState } from './discoveryState';
 
 export interface MonitorConfig {
   readonly mode: 'recent' | 'specified';
@@ -106,6 +107,19 @@ export function createManagementApi(transport: ManagementTransport = (url, init)
     } catch { return signal.aborted ? { status: 'cancelled' } : invalidResponse; }
   }
   return {
+    async getDiscovery({ uid, signal }: { readonly uid: string; readonly signal: AbortSignal }): Promise<ManagementResult<DiscoveryState>> {
+      if (!isValidUid(uid)) return { status: 'error', message: invalidUidMessage };
+      try {
+        if (signal.aborted) return { status: 'cancelled' };
+        const response = await transport(`/api/manage/ups/${uid}/discovery`, { method: 'GET', signal });
+        const body: unknown = await response.json();
+        if (signal.aborted) return { status: 'cancelled' };
+        if (!response.ok) return httpError(body, response.status);
+        const discovery = parseDiscovery(body);
+        return response.status === 200 && discovery?.uid === uid
+          ? { status: 'success', data: discovery } : invalidResponse;
+      } catch { return signal.aborted ? { status: 'cancelled' } : invalidResponse; }
+    },
     async listChecks({ uid, signal }: { readonly uid: string; readonly signal: AbortSignal }): Promise<ManagementResult<readonly TargetCheck[]>> {
       if (!isValidUid(uid)) return { status: 'error', message: invalidUidMessage };
       try {

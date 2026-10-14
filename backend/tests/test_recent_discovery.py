@@ -34,7 +34,7 @@ def test_discovery_unstarted_is_read_only_and_independent_of_specified_targets(t
         assert response.json() == {
             "uid": UID, "mode": "recent", "recent_n": 10, "enabled": True,
             "active": True, "status": "undiscovered", "attempt": None,
-            "trusted_result": None, "retryable": True, "incomplete": True,
+            "trusted_result": None, "current_ids": [], "retryable": True, "incomplete": True,
         }
         assert api.get(f"{BASE}/999/discovery").status_code == 404
         assert api.get(DISCOVERY + "?refresh=1").status_code == 422

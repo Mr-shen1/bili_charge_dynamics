@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from .contracts import APIError
-from .checks import CheckStore
+from .checks import CheckStore, ACTIVE_TARGET, SELECTED_TARGETS
 from .discovery_state import DiscoveryStore
 from .comment_status import comment_status, utc_now
 from .media import reconcile_media, refresh_media_progress
@@ -320,10 +320,10 @@ class Store(CheckStore, DiscoveryStore):
         saved = self.read(uid)
         if not saved:
             raise APIError("NOT_FOUND")
-        monitor = saved[0]["monitor"]
-        if not monitor or not monitor["enabled"] or monitor["mode"] != "specified":
-            return []
-        return self.targets(uid)
+        with self.connection() as connection:
+            return [dict(row) for row in connection.execute(
+                f"SELECT id FROM ({SELECTED_TARGETS}) WHERE uid = ? ORDER BY id COLLATE BINARY", (uid,)
+            )]
 
     def read_archive(self, id):
         with self.connection() as connection:
@@ -408,8 +408,7 @@ class Store(CheckStore, DiscoveryStore):
             connection.execute("BEGIN IMMEDIATE")
             try:
                 # 已选集合与领取之间可能停止/删除；提交前重新核验配置与关联。
-                if not connection.execute("""SELECT 1 FROM targets t JOIN monitors m ON m.uid = t.uid
-                    WHERE t.uid = ? AND t.id = ? AND m.enabled = 1 AND m.mode = 'specified'""", (uid, id)).fetchone():
+                if not connection.execute(ACTIVE_TARGET, (uid, id)).fetchone():
                     connection.commit()
                     return None
                 row = connection.execute("SELECT uid FROM archives WHERE id = ?", (id,)).fetchone()

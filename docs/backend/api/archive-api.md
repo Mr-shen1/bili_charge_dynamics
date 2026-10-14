@@ -1,6 +1,6 @@
-# 指定目标、首次归档与归档读取接口（02 / 13 / 15 / 17 / 19 / 21 / 26 后端）
+# 指定目标、首次归档与归档读取接口（02 / 13 / 15 / 17 / 19 / 21 / 26 / 28 后端）
 
-02 交付指定目标的首次正文归档和基础读取；13 后端扩展全部／单 UP 读取与持久身份列表；15 增加已有根评论首次归档及最热／最新读取，17 补齐楼中楼来源分页与持久读取。19 增加动态图下载、OSS 上传与独立重试，21 将共用媒体能力接入一级评论；不包含近期目标选择、周期检查或评论图页面，前端 Adapter／最小路由契约见 [archive-api-client.md](archive-api-client.md)，具体自动化证据见 [13 验收记录](../../../.scratch/backend-integration/acceptance-13.md)。管理身份及配置契约见 [management-api.md](management-api.md)，来源证据及限制见 [backend-feasibility.md](../evidence/backend-feasibility.md)。
+02 交付指定目标的首次正文归档和基础读取；13 后端扩展全部／单 UP 读取与持久身份列表；15 增加已有根评论首次归档及最热／最新读取，17 补齐楼中楼来源分页与持久读取。19 增加动态图下载、OSS 上传与独立重试，21 将共用媒体能力接入一级评论；近期窗口与周期检查另见 [采集契约](collector-api.md) 和 [近期发现](discovery-api.md)，前端 Adapter／最小路由契约见 [archive-api-client.md](archive-api-client.md)，具体自动化证据见 [13 验收记录](../../../.scratch/backend-integration/acceptance-13.md)。管理身份及配置契约见 [management-api.md](management-api.md)，来源证据及限制见 [backend-feasibility.md](../evidence/backend-feasibility.md)。
 
 ## 公开边界
 
@@ -20,7 +20,7 @@
 
 UID 和动态 ID 必须是十进制字符串，不经 JavaScript Number 转换。不符返回 `409 TARGET_AUTHOR_MISMATCH`，无法确认返回 `502 TARGET_UNVERIFIED`；都不建立关联。上游请求不在数据库事务内，错误只返回固定脱敏提示，不传递上游响应、URL、请求头或异常文本。
 
-初始化入口面向执行者及测试，不从页面挂载、读取或刷新调用；没有手工采集 UI（#26 的状态重读只是归档 GET）。`succeeded` 仅计正文成功（含成功空），正文受限属于本次未成功而计入 `failed`，具体受限/失败由归档状态区分。只处理已启用且已保存为 `specified` 的关联集合，不补入近期或作者的其他动态。停止、删除监控配置或解除目标后，保留身份和历史归档。浏览器 list/detail 只读取 SQLite，即使上游不可用也不触发采集。
+初始化入口面向执行者及测试，不从页面挂载、读取或刷新调用；没有手工采集 UI（#26 的状态重读只是归档 GET）。`succeeded` 仅计正文成功（含成功空），正文受限属于本次未成功而计入 `failed`，具体受限/失败由归档状态区分。28 扩展为只处理当前启用模式的入选集合：`specified` 只取指定关联，`recent` 只取已发布的可信窗口；不在该入口发现目标，不混合两种集合，也不补入作者其他历史动态。停止、删除监控配置或解除目标后，保留身份和历史归档。浏览器 list/detail 只读取 SQLite，即使上游不可用也不触发采集。
 
 ### 归档读取 scope、身份与错误
 
