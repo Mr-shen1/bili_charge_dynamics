@@ -85,6 +85,23 @@ describe('评论同步状态生产读取', () => {
     expect(status.getByText('评论整轮最近成功：—')).toBeVisible();
     expect(status.getByText('评论整轮：回复归档失败；保留已有归档，将在固定节拍重试。')).toBeVisible();
   });
+  it('首读失败时已加载零条不冒充本地零或来源零，原位重试后更新已加载数', async () => {
+    const user = userEvent.setup();
+    let failure = true;
+    show(async url => {
+      if (url.includes('/comments?')) return failure ? new Response('SECRET_TOKEN', { status: 503 })
+        : Response.json({ items: [{ ...rootComment, source_reply_count: 0 }], next_cursor: null });
+      return Response.json({ ...archive, local_comment_count: 2, local_reply_count: 1, comment_sync: sync });
+    });
+    const area = within(await screen.findByRole('region', { name: '评论区' }));
+    expect(await area.findByRole('alert')).toHaveTextContent('最热评论读取失败');
+    expect(area.getByText('来源评论总数：501；本地一级评论：2；本地回复：1；当前已加载一级评论：0。')).toBeVisible();
+    expect(area.queryByText('暂无评论')).not.toBeInTheDocument();
+    failure = false;
+    await user.click(area.getByRole('button', { name: '重试' }));
+    expect(await area.findByText('来源评论总数：501；本地一级评论：2；本地回复：1；当前已加载一级评论：1。')).toBeVisible();
+    expect(document.body).not.toHaveTextContent('SECRET_TOKEN');
+  });
   it('正文或媒体工作运行不把已完成评论显示为同步中', async () => {
     show(async url => Response.json(url.includes('/comments?') ? { items: [], next_cursor: null }
       : { ...archive, comments_last_attempt: 'success', root_comments_last_attempt: 'success',
