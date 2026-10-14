@@ -10,6 +10,7 @@ from .media import sync_media
 
 async def initialize(store, client, uid, downloader=None, uploader=None):
     targets = await to_thread.run_sync(store.selected_targets, uid)
+    checks = {item["id"]: item["observed"] for item in await to_thread.run_sync(store.read_checks, uid)}
     result = {"processed": 0, "succeeded": 0, "failed": 0}
     for target in targets:
         id = target["id"]
@@ -17,9 +18,19 @@ async def initialize(store, client, uid, downloader=None, uploader=None):
         if generation is None:
             continue
         result["processed"] += 1
-        succeeded = await sync_target(store, client, uid, id, generation, downloader, uploader)
+        observed = checks.get(id, {})
+        # 已接入独立计数的目标，显式初始化也不得以旧 STAT/detail 覆盖可信观察。
+        # 尚无检查记录的旧初始化协议保持兼容；它不是固定检查或计数观察入口。
+        comments = observed if "comment_count_status" in observed else None
+        succeeded = await sync_target(store, client, uid, id, generation, downloader, uploader,
+                                      comment_observation=comments)
         result["succeeded" if succeeded else "failed"] += 1
     return result
+
+
+def comment_metadata(observation):
+    return {key: observation[key] for key in ("source_comment_count", "comment_locator")
+            if key in observation}
 
 
 async def sync_body(store, client, uid, id, generation, comment_observation):
@@ -34,8 +45,7 @@ async def sync_body(store, client, uid, id, generation, comment_observation):
         pass
     if comment_observation is not None:
         page_meta.pop("source_comment_count", None)
-        page_meta.update({key: comment_observation[key] for key in ("source_comment_count", "comment_locator")
-                          if key in comment_observation})
+        page_meta.update(comment_metadata(comment_observation))
     if not await to_thread.run_sync(store.observe_archive, id, generation, page_meta):
         return False
     status = "success" if body is not None else "failed"
@@ -68,8 +78,7 @@ async def sync_target(store, client, uid, id, generation, downloader=None, uploa
     body_complete = (comment_observation is not None and archive["work"]["text"] == "success"
                      and archive["synced_version"] == version)
     if body_complete:
-        metadata = {key: comment_observation[key] for key in ("source_comment_count", "comment_locator")
-                    if key in comment_observation}
+        metadata = comment_metadata(comment_observation)
         succeeded = await to_thread.run_sync(store.observe_archive, id, generation, metadata)
     else:
         succeeded = await sync_body(store, client, uid, id, generation, comment_observation)

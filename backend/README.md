@@ -59,7 +59,7 @@ uv run python -m backend.tests.collector_demo --database "$demo_dir/monitor.sqli
 
 初始化、失败重试或可信总数变化才沿用原完整根＋必要回复分页；已有 ID 仍更新，不截断旧 ID，不自动回填全部动态。计数不变、纯正文／评论编辑和增删抵消不重扫；这些是已知漏检，不增每日校准或内容比对。网页失败／正文受限不阻断实际可读评论，实际接口拒绝如实 failed。评论工作绑定领取计数，旧完成保留其实际 checkpoint，不能清除同步期间登记的新计数工作；关闭重开无新信号可重试。
 
-checks HTTP 增量返回 `observed.comment_count_status`、`synced_comment_count`、`local_comment_count/local_reply_count`、`comments_last_attempt`；无归档的本地数为 null，不伪造零。`parts` 针对最新检查观察投影，旧评论成功不冒充新计数完成。计数与正文版本分开，成功正文不为纯评论工作重读；媒体仍独立，评论 checkpoint 成功不等于目标 complete。复用 #21 媒体待处理／上传，不另建 OSS。没有新增 schema，旧 v11 配置、归档、cursor 和工作原样保留。
+checks HTTP 增量返回 `observed.comment_count_status`、`synced_comment_count`、`local_comment_count/local_reply_count`、`comments_last_attempt`；无归档的本地数为 null，不伪造零。`parts` 针对最新检查观察投影，旧评论成功不冒充新计数完成。计数与正文版本分开，成功正文不为纯评论工作重读；检查 `failed` 是任一信号失败的聚合，编辑和计数状态仍可分别判断，计数失败不阻止可信正文编辑。显式 initial 不是计数检查：无独立检查记录时保持 #02 协议，有记录时绑定最近可信独立计数，不允许 STAT/detail 覆盖；媒体仍独立，评论 checkpoint 成功不等于目标 complete。复用 #21 媒体待处理／上传，不另建 OSS。没有新增 schema，旧 v11 配置、归档、cursor 和工作原样保留。
 
 专项：`uv run pytest backend/tests/test_comment_count_sync.py -q`。真实 SQLite／HTTP、原始虚构 JSON、受控时钟验证独立计数、完整 45 根／25 回复分页、未知／零、增减／不变、故障重试、新旧计数交错，以及慢分页期间其他目标新工作仍推进。精确根＋回复口径、真实匿名权限、持续节拍、OSS 和正式设备仍未验证；不把 fixture 或历史样本当作真实全量证明。实现与测试结果见 [25 记录](../.scratch/backend-integration/acceptance-25.md)。
 

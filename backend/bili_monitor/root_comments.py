@@ -62,10 +62,12 @@ def root_document(reply, dynamic_id, locator):
 
 
 async def fetch_comment_count(client, locator):
-    """独立来源总数含根与回复，不由根页／本地条数推导。"""
+    """读取独立评论区总数信号，不由根页／本地条数推导。"""
     if not valid_locator(locator):
         raise ValueError("Unknown comment resource")
-    response = await client.get("https://api.bilibili.com/x/v2/reply/count", params=locator)
+    response = await client.get("https://api.bilibili.com/x/v2/reply/count", params={
+        "oid": locator["oid"], "type": locator["type"],
+    })
     response.raise_for_status()
     payload = response.json()
     if type(payload.get("code")) is not int or payload["code"] != 0:

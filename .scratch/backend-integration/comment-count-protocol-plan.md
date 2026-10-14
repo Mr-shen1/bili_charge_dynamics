@@ -21,4 +21,10 @@
 - T2：真实临时 SQLite、公开归档与 checks HTTP、关闭重开，验证未知／零、observed／checkpoint／本地计数、部分失败与保留、脱敏和慢 I/O 期间读写。
 - 来源分页不是并发快照；计数抵消、纯评论编辑及未改变计数的来源移动可漏检。原有读取 cursor 冻结协议保持不变，采集更新仅影响新首批，不更改旧读取快照。
 
-协议字段与最终实现、测试结果在交付文档中补充；真实来源、OSS、持续节拍、资源与正式设备验收仍分别归后续票据。
+## 最终接口与兼容
+
+checks HTTP 保留 `observed.source_comment_count`，新增最近独立读取 `comment_count_status`；同时公开实际 `synced_comment_count`、本地根／回复数与 `comments_last_attempt`。`parts` 按最新观察与根／回复各自 checkpoint 投影，不用整轮结果掩盖根成功、回复失败。检查 failed 是任一信号失败的聚合，另一可信信号仍推进。
+
+显式 initial 不是固定检查：无独立检查记录时沿用 #02 协议；已有独立计数记录时复用其最近可信计数（未知仍未知），不得以 STAT/detail 覆盖。无新增 schema，旧配置、归档、cursor 和 v11 未完成工作保留。
+
+来源字段及真实口径证据限制见[来源协议](../../docs/backend/evidence/source-protocol-evidence.md#25-独立评论计数)，测试结果见[验收记录](acceptance-25.md)；精确根＋全部回复口径、真实来源、OSS、持续节拍、资源与正式设备验收仍待对应人工证据。

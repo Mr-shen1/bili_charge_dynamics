@@ -491,3 +491,61 @@ def test_comment_checkpoint_advances_while_comment_media_remains_independently_p
             assert source.scans() == []  # 媒体失败重试不重扫已成功评论。
 
     asyncio.run(scenario())
+
+
+def test_legacy_explicit_initialization_cannot_replace_independent_count_with_detail_count(tmp_path):
+    path = tmp_path / "monitor.sqlite"
+    configured(path)
+    source = CommentSource()  # 独立计数7；detail为0。
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(source)) as client:
+            collector = Collector(Store(path), client)
+            await collector.check_once(UID, "123")
+            await collector.execute_pending()
+            with archive_client(path, source) as api:
+                assert api.post("/api/sync/initial", json={"uid": UID}).status_code == 200
+            state, archive = snapshot(path)
+            assert archive["source_comment_count"] == archive["synced_comment_count"] == 7
+            assert state["observed"]["source_comment_count"] == 7
+            assert state["parts"]["comments"] == state["parts"]["replies"] == "success"
+            source.calls.clear()
+            await collector.check_once(UID, "123")
+            await collector.execute_pending()
+            assert source.scans() == []
+            assert snapshot(path)[1]["synced_comment_count"] == 7
+
+    asyncio.run(scenario())
+
+
+def test_failed_count_observation_does_not_block_trusted_body_edit_or_rescan_comments(tmp_path):
+    path = tmp_path / "monitor.sqlite"
+    configured(path)
+    source = CommentSource()
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(source)) as client:
+            collector = Collector(Store(path), client)
+            await collector.check_once(UID, "123")
+            await collector.execute_pending()
+            before, _ = snapshot(path)
+            source.count = None
+            source.html = readable_html("计数失败期间的新正文", pictures=[]).replace("13:01", "13:02")
+            source.calls.clear()
+            await collector.check_once(UID, "123")
+            checked, _ = snapshot(path)
+            assert checked["check_status"] == "failed"  # 检查聚合：不是两种信号均失败。
+            assert checked["check_error"] == "SOURCE_UNAVAILABLE"
+            assert checked["observed"]["edit_status"] == "observed"
+            assert checked["observed"]["comment_count_status"] == "failed"
+            assert checked["observed"]["source_comment_count"] == 7
+            assert checked["revision"] == before["revision"] + 1
+            await collector.execute_pending()
+            state, archive = snapshot(path)
+            assert archive["text"] == "计数失败期间的新正文"
+            assert archive["synced_version"] == "2026-10-09T13:02+08:00"
+            assert archive["synced_comment_count"] == 7
+            assert state["parts"]["text"] == "success"
+            assert source.scans() == []
+
+    asyncio.run(scenario())
