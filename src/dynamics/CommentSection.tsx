@@ -2,6 +2,7 @@ import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from '
 import { emptyCommentSnapshot } from '../app/DetailSnapshot';
 import type { ArchiveMetadata, CommentSort, DynamicReader } from '../data/contracts';
 import { Identity, displayTime } from './DynamicContent';
+import { ReadOnlyLikeCount } from './ReadOnlyLikeCount';
 import { useDiscussionRead } from './useDiscussionRead';
 import { ReadNotice } from './ReadNotice';
 import { FoldableText } from './FoldableText';
@@ -16,24 +17,38 @@ export function locateComments(root: HTMLElement | null) {
   root?.scrollIntoView?.({ block: 'start', behavior: 'instant' });
 }
 
-export function CommentSection({ reader, dynamicId, authorId, initialTarget, canLocateEntry, archive, rootRef }: {
-  reader: DynamicReader; dynamicId: string; authorId: string; initialTarget: 'top' | 'comments'; canLocateEntry(): boolean; archive?: ArchiveMetadata; rootRef: RefObject<HTMLElement | null>;
+export function CommentSection({ reader, dynamicId, authorId, sourceCommentCount, initialTarget, canLocateEntry, archive, rootRef }: {
+  reader: DynamicReader; dynamicId: string; authorId: string; sourceCommentCount: number | null; initialTarget: 'top' | 'comments'; canLocateEntry(): boolean; archive?: ArchiveMetadata; rootRef: RefObject<HTMLElement | null>;
 }) {
   return reader.discussions === 'not-archived'
-    ? <UnarchivedComments initialTarget={initialTarget} canLocateEntry={canLocateEntry} root={rootRef} />
-    : <ArchivedComments reader={reader} dynamicId={dynamicId} authorId={authorId} initialTarget={initialTarget} canLocateEntry={canLocateEntry} root={rootRef}
+    ? <UnarchivedComments sourceCommentCount={sourceCommentCount} archive={archive} initialTarget={initialTarget} canLocateEntry={canLocateEntry} root={rootRef} />
+    : <ArchivedComments reader={reader} dynamicId={dynamicId} authorId={authorId} sourceCommentCount={sourceCommentCount} archive={archive} initialTarget={initialTarget} canLocateEntry={canLocateEntry} root={rootRef}
       emptyUnarchived={Boolean(archive && (archive.rootCommentsLastAttempt ?? archive.work.comments) !== 'success')} />;
 }
-function UnarchivedComments({ initialTarget, canLocateEntry, root }: { initialTarget: 'top' | 'comments'; canLocateEntry(): boolean; root: RefObject<HTMLElement | null> }) {
+function CommentHeading({ sourceCommentCount, archive, root }: {
+  sourceCommentCount: number | null; archive?: ArchiveMetadata; root: RefObject<HTMLElement | null>;
+}) {
+  const title = `评论 ${sourceCommentCount ?? '—'}`;
+  return <header className={styles.commentHeading}>
+    <h2 aria-label={title}><button type="button" className={styles.commentTab}
+      aria-label={`${archive ? '来源' : ''}${title}`} onClick={() => locateComments(root.current)}>
+      评论 <span className={styles.headingCount}>{sourceCommentCount ?? '—'}</span>
+    </button></h2>
+  </header>;
+}
+function UnarchivedComments({ sourceCommentCount, archive, initialTarget, canLocateEntry, root }: {
+  sourceCommentCount: number | null; archive?: ArchiveMetadata; initialTarget: 'top' | 'comments'; canLocateEntry(): boolean; root: RefObject<HTMLElement | null>;
+}) {
   useLayoutEffect(() => {
     if (initialTarget === 'comments' && canLocateEntry()) locateComments(root.current);
   }, [initialTarget, canLocateEntry]);
-  return <section ref={root} aria-label="评论区"><h2>评论区</h2>
+  return <section ref={root} className={styles.commentSection} aria-label="评论区">
+    <CommentHeading sourceCommentCount={sourceCommentCount} archive={archive} root={root} />
     <p role="status">{unarchivedMessage}</p>
   </section>;
 }
-function ArchivedComments({ reader, dynamicId, authorId, initialTarget, canLocateEntry, emptyUnarchived, root }: {
-  reader: DynamicReader; dynamicId: string; authorId: string; initialTarget: 'top' | 'comments'; canLocateEntry(): boolean; emptyUnarchived: boolean; root: RefObject<HTMLElement | null>;
+function ArchivedComments({ reader, dynamicId, authorId, sourceCommentCount, archive, initialTarget, canLocateEntry, emptyUnarchived, root }: {
+  reader: DynamicReader; dynamicId: string; authorId: string; sourceCommentCount: number | null; archive?: ArchiveMetadata; initialTarget: 'top' | 'comments'; canLocateEntry(): boolean; emptyUnarchived: boolean; root: RefObject<HTMLElement | null>;
 }) {
   const visit = useDiscussionVisit();
   const [sort, setSort] = useState<CommentSort>(visit.current.sort);
@@ -51,9 +66,9 @@ function ArchivedComments({ reader, dynamicId, authorId, initialTarget, canLocat
     visit.current = emptyCommentSnapshot(target);
     setSort(target);
   };
-  return <section ref={root} aria-label="评论区">
-    <h2>评论区</h2>
-    <div role="group" aria-label="评论排序">
+  return <section ref={root} className={styles.commentSection} aria-label="评论区">
+    <CommentHeading sourceCommentCount={sourceCommentCount} archive={archive} root={root} />
+    <div className={styles.sort} role="group" aria-label="评论排序">
       <button type="button" className={styles.button} aria-pressed={sort === 'hot'} onClick={() => selectSort('hot')}>最热</button>
       <button type="button" className={styles.button} aria-pressed={sort === 'latest'} onClick={() => selectSort('latest')}>最新</button>
     </div>
@@ -92,20 +107,26 @@ function CommentSortView({ reader, dynamicId, authorId, sort, onSettled, restart
         const images = comment.images ?? [];
         const hasText = Boolean(comment.text.trim());
         const hasMedia = images.length > 0 || Boolean(comment.pendingMediaCount);
-        return <li key={comment.id} className={styles.card} data-reading-id={`comment:${comment.id}`}>
-          <Identity user={comment.author} />
-          {comment.author.id === authorId && <span className={styles.upBadge}>UP主</span>}
-          <time className={styles.time} dateTime={comment.publishedAt ?? undefined}>{displayTime(comment.publishedAt)}</time>
+        return <li key={comment.id} className={`${styles.comment} ${comment.author.id === authorId ? styles.authorComment : ''}`} data-reading-id={`comment:${comment.id}`}>
+          <div className={styles.discussionHead}>
+            <Identity user={comment.author} />
+            {comment.author.id === authorId && <span className={styles.upBadge}>UP主</span>}
+          </div>
+          <div className={styles.commentBody}>
           {(hasText || !hasMedia) && <FoldableText text={hasText ? comment.text : '暂无评论内容'} subject="评论"
             expanded={expanded[comment.id] ?? false}
             toggle={() => setExpanded(previous => ({ ...previous, [comment.id]: !previous[comment.id] }))} />}
           {images.length > 0 && <ImageGrid owner={{ type: 'comment', id: comment.id }} images={images} list={false} />}
           {!!comment.pendingMediaCount && <p role="status">评论图片待归档（{comment.pendingMediaCount} 张）。</p>}
-          <p className={styles.count}>点赞 {comment.likeCount ?? '—'}</p>
-          <p className={styles.count}>回复 {comment.replyCount ?? '—'}</p>
+          <div className={styles.metrics}>
+            <time className={styles.time} dateTime={comment.publishedAt ?? undefined}>{displayTime(comment.publishedAt)}</time>
+            <ReadOnlyLikeCount count={comment.likeCount} />
+            <span className={styles.count}>回复 {comment.replyCount ?? '—'}</span>
+          </div>
           {comment.replyCount !== 0 && (reader.replies === 'not-archived'
             ? <p role="status">回复尚未归档。</p>
             : <ReplySection reader={reader} dynamicId={dynamicId} authorId={authorId} rootId={comment.id} />)}
+          </div>
         </li>;
       })}
     </ul>

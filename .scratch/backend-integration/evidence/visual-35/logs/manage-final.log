@@ -1,0 +1,16 @@
+
+> bili-charge-dynamics@0.1.0 test:e2e:manage /home/kevin/Projects/PI/bili_charge_dynamics
+> playwright test --config playwright.manage.config.ts
+
+
+Running 7 tests using 1 worker
+
+  ✓  1 tests/e2e-manage/manage-visual.spec.ts:53:3 › 管理规则映射：360px 居中分区、触控与真实状态 (858ms)
+  ✓  2 tests/e2e-manage/manage-visual.spec.ts:53:3 › 管理规则映射：390px 居中分区、触控与真实状态 (844ms)
+  ✓  3 tests/e2e-manage/manage-visual.spec.ts:53:3 › 管理规则映射：768px 居中分区、触控与真实状态 (839ms)
+  ✓  4 tests/e2e-manage/manage-visual.spec.ts:53:3 › 管理规则映射：1280px 居中分区、触控与真实状态 (721ms)
+  ✓  5 tests/e2e-manage/manage-visual.spec.ts:127:1 › 管理键盘顺序、清晰焦点、独立草稿及 Enter 提交仍经过 HTTP 边界 (603ms)
+  ✓  6 tests/e2e-manage/management.spec.ts:10:1 › 实际 API 保存两 UP 配置，服务重启和页面刷新后仍可读，删除保留身份 (3.7s)
+  ✓  7 tests/e2e-manage/management.spec.ts:75:1 › 实际上游拒绝显示失败，可键盘原位重试，四宽度无页面横向溢出 (1.1s)
+
+  7 passed (10.6s)

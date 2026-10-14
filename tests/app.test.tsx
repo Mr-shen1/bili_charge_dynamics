@@ -27,6 +27,36 @@ function VisitControls() {
 }
 
 describe('文字动态公开页面行为', () => {
+  it.each([
+    ['not-archived', null], ['not-archived', 0], ['not-archived', 12345],
+    [undefined, null], [undefined, 0], [undefined, 12345],
+  ] as const)('discussions=%s 的详情仅评论tab保留完整来源计数 %s，键盘定位同一评论区', async (discussions, commentCount) => {
+    const user = userEvent.setup();
+    const scroll = vi.fn();
+    const previous = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollIntoView');
+    Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, value: scroll });
+    try {
+      show({ ...createMockReader({ creator, dynamics: [{ ...item, commentCount }] }), discussions }, `/dynamics/${item.id}`);
+      const article = await screen.findByRole('article');
+      expect(within(article).queryByRole('button', { name: /评论/ })).not.toBeInTheDocument();
+      expect(article).not.toHaveTextContent(/评论\s*(?:12345|0|—)/);
+      const comments = screen.getByRole('region', { name: '评论区' });
+      const label = `评论 ${commentCount ?? '—'}`;
+      expect(within(comments).getByRole('heading', { name: label })).toHaveTextContent(label);
+      const entry = within(comments).getByRole('button', { name: label });
+      expect(screen.getAllByRole('button', { name: label })).toHaveLength(1);
+      expect(await within(comments).findByText(discussions ? /评论尚未归档/ : '暂无评论')).toBeVisible();
+      expect(within(comments).queryByRole('group', { name: '评论排序' }) !== null).toBe(!discussions);
+      entry.focus();
+      await user.keyboard('{Enter}');
+      expect(scroll).toHaveBeenCalledTimes(1);
+      expect(scroll.mock.instances[0]).toBe(comments);
+      expect(scroll).toHaveBeenCalledWith({ block: 'start', behavior: 'instant' });
+    } finally {
+      if (previous) Object.defineProperty(Element.prototype, 'scrollIntoView', previous);
+      else Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+    }
+  });
   it.each(['detail', 'comments'] as const)('气泡入口等待 %s 时用户滚动优先，迟到读取不拉回评论区', async phase => {
     const user = userEvent.setup();
     let resolve!: () => void;
@@ -162,7 +192,10 @@ describe('文字动态公开页面行为', () => {
     expect(within(card).getByText('未知用户')).toBeVisible();
     expect(within(card).getByRole('img')).toHaveAttribute('src', '/default-avatar.svg');
     expect(within(card).getByText('时间未知')).toBeVisible();
-    expect(within(card).getByText('评论 —')).toBeVisible();
+    expect(within(card).queryByRole('button', { name: /评论/ })).not.toBeInTheDocument();
+    const comments = screen.getByRole('region', { name: '评论区' });
+    expect(within(comments).getByRole('heading', { name: '评论 —' })).toBeVisible();
+    expect(within(comments).getByRole('button', { name: '评论 —' })).toBeVisible();
   });
   it('开发严格模式下故障装配仍确定性首次失败，重试恢复正常列表', async () => {
     const user = userEvent.setup();
@@ -215,12 +248,12 @@ describe('文字动态公开页面行为', () => {
       { ...item, id: 'missing', author: missingUser, publishedAt: 'invalid', text: '  ', commentCount: null },
       { ...item, id: 'zero', commentCount: 0 },
     ] }));
-    expect(await screen.findByText('评论 0')).toBeVisible();
+    expect(await screen.findByRole('button', { name: '评论 0' })).toBeVisible();
     const emptyCard = screen.getByText('暂无内容').closest('article');
     if (!emptyCard) throw new Error('Expected empty content card');
     expect(within(emptyCard).getByText('未知用户')).toBeVisible();
     expect(within(emptyCard).getByText('时间未知')).toBeVisible();
-    expect(within(emptyCard).getByText('评论 —')).toBeVisible();
+    expect(within(emptyCard).getByRole('button', { name: '评论 —' })).toBeVisible();
     const avatar = within(emptyCard).getByRole('img');
     fireEvent.error(avatar);
     expect(avatar).toHaveAttribute('src', '/default-avatar.svg');
@@ -289,7 +322,7 @@ describe('文字动态公开页面行为', () => {
     const card = cards.find(card => within(card).queryByText('2026-02-04 12:04:05'));
     expect(card).toBeDefined();
     if (!card) throw new Error('Expected time in Beijing');
-    expect(within(card).getByText('评论 12345')).toBeVisible();
+    expect(within(card).getByRole('button', { name: '评论 12345' })).toBeVisible();
     expect(within(card).getByText(/第二行 🙂/)).toHaveTextContent('https://example.test #话题# @朋友');
     expect(within(card).getAllByRole('link')).toHaveLength(1);
     expect(within(card).getByRole('link', { name: `阅读全文 ${item.id}` })).toBeVisible();

@@ -1,0 +1,115 @@
+
+Running 6 tests using 1 worker
+
+  ✘  1 tests/e2e-archive/detail-layout.spec.ts:28:1 › 详情正文对齐头像、评论tab与排序分行，长回复续行回到昵称左缘 (5.5s)
+  ✓  2 tests/e2e-archive/detail-layout.spec.ts:116:1 › 列表气泡与蓝色评论tab定位同一区域，tab不重读或重置最新评论范围 (864ms)
+  ✓  3 tests/e2e-archive/detail-layout.spec.ts:173:1 › 回复inline前缀计入实际折叠行数，窗口改变由ResizeObserver重新量测 (620ms)
+  ✓  4 tests/e2e-archive/visual-replica.spec.ts:5:1 › 列表与详情直接去掉归档文字块，保留正文、发布时间与评论入口 (492ms)
+  ✘  5 tests/e2e-archive/visual-replica.spec.ts:30:1 › 参考阅读主栏、身份和轻量评论入口；四宽度不溢出 (5.4s)
+  ✓  6 tests/e2e-archive/visual-replica.spec.ts:68:1 › 评论为白底平面行且图像不裁切；长身份不会与正文重叠 (1.7s)
+
+
+  1) tests/e2e-archive/detail-layout.spec.ts:28:1 › 详情正文对齐头像、评论tab与排序分行，长回复续行回到昵称左缘 ────────────────
+
+    Error: 1280: 详情身份与正文间距
+
+    [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m12[39m
+    Received: [31m16[39m
+
+      45 |     expect.soft(bodyBox.x, `${width}: 详情正文与头像对齐`).toBeCloseTo(avatarBox.x, 0);
+      46 |     const identityBox = (await article.locator('[data-display-identity]').boundingBox())!;
+    > 47 |     expect.soft(bodyBox.y - identityBox.y - identityBox.height, `${width}: 详情身份与正文间距`).toBe(12);
+         |                                                                                        ^
+      48 |     if (width <= 390) {
+      49 |       const articleBox = (await article.boundingBox())!;
+      50 |       expect.soft(bodyBox.x - articleBox.x, `${width}: 手机内距`).toBe(16);
+        at /home/kevin/Projects/PI/bili_charge_dynamics/tests/e2e-archive/detail-layout.spec.ts:47:88
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m40[39m
+    Received: [31m48[39m
+
+       98 |     const rootAvatar = (await root.getByRole('img', { name: `${rootComment.author.nickname}的头像`, exact: true }).boundingBox())!;
+       99 |     const rootText = (await root.getByText('一级评论保持头像与正文的原有缩进。', { exact: true }).boundingBox())!;
+    > 100 |     expect.soft(rootAvatar.width).toBe(40);
+          |                                   ^
+      101 |     await expect(root.getByText('一级评论保持头像与正文的原有缩进。', { exact: true })).toHaveCSS('font-size', '15px');
+      102 |     await expect(root.getByText('一级评论保持头像与正文的原有缩进。', { exact: true })).toHaveCSS('line-height', '24px');
+      103 |     expect.soft(rootText.x - rootAvatar.x).toBe(60);
+        at /home/kevin/Projects/PI/bili_charge_dynamics/tests/e2e-archive/detail-layout.spec.ts:100:35
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoHaveCSS[2m([22m[32mexpected[39m[2m)[22m failed
+
+    Locator:  locator('[data-reading-id="comment:800719925474099312345"]').getByText('一级评论保持头像与正文的原有缩进。', { exact: true })
+    Expected: [32m"1[7m5[27mpx"[39m
+    Received: [31m"1[7m6[27mpx"[39m
+    Timeout:  5000ms
+
+    Call log:
+    [2m  - Expect "toHaveCSS" with timeout 5000ms[22m
+    [2m  - waiting for locator('[data-reading-id="comment:800719925474099312345"]').getByText('一级评论保持头像与正文的原有缩进。', { exact: true })[22m
+    [2m    9 × locator resolved to <p id="_r_0_" class="_text_1i31n_20 _collapsed_1i31n_21">一级评论保持头像与正文的原有缩进。</p>[22m
+    [2m      - unexpected value "16px"[22m
+
+
+       99 |     const rootText = (await root.getByText('一级评论保持头像与正文的原有缩进。', { exact: true }).boundingBox())!;
+      100 |     expect.soft(rootAvatar.width).toBe(40);
+    > 101 |     await expect(root.getByText('一级评论保持头像与正文的原有缩进。', { exact: true })).toHaveCSS('font-size', '15px');
+          |                                                                        ^
+      102 |     await expect(root.getByText('一级评论保持头像与正文的原有缩进。', { exact: true })).toHaveCSS('line-height', '24px');
+      103 |     expect.soft(rootText.x - rootAvatar.x).toBe(60);
+      104 |     const replyAvatar = (await row.getByRole('img', { name: `${nickname}的头像`, exact: true }).boundingBox())!;
+        at /home/kevin/Projects/PI/bili_charge_dynamics/tests/e2e-archive/detail-layout.spec.ts:101:72
+
+    Error Context: test-results/detail-layout-详情正文对齐头像、评论tab与排序分行，长回复续行回到昵称左缘/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/detail-layout-详情正文对齐头像、评论tab与排序分行，长回复续行回到昵称左缘/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results/detail-layout-详情正文对齐头像、评论tab与排序分行，长回复续行回到昵称左缘/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) tests/e2e-archive/visual-replica.spec.ts:30:1 › 参考阅读主栏、身份和轻量评论入口；四宽度不溢出 ───────────────────────
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoHaveCSS[2m([22m[32mexpected[39m[2m)[22m failed
+
+    Locator:  getByRole('article').first().getByText('2026-03-01 10:03:04', { exact: true })
+    Expected: [32m"1[7m3[27mpx"[39m
+    Received: [31m"1[7m4[27mpx"[39m
+    Timeout:  5000ms
+
+    Call log:
+    [2m  - Expect "toHaveCSS" with timeout 5000ms[22m
+    [2m  - waiting for getByRole('article').first().getByText('2026-03-01 10:03:04', { exact: true })[22m
+    [2m    9 × locator resolved to <time class="_time_1i31n_17" datetime="2026-03-01T10:03:04+08:00">2026-03-01 10:03:04</time>[22m
+    [2m      - unexpected value "14px"[22m
+
+
+      41 |     const avatar = card.getByRole('img', { name: '归档作者的头像', exact: true });
+      42 |     expect((await avatar.boundingBox())!.width).toBe(48);
+    > 43 |     await expect(card.getByText('2026-03-01 10:03:04', { exact: true })).toHaveCSS('font-size', '13px');
+         |                                                                          ^
+      44 |     await expect(card.getByText('2026-03-01 10:03:04', { exact: true })).toHaveCSS('line-height', '18px');
+      45 |     const entry = card.getByRole('button', { name: '来源评论 501', exact: true });
+      46 |     await expect(entry).toBeVisible();
+        at /home/kevin/Projects/PI/bili_charge_dynamics/tests/e2e-archive/visual-replica.spec.ts:43:74
+
+    Error Context: test-results/visual-replica-参考阅读主栏、身份和轻量评论入口；四宽度不溢出/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/visual-replica-参考阅读主栏、身份和轻量评论入口；四宽度不溢出/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results/visual-replica-参考阅读主栏、身份和轻量评论入口；四宽度不溢出/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2 failed
+    tests/e2e-archive/detail-layout.spec.ts:28:1 › 详情正文对齐头像、评论tab与排序分行，长回复续行回到昵称左缘 ─────────────────
+    tests/e2e-archive/visual-replica.spec.ts:30:1 › 参考阅读主栏、身份和轻量评论入口；四宽度不溢出 ────────────────────────
+  4 passed (18.3s)

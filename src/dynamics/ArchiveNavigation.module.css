@@ -1,95 +1,14 @@
-.navigation {
-  min-width: 0;
-  width: 100%;
-  max-width: 100%;
-  background: #fff;
-  border-radius: 12px;
-}
-
-.options {
-  display: flex;
-  gap: 8px;
-  margin: 0;
-  padding: 8px;
-  list-style: none;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-}
-
-.options > li {
-  flex: 0 0 auto;
-}
-
-.option {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 88px;
-  min-height: 88px;
-  padding: 8px 4px;
-  border: 2px solid transparent;
-  border-radius: 10px;
-  color: #52616b;
-  text-decoration: none;
-}
-
-.option:hover {
-  background: #f0fbfd;
-}
-
-.option[aria-current='page'] {
-  border-color: #00a6c8;
-  background: #e6f8fc;
-  color: #007f9b;
-}
-
-.option:focus-visible,
-.retry:focus-visible {
-  outline: 3px solid #007f9b;
-  outline-offset: 2px;
-}
-
-.avatar,
-.allAvatar {
-  flex: 0 0 auto;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  object-fit: cover;
-  background: #e6f8fc;
-}
-
-.allAvatar {
-  display: grid;
-  place-items: center;
-  color: #007f9b;
-  font-weight: 600;
-}
-
-.nickname {
-  width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  text-align: center;
-  font-size: 14px;
-}
-
-.notice {
-  padding: 8px;
-  overflow-wrap: anywhere;
-}
-
-.retry {
-  min-width: 44px;
-  min-height: 44px;
-  margin: 4px;
-  padding: 8px 12px;
-  border: 1px solid #00a6c8;
-  border-radius: 8px;
-  background: #fff;
-  color: #007f9b;
-  cursor: pointer;
-}
+.navigation { min-width: 0; width: 100%; max-width: 100%; background: #fff; border-radius: 4px; }
+.options { display: flex; gap: 0; margin: 0; padding: 18px 4px 20px; list-style: none; overflow-x: auto; overscroll-behavior-x: contain; }
+.options > li { flex: 0 0 auto; }
+.option { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 74px; min-height: 82px; padding: 2px 0; color: #9499a0; text-decoration: none; }
+.option:hover { color: var(--accent); }
+.option[aria-current='page'] { color: #00aeec; }
+.option[aria-current='page'] .avatar { outline: 2px solid #00aeec; outline-offset: 1px; }
+.option:focus-visible, .retry:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 4px; }
+.avatar, .allAvatar { flex: 0 0 auto; width: 48px; height: 48px; border-radius: 50%; object-fit: cover; background: #dff6fd; }
+.allAvatar { display: grid; place-items: center; color: #23c4f3; }
+.allAvatar svg { width: 32px; height: 32px; }
+.nickname { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; font-size: 14px; line-height: 20px; }
+.notice { padding: 0 16px 12px; margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.retry { min-width: 44px; min-height: 44px; margin: 4px; padding: 0 12px; border: 0; border-radius: 4px; background: transparent; color: var(--accent); cursor: pointer; }

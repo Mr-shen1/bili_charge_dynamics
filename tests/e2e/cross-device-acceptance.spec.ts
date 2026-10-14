@@ -87,7 +87,7 @@ for (const width of [360, 390, 768, 1280]) {
     }
     await expect(area.getByText('评论已加载完毕', { exact: true })).toBeVisible();
     await expect(replies.getByText('回复已加载完毕', { exact: true })).toBeVisible();
-    await expect(page.getByRole('article').getByText('评论 70', { exact: true })).toBeVisible();
+    await expect(page.getByRole('region', { name: '评论区', exact: true }).getByRole('button', { name: '评论 70', exact: true })).toBeVisible();
     await checkLayoutAndTargets(page);
     const anchor = replies.getByRole('listitem').nth(8);
     const anchorText = await anchor.textContent();
@@ -129,7 +129,7 @@ test.describe('切换设备时区为 UTC', () => {
     await expect(root.getByText('回复 25', { exact: true })).toBeVisible();
     const reply = page.getByRole('region', { name: '回复区 comment-44', exact: true }).getByRole('listitem').first();
     await expect(reply.getByText('2026-03-01 12:00:00', { exact: true })).toBeVisible();
-    await expect(reply.getByText('点赞 0', { exact: true })).toBeVisible();
+    await expect(reply.getByRole('group', { name: '点赞 0', exact: true })).toBeVisible();
   });
 });
 

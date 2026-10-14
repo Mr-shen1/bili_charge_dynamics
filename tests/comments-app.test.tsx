@@ -267,7 +267,7 @@ it('两种排序20、20、5连续读完，切换丢弃旧进度但保留上方�
   await user.click(within(area).getByRole('button', { name: '最热' }));
   await within(area).findByText('评论正文 44');
   expect(within(area).getAllByRole('listitem')).toHaveLength(20);
-  expect(screen.getByText('评论 100')).toBeVisible();
+  expect(screen.getByRole('button', { name: '评论 100' })).toBeVisible();
 });
 
 it('详情默认最热，一级评论安全展示身份、北京时间及只读计数；UP主按ID而非同名识别', async () => {
@@ -285,8 +285,8 @@ it('详情默认最热，一级评论安全展示身份、北京时间及只读�
   expect(within(authorRow).getByText('UP主')).toBeVisible();
   expect(within(emptyRow).queryByText('UP主')).not.toBeInTheDocument();
   expect(within(authorRow).getByText('2026-02-04 12:04:05')).toBeVisible();
-  expect(within(authorRow).getByText('点赞 0')).toBeVisible();
-  expect(within(emptyRow).getByText('点赞 —')).toBeVisible();
+  expect(within(authorRow).getByRole('group', { name: '点赞 0' })).toBeVisible();
+  expect(within(emptyRow).getByRole('group', { name: '点赞 —' })).toBeVisible();
   expect(within(emptyRow).getByText('暂无评论内容')).toBeVisible();
   expect(within(emptyRow).getByText('时间未知')).toBeVisible();
   expect(within(authorRow).getByRole('img')).toHaveAttribute('src', '/default-avatar.svg');
@@ -295,6 +295,6 @@ it('详情默认最热，一级评论安全展示身份、北京时间及只读�
   expect(within(missingName).queryByText('UP主')).not.toBeInTheDocument();
   expect(area.querySelector('script')).toBeNull();
   expect(within(area).queryByRole('link')).not.toBeInTheDocument();
-  expect(screen.getByText('评论 100')).toBeVisible();
+  expect(screen.getByRole('button', { name: '评论 100' })).toBeVisible();
   expect(within(area).getByText('评论已加载完毕')).toBeVisible();
 });

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { displayTime } from '../dynamics/DynamicContent';
-import type { ManagementApi } from './managementApi';
+import type { ManagementApi, Monitor } from './managementApi';
 import type { CheckError, ManagedCheck } from './checkStatus';
 
 const checkLabels = { unchecked: '未检查', checked: '已检查，已登记观察。', unchanged: '检查无变化；不代表同步完成。', failed: '检查失败' };
@@ -13,10 +13,10 @@ function CheckStatus({ check }: { check: ManagedCheck }) {
   const partial = Object.values(check.parts).some(state => state === 'success');
   const partsComplete = Object.values(check.parts).every(state => state === 'success');
   const versionMismatch = check.observedVersion !== check.syncedVersion;
-  return <section aria-label={`动态 ${check.id} 检查状态`}>
+  return <section className="manage-check" aria-label={`动态 ${check.id} 检查状态`}>
     <h3>动态 {check.id}</h3>
     <p>{check.active ? '已纳入检查' : '已停止或移出；保留已有归档与未完成工作。'}</p>
-    <p>{checkLabels[check.checkStatus]}</p>
+    <p className={check.checkStatus === 'failed' ? 'manage-state-error' : 'manage-check-label'}>{checkLabels[check.checkStatus]}</p>
     <p>{check.checkStatus === 'unchecked' ? '尚无检查工作' : check.work === 'running' ? '同步中'
       : check.work === 'complete' ? '对应观察已完成'
       : partsComplete ? '分项已完成，整轮待确认'
@@ -27,13 +27,13 @@ function CheckStatus({ check }: { check: ManagedCheck }) {
     <p>正文{partLabels[check.parts.text]}；动态图{partLabels[check.parts.media]}；评论{partLabels[check.parts.comments]}；回复{partLabels[check.parts.replies]}；评论图{partLabels[check.parts.comment_media]}。</p>
     <p>最近检查：{check.lastCheckedAt ? displayTime(check.lastCheckedAt) : '未检查'}</p>
     <p>实际整轮成功：{check.lastSucceededAt ? displayTime(check.lastSucceededAt) : '尚未成功'}</p>
-    {check.checkError && <p role="status">检查：{errors[check.checkError]}</p>}
-    {check.syncError && <p role="status">同步：{errors[check.syncError]}</p>}
+    {check.checkError && <p className="manage-state-error" role="status">检查：{errors[check.checkError]}</p>}
+    {check.syncError && <p className="manage-state-error" role="status">同步：{errors[check.syncError]}</p>}
   </section>;
 }
 
 /** 手动读取持久状态，不轮询，也不调用同步接口。 */
-export function CheckStatusPanel({ uid, api }: { uid: string; api: ManagementApi }) {
+export function CheckStatusPanel({ uid, api, monitor }: { uid: string; api: ManagementApi; monitor: Monitor | null }) {
   const [checks, setChecks] = useState<readonly ManagedCheck[] | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -50,8 +50,13 @@ export function CheckStatusPanel({ uid, api }: { uid: string; api: ManagementApi
     if (result.status === 'success') setChecks(result.data);
     else if (result.status === 'error') setError(result.message);
   }
-  return <section aria-label="目标检查与归档状态">
+  return <section className="manage-section manage-checks" aria-label="目标检查与归档状态">
     <h2>目标检查与归档状态</h2>
+    <div className="manage-check-times">
+      <p>最近检查：{monitor?.lastCheckedAt ? displayTime(monitor.lastCheckedAt) : '未检查'}</p>
+      <p>最近成功：{monitor?.lastSucceededAt ? displayTime(monitor.lastSucceededAt) : '尚未成功'}</p>
+    </div>
+    <p className="manage-muted">以上为该 UP 历史目标记录的最近时间，不代表全部目标均已成功。</p>
     <p className="manage-muted">仅读取已保存状态，不触发检查或同步；停用后的记录仍可读取。</p>
     <button type="button" disabled={loading} onClick={() => void load()}>
       {loading ? '正在读取检查状态…' : checks === null ? '读取检查状态' : '重新读取检查状态'}

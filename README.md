@@ -34,6 +34,17 @@ pnpm dev
 
 如果环境没有 Corepack，可先按其官方安装说明准备 Corepack/pnpm；不需要将其作为应用依赖。生产前端只需要构建后的静态文件，不需要 Node.js 服务；管理功能另外运行 Python API。
 
+### #35 隔离视觉预览（虚构数据）
+
+```bash
+pnpm build
+uv run python -m scripts.visual_preview --frontend-dir dist
+```
+
+访问 `https://127.0.0.1:18443/`，管理为 `/manage`；浏览器首次需确认本次临时自签开发证书，图片与页面使用同一 HTTPS 来源。服务只监听回环地址，每次新建临时数据库、正常退出删除，不读取真实凭据，不访问真实 B站／OSS、不启动周期采集。三个虚构 UP、正文、评论／回复、两类图片和管理操作使用生产 Adapter／API；这些演示不是真实归档验收。说明与样例 ID 见 `/visual-preview`。
+
+受控截图及原图并排／差异证据：运行 `node scripts/capture-visual-35.mjs`（服务须保持运行）。默认使用用户最新两张PNG `docs/assets/ui-reference/current-35/{dynamics-list,dynamic-detail}.png`，按48px头像参照等比归一0.5（不宣称来源DPR已知），输出至 `.scratch/backend-integration/evidence/visual-35-current/`。需要本地 Playwright Chromium、ImageMagick、fontconfig；ignored素材不随干净检出分发，他机可用 `UI_REFERENCE_DIR=/path/to/originals UI_REFERENCE_SCALE=0.5` 指定目录／比例，未指定自定义比例默认1。首轮证据与[当前B站安全取材记录](.scratch/backend-integration/visual-35-live-reference.md)分开保存；授权网页查看不成为预览依赖。素材缺失必须暂停对照、申请补图并将票据标为 `needs-info`，不得使用当前截图自建基线。参考基准、差异限制及未验证项见 [#35 验收记录](.scratch/backend-integration/acceptance-35.md)。这不是正式部署入口；真实运行仍按下节启动。
+
 ## UP 管理与 Python API
 
 Python 环境和依赖只使用 uv。首次启动会事务迁移数据库；身份与监控配置分离，停止/删除配置保留身份，重启读取原数据库。

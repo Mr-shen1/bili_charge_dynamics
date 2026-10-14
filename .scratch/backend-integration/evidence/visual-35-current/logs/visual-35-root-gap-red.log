@@ -1,0 +1,79 @@
+
+Running 3 tests using 1 worker
+
+  ✘  1 tests/e2e-archive/detail-layout.spec.ts:28:1 › 详情正文对齐头像、评论tab与排序分行，长回复续行回到昵称左缘 (1.6s)
+  ✓  2 tests/e2e-archive/detail-layout.spec.ts:122:1 › 列表气泡与蓝色评论tab定位同一区域，tab不重读或重置最新评论范围 (913ms)
+  ✓  3 tests/e2e-archive/detail-layout.spec.ts:179:1 › 回复inline前缀计入实际折叠行数，窗口改变由ResizeObserver重新量测 (598ms)
+
+
+  1) tests/e2e-archive/detail-layout.spec.ts:28:1 › 详情正文对齐头像、评论tab与排序分行，长回复续行回到昵称左缘 ────────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m34[39m
+    Received: [31m26[39m
+
+      102 |     await expect(root.getByText('一级评论保持头像与正文的原有缩进。', { exact: true })).toHaveCSS('line-height', '24px');
+      103 |     expect.soft(rootText.x - rootAvatar.x).toBe(60);
+    > 104 |     expect.soft(rootText.y - rootAvatar.y).toBe(34);
+          |                                            ^
+      105 |     const replyAvatar = (await row.getByRole('img', { name: `${nickname}的头像`, exact: true }).boundingBox())!;
+      106 |     expect.soft(replyAvatar.width).toBe(24);
+      107 |     expect.soft(nicknameLeft - replyAvatar.x).toBe(34);
+        at /home/kevin/Projects/PI/bili_charge_dynamics/tests/e2e-archive/detail-layout.spec.ts:104:44
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m34[39m
+    Received: [31m26[39m
+
+      102 |     await expect(root.getByText('一级评论保持头像与正文的原有缩进。', { exact: true })).toHaveCSS('line-height', '24px');
+      103 |     expect.soft(rootText.x - rootAvatar.x).toBe(60);
+    > 104 |     expect.soft(rootText.y - rootAvatar.y).toBe(34);
+          |                                            ^
+      105 |     const replyAvatar = (await row.getByRole('img', { name: `${nickname}的头像`, exact: true }).boundingBox())!;
+      106 |     expect.soft(replyAvatar.width).toBe(24);
+      107 |     expect.soft(nicknameLeft - replyAvatar.x).toBe(34);
+        at /home/kevin/Projects/PI/bili_charge_dynamics/tests/e2e-archive/detail-layout.spec.ts:104:44
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m34[39m
+    Received: [31m26[39m
+
+      102 |     await expect(root.getByText('一级评论保持头像与正文的原有缩进。', { exact: true })).toHaveCSS('line-height', '24px');
+      103 |     expect.soft(rootText.x - rootAvatar.x).toBe(60);
+    > 104 |     expect.soft(rootText.y - rootAvatar.y).toBe(34);
+          |                                            ^
+      105 |     const replyAvatar = (await row.getByRole('img', { name: `${nickname}的头像`, exact: true }).boundingBox())!;
+      106 |     expect.soft(replyAvatar.width).toBe(24);
+      107 |     expect.soft(nicknameLeft - replyAvatar.x).toBe(34);
+        at /home/kevin/Projects/PI/bili_charge_dynamics/tests/e2e-archive/detail-layout.spec.ts:104:44
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m34[39m
+    Received: [31m26[39m
+
+      102 |     await expect(root.getByText('一级评论保持头像与正文的原有缩进。', { exact: true })).toHaveCSS('line-height', '24px');
+      103 |     expect.soft(rootText.x - rootAvatar.x).toBe(60);
+    > 104 |     expect.soft(rootText.y - rootAvatar.y).toBe(34);
+          |                                            ^
+      105 |     const replyAvatar = (await row.getByRole('img', { name: `${nickname}的头像`, exact: true }).boundingBox())!;
+      106 |     expect.soft(replyAvatar.width).toBe(24);
+      107 |     expect.soft(nicknameLeft - replyAvatar.x).toBe(34);
+        at /home/kevin/Projects/PI/bili_charge_dynamics/tests/e2e-archive/detail-layout.spec.ts:104:44
+
+    Error Context: test-results/detail-layout-详情正文对齐头像、评论tab与排序分行，长回复续行回到昵称左缘/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/detail-layout-详情正文对齐头像、评论tab与排序分行，长回复续行回到昵称左缘/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results/detail-layout-详情正文对齐头像、评论tab与排序分行，长回复续行回到昵称左缘/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    tests/e2e-archive/detail-layout.spec.ts:28:1 › 详情正文对齐头像、评论tab与排序分行，长回复续行回到昵称左缘 ─────────────────
+  2 passed (5.9s)

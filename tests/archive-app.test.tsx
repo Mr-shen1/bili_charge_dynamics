@@ -10,6 +10,11 @@ import { rootComment } from './fixtures/rootComment';
 function show(transport: ArchiveTransport, path = '/') {
   return render(<MemoryRouter initialEntries={[path]}><App reader={createArchiveReader(transport)} /></MemoryRouter>);
 }
+function expectNoArchiveInfo(card: HTMLElement) {
+  expect(within(card).queryByRole('complementary', { name: '归档状态', hidden: true })).not.toBeInTheDocument();
+  expect(card).not.toHaveTextContent(/编辑于|编辑信号|正文访问受限|正文尚未成功归档|最近正文|已保存内容仍可阅读|已有归档状态未覆盖|图片待归档|来源评论：|本地已归档|正文(?:已保存|待同步|读取失败|受限)；媒体/);
+}
+
 describe('真实归档基础页面', () => {
   it('生产根评论完整采用服务端顺序20/20/5，失败重读同批、结束不请求，来源零回复不展开', async () => {
     const user = userEvent.setup();
@@ -50,7 +55,7 @@ describe('真实归档基础页面', () => {
       `/api/archive/dynamics/${archive.id}/comments?sort=hot&limit=20&cursor=second`,
       `/api/archive/dynamics/${archive.id}/comments?sort=hot&limit=20&cursor=last`,
     ]);
-    expect(screen.getByText('本地已归档回复：0')).toBeVisible();
+    expectNoArchiveInfo(screen.getByRole('article'));
     expect(screen.getByRole('button', { name: '来源评论 501' })).toBeVisible();
   });
   it.each([
@@ -62,8 +67,7 @@ describe('真实归档基础页面', () => {
     expect(await within(area).findByText(new RegExp(message))).toBeVisible();
     expect(within(area).queryByText(attempt === 'success' ? /评论尚未归档/ : '暂无评论')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '来源评论 —' })).toBeVisible();
-    expect(screen.getByText('本地已归档一级评论：0')).toBeVisible();
-    expect(screen.getByText('本地已归档回复：0')).toBeVisible();
+    expectNoArchiveInfo(screen.getByRole('article'));
   });
   it('评论图片仅提示未归档，纯图不伪装空正文，不加载来源业务图；未知作者不误标UP', async () => {
     show(async url => Response.json(url.includes('/comments?') ? { items: [{ ...rootComment,
@@ -118,22 +122,22 @@ describe('真实归档基础页面', () => {
     expect(document.querySelector('img[src="x"]')).toBeNull();
   });
   it.each([
-    ['空正文', { text: '', media_sources: [], edit_status: 'unknown', edited_at: null, source_comment_count: null }, '编辑信号未知。', true],
-    ['仅来源图', { text: '' }, '图片待归档（1 张）。', false],
-    ['受限', { text: '', media_sources: [], content_state: 'restricted', last_attempt: 'restricted' }, '正文访问受限。', false],
-    ['失败', { text: '', media_sources: [], content_state: 'failed', edit_status: 'error' }, '正文尚未成功归档。', false],
-  ] as const)('%s 的内容状态与无内容提示不混淆', async (_name, fields, message, empty) => {
+    ['空正文', { text: '', media_sources: [], edit_status: 'unknown', edited_at: null, source_comment_count: null }, true],
+    ['仅来源图', { text: '' }, false],
+    ['受限', { text: '', media_sources: [], content_state: 'restricted', last_attempt: 'restricted' }, false],
+    ['失败', { text: '', media_sources: [], content_state: 'failed', edit_status: 'error' }, false],
+  ] as const)('%s 不展示归档信息，仅可信成功空正文提示暂无内容', async (_name, fields, empty) => {
     show(async () => Response.json({ ...archive, ...fields, published_at: null,
       author: { id: '123', nickname: null, avatar_url: null } }), `/dynamics/${archive.id}`);
-    expect(await screen.findByText(message)).toBeInTheDocument();
-    expect(screen.getByText('时间未知')).toBeInTheDocument();
+    expect(await screen.findByText('时间未知')).toBeInTheDocument();
+    expectNoArchiveInfo(screen.getByRole('article'));
     expect(screen.getByText('未知用户')).toBeInTheDocument();
     expect(screen.queryByText('暂无内容') !== null).toBe(empty);
     expect(screen.queryByText(/已保存内容仍可阅读/)).not.toBeInTheDocument();
     expect(screen.getAllByRole('img')).toHaveLength(1);
     expect(screen.getByRole('img')).toHaveAttribute('src', '/default-avatar.svg');
   });
-  it.each(['unknown', 'error'] as const)('编辑信号%s仍展示旧可信分钟时间和可读正文，重新访问可读实际提交的新正文', async editStatus => {
+  it.each(['unknown', 'error'] as const)('编辑信号%s不显示归档信息，旧可信正文与重新访问的新正文均可读', async editStatus => {
     const urls: string[] = [];
     let document = { ...archive, edit_status: editStatus, work: { ...archive.work, text: 'success' } };
     const transport: ArchiveTransport = async (url, init) => {
@@ -143,22 +147,42 @@ describe('真实归档基础页面', () => {
     };
     const previous = show(transport, `/dynamics/${archive.id}`);
     expect(await screen.findByText(archive.text.replace(/\s+/g, ' '))).toBeInTheDocument();
-    expect(screen.getByText('编辑于 2026-03-02 13:01')).toBeInTheDocument();
-    expect(screen.queryByText(/13:01:00/)).not.toBeInTheDocument();
-    expect(screen.getByText(editStatus === 'unknown' ? '编辑信号未知。' : '编辑信号读取或解析失败；保留已有可信时间。')).toBeInTheDocument();
+    expectNoArchiveInfo(screen.getByRole('article'));
+    expect(screen.getByText('2026-03-01 10:03:04')).toBeInTheDocument();
+    expect(screen.queryByText('暂无内容')).not.toBeInTheDocument();
     previous.unmount();
     document = { ...document, text: '实际提交的新版正文', last_attempt: 'success',
       synced_version: 'v2', work: { ...document.work, media: 'pending' } };
     show(transport, `/dynamics/${archive.id}`);
     expect(await screen.findByText('实际提交的新版正文')).toBeInTheDocument();
-    expect(screen.getByText('正文已保存；媒体待归档；评论待归档。')).toBeInTheDocument();
+    expectNoArchiveInfo(screen.getByRole('article'));
+    expect(screen.queryByText('暂无内容')).not.toBeInTheDocument();
     expect(screen.queryByText(archive.text.replace(/\s+/g, ' '))).not.toBeInTheDocument();
     expect(urls.every(url => url.startsWith('/api/archive/'))).toBe(true);
   });
-  it('正文、媒体、评论工作状态逐项呈现，不把接口状态写死为 pending', async () => {
-    const completed = { ...archive, work: { text: 'success', media: 'success', comments: 'failed' } };
-    show(async () => Response.json(completed), `/dynamics/${archive.id}`);
-    expect(await screen.findByText('正文已保存；媒体已归档；评论读取失败。')).toBeInTheDocument();
+  it.each(['/', `/dynamics/${archive.id}`])('%s 不展示分项归档信息，可信正文、已归档图片和评论入口仍可用', async path => {
+    const user = userEvent.setup();
+    const publicUrl = 'https://archive.example.test/saved.jpg';
+    const completed = { ...archive, work: { text: 'success', media: 'success', comments: 'failed' },
+      media: [{ id: 'saved-image', owner: { type: 'dynamic', id: archive.id }, position: 0,
+        status: 'success', public_url: publicUrl, width: 800, height: 1200 }] };
+    show(async url => Response.json(url.endsWith('/ups') ? { ups: [] }
+      : url.includes('/comments?') ? { items: [rootComment], next_cursor: null }
+      : url.includes('?') ? { items: [completed], next_cursor: null } : completed), path);
+    expect(await screen.findByText(archive.text.replace(/\s+/g, ' '))).toBeInTheDocument();
+    const card = screen.getByRole('article');
+    expectNoArchiveInfo(card);
+    expect(within(card).queryByText('暂无内容')).not.toBeInTheDocument();
+    const images = within(card).getByRole('group', { name: '动态图片' });
+    expect(within(images).getByRole('img')).toHaveAttribute('src', publicUrl);
+    const entryArea = path === '/' ? card : screen.getByRole('region', { name: '评论区' });
+    await user.click(within(entryArea).getByRole('button', { name: '来源评论 501' }));
+    const comments = await screen.findByRole('region', { name: '评论区' });
+    expect(await within(comments).findByText(rootComment.text)).toBeVisible();
+    expect(within(comments).getByRole('heading', { name: '评论 501' })).toBeInTheDocument();
+    expect(within(comments).getByRole('button', { name: '来源评论 501' })).toBeVisible();
+    expect(within(screen.getByRole('article')).queryByRole('button', { name: /评论/ })).not.toBeInTheDocument();
+    expectNoArchiveInfo(screen.getByRole('article'));
   });
   it('详情 404 与网络失败、列表成功空分别呈现；失败内容不泄漏', async () => {
     let view = show(async () => new Response('SECRET_TOKEN', { status: 404 }), `/dynamics/${archive.id}`);
@@ -208,7 +232,7 @@ describe('真实归档基础页面', () => {
     expect(screen.getAllByRole('article')).toHaveLength(25);
     expect(screen.getAllByRole('article').map(card => card.getAttribute('data-reading-id'))).toEqual(items.map(item => item.id));
   });
-  it('旧成功正文保持可读，来源/本地计数、分钟编辑、最后失败与待媒体独立表达；评论不虚构为空', async () => {
+  it('列表和详情不显示归档信息，失败后旧可信正文与发布时间可读，来源评论入口不虚构空内容', async () => {
     const user = userEvent.setup();
     const urls: string[] = [];
     show(async url => { urls.push(url); return Response.json(url.endsWith('/ups') ? { ups: [] }
@@ -217,17 +241,17 @@ describe('真实归档基础页面', () => {
     expect(await screen.findByText(archive.text.replace(/\s+/g, ' '))).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '全部动态' })).toBeInTheDocument();
     expect(screen.getByText('2026-03-01 10:03:04')).toBeInTheDocument();
-    expect(screen.getByText('编辑于 2026-03-02 13:01')).toBeInTheDocument();
-    expect(screen.queryByText(/13:01:00/)).not.toBeInTheDocument();
-    expect(screen.getByText('最近正文读取失败；已保存内容仍可阅读。')).toBeInTheDocument();
-    expect(screen.getByText('图片待归档（1 张）。')).toBeInTheDocument();
-    expect(screen.getByText('本地已归档一级评论：0')).toBeInTheDocument();
+    expectNoArchiveInfo(screen.getByRole('article'));
+    expect(screen.queryByText('暂无内容')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '来源评论 501' })).toBeInTheDocument();
     expect(document.querySelector('script')).toBeNull();
     expect(document.querySelector('img[src="https://upstream.example.test/image.jpg"]')).toBeNull();
     await user.click(screen.getByRole('link', { name: `阅读全文 ${archive.id}` }));
     const comments = within(screen.getByRole('region', { name: '评论区' }));
     expect(await comments.findByText('评论尚未归档；来源计数不代表本地已有评论。')).toBeInTheDocument();
+    expectNoArchiveInfo(screen.getByRole('article'));
+    expect(screen.getByText(archive.text.replace(/\s+/g, ' '))).toBeInTheDocument();
+    expect(screen.queryByText('暂无内容')).not.toBeInTheDocument();
     expect(comments.queryByText('暂无评论')).not.toBeInTheDocument();
     expect(comments.getByRole('button', { name: '最新' })).toBeEnabled();
     expect(urls.every(url => url.startsWith('/api/archive/dynamics') || url === '/api/archive/ups')).toBe(true);

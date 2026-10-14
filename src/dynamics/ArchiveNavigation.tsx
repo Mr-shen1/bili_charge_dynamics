@@ -31,7 +31,7 @@ export function ArchiveNavigation({ reader, scope }: { reader: DynamicReader; sc
   return <nav className={styles.navigation} aria-label="归档范围">
     <ul className={styles.options}>
       <li><Link className={styles.option} to="/" aria-current={scope.kind === 'all' ? 'page' : undefined}>
-        <span className={styles.allAvatar} aria-hidden="true">全部</span>
+        <span className={styles.allAvatar} aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M16 16V5c-8-3-11 8 0 11h11c3-8-8-11-11 0v11c8 3 11-8 0-11H5c-3 8 8 11 11 0Z" /></svg></span>
         <span className={styles.nickname}>全部归档</span>
       </Link></li>
       {result?.status === 'success' && result.data.map(user => <li key={user.id}>

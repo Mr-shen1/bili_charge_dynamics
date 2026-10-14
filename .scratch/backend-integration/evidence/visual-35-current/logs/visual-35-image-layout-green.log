@@ -1,0 +1,6 @@
+
+Running 1 test using 1 worker
+
+  ✓  1 tests/e2e-archive/image-layout.spec.ts:5:1 › 生产两图同高比例容器，未知未归档图不请求来源；保留owner与焦点，单图限宽 (1.9s)
+
+  1 passed (3.8s)

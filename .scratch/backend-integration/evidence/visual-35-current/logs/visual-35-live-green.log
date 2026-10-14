@@ -1,0 +1,12 @@
+
+Running 7 tests using 1 worker
+
+  ✓  1 tests/e2e-archive/detail-layout.spec.ts:28:1 › 详情正文对齐头像、评论tab与排序分行，长回复续行回到昵称左缘 (1.9s)
+  ✓  2 tests/e2e-archive/detail-layout.spec.ts:121:1 › 列表气泡与蓝色评论tab定位同一区域，tab不重读或重置最新评论范围 (823ms)
+  ✓  3 tests/e2e-archive/detail-layout.spec.ts:178:1 › 回复inline前缀计入实际折叠行数，窗口改变由ResizeObserver重新量测 (651ms)
+  ✓  4 tests/e2e-archive/image-layout.spec.ts:5:1 › 生产两图同高比例容器，未知未归档图不请求来源；保留owner与焦点，单图限宽 (2.0s)
+  ✓  5 tests/e2e-archive/visual-replica.spec.ts:5:1 › 列表与详情直接去掉归档文字块，保留正文、发布时间与评论入口 (485ms)
+  ✓  6 tests/e2e-archive/visual-replica.spec.ts:30:1 › 参考阅读主栏、身份和轻量评论入口；四宽度不溢出 (1.9s)
+  ✓  7 tests/e2e-archive/visual-replica.spec.ts:68:1 › 评论为白底平面行且图像不裁切；长身份不会与正文重叠 (1.6s)
+
+  7 passed (11.3s)

@@ -56,6 +56,8 @@ test('生产单/四/九/十二图四宽度网格；列表九格是展示上限�
 });
 
 test('公开 URL 原样直连、缩略懒加载；打开九格末图不预取整组，详情可访问十二张', async ({ page }) => {
+  // 移除归档信息后卡片更短；固定较矮视口，保证末图仍在浏览器 lazy 阈值之外。
+  await page.setViewportSize({ width: 1280, height: 200 });
   const service = await installMediaHttp(page);
   await page.goto('/');
   await expect(page.getByRole('article')).toHaveCount(10);

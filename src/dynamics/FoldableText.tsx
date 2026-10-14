@@ -1,11 +1,11 @@
-import { useId, useLayoutEffect, useRef, useState } from 'react';
+import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import styles from './Dynamics.module.css';
 
 // scrollHeight 按整数像素取整，留出一个像素避免恰好六行误判。
 const layoutRoundingTolerance = 1;
 
-export function FoldableText({ text, expanded, toggle, subject = '正文' }: {
-  text: string; expanded: boolean; toggle(): void; subject?: '正文' | '评论' | '回复正文';
+export function FoldableText({ text, expanded, toggle, subject = '正文', prefix }: {
+  text: string; expanded: boolean; toggle(): void; subject?: '正文' | '评论' | '回复正文'; prefix?: ReactNode;
 }) {
   const paragraph = useRef<HTMLParagraphElement>(null);
   const [overflowing, setOverflowing] = useState(false);
@@ -23,10 +23,10 @@ export function FoldableText({ text, expanded, toggle, subject = '正文' }: {
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
     observer?.observe(element);
     return () => observer?.disconnect();
-  }, [text]);
+  }, [text, prefix]);
   return <>
-    <p id={id} ref={paragraph} className={`${styles.text} ${expanded ? '' : styles.collapsed}`}>{text}</p>
-    {overflowing && <button type="button" className={styles.button} aria-expanded={expanded}
-      aria-controls={id} onClick={toggle}>{expanded ? `收起${subject}` : `展开${subject}`}</button>}
+    <p id={id} ref={paragraph} className={`${styles.text} ${expanded ? '' : styles.collapsed}`}>{prefix}{text}</p>
+    {overflowing && <button type="button" className={`${styles.button} ${styles.foldToggle}`} aria-expanded={expanded}
+      aria-label={`${expanded ? '收起' : '展开'}${subject}`} aria-controls={id} onClick={toggle}>{expanded ? '收起' : '展开'}</button>}
   </>;
 }

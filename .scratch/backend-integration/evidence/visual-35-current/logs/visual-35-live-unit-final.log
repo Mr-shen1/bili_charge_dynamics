@@ -1,0 +1,80 @@
+
+> bili-charge-dynamics@0.1.0 test /home/kevin/Projects/PI/bili_charge_dynamics
+> vitest run --maxWorkers=2
+
+
+[1m[46m RUN [49m[22m [36mv4.0.18 [39m[90m/home/kevin/Projects/PI/bili_charge_dynamics[39m
+
+ [32m✓[39m tests/comments-app.test.tsx [2m([22m[2m22 tests[22m[2m)[22m[33m 5854[2mms[22m[39m
+   [33m[2m✓[22m[39m 首次、目标排序及追加错误各自局部重试，追加保留内容并重读原批次 [33m 1178[2mms[22m[39m
+   [33m[2m✓[22m[39m 两种排序20、20、5连续读完，切换丢弃旧进度但保留上方动态节点 [33m 2202[2mms[22m[39m
+ [32m✓[39m tests/replies-app.test.tsx [2m([22m[2m14 tests[22m[2m)[22m[33m 5791[2mms[22m[39m
+   [33m[2m✓[22m[39m 首次和追加失败原区原批重试、重复点击不重读，其他根评论请求不受重试影响 [33m 820[2mms[22m[39m
+   [33m[2m✓[22m[39m 切换排序使旧回复append success及完成失效，切回首批且顺序仍正序 [33m 381[2mms[22m[39m
+   [33m[2m✓[22m[39m 切换排序使旧回复append error及完成失效，切回首批且顺序仍正序 [33m 341[2mms[22m[39m
+   [33m[2m✓[22m[39m 切换排序使旧回复append rejection及完成失效，切回首批且顺序仍正序 [33m 339[2mms[22m[39m
+   [33m[2m✓[22m[39m 追加中收起只改变可见范围，迟到的有效结果保留缓存，再展开不重复请求 [33m 446[2mms[22m[39m
+   [33m[2m✓[22m[39m 25条回复3/13/23/25、收起恢复缓存不重读，结束无下一批且完整计数保持不变 [33m 1944[2mms[22m[39m
+ [32m✓[39m tests/app.test.tsx [2m([22m[2m27 tests[22m[2m)[22m[33m 5244[2mms[22m[39m
+     [33m[2m✓[22m[39m 同路径的新访问从首批开始，后退只恢复原访问的范围，不共享可变进度 [33m 1012[2mms[22m[39m
+     [33m[2m✓[22m[39m 追加失败保留首批，在原批次重试，随后读完 25 条且不再提供加载入口 [33m 879[2mms[22m[39m
+     [33m[2m✓[22m[39m 重复追加不重复请求，离开后旧 success 不污染返回的列表，未完成批次可继续读取 [33m 571[2mms[22m[39m
+     [33m[2m✓[22m[39m 重复追加不重复请求，离开后旧 error 不污染返回的列表，未完成批次可继续读取 [33m 558[2mms[22m[39m
+     [33m[2m✓[22m[39m 重复追加不重复请求，离开后旧 rejection 不污染返回的列表，未完成批次可继续读取 [33m 562[2mms[22m[39m
+ [32m✓[39m tests/discussion-history.test.tsx [2m([22m[2m18 tests[22m[2m)[22m[33m 21138[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回恢复该次评论排序、已读顺序和下一批，而非从首批重新开始 [33m 2337[2mms[22m[39m
+   [33m[2m✓[22m[39m 回复展开、已读范围和下一批在历史返回后保留，收起再离开仍可展开缓存 [33m 2696[2mms[22m[39m
+   [33m[2m✓[22m[39m 同一动态两次访问的排序、评论范围及回复展开互不覆盖，成功详情不重复读取 [33m 3443[2mms[22m[39m
+   [33m[2m✓[22m[39m 加载中离开恢复comments原批次，保留成功内容且取消不显示为错误 [33m 1412[2mms[22m[39m
+   [33m[2m✓[22m[39m 加载中离开恢复replies原批次，保留成功内容且取消不显示为错误 [33m 1513[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回comments append仍在读取时，旧success及完成不污染当前状态 [33m 977[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回comments append仍在读取时，旧error及完成不污染当前状态 [33m 1003[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回comments append仍在读取时，旧rejection及完成不污染当前状态 [33m 1032[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回replies initial仍在读取时，旧success及完成不污染当前状态 [33m 750[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回replies initial仍在读取时，旧error及完成不污染当前状态 [33m 776[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回replies initial仍在读取时，旧rejection及完成不污染当前状态 [33m 757[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回replies append仍在读取时，旧success及完成不污染当前状态 [33m 954[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回replies append仍在读取时，旧error及完成不污染当前状态 [33m 969[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回replies append仍在读取时，旧rejection及完成不污染当前状态 [33m 996[2mms[22m[39m
+   [33m[2m✓[22m[39m 评论和回复读取中往返预览沿用底层访问，不取消请求、不重置分页或展开 [33m 993[2mms[22m[39m
+ [32m✓[39m tests/archive-replies-app.test.tsx [2m([22m[2m23 tests[22m[2m)[22m[33m 4162[2mms[22m[39m
+   [33m[2m✓[22m[39m 生产Adapter确认成功且来源与本地25条相等时，3条预览不重复显示归档统计 [33m 321[2mms[22m[39m
+   [33m[2m✓[22m[39m 生产Adapter保留服务端25条顺序及3/13/23/25范围，失败同批重试，历史保存元数据和cursor [33m 2356[2mms[22m[39m
+ [32m✓[39m tests/manage-page.test.tsx [2m([22m[2m10 tests[22m[2m)[22m[33m 3322[2mms[22m[39m
+     [33m[2m✓[22m[39m UID 与近期 N 校验失败不发请求；非法成功 JSON 保留该卡草稿而非显示保存成功 [33m 1087[2mms[22m[39m
+     [33m[2m✓[22m[39m 忽略取消的旧保存 success 不污染新页面访问或另一 UP [33m 399[2mms[22m[39m
+     [33m[2m✓[22m[39m 忽略取消的旧保存 error 不污染新页面访问或另一 UP [33m 380[2mms[22m[39m
+     [33m[2m✓[22m[39m 删除失败保留草稿，删除仅配置后身份保留；重新添加失败保留身份且同 UID 防重 [33m 427[2mms[22m[39m
+     [33m[2m✓[22m[39m 两 UP 草稿独立、互斥模式可键盘保存；一张卡保存失败及阻塞不锁另一张卡 [33m 453[2mms[22m[39m
+ [32m✓[39m tests/archive-app.test.tsx [2m([22m[2m19 tests[22m[2m)[22m[33m 3348[2mms[22m[39m
+     [33m[2m✓[22m[39m 生产根评论完整采用服务端顺序20/20/5，失败重读同批、结束不请求，来源零回复不展开 [33m 1341[2mms[22m[39m
+     [33m[2m✓[22m[39m 生产分页 10/10/5 按服务器顺序追加，失败重试原 cursor、连点不重复且返回保留多批 [33m 1019[2mms[22m[39m
+ [32m✓[39m tests/scoped-app.test.tsx [2m([22m[2m12 tests[22m[2m)[22m[33m 3235[2mms[22m[39m
+     [33m[2m✓[22m[39m 跨 UP 阅读多批后从详情返回和历史后退恢复对应访问，继续使用各自 cursor [33m 1942[2mms[22m[39m
+     [33m[2m✓[22m[39m 直接打开单 UP，作者导航到全部和另一 UP，数据互不串用，详情返回其来源列表 [33m 309[2mms[22m[39m
+ [32m✓[39m tests/manage-target-page.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[33m 1937[2mms[22m[39m
+     [33m[2m✓[22m[39m StrictMode 下取消旧目标读取，忽略取消的旧集合不覆盖当前列表 [33m 302[2mms[22m[39m
+     [33m[2m✓[22m[39m 同 UID 添加连点防重、离开会取消，忽略取消的旧 success 不污染新访问 [33m 450[2mms[22m[39m
+     [33m[2m✓[22m[39m 同 UID 添加连点防重、离开会取消，忽略取消的旧 error 不污染新访问 [33m 381[2mms[22m[39m
+     [33m[2m✓[22m[39m 归属不符/未知不添加，正确添加与移除后新管理访问读取持久结果；删除不影响归档 [33m 600[2mms[22m[39m
+ [32m✓[39m tests/archive-navigation.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[33m 808[2mms[22m[39m
+ [32m✓[39m tests/images.test.tsx [2m([22m[2m12 tests[22m[2m)[22m[33m 1728[2mms[22m[39m
+     [33m[2m✓[22m[39m 长图默认完整显示，键盘可切换适应宽度并保留可关闭的焦点 [33m 302[2mms[22m[39m
+ [32m✓[39m tests/manage-checks.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[33m 746[2mms[22m[39m
+     [33m[2m✓[22m[39m 管理页展示分项及较新版本待同步，手动读取不执行同步 [33m 385[2mms[22m[39m
+ [32m✓[39m tests/archive-comment-images.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[33m 668[2mms[22m[39m
+     [33m[2m✓[22m[39m 上传失败不假装浏览器可重试，浏览器坏图只重试原地址；未完成纯图不显示空正文 [33m 402[2mms[22m[39m
+ [32m✓[39m tests/archive-reader.test.ts [2m([22m[2m32 tests[22m[2m)[22m[32m 44[2mms[22m[39m
+ [32m✓[39m tests/manage-api.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m tests/scoped-reader.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m tests/manage-target-api.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m tests/replies-data.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m tests/comments-data.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m tests/production-assembly.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m tests/data.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m tests/image-data.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 3[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m22 passed[39m[22m[90m (22)[39m
+[2m      Tests [22m [1m[32m234 passed[39m[22m[90m (234)[39m
+[2m   Start at [22m 13:15:23
+[2m   Duration [22m 36.36s[2m (transform 628ms, setup 2.04s, import 1.57s, tests 58.09s, environment 8.64s)[22m

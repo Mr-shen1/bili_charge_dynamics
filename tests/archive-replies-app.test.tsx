@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, getNodeText, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, useNavigate } from 'react-router';
 import { expect, it } from 'vitest';
 import userEvent from '@testing-library/user-event';
@@ -21,6 +21,63 @@ function show(transport: ArchiveTransport, path = `/dynamics/${archive.id}`) {
     <HistoryControls /><App reader={createArchiveReader(transport)} />
   </MemoryRouter>);
 }
+
+it('生产Adapter确认成功且来源与本地25条相等时，3条预览不重复显示归档统计', async () => {
+  show(async url => Response.json(url.includes('/replies?') ? {
+    items: Array.from({ length: 3 }, (_, index) => ({ ...reply, id: String(301 + index), text: `预览回复 ${index}` })),
+    next_cursor: 'more', source_reply_count: 25, local_reply_count: 25, replies_last_attempt: 'success',
+  } : url.includes('/comments?') ? { items: [rootComment], next_cursor: null } : archive));
+  const area = await screen.findByRole('region', { name: `回复区 ${rootComment.id}` });
+  await within(area).findByText('预览回复 0');
+  expect(within(area).getAllByRole('listitem')).toHaveLength(3);
+  expect(within(area).queryByText(/来源回复：/)).not.toBeInTheDocument();
+  expect(within(area).queryByText('回复归档尚未确认完成。')).not.toBeInTheDocument();
+  const expand = within(area).getByRole('button', { name: '展开回复' });
+  expect(expand).toHaveTextContent('共25条回复，点击查看');
+  expect(expand).toHaveAttribute('aria-expanded', 'false');
+});
+
+it.each([
+  [25, 20, 'success', '来源回复：25；本地已归档回复：20', null],
+  [20, 25, 'success', '来源回复：20；本地已归档回复：25', null],
+  [null, 25, 'success', '来源回复：—；本地已归档回复：25', null],
+  [25, null, 'success', '来源回复：25；本地已归档回复：—', null],
+  [null, null, 'success', '来源回复：—；本地已归档回复：—', null],
+  [undefined, undefined, 'success', '来源回复：—；本地已归档回复：—', null],
+  [undefined, 25, 'success', '来源回复：—；本地已归档回复：25', null],
+  [25, undefined, 'success', '来源回复：25；本地已归档回复：—', null],
+  [0, 25, 'success', '来源回复：0；本地已归档回复：25', null],
+  [25, 25, 'failed', '来源回复：25；本地已归档回复：25', '回复最近归档失败；已保存回复仍可阅读。'],
+  [25, 25, 'pending', '来源回复：25；本地已归档回复：25', '回复尚未完成归档。'],
+  [25, 25, 'unconfirmed', '来源回复：25；本地已归档回复：25', '回复归档尚未确认完成。'],
+  [25, 25, undefined, '来源回复：25；本地已归档回复：25', '回复归档尚未确认完成。'],
+] as const)('生产Adapter来源%s/本地%s/%s保留统计与独立状态，展开入口只用来源总数', async (source, local, attempt, counts, notice) => {
+  show(async url => Response.json(url.includes('/replies?') ? {
+    items: [reply], next_cursor: 'more', source_reply_count: source, local_reply_count: local,
+    replies_last_attempt: attempt,
+  } : url.includes('/comments?') ? { items: [rootComment], next_cursor: null } : archive));
+  const area = await screen.findByRole('region', { name: `回复区 ${rootComment.id}` });
+  await within(area).findByText('已归档回复');
+  expect(within(area).getByText(counts)).toBeVisible();
+  const expand = within(area).getByRole('button', { name: '展开回复' });
+  expect(expand).toHaveTextContent(source == null ? '展开回复' : `共${source}条回复，点击查看`);
+  expect(expand).toHaveAttribute('aria-label', '展开回复');
+  expect(expand).toHaveAttribute('aria-expanded', 'false');
+  expect(expand).toHaveAttribute('aria-controls', within(area).getByRole('list', { name: '回复列表' }).id);
+  if (notice) expect(within(area).getByRole('status')).toHaveTextContent(notice);
+  else expect(within(area).queryByRole('status')).not.toBeInTheDocument();
+  expect(within(area).queryByText('回复已加载完毕')).not.toBeInTheDocument();
+});
+
+it('生产Adapter成功的已知零计数相等可省略统计，但空回复提示仍保留', async () => {
+  show(async url => Response.json(url.includes('/replies?') ? {
+    items: [], next_cursor: null, source_reply_count: 0, local_reply_count: 0, replies_last_attempt: 'success',
+  } : url.includes('/comments?') ? { items: [rootComment], next_cursor: null } : archive));
+  const area = await screen.findByRole('region', { name: `回复区 ${rootComment.id}` });
+  expect(await within(area).findByText('暂无回复')).toBeVisible();
+  expect(within(area).queryByText(/来源回复：/)).not.toBeInTheDocument();
+  expect(within(area).queryByRole('button', { name: '展开回复' })).not.toBeInTheDocument();
+});
 
 it.each([
   ['failed', '回复最近归档失败；已保存回复仍可阅读。'],
@@ -51,6 +108,7 @@ it('确认归档成功的空回复才显示暂无回复，零来源根不请求�
   });
   const area = await screen.findByRole('region', { name: `回复区 ${rootComment.id}` });
   expect(await within(area).findByText('暂无回复')).toBeVisible();
+  expect(within(area).getByText('来源回复：—；本地已归档回复：0')).toBeVisible();
   expect(screen.queryByRole('region', { name: '回复区 222' })).not.toBeInTheDocument();
   expect(requests).toEqual([`/api/archive/dynamics/${archive.id}/comments/${rootComment.id}/replies?limit=3`]);
 });
@@ -113,7 +171,7 @@ it('生产Adapter保留服务端25条顺序及3/13/23/25范围，失败同批重
   expect(within(area).getByText('来源回复：—；本地已归档回复：25')).toBeVisible();
   expect(within(area).queryByText('回复最近归档失败；已保存回复仍可阅读。')).not.toBeInTheDocument();
   expect(within(area).getByText('回复已加载完毕')).toBeVisible();
-  expect(within(area).getAllByRole('listitem').map(row => within(row).getByText(/^服务端回复/).textContent)).toEqual([
+  expect(within(area).getAllByRole('listitem').map(row => getNodeText(within(row).getByText(/^服务端回复/)).trim())).toEqual([
     '服务端回复 0', '服务端回复 1', '服务端回复 2', '服务端回复 3', '服务端回复 4',
     '服务端回复 5', '服务端回复 6', '服务端回复 7', '服务端回复 8', '服务端回复 9',
     '服务端回复 10', '服务端回复 11', '服务端回复 12', '服务端回复 13', '服务端回复 14',

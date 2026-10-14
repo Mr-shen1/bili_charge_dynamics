@@ -79,6 +79,8 @@ test('列表与详情基础预览只新增同 URL 一条历史，切图不堆栈
 });
 
 test('预览按需请求单张原图，缩略图真实懒加载，签名形式 URL 保持完整', async ({ page }) => {
+  // 卡片去掉归档/多余底距后更紧凑；控制视口让末图仍在原生lazy预取距离之外。
+  await page.setViewportSize({ ...page.viewportSize()!, height: 400 });
   const requests: string[] = [];
   page.on('request', request => { if (request.url().includes('/demo-images/')) requests.push(request.url()); });
   await page.goto('/');

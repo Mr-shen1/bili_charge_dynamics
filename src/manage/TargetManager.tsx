@@ -58,13 +58,13 @@ export function TargetManager({ uid, api, requests }: { uid: string; api: Manage
       setNotice({ error: false, text: '目标已移除；已有归档保留。', action: 'delete' });
     } else if (result.status === 'error') setNotice({ error: true, text: result.message, action: 'delete' });
   }
-  return <section aria-label="指定动态目标">
+  return <section className="manage-section" aria-label="指定动态目标">
     <h2>指定动态目标</h2>
     <p className="manage-muted">仅在已保存的指定模式下监控关联集合。添加前由服务端验证作者；移除仅停止监控，不删除归档。</p>
     {readState === 'loading' && <p role="status">正在读取指定目标…</p>}
     {readState === 'error' && <><p role="alert">{readError}</p><button type="button" onClick={() => void load()}>重试读取目标</button></>}
     {readState === 'ready' && <>
-      {targets.length === 0 ? <p>尚未添加指定目标。</p> : <ul>
+      {targets.length === 0 ? <p>尚未添加指定目标。</p> : <ul className="manage-targets">
         {targets.map(target => <li key={target.id}>
           <span>{target.id}</span>{' '}
           <button type="button" disabled={busy} aria-label={`移除目标 ${target.id}`} onClick={() => void remove(target.id)}>
@@ -73,14 +73,16 @@ export function TargetManager({ uid, api, requests }: { uid: string; api: Manage
         </li>)}
       </ul>}
       <form noValidate onSubmit={event => { event.preventDefault(); void add(); }}>
-        <fieldset disabled={busy}>
-          <label htmlFor={`manage-target-${uid}`}>动态 ID</label>
-          <input id={`manage-target-${uid}`} type="text" inputMode="numeric" autoComplete="off" value={id}
-            onChange={event => { setId(event.target.value); setNotice(null); }} />
+        <fieldset className="manage-add-fields" disabled={busy}>
+          <div className="manage-field">
+            <label htmlFor={`manage-target-${uid}`}>动态 ID</label>
+            <input id={`manage-target-${uid}`} type="text" inputMode="numeric" autoComplete="off" value={id}
+              onChange={event => { setId(event.target.value); setNotice(null); }} />
+          </div>
           <button type="submit">{busy && pending === 'add' ? '正在校验…' : notice?.error && notice.action === 'add' ? '重试添加目标' : '校验并添加目标'}</button>
         </fieldset>
       </form>
     </>}
-    {notice && <p role={notice.error ? 'alert' : 'status'}>{notice.text}</p>}
+    {notice && <p className="manage-feedback" role={notice.error ? 'alert' : 'status'}>{notice.text}</p>}
   </section>;
 }
