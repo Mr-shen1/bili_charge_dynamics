@@ -10,7 +10,8 @@ import httpx
 import pytest
 
 from backend.tests.archive_support import (
-    BASE, UID, TARGETS, archive_client, author_html, detail_json, readable_html, set_specified,
+    BASE, UID, TARGETS, archive_client, archive_content, author_html, detail_json, readable_html, set_specified,
+    NULL_COMMENT_STATUS,
 )
 
 
@@ -115,8 +116,10 @@ def test_failed_initial_attempt_is_persisted_retryable_and_local_reads_survive_l
         client.delete(f"{BASE}/{UID}/monitor")
         assert client.post("/api/sync/initial", json={"uid": UID}).json()["processed"] == 0
     with archive_client(path) as client:
-        assert client.get("/api/archive/dynamics/123").json() == saved
-        assert client.get("/api/archive/dynamics").json() == {"items": [saved], "next_cursor": None}
+        current = client.get("/api/archive/dynamics/123").json()
+        assert current["comment_sync"] is None
+        assert archive_content(current) == archive_content(saved)
+        assert client.get("/api/archive/dynamics").json() == {"items": [archive_content(saved)], "next_cursor": None}
 
 
 def test_page_metadata_is_saved_even_when_body_unavailable_and_invalid_edits_do_not_erase_it(tmp_path):
@@ -195,13 +198,15 @@ def test_readable_full_page_archives_metadata_media_locator_and_version_idempote
         assert client.post("/api/sync/initial", json={"uid": UID}).json() == {"processed": 1, "succeeded": 1, "failed": 0}
         saved = client.get("/api/archive/dynamics/123").json()
         media_fields = {"media", "previous_media", "media_version", "synced_media_version", "media_last_attempt"}
-        assert {key: value for key, value in saved.items() if key not in media_fields} == {
+        assert {key: value for key, value in archive_content(saved).items() if key not in media_fields} == {
             "id": "123", "author": {"id": UID, "nickname": "虚构星海", "avatar_url": "https://example.invalid/avatar.png"},
             "published_at": "2026-10-09T10:38:16+08:00", "edited_at": "2026-10-09T13:01+08:00", "edit_status": "observed",
             "title": None, "text": "虚构全文\n第二行 <b>仍是文本</b> 🙂", "content_state": "success", "last_attempt": "success",
             "source_comment_count": 7, "local_comment_count": 0, "local_reply_count": 0,
             "root_comments_last_attempt": "failed", "synced_root_comment_count": None,
             "comments_last_attempt": "failed", "replies_last_attempt": "unconfirmed",
+            **NULL_COMMENT_STATUS, "root_comments_error": "ROOT_COMMENTS_FAILED",
+            "comments_error": "ROOT_COMMENTS_FAILED",
             "synced_comment_count": None, "synced_reply_comment_count": None,
             "media_sources": [{"url": "https://example.invalid/first.png", "width": 640, "height": 480},
                               {"url": "https://example.invalid/second.png", "width": 200, "height": 1200}],
@@ -210,7 +215,7 @@ def test_readable_full_page_archives_metadata_media_locator_and_version_idempote
             "work": {"text": "success", "media": "pending", "comments": "pending", "replies": "pending"},
         }
         before = list(calls)
-        assert client.get("/api/archive/dynamics").json()["items"] == [saved]
+        assert client.get("/api/archive/dynamics").json()["items"] == [archive_content(saved)]
         assert calls == before
         client.post("/api/sync/initial", json={"uid": UID})
         assert client.get("/api/archive/dynamics/123").json() == saved
@@ -672,7 +677,8 @@ def test_successful_archive_is_retained_after_read_failure_and_target_or_config_
         state["fail"] = True
         assert client.post("/api/sync/initial", json={"uid": UID}).json()["failed"] == 1
         saved = client.get("/api/archive/dynamics/123").json()
-        for field in ("author", "text", "content_state", "published_at", "edited_at", "source_comment_count", "media_sources", "comment_locator", "observed_version", "synced_version"):
+        for field in ("author", "text", "content_state", "published_at", "edited_at", "source_comment_count", "media_sources", "comment_locator", "observed_version", "synced_version",
+                      "root_comments_last_succeeded_at", "replies_last_succeeded_at", "comments_last_succeeded_at"):
             assert saved[field] == successful[field]
         assert saved["last_attempt"] == "failed"
         assert saved["edit_status"] == "error"
@@ -684,8 +690,10 @@ def test_successful_archive_is_retained_after_read_failure_and_target_or_config_
         assert client.post("/api/sync/initial", json={"uid": UID}).json()["processed"] == 0
         assert client.delete(f"{BASE}/{UID}/monitor").status_code == 204
     with archive_client(path) as client:
-        assert client.get("/api/archive/dynamics/123").json() == saved
-        assert client.get("/api/archive/dynamics").json() == {"items": [saved], "next_cursor": None}
+        current = client.get("/api/archive/dynamics/123").json()
+        assert current["comment_sync"] is None
+        assert archive_content(current) == archive_content(saved)
+        assert client.get("/api/archive/dynamics").json() == {"items": [archive_content(saved)], "next_cursor": None}
         assert client.get(f"{BASE}/{UID}").json()["monitor"] is None
 
 

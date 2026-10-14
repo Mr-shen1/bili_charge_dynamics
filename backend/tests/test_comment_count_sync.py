@@ -23,7 +23,11 @@ ARCHIVE = "/api/archive/dynamics/123"
 
 def snapshot(path):
     with archive_client(path) as api:
-        return api.get(CHECKS).json()["checks"][0], api.get(ARCHIVE).json()
+        state = api.get(CHECKS).json()["checks"][0]
+        archive = api.get(ARCHIVE).json()
+        # 最新检查投影允许变化；归档保留断言仍完整比较正文、计数、checkpoint 和时间。
+        archive.pop("comment_sync", None)
+        return state, archive
 
 
 def count_fixture():
@@ -173,6 +177,9 @@ def test_untrusted_count_never_becomes_zero_or_overwrites_old_trusted_total(tmp_
             state, archive = snapshot(path)
             assert state["observed"]["source_comment_count"] == 7
             assert state["observed"]["comment_count_status"] == "failed"
+            # 新实时投影应暴露本次计数失败，同时持久归档完整保留。
+            with archive_client(path) as api:
+                assert api.get(ARCHIVE).json()["comment_sync"] == state
             assert state["check_status"] == "failed"
             assert state["revision"] == before["revision"]
             assert state["last_succeeded_at"] == before["last_succeeded_at"]

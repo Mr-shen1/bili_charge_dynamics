@@ -6,7 +6,7 @@
 
 **Blocked by:** [16](16-root-comment-reading.md)、[25](25-comment-count-sync.md)
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 ## 依据与交付边界
 
@@ -29,3 +29,7 @@
 T1 用生产 Adapter、RTL 和至少一个实际 API 页面场景；T2/T3 用真实 SQLite 与 #25 公开执行入口产生状态，不只硬编码 UI 数据。与 #25 核对父 #09 原清单，保留旧管理、评论局部故障及导航回归。
 
 ## Comments
+
+- 已实现来源/本地根/本地回复/当前加载数独立展示，生产 Adapter 读取最新 `comment_sync` 与 checks，管理/详情展示评论分项真实成功时间和固定脱敏错误；只读状态刷新保留正文、已加载评论、排序/展开/cursor/阅读锚点，不触发采集。未知/零、部分失败、成功空、正文受限可读、无新信号重试及迟到访问隔离均有自动化证据；不改变 #25 触发策略。
+- 前端全量 252 passed；后端串行全量 373 passed（3 条依赖弃用警告）；归档 Playwright 36 passed、管理 7 passed、独立 mock 104 passed/10 既有配置 skipped；`pnpm typecheck`、`pnpm build`、`git diff --check` 通过。实现、TDD、实际 API/SQLite/Collector 页面场景及父 #09/#25 原清单核对见 [26 验收](../acceptance-26.md) 与 [浏览器专项](../evidence/comment-status-browser-26.md)。Standards/Spec 双轴初审已完成：读取契约下沉到 `src/data`、删除死参数、统一评论进度并补公开投影一致性测试；Spec 修正后复核 0 个新增确认缺陷；Standards 复核确认四项修正落实，并经 `785790f` 消除第 11 用例未提交的证据一致性问题。最终无残余确认阻断项，非硬设计启发/低置信风险与处理边界仍记于验收记录。
+- 等待人工复核。来源 count 的普遍根＋全部回复口径承接 #25/#34 的未验证项；未请求真实上游/OSS/凭据，未取得正式设备、部署、持续运行或容量证据，不勾选父 #09 全部 AC。全媒体联动及聚合仍由 #30 收口，不宣称实时、完整来源或所有受限评论可读。

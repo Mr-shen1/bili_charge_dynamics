@@ -2,6 +2,8 @@ import type { ArchiveMetadata, ArchiveWorkState, Comment, CommentBatch, DetailRe
 import { replyAppendSize, replyPreviewSize } from './contracts';
 import { isValidId } from './identifiers';
 import { isRecord as record } from './guards';
+import { parseCheck } from './checkStatus';
+import { timestamp } from './timestamp';
 
 export type ArchiveTransport = (url: string, init: RequestInit) => Promise<Response>;
 const failed = { status: 'error' } as const;
@@ -78,12 +80,14 @@ function parseArchive(raw: unknown): Dynamic | null {
     mediaSources.push({ url: sourceUrl, width: count(source.width) || null, height: count(source.height) || null });
   }
   const status = raw.edit_status;
+  const commentSync = raw.comment_sync == null ? null : parseCheck(raw.comment_sync, timestamp);
+  if (raw.comment_sync != null && (!commentSync || commentSync.id !== raw.id)) return null;
   return {
     id: raw.id,
     author: { id: raw.author.id, nickname: typeof raw.author.nickname === 'string' && raw.author.nickname.trim() ? raw.author.nickname : null,
       avatarUrl: url(raw.author.avatar_url) },
     publishedAt: time(raw.published_at), text: raw.text, commentCount: count(raw.source_comment_count), images: parseImages(raw.media, { type: 'dynamic', id: raw.id }),
-    archive: { title: typeof raw.title === 'string' && raw.title.trim() ? raw.title : null,
+    archive: { commentSync, title: typeof raw.title === 'string' && raw.title.trim() ? raw.title : null,
       editedAt: time(raw.edited_at, true), editStatus: status, contentState: raw.content_state,
       lastAttempt: raw.last_attempt, localCommentCount: Number(raw.local_comment_count),
       localReplyCount: count(raw.local_reply_count),

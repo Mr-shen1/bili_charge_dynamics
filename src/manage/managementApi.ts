@@ -1,6 +1,7 @@
 import { isValidId } from '../data/identifiers';
 import { isRecord as record } from '../data/guards';
-import { parseCheck, type ManagedCheck } from './checkStatus';
+import { parseCheck, type TargetCheck } from '../data/checkStatus';
+import { timestamp } from '../data/timestamp';
 
 export interface MonitorConfig {
   readonly mode: 'recent' | 'specified';
@@ -27,15 +28,6 @@ export type ManagementTransport = (url: string, init: RequestInit) => Promise<Re
 
 export const invalidUidMessage = 'UID 须为无前导零的正整数字符串，最多 128 位。';
 export const isValidUid = isValidId;
-function timestamp(value: unknown): value is string | null {
-  if (value === null) return true;
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) return false;
-  const epoch = Date.parse(value);
-  if (!Number.isFinite(epoch)) return false;
-  const zone = value.endsWith('Z') ? null : value.slice(-6);
-  const offset = zone ? (zone[0] === '+' ? 1 : -1) * (Number(zone.slice(1, 3)) * 60 + Number(zone.slice(4))) : 0;
-  return new Date(epoch + offset * 60_000).toISOString().slice(0, 19) === value.slice(0, 19);
-}
 function avatar(value: unknown): value is string | null {
   if (value === null || value === '') return true;
   if (typeof value !== 'string') return false;
@@ -114,7 +106,7 @@ export function createManagementApi(transport: ManagementTransport = (url, init)
     } catch { return signal.aborted ? { status: 'cancelled' } : invalidResponse; }
   }
   return {
-    async listChecks({ uid, signal }: { readonly uid: string; readonly signal: AbortSignal }): Promise<ManagementResult<readonly ManagedCheck[]>> {
+    async listChecks({ uid, signal }: { readonly uid: string; readonly signal: AbortSignal }): Promise<ManagementResult<readonly TargetCheck[]>> {
       if (!isValidUid(uid)) return { status: 'error', message: invalidUidMessage };
       try {
         if (signal.aborted) return { status: 'cancelled' };
@@ -123,7 +115,7 @@ export function createManagementApi(transport: ManagementTransport = (url, init)
         if (signal.aborted) return { status: 'cancelled' };
         if (!response.ok) return httpError(body, response.status);
         if (response.status !== 200 || !record(body) || !Array.isArray(body.checks)) return invalidResponse;
-        const checks: ManagedCheck[] = [];
+        const checks: TargetCheck[] = [];
         for (const raw of body.checks) {
           const check = parseCheck(raw, timestamp);
           if (!check || checks.some(existing => existing.id === check.id)) return invalidResponse;

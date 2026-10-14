@@ -1,4 +1,4 @@
-# 指定目标、首次归档与归档读取接口（02 / 13 / 15 / 17 / 19 / 21 后端）
+# 指定目标、首次归档与归档读取接口（02 / 13 / 15 / 17 / 19 / 21 / 26 后端）
 
 02 交付指定目标的首次正文归档和基础读取；13 后端扩展全部／单 UP 读取与持久身份列表；15 增加已有根评论首次归档及最热／最新读取，17 补齐楼中楼来源分页与持久读取。19 增加动态图下载、OSS 上传与独立重试，21 将共用媒体能力接入一级评论；不包含近期目标选择、周期检查或评论图页面，前端 Adapter／最小路由契约见 [archive-api-client.md](archive-api-client.md)，具体自动化证据见 [13 验收记录](../../../.scratch/backend-integration/acceptance-13.md)。管理身份及配置契约见 [management-api.md](management-api.md)，来源证据及限制见 [backend-feasibility.md](../evidence/backend-feasibility.md)。
 
@@ -20,7 +20,7 @@
 
 UID 和动态 ID 必须是十进制字符串，不经 JavaScript Number 转换。不符返回 `409 TARGET_AUTHOR_MISMATCH`，无法确认返回 `502 TARGET_UNVERIFIED`；都不建立关联。上游请求不在数据库事务内，错误只返回固定脱敏提示，不传递上游响应、URL、请求头或异常文本。
 
-初始化入口面向执行者及测试，不从页面挂载、读取或刷新调用；没有手动刷新 UI。`succeeded` 仅计正文成功（含成功空），正文受限属于本次未成功而计入 `failed`，具体受限/失败由归档状态区分。只处理已启用且已保存为 `specified` 的关联集合，不补入近期或作者的其他动态。停止、删除监控配置或解除目标后，保留身份和历史归档。浏览器 list/detail 只读取 SQLite，即使上游不可用也不触发采集。
+初始化入口面向执行者及测试，不从页面挂载、读取或刷新调用；没有手工采集 UI（#26 的状态重读只是归档 GET）。`succeeded` 仅计正文成功（含成功空），正文受限属于本次未成功而计入 `failed`，具体受限/失败由归档状态区分。只处理已启用且已保存为 `specified` 的关联集合，不补入近期或作者的其他动态。停止、删除监控配置或解除目标后，保留身份和历史归档。浏览器 list/detail 只读取 SQLite，即使上游不可用也不触发采集。
 
 ### 归档读取 scope、身份与错误
 
@@ -39,6 +39,12 @@ UID 和动态 ID 必须是十进制字符串，不经 JavaScript Number 转换�
 cursor 是不透明标记，绑定动态资源、scope（单 UP 包含 UID）、固定排序及首批 `limit`。全局旧 cursor 与显式 `scope=all` 完全互通；不能在全部／单 UP 或不同 UP 之间复用，也不能用于身份、详情、目标或评论资源。格式无效、伪造、跨 scope／资源、改变 limit 均明确返回 `422 INVALID_INPUT`，不静默开启新快照。
 
 快照从首批创建起有效 **15 分钟**，续页不延长期限；到期时（包括恰满 900 秒）返回 `422 INVALID_INPUT`，过期页由启动或列表读取回收，归档本身不删除。调用方需显式重读首批，不把失效视为成功空或结束。此增量沿用现有 v5 持久页结构，不迁移或作废仍有效的旧全局 cursor；不承诺大集合内存／存储容量或长期阅读快照。
+
+### 26 评论状态读取增量
+
+归档详情增加 `comment_sync`（目标的最新 checks 投影），与来源数、本地根/回复数和正文归档独立。详情 GET 的检查投影与归档在同一 SQLite 读取上下文中取得，不请求上游；没有检查记录但仍有关联目标时表达未检查；无保留目标/检查记录时可为 null，不补造时间。旧冻结 list cursor 缺此字段仍可读，不使已有分页失效。
+
+Archive/checks 增量的 `root_comments_last_succeeded_at`、`replies_last_succeeded_at`、`comments_last_succeeded_at` 分别记录实际根、回复及整轮评论文本成功时间，失败保留旧值、检查无变化不推进。对应 `root_comments_error`、`replies_error`、`comments_error` 只提供固定脱敏码；旧归档缺字段为 null。字段语义与计数检查限制见 [采集契约](collector-api.md#26-评论分项状态与时间)，前端只读状态刷新见 [客户端契约](archive-api-client.md#26-增量评论计数与同步状态)，证据见 [26 验收](../../../.scratch/backend-integration/acceptance-26.md)。
 
 ### 执行一次
 

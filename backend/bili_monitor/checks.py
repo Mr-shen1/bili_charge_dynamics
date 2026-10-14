@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from uuid import uuid4
 
 from .contracts import APIError
+from .comment_status import COMMENT_STATUS_FIELDS
 
 
 ACTIVE_TARGET = """SELECT 1 FROM targets t JOIN monitors m ON m.uid = t.uid
@@ -155,37 +156,45 @@ class CheckStore:
 
     def read_checks(self, uid):
         with self.connection() as connection:
-            # 一个读取快照内核验身份并读取状态，不修改任务或请求上游。
             connection.execute("BEGIN")
-            if not connection.execute("SELECT 1 FROM identities WHERE uid = ?", (uid,)).fetchone():
-                raise APIError("NOT_FOUND")
-            rows = connection.execute(f"""SELECT ids.id, c.last_checked_at, c.last_succeeded_at,
-                c.check_status, CASE WHEN c.observed IS NOT NULL THEN c.observed
-                    WHEN a.id IS NOT NULL THEN {ARCHIVE_SIGNALS} ELSE NULL END AS observed,
-                c.revision, c.work, c.check_error, c.sync_error,
-                json_extract(a.document, '$.work') AS parts,
-                json_extract(a.document, '$.synced_version') AS synced_version,
-                json_extract(a.document, '$.media_version') AS media_version,
-                json_extract(a.document, '$.synced_comment_count') AS synced_comment_count,
-                json_extract(a.document, '$.synced_root_comment_count') AS synced_root_comment_count,
-                json_extract(a.document, '$.synced_reply_comment_count') AS synced_reply_comment_count,
-                json_extract(a.document, '$.local_comment_count') AS local_comment_count,
-                json_extract(a.document, '$.local_reply_count') AS local_reply_count,
-                json_extract(a.document, '$.comments_last_attempt') AS comments_last_attempt,
-                CASE WHEN a.id IS NOT NULL AND json_extract(a.document, '$.work.comments') = 'success'
-                    AND NOT EXISTS (SELECT 1 FROM root_comments r WHERE r.dynamic_id = a.id
-                        AND json_extract(r.document, '$.work.media') IS NOT 'success')
-                    THEN 'success' ELSE 'pending' END AS comment_media,
-                CASE WHEN t.id IS NOT NULL AND m.enabled = 1 AND m.mode = 'specified'
-                     THEN 1 ELSE 0 END AS active
-                FROM (SELECT uid, id FROM targets WHERE uid = ? UNION
-                      SELECT uid, id FROM target_checks WHERE uid = ?) ids
-                LEFT JOIN target_checks c ON c.uid = ? AND c.id = ids.id
-                LEFT JOIN targets t ON t.uid = ? AND t.id = ids.id
-                LEFT JOIN monitors m ON m.uid = ?
-                LEFT JOIN archives a ON a.uid = ids.uid AND a.id = ids.id
-                ORDER BY ids.id COLLATE BINARY""",
-                (uid, uid, uid, uid, uid)).fetchall()
+            return self._read_checks(connection, uid)
+
+    def _read_checks(self, connection, uid):
+        # 调用者持有同一只读快照，归档 detail 可复用而不产生读写/采集。
+        status_columns = ", ".join(
+            f"json_extract(a.document, '$.{field}') AS {field}" for field in COMMENT_STATUS_FIELDS)
+        if not connection.execute("SELECT 1 FROM identities WHERE uid = ?", (uid,)).fetchone():
+            raise APIError("NOT_FOUND")
+        rows = connection.execute(f"""SELECT ids.id, c.last_checked_at, c.last_succeeded_at,
+            c.check_status, CASE WHEN c.observed IS NOT NULL THEN c.observed
+                WHEN a.id IS NOT NULL THEN {ARCHIVE_SIGNALS} ELSE NULL END AS observed,
+            c.revision, c.work, c.check_error, c.sync_error,
+            json_extract(a.document, '$.work') AS parts,
+            json_extract(a.document, '$.synced_version') AS synced_version,
+            json_extract(a.document, '$.media_version') AS media_version,
+            json_extract(a.document, '$.synced_comment_count') AS synced_comment_count,
+            json_extract(a.document, '$.synced_root_comment_count') AS synced_root_comment_count,
+            json_extract(a.document, '$.synced_reply_comment_count') AS synced_reply_comment_count,
+            json_extract(a.document, '$.local_comment_count') AS local_comment_count,
+            json_extract(a.document, '$.local_reply_count') AS local_reply_count,
+            json_extract(a.document, '$.comments_last_attempt') AS comments_last_attempt,
+            json_extract(a.document, '$.root_comments_last_attempt') AS root_comments_last_attempt,
+            json_extract(a.document, '$.replies_last_attempt') AS replies_last_attempt,
+            {status_columns},
+            CASE WHEN a.id IS NOT NULL AND json_extract(a.document, '$.work.comments') = 'success'
+                AND NOT EXISTS (SELECT 1 FROM root_comments r WHERE r.dynamic_id = a.id
+                    AND json_extract(r.document, '$.work.media') IS NOT 'success')
+                THEN 'success' ELSE 'pending' END AS comment_media,
+            CASE WHEN t.id IS NOT NULL AND m.enabled = 1 AND m.mode = 'specified'
+                 THEN 1 ELSE 0 END AS active
+            FROM (SELECT uid, id FROM targets WHERE uid = ? UNION
+                  SELECT uid, id FROM target_checks WHERE uid = ?) ids
+            LEFT JOIN target_checks c ON c.uid = ? AND c.id = ids.id
+            LEFT JOIN targets t ON t.uid = ? AND t.id = ids.id
+            LEFT JOIN monitors m ON m.uid = ?
+            LEFT JOIN archives a ON a.uid = ids.uid AND a.id = ids.id
+            ORDER BY ids.id COLLATE BINARY""",
+            (uid, uid, uid, uid, uid)).fetchall()
         return [{"id": row["id"], "active": bool(row["active"]),
                  "last_checked_at": row["last_checked_at"], "last_succeeded_at": row["last_succeeded_at"],
                  "check_status": row["check_status"] or "unchecked",
@@ -196,6 +205,11 @@ class CheckStore:
                  "synced_comment_count": row["synced_comment_count"],
                  "local_comment_count": row["local_comment_count"], "local_reply_count": row["local_reply_count"],
                  "comments_last_attempt": row["comments_last_attempt"] or "pending",
+                 "root_comments_last_attempt": row["root_comments_last_attempt"] or "pending",
+                 "replies_last_attempt": row["replies_last_attempt"] or "pending",
+                 "synced_root_comment_count": row["synced_root_comment_count"],
+                 "synced_reply_comment_count": row["synced_reply_comment_count"],
+                 **{field: row[field] for field in COMMENT_STATUS_FIELDS},
                  "parts": check_parts(row)} for row in rows]
 
     def pending_checks(self):

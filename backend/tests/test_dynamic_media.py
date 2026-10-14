@@ -21,7 +21,7 @@ import httpx
 from fastapi.testclient import TestClient
 
 from backend.bili_monitor.app import create_app
-from backend.tests.archive_support import BASE, UID, TARGETS, author_html, detail_json, readable_html, set_specified
+from backend.tests.archive_support import BASE, UID, TARGETS, archive_content, author_html, detail_json, readable_html, set_specified
 from backend.tests.management_support import profile_response
 
 ARCHIVE = "/api/archive/dynamics/123"
@@ -101,7 +101,7 @@ def test_protocol_images_are_archived_in_order_with_public_urls_and_survive_reop
             assert item["status"] == "success"
             assert item["error"] is None
             assert item["public_url"].startswith("https://archive.example.invalid/dynamics/123/")
-        assert client.get("/api/archive/dynamics").json()["items"] == [saved]
+        assert client.get("/api/archive/dynamics").json()["items"] == [archive_content(saved)]
         client.post(SYNC, json={"uid": UID})
         assert client.get(ARCHIVE).json() == saved
     with media_client(path, state) as client:

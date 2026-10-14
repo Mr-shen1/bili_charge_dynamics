@@ -313,7 +313,11 @@ def test_first_failed_check_retains_legacy_archive_trusted_observation(tmp_path)
         state = api.get(CHECKS).json()["checks"][0]
         assert state["check_status"] == "failed"
         assert state["observed"]["observed_version"] == saved["observed_version"]
-        assert api.get("/api/archive/dynamics/123").json() == saved
+        archive = api.get("/api/archive/dynamics/123").json()
+        assert archive.pop("comment_sync") == state
+        assert saved.pop("comment_sync")["check_status"] == "unchecked"
+        # 唯一实时投影变化不影响整份保留归档（包括成功时间与 checkpoint）。
+        assert archive == saved
 
 
 def test_http_exposes_partial_archive_without_claiming_whole_success(tmp_path):

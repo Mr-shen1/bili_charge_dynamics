@@ -192,7 +192,7 @@ def create_app(
     @application.get("/api/archive/dynamics/{id}")
     async def read_archive(id: UID, request: Request):
         validate_query(request)
-        saved = await run_store(store.read_archive, id)
+        saved = await run_store(store.read_archive_detail, id)
         if saved is None:
             raise APIError("NOT_FOUND")
         return saved
