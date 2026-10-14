@@ -1,6 +1,6 @@
-# 票据 01–02 / 13 / 15 / 17 / 19 / 21 / 23–26 后端
+# 票据 01–02 / 13 / 15 / 17 / 19 / 21 / 23–27 后端
 
-提供 UP 身份/配置管理、指定动态关联、显式一次初始化及 SQLite 归档读取。支持根评论采集、最热／最新归档分页、完整楼中楼归档读取，以及动态图／一级评论图共用下载、OSS 上传和独立重试；23 新增独立进程的固定节拍检查；没有近期目标发现，不宣称全部归档完成。管理基础契约见 `docs/backend/api/management-api.md`，02 测试证据见 [backend-acceptance-02.md](../.scratch/backend-integration/evidence/backend-acceptance-02.md)，字段依据见 [source-protocol-evidence.md](../docs/backend/evidence/source-protocol-evidence.md)。
+提供 UP 身份/配置管理、指定动态关联、显式一次初始化及 SQLite 归档读取。支持根评论采集、最热／最新归档分页、完整楼中楼归档读取，以及动态图／一级评论图共用下载、OSS 上传和独立重试；23 新增独立进程的固定节拍检查；27 增加原规则近期分页发现与持久状态，尚不将发现结果转为当前窗口或初始化归档（#28），不宣称全部归档完成。管理基础契约见 `docs/backend/api/management-api.md`，02 测试证据见 [backend-acceptance-02.md](../.scratch/backend-integration/evidence/backend-acceptance-02.md)，字段依据见 [source-protocol-evidence.md](../docs/backend/evidence/source-protocol-evidence.md)。
 
 ## 运行
 
@@ -17,16 +17,16 @@ Python 使用 `.python-version` 固定的 3.12；FastAPI、HTTPX、Uvicorn 和 p
 
 ## 23 独立采集进程
 
-API 和采集进程使用同一 SQLite 路径，分别启动，不能增加多个采集进程。仅处理持久启用的指定目标，默认最多 4 个同时检查、4 个独立目标同步；同目标不叠加，慢分页期间其他目标仍可检查／同步。固定 15 秒检查与慢同步分离，状态从 `GET /api/manage/ups/{uid}/checks` 读取；完整节拍、重启与状态语义见 [采集契约](../docs/backend/api/collector-api.md)。API 不内嵌定时器。
+API 和采集进程使用同一 SQLite 路径，分别启动，不能增加多个采集进程。处理持久启用的指定目标检查/同步及近期 UP 发现，默认最多 4 个同时检查、4 个独立目标同步、2 个独立 UP 发现；同目标不叠加，慢分页期间其他目标仍可检查／同步。固定 15 秒检查与慢同步分离，状态从 `GET /api/manage/ups/{uid}/checks` 读取；完整节拍、重启与状态语义见 [采集契约](../docs/backend/api/collector-api.md)。API 不内嵌定时器。
 
 ```sh
 # 前台运行；Ctrl-C 停止（也支持 kill -TERM <pid>）
 BILI_DATABASE_PATH=/absolute/path/monitor.sqlite uv run python -m backend.bili_monitor.collector
-# 一次检查并登记，既不执行同步，也不恢复中断执行
+# 一次检查/发现并登记，既不执行同步，也不恢复中断执行
 uv run python -m backend.bili_monitor.collector --database /absolute/path/monitor.sqlite --once
 ```
 
-先通过管理 HTTP 配置启用的指定目标（mode 值为 `specified`）；默认 recent 没有发现实现，不会发起检查。配置、观察和待处理都持久化，退出时正在执行的工作保留，正常运行重启后恢复为待处理。锁文件位于数据库旁，运行时不要删除或使用硬链接别名。
+先通过管理 HTTP 配置启用的指定目标（mode 值为 `specified`）或近期 UP（默认 recent、N=10）。近期发现独立调度，`GET /api/manage/ups/{uid}/discovery` 只读查看本轮进度/错误与最近可信结果；不会把候选当成成功归档或混入指定 targets。完整契约见 [近期发现](../docs/backend/api/discovery-api.md)。配置、观察和待处理都持久化，退出时正在执行的工作保留，正常运行重启后恢复为待处理。锁文件位于数据库旁，运行时不要删除或使用硬链接别名。
 
 最小隔离演示（**仅测试装配，不访问真实上游、不读取 OSS 环境、不使用默认生产数据库**）：
 
@@ -160,13 +160,14 @@ initial 在根／回复独立提交后处理评论图；正文受限不阻断实
 
 ## SQLite 与安全
 
-schema 顺序：v1 身份/配置、v2 targets、v3 archives/generation、v4 持久分页、v5 cursor 资源/过期/索引、v6 根评论及独立持久评论页、v7 回复／逐根同步状态／回复持久页、v8 媒体尝试令牌及归档文档媒体字段、v9 评论 owner 尝试标识与旧根来源 pending 回填、v10 持久目标检查/观察/工作/时间/独立错误、v11 目标领取 fencing 令牌。v0–v10 短事务迁移到 v11，冲突回滚、未来版本拒绝启动；旧 v4 无限期 cursor 被失效，但归档不删。每次操作独立连接并启用外键，等待锁最多 2 秒；数据库操作在线程池执行，网络不进事务。删除配置只 cascade 指定关联，绝不 cascade 身份或归档。
+schema 顺序：v1 身份/配置、v2 targets、v3 archives/generation、v4 持久分页、v5 cursor 资源/过期/索引、v6 根评论及独立持久评论页、v7 回复／逐根同步状态／回复持久页、v8 媒体尝试令牌及归档文档媒体字段、v9 评论 owner 尝试标识与旧根来源 pending 回填、v10 持久目标检查/观察/工作/时间/独立错误、v11 目标领取 fencing 令牌、v12 按 UP 发现尝试/可信结果/领取令牌。v0–v11 短事务迁移到 v12，冲突回滚、未来版本拒绝启动；旧 v4 无限期 cursor 被失效，但归档不删。每次操作独立连接并启用外键，等待锁最多 2 秒；数据库操作在线程池执行，网络不进事务。删除配置只 cascade 指定关联，绝不 cascade 身份或归档。
 
 错误响应使用固定错误码与提示，不记录请求体、上游原文或异常秘密。HTTPX/HTTPCore、OSS SDK、Requests/urllib3 传输日志及 Uvicorn access 日志禁用，部署代理也应避免记录敏感查询。本票测试不读取真实 Cookie、不执行/导入参考脚本、不请求真实上游。
 
 ## 测试与 E2E 装配
 
 ```sh
+uv run pytest backend/tests/test_discovery_source.py backend/tests/test_recent_discovery.py -q
 uv run pytest backend/tests/test_comment_count_sync.py -q
 uv run pytest backend/tests/test_collector.py -q
 uv run pytest backend/tests/test_comment_media.py -q

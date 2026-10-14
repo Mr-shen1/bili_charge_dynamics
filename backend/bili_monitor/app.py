@@ -134,6 +134,11 @@ def create_app(
             raise APIError("TARGET_AUTHOR_MISMATCH")
         return await run_store(store.add_target, uid, body.id)
 
+    @application.get("/api/manage/ups/{uid}/discovery")
+    async def get_discovery(uid: UID, request: Request):
+        validate_query(request)
+        return await run_store(store.read_discovery, uid)
+
     @application.get("/api/manage/ups/{uid}/checks")
     async def list_checks(uid: UID, request: Request):
         validate_query(request)

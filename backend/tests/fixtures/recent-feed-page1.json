@@ -1,0 +1,104 @@
+{
+  "code": 0,
+  "data": {
+    "has_more": true,
+    "offset": "page-2",
+    "items": [
+      {
+        "id_str": "900",
+        "type": "DYNAMIC_TYPE_DRAW",
+        "modules": {
+          "module_author": {
+            "mid": 101,
+            "name": "虚构星海"
+          },
+          "module_dynamic": {
+            "major": {
+              "type": "MAJOR_TYPE_OPUS"
+            }
+          }
+        }
+      },
+      {
+        "id_str": "9007199254741009",
+        "type": "DYNAMIC_TYPE_DRAW",
+        "modules": {
+          "module_author": {
+            "mid": 101,
+            "name": "虚构星海",
+            "icon_badge": {
+              "text": "充电专属"
+            }
+          },
+          "module_dynamic": {
+            "major": {
+              "type": "MAJOR_TYPE_OPUS"
+            }
+          }
+        }
+      },
+      {
+        "id_str": "870",
+        "type": "DYNAMIC_TYPE_DRAW",
+        "modules": {
+          "module_author": {
+            "mid": 101,
+            "name": "虚构星海",
+            "icon_badge": {
+              "text": "普通标识"
+            }
+          },
+          "module_dynamic": {
+            "major": {
+              "type": "MAJOR_TYPE_OPUS"
+            }
+          }
+        }
+      },
+      {
+        "id_str": "850",
+        "type": "DYNAMIC_TYPE_DRAW",
+        "modules": {
+          "module_author": {
+            "mid": 101,
+            "name": "虚构星海"
+          },
+          "module_dynamic": {}
+        }
+      },
+      {
+        "id_str": "11",
+        "type": "DYNAMIC_TYPE_DRAW",
+        "modules": {
+          "module_author": {
+            "mid": 101,
+            "name": "虚构星海"
+          },
+          "module_dynamic": {
+            "major": {
+              "type": "MAJOR_TYPE_BLOCKED"
+            }
+          }
+        }
+      },
+      {
+        "id_str": "9007199254741009",
+        "type": "DYNAMIC_TYPE_DRAW",
+        "modules": {
+          "module_author": {
+            "mid": 101,
+            "name": "虚构星海",
+            "icon_badge": {
+              "text": "充电专属"
+            }
+          },
+          "module_dynamic": {
+            "major": {
+              "type": "MAJOR_TYPE_OPUS"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

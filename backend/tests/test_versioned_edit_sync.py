@@ -646,6 +646,7 @@ def test_v10_database_migrates_without_losing_archive_observation_or_pending_edi
     # 固定旧 schema 输入夹具；不经 SQL 观察业务结果。
     with sqlite3.connect(path) as database:
         database.execute("ALTER TABLE target_checks DROP COLUMN claim_token")
+        database.execute("DROP TABLE recent_discoveries")
         database.execute("PRAGMA user_version = 10")
     assert snapshot(path) == before
 
