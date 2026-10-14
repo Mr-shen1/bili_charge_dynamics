@@ -3,6 +3,7 @@
 import copy
 import json
 import sqlite3
+from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
 
@@ -11,7 +12,7 @@ import httpx
 import pytest
 
 from backend.tests.archive_support import (
-    BASE, UID, TARGETS, archive_client, author_html, detail_json, set_specified,
+    BASE, UID, TARGETS, archive_client, archive_content, NULL_COMMENT_STATUS, author_html, detail_json, set_specified,
 )
 
 from backend.tests.root_support import ARCHIVE, COMMENTS, root_fixture, source_handler, prepare
@@ -52,8 +53,20 @@ def test_initial_archives_existing_roots_independently_of_restricted_body(tmp_pa
                        "version": "comments:7", "status": "pending", "public_url": None, "error": None}],
         }
         assert state["pages"] == [1, 2, 2]  # 短页也明确读至空页，不由总数猜结束。
+        started_at = datetime.now(timezone.utc).replace(microsecond=0)
         client.post("/api/sync/initial", json={"uid": UID})
         assert client.get(COMMENTS).json() == roots
+        rescanned = client.get(ARCHIVE).json()
+        assert rescanned["root_comments_last_attempt"] == "success"
+        assert rescanned["root_comments_error"] is None
+        timestamp = datetime.fromisoformat(rescanned["root_comments_last_succeeded_at"])
+        assert started_at <= timestamp <= datetime.now(timezone.utc)
+        assert timestamp >= datetime.fromisoformat(saved["root_comments_last_succeeded_at"])
+        assert archive_content(rescanned) == {
+            **archive_content(saved), "root_comments_last_succeeded_at": rescanned["root_comments_last_succeeded_at"],
+        }
+        assert rescanned["comment_sync"] == client.get(f"{BASE}/{UID}/checks").json()["checks"][0]
+        saved = rescanned
     with archive_client(path) as client:
         assert client.get(COMMENTS).json() == roots
         assert client.get(ARCHIVE).json() == saved
@@ -65,6 +78,7 @@ def test_partial_page_failure_retains_old_roots_and_checkpoint_then_retries_afte
     with archive_client(path, source_handler(state)) as client:
         prepare(client)
         client.post("/api/sync/initial", json={"uid": UID})
+        baseline = client.get(ARCHIVE).json()
         state["fail_page"] = 2
         state["payload"] = root_fixture()
         state["payload"]["data"]["replies"][0]["content"]["message"] = "本轮已取得的更新"
@@ -72,6 +86,10 @@ def test_partial_page_failure_retains_old_roots_and_checkpoint_then_retries_afte
         client.post("/api/sync/initial", json={"uid": UID})
         saved = client.get(ARCHIVE).json()
         assert saved["local_comment_count"] == 3
+        assert baseline["root_comments_last_succeeded_at"] is not None
+        for part in ("root_comments", "replies", "comments"):
+            field = part + "_last_succeeded_at"
+            assert saved[field] == baseline[field]
         assert saved["synced_root_comment_count"] == 7
         assert saved["work"]["comments"] == "pending"
         assert saved["root_comments_last_attempt"] == "failed"
@@ -273,7 +291,9 @@ def test_v5_locator_and_dynamic_cursor_survive_upgrade_and_root_retry(tmp_path):
     state = {"detail_fail": True}
     with archive_client(path, source_handler(state)) as client:
         upgraded = client.get(ARCHIVE).json()
-        assert upgraded == {**old, "local_reply_count": 0, "root_comments_last_attempt": "pending",
+        assert upgraded["comment_sync"] == client.get(f"{BASE}/{UID}/checks").json()["checks"][0]
+        assert archive_content(upgraded) == {**old, **NULL_COMMENT_STATUS,
+                            "local_reply_count": 0, "root_comments_last_attempt": "pending",
                             "synced_root_comment_count": None, "work": {**old["work"], "replies": "pending", "media": "success"},
                             "media": [], "previous_media": [], "media_version": None,
                             "synced_media_version": None, "media_last_attempt": "success",

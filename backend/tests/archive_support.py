@@ -12,6 +12,17 @@ from backend.tests.management_support import BASE, UID, profile_response
 
 TARGETS = f"{BASE}/{UID}/targets"
 
+# 公开契约字段独立列出，不从生产状态投影实现导入。
+NULL_COMMENT_STATUS = dict.fromkeys((
+    "root_comments_last_succeeded_at", "replies_last_succeeded_at", "comments_last_succeeded_at",
+    "root_comments_error", "replies_error", "comments_error",
+))
+
+
+def archive_content(document):
+    """仅排除详情实时检查投影；正文、时间、错误和 checkpoint 仍完整比较。"""
+    return {key: value for key, value in document.items() if key != "comment_sync"}
+
 
 @contextmanager
 def archive_client(path, handler=None):

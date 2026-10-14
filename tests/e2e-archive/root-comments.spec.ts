@@ -65,11 +65,11 @@ test('真实 SQLite/HTTP→详情：最热与最新完整排序，20/20/5 且结
     await page.getByRole('button', { name: '加载更多评论', exact: true }).click();
     await expect(rows).toHaveCount(45);
     expect(await ids(rows)).toEqual(expected);
-    await expect(page.getByText('评论已加载完毕', { exact: true })).toBeVisible();
+    await expect(page.getByText('本地归档评论已读完', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: '加载更多评论', exact: true })).toHaveCount(0);
     const ended = requests.length;
     await page.mouse.wheel(0, 500);
-    await page.getByText('评论已加载完毕', { exact: true }).click();
+    await page.getByText('本地归档评论已读完', { exact: true }).click();
     await page.waitForTimeout(150); // 给潜在的结束后读取一个观察窗口，不用于等待渲染。
     expect(requests).toHaveLength(ended);
   }

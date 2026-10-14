@@ -1,4 +1,4 @@
-# 票据 01–02 / 13 / 15 / 17 / 19 / 21 / 23–25 后端
+# 票据 01–02 / 13 / 15 / 17 / 19 / 21 / 23–26 后端
 
 提供 UP 身份/配置管理、指定动态关联、显式一次初始化及 SQLite 归档读取。支持根评论采集、最热／最新归档分页、完整楼中楼归档读取，以及动态图／一级评论图共用下载、OSS 上传和独立重试；23 新增独立进程的固定节拍检查；没有近期目标发现，不宣称全部归档完成。管理基础契约见 `docs/backend/api/management-api.md`，02 测试证据见 [backend-acceptance-02.md](../.scratch/backend-integration/evidence/backend-acceptance-02.md)，字段依据见 [source-protocol-evidence.md](../docs/backend/evidence/source-protocol-evidence.md)。
 
@@ -62,6 +62,12 @@ uv run python -m backend.tests.collector_demo --database "$demo_dir/monitor.sqli
 checks HTTP 增量返回 `observed.comment_count_status`、`synced_comment_count`、`local_comment_count/local_reply_count`、`comments_last_attempt`；无归档的本地数为 null，不伪造零。`parts` 针对最新检查观察投影，旧评论成功不冒充新计数完成。计数与正文版本分开，成功正文不为纯评论工作重读；检查 `failed` 是任一信号失败的聚合，编辑和计数状态仍可分别判断，计数失败不阻止可信正文编辑。显式 initial 不是计数检查：无独立检查记录时保持 #02 协议，有记录时绑定最近可信独立计数，不允许 STAT/detail 覆盖；媒体仍独立，评论 checkpoint 成功不等于目标 complete。复用 #21 媒体待处理／上传，不另建 OSS。没有新增 schema，旧 v11 配置、归档、cursor 和工作原样保留。
 
 专项：`uv run pytest backend/tests/test_comment_count_sync.py -q`。真实 SQLite／HTTP、原始虚构 JSON、受控时钟验证独立计数、完整 45 根／25 回复分页、未知／零、增减／不变、故障重试、新旧计数交错，以及慢分页期间其他目标新工作仍推进。精确根＋回复口径、真实匿名权限、持续节拍、OSS 和正式设备仍未验证；不把 fixture 或历史样本当作真实全量证明。实现与测试结果见 [25 记录](../.scratch/backend-integration/acceptance-25.md)。
+
+## 26 评论状态与成功时间
+
+归档详情返回同一 SQLite 只读快照中的 `comment_sync` 最新 checks 投影，供管理/阅读页区分来源总数、本地根/回复数与实际同步进度；页面只读重读不会检查/同步上游。根、回复、整轮评论文本分别持久 `*_last_succeeded_at` 与固定脱敏错误，检查无变化不更新时间，失败保留旧成功时间，旧缺字段为 null，不造历史。原文档存储支持增量字段，无 schema 迁移或旧 cursor 失效。
+
+专项：`uv run pytest backend/tests/test_comment_sync_status.py -q`。真实 SQLite、原始虚构协议、受控 Clock、Collector 与 HTTP 覆盖部分失败、无新信号重试、未知/零、受限正文、在途观察、成功时间及冻结旧页。状态/客户端契约见 [采集契约](../docs/backend/api/collector-api.md#26-评论分项状态与时间)，自动化和实际 API 页面穿透证据见 [26 记录](../.scratch/backend-integration/acceptance-26.md)。不宣称普遍来源计数口径、实时/完整来源、真实权限、OSS 或正式设备已验证；全媒体与聚合由 #30 收口。
 
 ## 应用工厂与传输边界
 

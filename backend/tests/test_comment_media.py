@@ -2,6 +2,7 @@
 
 import copy
 import json
+from datetime import datetime, timezone
 import multiprocessing
 import os
 import sqlite3
@@ -13,7 +14,7 @@ import anyio
 import httpx
 import pytest
 
-from backend.tests.archive_support import UID, TARGETS, readable_html, detail_json, set_specified
+from backend.tests.archive_support import UID, TARGETS, archive_content, NULL_COMMENT_STATUS, readable_html, detail_json, set_specified
 from backend.tests.root_support import COMMENTS, root_fixture, source_handler
 from backend.tests.test_dynamic_media import FakeOSS, PICS, SYNC, media_client, prepare, no_real_oss_environment
 
@@ -155,12 +156,26 @@ def test_single_image_failure_retains_other_images_text_and_checkpoints(tmp_path
         assert archive["synced_comment_count"] == 7
         assert "FICTIONAL_COMMENT" not in str(saved) + str(archive) + caplog.text
         failing = False
-        client.post(SYNC, json={"uid": UID})  # 无新计数亦可恢复失败项。
+        started_at = datetime.now(timezone.utc).replace(microsecond=0)
+        client.post(SYNC, json={"uid": UID})  # 显式 initial 会实际重扫评论，也恢复失败媒体。
         restored = roots_by_id(client)["123"]
         assert restored["media"][0] == saved["media"][0]
         assert [item["id"] for item in restored["media"]] == [item["id"] for item in saved["media"]]
         assert restored["work"]["media"] == restored["media_last_attempt"] == "success"
-        assert client.get(ARCHIVE).json() == archive
+        current = client.get(ARCHIVE).json()
+        # 实际重扫成功可以推进时间；其余归档（含正文、checkpoint、错误）仍完整不变。
+        succeeded_times = {}
+        for part in ("root_comments", "replies", "comments"):
+            field = part + "_last_succeeded_at"
+            assert current[part + "_last_attempt"] == "success"
+            assert current[part + "_error"] is None
+            timestamp = datetime.fromisoformat(current[field])
+            assert started_at <= timestamp <= datetime.now(timezone.utc)
+            assert timestamp >= datetime.fromisoformat(archive[field])
+            succeeded_times[field] = current[field]
+        assert archive_content(current) == {**archive_content(archive), **succeeded_times}
+        assert current["comment_sync"]["parts"]["comment_media"] == "success"
+        assert archive["comment_sync"]["parts"]["comment_media"] == "pending"
 
 
 def test_actual_root_sync_versions_replace_same_url_and_retain_success_but_missing_pictures_do_not(tmp_path):
@@ -419,13 +434,14 @@ def test_v8_root_sources_migrate_to_pending_without_changing_frozen_pages_or_arc
         assert pending["media_version"] == "comments:7"
         assert pending["observed_version"] == f"comments:{observed_count}"
         assert all(item["status"] == "pending" and item["public_url"] is None for item in pending["media"])
-        assert client.get(ARCHIVE).json() == archive
+        expected_archive = {**archive, **NULL_COMMENT_STATUS, "comment_sync": None}
+        assert client.get(ARCHIVE).json() == expected_archive
         assert client.post(RETRY).json() == {"processed": 2, "succeeded": 2, "failed": 0}
         completed = roots_by_id(client)["123"]
         assert completed["work"]["media"] == ("success" if observed_count == 7 else "pending")
         assert completed["synced_media_version"] == "comments:7"
         assert client.get(COMMENTS, params={"limit": 1, "cursor": token}).json() == frozen
-        assert client.get(ARCHIVE).json() == archive
+        assert client.get(ARCHIVE).json() == expected_archive
     with media_client(path, {}) as client:
         assert roots_by_id(client)["123"] == completed
         assert client.get(COMMENTS, params={"limit": 1, "cursor": token}).json() == frozen

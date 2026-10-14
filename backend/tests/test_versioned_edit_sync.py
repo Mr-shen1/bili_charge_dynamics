@@ -26,8 +26,11 @@ def fixture(name):
 def snapshot(path):
     # 每次启动真实 API/重新打开 SQLite，只经 HTTP 观察。
     with archive_client(path) as api:
-        return (api.get(CHECKS).json()["checks"][0],
-                api.get("/api/archive/dynamics/123").json())
+        state = api.get(CHECKS).json()["checks"][0]
+        archive = api.get("/api/archive/dynamics/123").json()
+        # 正文保留不要求最新检查投影不变；投影一致性由 #26 专项验证。
+        archive.pop("comment_sync", None)
+        return state, archive
 
 
 @pytest.fixture
@@ -500,7 +503,7 @@ def test_interrupted_stages_recover_without_new_edit_and_duplicate_execution_is_
 
 
 def test_committed_archive_survives_interruption_before_target_finish_and_run_recovers(tmp_path):
-    # Clock 是外部边界：check_once 的第一次 now 正常，目标 finish 的第二次 now 中断。
+    # Clock 是外部边界：依次记录检查、根成功、回复成功，目标 finish 的第四次 now 中断。
     # 覆盖所有分项已提交、目标尚未 finish 的窗口；模拟控制流中断，不宣称硬断电。
     class Interrupted(BaseException):
         pass
@@ -512,7 +515,7 @@ def test_committed_archive_survives_interruption_before_target_finish_and_run_re
 
         def now(self):
             self.calls += 1
-            if self.calls == 2:
+            if self.calls == 4:
                 raise Interrupted("Interrupted before target finish")
             return super().now()
 
@@ -532,7 +535,7 @@ def test_committed_archive_survives_interruption_before_target_finish_and_run_re
             await collector.check_once(UID, "123")
             with pytest.raises(Interrupted, match="Interrupted before target finish"):
                 await collector.execute_pending()
-            assert clock.calls == 2
+            assert clock.calls == 4
             assert requests.count("/x/v2/reply") == 1
 
             running, committed_archive = snapshot(path)
@@ -548,6 +551,8 @@ def test_committed_archive_survives_interruption_before_target_finish_and_run_re
             assert committed_archive["synced_version"] == VERSION_1
             assert committed_archive["synced_comment_count"] == 0
             assert committed_archive["comments_last_attempt"] == "success"
+            for field in ("root_comments_last_succeeded_at", "replies_last_succeeded_at", "comments_last_succeeded_at"):
+                assert committed_archive[field] == "2030-01-01T00:00:00+00:00"
             # API 重开只能观察，不能擅自把 running 恢复或补成功时间。
             assert snapshot(path) == (running, committed_archive)
 

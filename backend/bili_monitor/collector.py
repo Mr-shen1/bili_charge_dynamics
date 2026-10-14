@@ -120,7 +120,7 @@ class Collector:
             if generation is not None:
                 text_succeeded = await sync_target(
                     self.store, self.client, uid, id, generation, self.downloader, self.uploader,
-                    pending_comments_only=True, comment_observation=claim["observed"])
+                    pending_comments_only=True, comment_observation=claim["observed"], now=self.clock.now)
                 archive = await to_thread.run_sync(self.store.read_archive, id)
                 succeeded = (text_succeeded and all(value == "success" for value in archive["work"].values())
                              and archive["synced_version"] == claim["observed"].get("observed_version")

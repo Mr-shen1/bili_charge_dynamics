@@ -49,7 +49,7 @@ async def fetch_reply_page(client, dynamic_id, root_id, locator, number):
     return documents, ids, count
 
 
-async def sync_replies(store, client, id, generation, roots_result):
+async def sync_replies(store, client, id, generation, roots_result, *, now=None):
     if roots_result is None:
         await to_thread.run_sync(store.finish_replies, id, generation, "unconfirmed", None)
         return
@@ -94,4 +94,5 @@ async def sync_replies(store, client, id, generation, roots_result):
             failed = True
             if not await to_thread.run_sync(store.change_reply_root, id, generation, root["id"], "failed"):
                 return
-    await to_thread.run_sync(store.finish_replies, id, generation, "failed" if failed else "success", observed_count)
+    await to_thread.run_sync(store.finish_replies, id, generation, "failed" if failed else "success", observed_count,
+                            now() if now is not None and not failed else None)

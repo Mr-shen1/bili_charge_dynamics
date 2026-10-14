@@ -23,7 +23,11 @@ ARCHIVE = "/api/archive/dynamics/123"
 
 def snapshot(path):
     with archive_client(path) as api:
-        return api.get(CHECKS).json()["checks"][0], api.get(ARCHIVE).json()
+        state = api.get(CHECKS).json()["checks"][0]
+        archive = api.get(ARCHIVE).json()
+        # 最新检查投影允许变化；归档保留断言仍完整比较正文、计数、checkpoint 和时间。
+        archive.pop("comment_sync", None)
+        return state, archive
 
 
 def count_fixture():

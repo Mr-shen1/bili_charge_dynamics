@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from backend.bili_monitor.app import create_app
 from backend.tests.sqlite_fixtures import management_relation, quote
 from backend.tests.management_support import BASE, UID, client_for
+from backend.tests.archive_support import archive_content, NULL_COMMENT_STATUS
 
 
 def test_empty_unversioned_database_migrates_and_reopens(tmp_path):
@@ -125,14 +126,14 @@ def test_v4_indefinite_cursor_is_invalidated_without_losing_archive(tmp_path):
              "media": [], "previous_media": [], "media_version": None,
              "synced_media_version": None, "media_last_attempt": "pending",
              "replies_last_attempt": "pending", "comments_last_attempt": "pending",
-             "synced_comment_count": None, "synced_reply_comment_count": None}
+             "synced_comment_count": None, "synced_reply_comment_count": None, **NULL_COMMENT_STATUS}
     with client_for(path) as client:
         assert client.get("/api/archive/dynamics", params={"cursor": token}).status_code == 422
-        assert client.get("/api/archive/dynamics/123").json() == saved
+        assert client.get("/api/archive/dynamics/123").json() == {**saved, "comment_sync": None}
         assert client.get("/api/archive/dynamics").json() == {"items": [saved], "next_cursor": None}
     with client_for(path) as client:
         assert client.get("/api/archive/dynamics", params={"cursor": token}).status_code == 422
-        assert client.get("/api/archive/dynamics/123").json() == saved
+        assert client.get("/api/archive/dynamics/123").json() == {**saved, "comment_sync": None}
 
 
 def test_real_v1_configuration_migrates_through_targets_archives_and_snapshot_versions(tmp_path):
@@ -214,6 +215,9 @@ def test_checks_unchecked_http_is_read_only_and_rejects_queries(tmp_path):
              "work": "pending", "check_error": None, "sync_error": None,
              "synced_version": None, "synced_comment_count": None,
              "local_comment_count": None, "local_reply_count": None, "comments_last_attempt": "pending",
+             "root_comments_last_attempt": "pending", "replies_last_attempt": "pending",
+             "synced_root_comment_count": None, "synced_reply_comment_count": None,
+             **NULL_COMMENT_STATUS,
              "parts": dict.fromkeys(("text", "media", "comments", "replies", "comment_media"), "pending")} for id in ("123", "20")]
         assert client.get(f"{BASE}/999/checks").status_code == 404
         for query in ("?refresh=1", "?cursor=1&cursor=2"):
@@ -372,8 +376,12 @@ def test_real_v9_configuration_and_archive_migrate_to_checks_without_fabricating
         database.execute("DROP TABLE target_checks")
         database.execute("PRAGMA user_version = 9")
     with client_for(path) as client:
-        assert get_checks(client)[0]["check_status"] == "unchecked"
-        assert client.get("/api/archive/dynamics/123").json() == saved
+        check = get_checks(client)[0]
+        assert check["check_status"] == "unchecked"
+        assert {field: check[field] for field in NULL_COMMENT_STATUS} == NULL_COMMENT_STATUS
+        current = client.get("/api/archive/dynamics/123").json()
+        assert current["comment_sync"] == check
+        assert archive_content(current) == saved
     with sqlite3.connect(path) as database:
         assert database.execute("PRAGMA user_version").fetchone()[0] == 11
         assert database.execute("PRAGMA foreign_key_check").fetchall() == []

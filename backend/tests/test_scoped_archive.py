@@ -5,6 +5,7 @@ import pytest
 
 from backend.bili_monitor.storage import Store
 from backend.tests.management_support import BASE, UID, client_for
+from backend.tests.archive_support import NULL_COMMENT_STATUS
 
 ARCHIVE = "/api/archive/dynamics"
 UPS = "/api/archive/ups"
@@ -306,6 +307,7 @@ def test_preexisting_v5_global_cursor_remains_readable_with_implicit_and_explici
                 "synced_media_version": None, "media_last_attempt": "pending",
                 "comments_last_attempt": "pending", "replies_last_attempt": "pending",
                 "synced_comment_count": None, "synced_reply_comment_count": None,
+                **NULL_COMMENT_STATUS, "comment_sync": None,
             }
             assert client.get(ARCHIVE, params={"scope": "up", "uid": UID, "cursor": token}).status_code == 422
             assert client.get(UPS).json() == {"ups": [{"id": UID, "nickname": None, "avatar_url": None}]}

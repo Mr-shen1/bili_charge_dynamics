@@ -121,7 +121,7 @@ async def fetch_root_page(client, dynamic_id, locator, number):
     return list(documents.values()), [source_id(reply.get("rpid_str", reply.get("rpid"))) for reply in replies], counts
 
 
-async def sync_roots(store, client, id, generation):
+async def sync_roots(store, client, id, generation, *, now=None):
     archive = await to_thread.run_sync(store.read_archive, id)
     locator = archive.get("comment_locator")
     if not valid_locator(locator):
@@ -156,5 +156,6 @@ async def sync_roots(store, client, id, generation):
     except Exception:
         await to_thread.run_sync(store.finish_roots, id, generation, "failed", None)
         return
-    if await to_thread.run_sync(store.finish_roots, id, generation, "success", observed_count):
+    if await to_thread.run_sync(store.finish_roots, id, generation, "success", observed_count,
+                                now() if now is not None else None):
         return roots, observed_count

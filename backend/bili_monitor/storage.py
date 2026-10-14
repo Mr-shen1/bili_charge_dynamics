@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .contracts import APIError
 from .checks import CheckStore
+from .comment_status import comment_status, utc_now
 from .media import reconcile_media, refresh_media_progress
 
 
@@ -314,7 +315,22 @@ class Store(CheckStore):
     def read_archive(self, id):
         with self.connection() as connection:
             row = connection.execute("SELECT document FROM archives WHERE id = ?", (id,)).fetchone()
-        return json.loads(row[0]) if row else None
+        if row is None:
+            return None
+        document = json.loads(row[0])
+        return {**document, **comment_status(document)}
+
+    def read_archive_detail(self, id):
+        # 归档与最新检查投影在同一只读快照内返回；无网络或状态变更。
+        with self.connection() as connection:
+            connection.execute("BEGIN")
+            row = connection.execute("SELECT uid, document FROM archives WHERE id = ?", (id,)).fetchone()
+            if row is None:
+                return None
+            document = json.loads(row["document"])
+            checks = self._read_checks(connection, row["uid"])
+            return {**document, **comment_status(document),
+                    "comment_sync": next((check for check in checks if check["id"] == id), None)}
 
     def list_archives(self, limit=10, cursor=None, uid=None):
         # 保留已发布的全局 resource，使旧 cursor 与显式 all 互通。
@@ -347,6 +363,7 @@ class Store(CheckStore):
                     + " ORDER BY json_extract(document, '$.published_at') DESC, id COLLATE BINARY ASC",
                     (uid,) if uid is not None else (),
                 )]
+                documents = [{**document, **comment_status(document)} for document in documents]
                 first, following = _freeze_pages(documents, limit)
                 for token, result in following:
                     connection.execute("""INSERT INTO archive_pages
@@ -554,10 +571,10 @@ class Store(CheckStore):
     def save_roots(self, id, generation, documents, observed_count):
         return self._change_roots(id, generation, "pending", observed_count, documents)
 
-    def finish_roots(self, id, generation, status, observed_count):
-        return self._change_roots(id, generation, status, observed_count, [])
+    def finish_roots(self, id, generation, status, observed_count, succeeded_at=None):
+        return self._change_roots(id, generation, status, observed_count, [], succeeded_at)
 
-    def _change_roots(self, id, generation, status, observed_count, documents):
+    def _change_roots(self, id, generation, status, observed_count, documents, succeeded_at=None):
         with self.connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
@@ -585,6 +602,11 @@ class Store(CheckStore):
                 ).fetchone()[0]
                 archive.setdefault("local_reply_count", 0)
                 archive["root_comments_last_attempt"] = status
+                archive["root_comments_error"] = (
+                    "ROOT_COMMENTS_FAILED" if status == "failed" else
+                    "COMMENT_LOCATOR_UNCONFIRMED" if status == "unconfirmed" else None)
+                archive["replies_error"] = None
+                archive["comments_error"] = archive["root_comments_error"]
                 archive.setdefault("synced_root_comment_count", None)
                 archive["work"]["comments"] = "pending"
                 archive["work"]["replies"] = "pending"
@@ -592,6 +614,7 @@ class Store(CheckStore):
                 archive["comments_last_attempt"] = "pending" if status in ("pending", "success") else status
                 if status == "success":
                     archive["synced_root_comment_count"] = observed_count
+                    archive["root_comments_last_succeeded_at"] = succeeded_at or utc_now()
                     if archive.get("source_comment_count") == observed_count:
                         archive["work"]["comments"] = "success"
                 connection.execute("UPDATE archives SET document = ? WHERE id = ? AND generation = ?",
@@ -660,10 +683,10 @@ class Store(CheckStore):
     def save_replies(self, id, generation, root_id, documents, count):
         return self._change_replies(id, generation, "pending", None, root_id, documents, count)
 
-    def finish_replies(self, id, generation, status, observed_count):
-        return self._change_replies(id, generation, status, observed_count, None, [], None)
+    def finish_replies(self, id, generation, status, observed_count, succeeded_at=None):
+        return self._change_replies(id, generation, status, observed_count, None, [], None, succeeded_at)
 
-    def _change_replies(self, id, generation, status, observed_count, root_id, documents, count):
+    def _change_replies(self, id, generation, status, observed_count, root_id, documents, count, succeeded_at=None):
         with self.connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
@@ -693,14 +716,18 @@ class Store(CheckStore):
                     "SELECT count(*) FROM replies WHERE dynamic_id = ?", (id,)
                 ).fetchone()[0]
                 archive["replies_last_attempt"] = status
+                archive["replies_error"] = "REPLIES_FAILED" if status == "failed" else None
+                archive["comments_error"] = archive.get("root_comments_error") or archive["replies_error"]
                 archive["work"]["replies"] = "pending"
                 if status == "success":
+                    archive["replies_last_succeeded_at"] = succeeded_at or utc_now()
                     archive["synced_reply_comment_count"] = observed_count
                     if archive.get("source_comment_count") == observed_count:
                         archive["work"]["replies"] = "success"
                     if archive["work"]["comments"] == archive["work"]["replies"] == "success":
                         archive["comments_last_attempt"] = "success"
                         archive["synced_comment_count"] = observed_count
+                        archive["comments_last_succeeded_at"] = archive["replies_last_succeeded_at"]
                 elif status != "pending" and archive.get("root_comments_last_attempt") == "success":
                     archive["comments_last_attempt"] = status
                 connection.execute("UPDATE archives SET document = ? WHERE id = ? AND generation = ?",
