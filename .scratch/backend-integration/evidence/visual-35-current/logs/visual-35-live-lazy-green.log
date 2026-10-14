@@ -1,0 +1,7 @@
+
+Running 2 tests using 2 workers
+
+  ✓  1 [desktop-chromium] › tests/e2e/images.spec.ts:81:1 › 预览按需请求单张原图，缩略图真实懒加载，签名形式 URL 保持完整 (747ms)
+  ✓  2 [mobile-chromium] › tests/e2e/images.spec.ts:81:1 › 预览按需请求单张原图，缩略图真实懒加载，签名形式 URL 保持完整 (728ms)
+
+  2 passed (3.7s)

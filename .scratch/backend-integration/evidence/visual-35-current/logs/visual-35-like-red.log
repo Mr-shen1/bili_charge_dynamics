@@ -1,0 +1,44 @@
+
+Running 3 tests using 1 worker
+
+  ✘  1 tests/e2e-archive/detail-layout.spec.ts:28:1 › 详情正文对齐头像、评论tab与排序分行，长回复续行回到昵称左缘 (5.6s)
+  ✓  2 tests/e2e-archive/detail-layout.spec.ts:120:1 › 列表气泡与蓝色评论tab定位同一区域，tab不重读或重置最新评论范围 (852ms)
+  ✓  3 tests/e2e-archive/detail-layout.spec.ts:177:1 › 回复inline前缀计入实际折叠行数，窗口改变由ResizeObserver重新量测 (616ms)
+
+
+  1) tests/e2e-archive/detail-layout.spec.ts:28:1 › 详情正文对齐头像、评论tab与排序分行，长回复续行回到昵称左缘 ────────────────
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: locator('[data-reading-id="reply:800719925474099312345:900719925474099399999"]').getByRole('group', { name: '点赞 0', exact: true })
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 5000ms[22m
+    [2m  - waiting for locator('[data-reading-id="reply:800719925474099312345:900719925474099399999"]').getByRole('group', { name: '点赞 0', exact: true })[22m
+
+
+      106 |     expect.soft(nicknameLeft - replyAvatar.x).toBe(34);
+      107 |     const likes = row.getByRole('group', { name: '点赞 0', exact: true });
+    > 108 |     await expect(likes).toBeVisible();
+          |                         ^
+      109 |     await expect(likes.getByText('0', { exact: true })).toBeVisible();
+      110 |     await expect(likes.getByText('点赞', { exact: true })).toHaveCount(0);
+      111 |     await expect(row.getByText('UP主', { exact: true })).toBeVisible();
+        at /home/kevin/Projects/PI/bili_charge_dynamics/tests/e2e-archive/detail-layout.spec.ts:108:25
+
+    Error Context: test-results/detail-layout-详情正文对齐头像、评论tab与排序分行，长回复续行回到昵称左缘/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/detail-layout-详情正文对齐头像、评论tab与排序分行，长回复续行回到昵称左缘/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results/detail-layout-详情正文对齐头像、评论tab与排序分行，长回复续行回到昵称左缘/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    tests/e2e-archive/detail-layout.spec.ts:28:1 › 详情正文对齐头像、评论tab与排序分行，长回复续行回到昵称左缘 ─────────────────
+  2 passed (9.9s)

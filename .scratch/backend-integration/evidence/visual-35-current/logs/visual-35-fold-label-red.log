@@ -1,0 +1,46 @@
+
+Running 3 tests using 1 worker
+
+  ✘  1 tests/e2e-archive/detail-layout.spec.ts:28:1 › 详情正文对齐头像、评论tab与排序分行，长回复续行回到昵称左缘 (5.6s)
+  ✓  2 tests/e2e-archive/detail-layout.spec.ts:121:1 › 列表气泡与蓝色评论tab定位同一区域，tab不重读或重置最新评论范围 (939ms)
+  ✓  3 tests/e2e-archive/detail-layout.spec.ts:178:1 › 回复inline前缀计入实际折叠行数，窗口改变由ResizeObserver重新量测 (625ms)
+
+
+  1) tests/e2e-archive/detail-layout.spec.ts:28:1 › 详情正文对齐头像、评论tab与排序分行，长回复续行回到昵称左缘 ────────────────
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoHaveText[2m([22m[32mexpected[39m[2m)[22m failed
+
+    Locator:  locator('[data-reading-id="reply:800719925474099312345:900719925474099399999"]').getByRole('button', { name: '展开回复正文', exact: true })
+    Expected: [32m"展开"[39m
+    Received: [31m"展开[7m回复正文[27m"[39m
+    Timeout:  5000ms
+
+    Call log:
+    [2m  - Expect "toHaveText" with timeout 5000ms[22m
+    [2m  - waiting for locator('[data-reading-id="reply:800719925474099312345:900719925474099399999"]').getByRole('button', { name: '展开回复正文', exact: true })[22m
+    [2m    9 × locator resolved to <button type="button" aria-expanded="false" aria-controls="_r_2_" class="_button_1ud22_45">展开回复正文</button>[22m
+    [2m      - unexpected value "展开回复正文"[22m
+
+
+      112 |     await expect(row.getByText('回复 @较长的回复目标昵称', { exact: true })).toBeVisible();
+      113 |     await expect(row.getByRole('button', { name: '展开回复正文', exact: true })).toBeVisible();
+    > 114 |     await expect(row.getByRole('button', { name: '展开回复正文', exact: true })).toHaveText('展开');
+          |                                                                            ^
+      115 |     const visibleLines = await paragraph.evaluate(element => element.getBoundingClientRect().height / parseFloat(getComputedStyle(element).lineHeight));
+      116 |     expect.soft(visibleLines, `${width}: 包含身份前缀的六渲染行`).toBe(6);
+      117 |     expect.soft(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${width}: 无全页横溢`).toBe(true);
+        at /home/kevin/Projects/PI/bili_charge_dynamics/tests/e2e-archive/detail-layout.spec.ts:114:76
+
+    Error Context: test-results/detail-layout-详情正文对齐头像、评论tab与排序分行，长回复续行回到昵称左缘/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/detail-layout-详情正文对齐头像、评论tab与排序分行，长回复续行回到昵称左缘/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results/detail-layout-详情正文对齐头像、评论tab与排序分行，长回复续行回到昵称左缘/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    tests/e2e-archive/detail-layout.spec.ts:28:1 › 详情正文对齐头像、评论tab与排序分行，长回复续行回到昵称左缘 ─────────────────
+  2 passed (10.0s)

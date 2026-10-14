@@ -149,12 +149,13 @@ test('慢图与未知尺寸不阻塞历史评论恢复；刷新重置内存且�
     await page.goForward();
     await expect(rows).toHaveCount(40);
     await expect(anchor).toBeInViewport();
-    await expect.poll(() => position(anchor)).toBeCloseTo(40, 0);
+    // CSS 行盒允许半像素，scrollTo 在 DPR=1 量化为整像素；误差须仍在 1px 内。
+    await expect.poll(async () => Math.abs((await position(anchor)) - 40)).toBeLessThanOrEqual(1);
     release();
     // 图像布局稳定：图片实际下载后不把已恢复的评论挤出视口。
     await expect.poll(() => image.evaluate(element => element instanceof HTMLImageElement && element.naturalWidth)).toBeGreaterThan(0);
     await expect(anchor).toBeInViewport();
-    await expect.poll(() => position(anchor)).toBeCloseTo(40, 0);
+    await expect.poll(async () => Math.abs((await position(anchor)) - 40)).toBeLessThanOrEqual(1);
     await page.reload();
     await expect(rows).toHaveCount(20);
     await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);

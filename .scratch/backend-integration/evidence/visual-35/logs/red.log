@@ -1,0 +1,34 @@
+
+Running 1 test using 1 worker
+
+  ✘  1 tests/e2e-archive/visual-replica.spec.ts:5:1 › 参考阅读主栏、身份和轻量评论入口；四宽度不溢出 (506ms)
+
+
+  1) tests/e2e-archive/visual-replica.spec.ts:5:1 › 参考阅读主栏、身份和轻量评论入口；四宽度不溢出 ────────────────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m48[39m
+    Received: [31m44[39m
+
+      14 |     expect(mainBox.width).toBe(Math.min(width, 716));
+      15 |     const avatar = card.getByRole('img', { name: '归档作者的头像', exact: true });
+    > 16 |     expect((await avatar.boundingBox())!.width).toBe(48);
+         |                                                 ^
+      17 |     const entry = card.getByRole('button', { name: '来源评论 9', exact: true });
+      18 |     await expect(entry).toBeVisible();
+      19 |     expect((await entry.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+        at /home/kevin/Projects/PI/bili_charge_dynamics/tests/e2e-archive/visual-replica.spec.ts:16:49
+
+    Error Context: test-results/visual-replica-参考阅读主栏、身份和轻量评论入口；四宽度不溢出/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/visual-replica-参考阅读主栏、身份和轻量评论入口；四宽度不溢出/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results/visual-replica-参考阅读主栏、身份和轻量评论入口；四宽度不溢出/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    tests/e2e-archive/visual-replica.spec.ts:5:1 › 参考阅读主栏、身份和轻量评论入口；四宽度不溢出 ─────────────────────────

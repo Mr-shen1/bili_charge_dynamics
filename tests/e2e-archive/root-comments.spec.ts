@@ -117,17 +117,27 @@ test('真实归档评论按实际六/七行折叠，长 URL/emoji 安全文本�
   await expect(page).toHaveURL(/\/dynamics\/9101$/);
 });
 
-test('气泡与来源数进入同页评论区，来源/本地计数分开且 UP 以作者 ID 标识', async ({ page, archiveApi }) => {
+async function expectNoArchiveInfo(card: Locator) {
+  await expect(card).toBeVisible();
+  await expect(card.getByRole('complementary', { name: '归档状态', includeHidden: true })).toHaveCount(0);
+  await expect(card).not.toContainText(/编辑于|编辑信号|正文访问受限|正文尚未成功归档|最近正文|已保存内容仍可阅读|已有归档状态未覆盖|图片待归档（\d+ 张）|来源评论：|本地已归档|正文(?:已保存|待同步|读取失败|受限)；媒体/);
+  await expect(card.getByText('暂无内容', { exact: true })).toHaveCount(0);
+  await expect(card).toContainText('虚构首次归档正文');
+}
+
+test('列表详情无归档信息，来源气泡仍进入可读评论区且 UP 以作者 ID 标识', async ({ page, archiveApi }) => {
   await archiveApi.reopen();
   await page.setViewportSize({ width: 390, height: 800 });
   await page.goto('/');
   const card = page.getByRole('article').first();
   const bubble = card.getByRole('button', { name: '来源评论 501', exact: true });
   await expect(bubble).toHaveCount(1);
-  await expect(card.getByText('本地已归档一级评论：45', { exact: true })).toBeVisible();
+  await expectNoArchiveInfo(card);
   await bubble.locator('svg').click();
   await expect(page).toHaveURL(/\/dynamics\/9101$/);
   const comments = page.getByRole('region', { name: '评论区', exact: true });
+  await expectNoArchiveInfo(page.getByRole('article'));
+  await expect(comments.getByRole('heading', { name: /评论.*501/ })).toBeVisible();
   await expect.poll(() => comments.evaluate(element => element.getBoundingClientRect().top)).toBeCloseTo(0, 0);
   const rows = comments.getByRole('list', { name: '一级评论', exact: true });
   await expect(rows.locator(':scope > li')).toHaveCount(20);
@@ -142,7 +152,7 @@ test('气泡与来源数进入同页评论区，来源/本地计数分开且 UP 
   await expect(author.locator('img')).toHaveAttribute('src', '/default-avatar.svg');
   await author.getByText('虚构初始作者', { exact: true }).click();
   await author.locator('img').click();
-  await author.getByText('点赞 1', { exact: true }).click();
+  await author.getByRole('group', { name: '点赞 1', exact: true }).click();
   await expect(page).toHaveURL(/\/dynamics\/9101$/);
   await expect(page.getByRole('button', { name: '查看详情', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: '返回列表', exact: true }).click();
@@ -150,14 +160,17 @@ test('气泡与来源数进入同页评论区，来源/本地计数分开且 UP 
   await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
   await expect(comments).not.toBeInViewport();
   await expect(page.getByRole('article').getByRole('button', { name: '展开正文', exact: true })).toHaveCount(0);
-  await page.getByRole('article').getByRole('button', { name: '来源评论 501', exact: true }).click();
+  await comments.getByRole('button', { name: '来源评论 501', exact: true }).click();
   await expect.poll(() => comments.evaluate(element => element.getBoundingClientRect().top)).toBeCloseTo(0, 0);
   // 数量文本也是同一个入口，主动定位不能借用刚才的顶部/历史位置。
   await page.getByRole('button', { name: '返回列表', exact: true }).click();
-  await bubble.getByText('来源评论 501', { exact: true }).click();
+  await bubble.getByText('501', { exact: true }).click();
   await expect.poll(() => comments.evaluate(element => element.getBoundingClientRect().top)).toBeCloseTo(0, 0);
-  await expect(page.getByRole('article').getByText('本地已归档一级评论：45', { exact: true })).toHaveCount(1);
-  await expect(page.getByRole('article').getByText('本地已归档回复：0', { exact: true })).toHaveCount(1);
+  await expectNoArchiveInfo(page.getByRole('article'));
+  await expect(rows.locator(':scope > li')).toHaveCount(20);
+  expect(await (await page.request.get('/api/archive/dynamics/9101')).json()).toMatchObject({
+    source_comment_count: 501, local_comment_count: 45, local_reply_count: 0,
+  });
 });
 
 const top = (anchor: Locator) => anchor.evaluate(element => element.getBoundingClientRect().top);

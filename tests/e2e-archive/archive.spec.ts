@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
 import type { ChildProcess } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -9,7 +9,13 @@ const uid = '202';
 const normalId = '9101';
 const factory = { factory: 'live_app:create_app', appDir: 'tests/e2e-archive' };
 
-test('目标校验、首次同步、真实归档阅读和断源重开穿透生产装配', async ({ page }) => {
+async function expectNoArchiveInfo(card: Locator) {
+  await expect(card).toBeVisible();
+  await expect(card.getByRole('complementary', { name: '归档状态', includeHidden: true })).toHaveCount(0);
+  await expect(card).not.toContainText(/编辑于|编辑信号|正文访问受限|正文尚未成功归档|最近正文|已保存内容仍可阅读|已有归档状态未覆盖|图片待归档（\d+ 张）|来源评论：|本地已归档|正文(?:已保存|待同步|读取失败|受限)；媒体/);
+}
+
+test('目标校验与归档契约穿透生产装配，列表详情无归档信息且断源重开仍可阅读', async ({ page }) => {
   const directory = await mkdtemp(join(tmpdir(), 'bili-initial-archive-'));
   const database = join(directory, 'archive.sqlite');
   let api: ChildProcess | undefined;
@@ -46,26 +52,37 @@ test('目标校验、首次同步、真实归档阅读和断源重开穿透生�
     expect(await first.json()).toEqual({ processed: 4, succeeded: 2, failed: 2 });
     await page.goto('/');
     await expect(page.getByText('虚构首次归档正文', { exact: false })).toBeVisible();
+    const cards = page.getByRole('article');
+    await expect(cards).toHaveCount(4);
+    for (const card of await cards.all()) await expectNoArchiveInfo(card);
+    const normalCard = page.locator(`article[data-reading-id="${normalId}"]`);
+    await expect(normalCard.getByText('暂无内容', { exact: true })).toHaveCount(0);
+    await expect(normalCard.getByRole('button', { name: '来源评论 7', exact: true })).toBeVisible();
     await page.goto(`/dynamics/${normalId}`);
     await expect(page.getByText('虚构首次归档正文', { exact: false })).toBeVisible();
     await expect(page.getByText('虚构页面标题', { exact: true })).toBeVisible();
     await expect(page.getByText('2026-10-09 10:38:16', { exact: false })).toBeVisible();
-    await expect(page.getByText('2026-10-09 13:01', { exact: false })).toBeVisible();
+    await expectNoArchiveInfo(page.getByRole('article'));
+    await expect(page.getByText('暂无内容', { exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '来源评论 7', exact: true })).toBeVisible();
+    await expect(page.getByRole('region', { name: '评论区', exact: true }).getByRole('heading', { name: /评论.*7/ })).toBeVisible();
     expect(await page.evaluate(() => '__fixtureExecuted' in window)).toBe(false);
     await expect(page.locator('img[src*="source-business"]')).toHaveCount(0);
     const archived = await page.request.get(`/api/archive/dynamics/${normalId}`);
-    expect(await archived.json()).toMatchObject({ id: normalId, content_state: 'success',
+    expect(archived.ok()).toBe(true);
+    expect(await archived.json()).toMatchObject({ id: normalId, content_state: 'success', last_attempt: 'success',
+      edited_at: '2026-10-09T13:01+08:00', edit_status: 'observed',
       source_comment_count: 7, local_comment_count: 0 });
     await page.goto('/dynamics/9102');
     await expect(page.getByText('暂无内容', { exact: true })).toBeVisible();
-    await page.goto('/dynamics/9103');
-    await expect(page.getByText('正文访问受限。', { exact: true })).toBeVisible();
-    await expect(page.getByText('暂无内容', { exact: true })).toHaveCount(0);
-    await expect(page.getByText('已保存内容仍可阅读。', { exact: true })).toHaveCount(0);
-    await page.goto('/dynamics/9104');
-    await expect(page.getByText('正文尚未成功归档。', { exact: true })).toBeVisible();
-    await expect(page.getByText('暂无内容', { exact: true })).toHaveCount(0);
-    await expect(page.getByText('已保存内容仍可阅读。', { exact: true })).toHaveCount(0);
+    await expectNoArchiveInfo(page.getByRole('article'));
+    expect(await (await page.request.get('/api/archive/dynamics/9102')).json()).toMatchObject({ content_state: 'success', text: '' });
+    for (const [id, contentState] of [['9103', 'restricted'], ['9104', 'failed']] as const) {
+      await page.goto(`/dynamics/${id}`);
+      await expectNoArchiveInfo(page.getByRole('article'));
+      await expect(page.getByText('暂无内容', { exact: true })).toHaveCount(0);
+      expect(await (await page.request.get(`/api/archive/dynamics/${id}`)).json()).toMatchObject({ content_state: contentState });
+    }
     await page.goto('/dynamics/9197');
     await expect(page.getByText('动态不存在', { exact: false })).toBeVisible();
 
@@ -75,6 +92,8 @@ test('目标校验、首次同步、真实归档阅读和断源重开穿透生�
     expect(await retry.json()).toEqual({ processed: 4, succeeded: 0, failed: 4 });
     await page.goto(`/dynamics/${normalId}`);
     await expect(page.getByText('虚构首次归档正文', { exact: false })).toBeVisible();
+    await expectNoArchiveInfo(page.getByRole('article'));
+    await expect(page.getByText('暂无内容', { exact: true })).toHaveCount(0);
     const retained = await (await page.request.get(`/api/archive/dynamics/${normalId}`)).json();
     expect(retained).toMatchObject({ content_state: 'success', last_attempt: 'failed',
       edited_at: '2026-10-09T13:01+08:00' });
@@ -84,6 +103,8 @@ test('目标校验、首次同步、真实归档阅读和断源重开穿透生�
     api = await startApi(database, { ...factory, env: { FIXTURE_OFFLINE: '1' } });
     await page.reload();
     await expect(page.getByText('虚构首次归档正文', { exact: false })).toBeVisible();
+    await expectNoArchiveInfo(page.getByRole('article'));
+    await expect(page.getByText('暂无内容', { exact: true })).toHaveCount(0);
     expect(await (await page.request.post('/api/sync/initial', { data: { uid } })).json())
       .toEqual({ processed: 0, succeeded: 0, failed: 0 });
     expect(await page.locator('body').innerText()).not.toContain('FICTIONAL_SECRET');

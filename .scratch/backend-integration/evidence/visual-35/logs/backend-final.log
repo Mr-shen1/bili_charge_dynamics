@@ -1,0 +1,34 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.15, pytest-8.4.2, pluggy-1.6.0
+rootdir: /home/kevin/Projects/PI/bili_charge_dynamics
+configfile: pyproject.toml
+plugins: anyio-4.15.1
+collected 326 items
+
+backend/tests/test_collector.py ...........                              [  3%]
+backend/tests/test_comment_media.py .............................        [ 12%]
+backend/tests/test_dynamic_media.py .................................... [ 23%]
+.                                                                        [ 23%]
+backend/tests/test_full_archive.py ....                                  [ 24%]
+backend/tests/test_initial_archive.py .............................      [ 33%]
+backend/tests/test_live_app.py .                                         [ 34%]
+backend/tests/test_management.py ....................................... [ 46%]
+...........................................                              [ 59%]
+backend/tests/test_migrations.py .........................               [ 66%]
+backend/tests/test_replies.py ...........................                [ 75%]
+backend/tests/test_root_comments.py .........................            [ 82%]
+backend/tests/test_scoped_archive.py ...............................     [ 92%]
+backend/tests/test_versioned_edit_sync.py .........................      [100%]
+
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/starlette/testclient.py:37
+  /home/kevin/Projects/PI/bili_charge_dynamics/.venv/lib/python3.12/site-packages/starlette/testclient.py:37: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = typing.Callable[[], typing.ContextManager[anyio.abc.BlockingPortal]]
+
+backend/tests/test_dynamic_media.py::test_configured_real_oss_adapter_uses_signed_put_and_never_exposes_credentials[200]
+backend/tests/test_dynamic_media.py::test_configured_real_oss_adapter_uses_signed_put_and_never_exposes_credentials[403]
+  /home/kevin/Projects/PI/bili_charge_dynamics/.venv/lib/python3.12/site-packages/oss2/auth.py:540: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now_datetime = datetime.utcnow()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================= 326 passed, 3 warnings in 23.59s =======================

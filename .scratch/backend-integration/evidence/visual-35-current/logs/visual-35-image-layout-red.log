@@ -1,0 +1,38 @@
+
+Running 1 test using 1 worker
+
+  ✘  1 tests/e2e-archive/image-layout.spec.ts:5:1 › 生产两图使用同高比例容器，未知/未归档图不裁切或请求来源；单图限宽 (392ms)
+
+
+  1) tests/e2e-archive/image-layout.spec.ts:5:1 › 生产两图使用同高比例容器，未知/未归档图不裁切或请求来源；单图限宽 ────────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeCloseTo[2m([22m[32mexpected[39m[2m, [22mprecision[2m)[22m
+
+    Expected: [32m0.75[39m
+    Received: [31m1[39m
+
+    Expected precision:    2
+    Expected difference: < [32m0.005[39m
+    Received difference:   [31m0.25[39m
+
+      25 |     expect(first.height).toBeCloseTo(second.height, 0);
+      26 |     expect(first.height).toBeLessThanOrEqual(268);
+    > 27 |     expect(first.width / first.height).toBeCloseTo(3 / 4, 2);
+         |                                        ^
+      28 |     expect(second.width / second.height).toBeCloseTo(4 / 3, 2);
+      29 |     for (const image of await group.getByRole('img').all()) await expect(image).toHaveCSS('object-fit', 'contain');
+      30 |     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        at /home/kevin/Projects/PI/bili_charge_dynamics/tests/e2e-archive/image-layout.spec.ts:27:40
+
+    Error Context: test-results/image-layout-生产两图使用同高比例容器，未知-未归档图不裁切或请求来源；单图限宽/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/image-layout-生产两图使用同高比例容器，未知-未归档图不裁切或请求来源；单图限宽/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results/image-layout-生产两图使用同高比例容器，未知-未归档图不裁切或请求来源；单图限宽/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    tests/e2e-archive/image-layout.spec.ts:5:1 › 生产两图使用同高比例容器，未知/未归档图不裁切或请求来源；单图限宽 ─────────────────

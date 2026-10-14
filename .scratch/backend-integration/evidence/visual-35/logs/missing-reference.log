@@ -1,0 +1,8 @@
+file:///home/kevin/Projects/PI/bili_charge_dynamics/scripts/capture-visual-35.mjs:17
+  throw new Error('needs-info：缺少用户原始参考图，请补充两张 PNG 或设置 UI_REFERENCE_DIR；不能用当前页面自建基线。');
+        ^
+
+Error: needs-info：缺少用户原始参考图，请补充两张 PNG 或设置 UI_REFERENCE_DIR；不能用当前页面自建基线。
+    at file:///home/kevin/Projects/PI/bili_charge_dynamics/scripts/capture-visual-35.mjs:17:9
+
+Node.js v24.21.0

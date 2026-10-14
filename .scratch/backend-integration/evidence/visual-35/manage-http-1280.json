@@ -1,0 +1,35 @@
+{
+  "reference": "docs/assets/ui-reference/*.png（来源 CSS 视口、DPR 与缩放未知）",
+  "comparison": "仅管理规则映射，未进行阅读图像素差异比较或人工视觉签收",
+  "browser": "145.0.7632.6",
+  "fontDeclaration": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+  "zoom": "100%",
+  "measurements": {
+    "viewport": 1280,
+    "dpr": 1,
+    "overflow": false,
+    "mainWidth": 716,
+    "center": 640,
+    "background": "rgb(209, 232, 231)",
+    "fontSize": "16px",
+    "lineHeight": "25px",
+    "fontFamily": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+    "minControlHeight": 44,
+    "cardBackground": "rgb(255, 255, 255)",
+    "radius": "4px",
+    "authorColor": "rgb(251, 114, 153)",
+    "avatarWidth": 48,
+    "headings": [
+      "虚构管理作者 🌸",
+      "监控配置",
+      "指定动态目标",
+      "目标检查与归档状态"
+    ],
+    "sectionBorders": [
+      "rgb(227, 229, 231)",
+      "rgb(227, 229, 231)",
+      "rgb(227, 229, 231)"
+    ],
+    "cardGap": 8
+  }
+}

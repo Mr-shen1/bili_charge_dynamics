@@ -1,0 +1,352 @@
+{
+  "browser": "145.0.7632.6",
+  "date": "2026-10-14T05:29:29.934Z",
+  "baseURL": "https://127.0.0.1:18443",
+  "dpr": 1,
+  "zoom": "100%",
+  "timezone": "Asia/Shanghai",
+  "samples": [
+    {
+      "name": "list",
+      "width": 360,
+      "height": 900,
+      "overflow": false,
+      "font": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 360,
+        "height": 4808.5625,
+        "top": 0,
+        "right": 360,
+        "bottom": 4808.5625,
+        "left": 0
+      },
+      "background": "rgb(209, 232, 231)"
+    },
+    {
+      "name": "scope",
+      "width": 360,
+      "height": 900,
+      "overflow": false,
+      "font": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 360,
+        "height": 5023.5625,
+        "top": 0,
+        "right": 360,
+        "bottom": 5023.5625,
+        "left": 0
+      },
+      "background": "rgb(209, 232, 231)"
+    },
+    {
+      "name": "detail",
+      "width": 360,
+      "height": 900,
+      "overflow": false,
+      "font": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 360,
+        "height": 2035,
+        "top": 0,
+        "right": 360,
+        "bottom": 2035,
+        "left": 0
+      },
+      "background": "rgb(209, 232, 231)"
+    },
+    {
+      "name": "manage",
+      "width": 360,
+      "height": 900,
+      "overflow": false,
+      "font": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "main": {
+        "x": 12,
+        "y": -1575,
+        "width": 336,
+        "height": 7487,
+        "top": -1575,
+        "right": 348,
+        "bottom": 5912,
+        "left": 12
+      },
+      "background": "rgb(209, 232, 231)"
+    },
+    {
+      "name": "list",
+      "width": 390,
+      "height": 900,
+      "overflow": false,
+      "font": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 4962.3125,
+        "top": 0,
+        "right": 390,
+        "bottom": 4962.3125,
+        "left": 0
+      },
+      "background": "rgb(209, 232, 231)"
+    },
+    {
+      "name": "scope",
+      "width": 390,
+      "height": 900,
+      "overflow": false,
+      "font": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 5199.8125,
+        "top": 0,
+        "right": 390,
+        "bottom": 5199.8125,
+        "left": 0
+      },
+      "background": "rgb(209, 232, 231)"
+    },
+    {
+      "name": "detail",
+      "width": 390,
+      "height": 900,
+      "overflow": false,
+      "font": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 2017,
+        "top": 0,
+        "right": 390,
+        "bottom": 2017,
+        "left": 0
+      },
+      "background": "rgb(209, 232, 231)"
+    },
+    {
+      "name": "manage",
+      "width": 390,
+      "height": 900,
+      "overflow": false,
+      "font": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "main": {
+        "x": 12,
+        "y": -1125,
+        "width": 366,
+        "height": 7443,
+        "top": -1125,
+        "right": 378,
+        "bottom": 6318,
+        "left": 12
+      },
+      "background": "rgb(209, 232, 231)"
+    },
+    {
+      "name": "list",
+      "width": 768,
+      "height": 900,
+      "overflow": false,
+      "font": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "main": {
+        "x": 22,
+        "y": 0,
+        "width": 724,
+        "height": 5214.96875,
+        "top": 0,
+        "right": 746,
+        "bottom": 5214.96875,
+        "left": 22
+      },
+      "background": "rgb(209, 232, 231)"
+    },
+    {
+      "name": "scope",
+      "width": 768,
+      "height": 900,
+      "overflow": false,
+      "font": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "main": {
+        "x": 22,
+        "y": 0,
+        "width": 724,
+        "height": 5492.96875,
+        "top": 0,
+        "right": 746,
+        "bottom": 5492.96875,
+        "left": 22
+      },
+      "background": "rgb(209, 232, 231)"
+    },
+    {
+      "name": "detail",
+      "width": 768,
+      "height": 900,
+      "overflow": false,
+      "font": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "main": {
+        "x": 30,
+        "y": 0,
+        "width": 708,
+        "height": 1997,
+        "top": 0,
+        "right": 738,
+        "bottom": 1997,
+        "left": 30
+      },
+      "background": "rgb(209, 232, 231)"
+    },
+    {
+      "name": "manage",
+      "width": 768,
+      "height": 900,
+      "overflow": false,
+      "font": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "main": {
+        "x": 26,
+        "y": -1201,
+        "width": 716,
+        "height": 6317,
+        "top": -1201,
+        "right": 742,
+        "bottom": 5116,
+        "left": 26
+      },
+      "background": "rgb(209, 232, 231)"
+    },
+    {
+      "name": "list",
+      "width": 1280,
+      "height": 900,
+      "overflow": false,
+      "font": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "main": {
+        "x": 278,
+        "y": 0,
+        "width": 724,
+        "height": 5214.96875,
+        "top": 0,
+        "right": 1002,
+        "bottom": 5214.96875,
+        "left": 278
+      },
+      "background": "rgb(209, 232, 231)"
+    },
+    {
+      "name": "list-region",
+      "readingId": "710010",
+      "region": "One complete two-image card; actual card height retained, not padded or synthesized."
+    },
+    {
+      "name": "scope",
+      "width": 1280,
+      "height": 900,
+      "overflow": false,
+      "font": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "main": {
+        "x": 278,
+        "y": 0,
+        "width": 724,
+        "height": 5492.96875,
+        "top": 0,
+        "right": 1002,
+        "bottom": 5492.96875,
+        "left": 278
+      },
+      "background": "rgb(209, 232, 231)"
+    },
+    {
+      "name": "detail",
+      "width": 1280,
+      "height": 900,
+      "overflow": false,
+      "font": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "main": {
+        "x": 286,
+        "y": 0,
+        "width": 708,
+        "height": 1997,
+        "top": 0,
+        "right": 994,
+        "bottom": 1997,
+        "left": 286
+      },
+      "background": "rgb(209, 232, 231)"
+    },
+    {
+      "name": "manage",
+      "width": 1280,
+      "height": 900,
+      "overflow": false,
+      "font": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "main": {
+        "x": 282,
+        "y": -1201,
+        "width": 716,
+        "height": 6317,
+        "top": -1201,
+        "right": 998,
+        "bottom": 5116,
+        "left": 282
+      },
+      "background": "rgb(209, 232, 231)"
+    },
+    {
+      "name": "list-comparison",
+      "canvas": {
+        "width": 724,
+        "height": 578
+      },
+      "implementation": {
+        "width": 724,
+        "height": 352
+      },
+      "reference": {
+        "width": 1442,
+        "height": 1156
+      },
+      "scale": 0.5,
+      "normalization": "Proportional avatar-based scale; white right/bottom padding to fit both full regions. No source cropping, content or structural masking."
+    },
+    {
+      "name": "detail-comparison",
+      "canvas": {
+        "width": 708,
+        "height": 844
+      },
+      "implementation": {
+        "width": 708,
+        "height": 844
+      },
+      "reference": {
+        "width": 1384,
+        "height": 1688
+      },
+      "scale": 0.5,
+      "normalization": "Proportional avatar-based scale; white right/bottom padding to fit both full regions. No source cropping, content or structural masking."
+    }
+  ],
+  "fontFallbackProbe": "NotoSansCJK-Regular.ttc: \"Noto Sans CJK KR\" \"Regular\"",
+  "referenceDirectory": "docs/assets/ui-reference/current-35",
+  "referenceScale": 0.5,
+  "references": {
+    "list": {
+      "width": 1442,
+      "height": 1156
+    },
+    "detail": {
+      "width": 1384,
+      "height": 1688
+    }
+  },
+  "source": "Current user references; viewport/DPR/zoom unknown. Scale aligns the pictured avatar to the 48 CSS px source DOM measurement, not a DPR claim.",
+  "comparison": "Unmasked side-by-side and absolute difference. Business content and excluded features differ; no whole-image pass threshold."
+}

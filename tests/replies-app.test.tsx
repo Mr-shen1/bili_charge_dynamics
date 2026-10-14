@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, getNodeText, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useNavigate } from 'react-router';
 import { expect, it } from 'vitest';
@@ -96,7 +96,7 @@ it.each([
   expect(screen.queryByText('过期回复')).not.toBeInTheDocument();
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   await act(async () => current.resolve({ status: 'success', data: { items: replies.slice(0, 3), nextCursor: 'next' } }));
-  expect(within(area).getAllByRole('listitem').map(row => within(row).getByText(/^回复正文/).textContent)).toEqual(['回复正文 0', '回复正文 1', '回复正文 2']);
+  expect(within(area).getAllByRole('listitem').map(row => getNodeText(within(row).getByText(/^回复正文/)).trim())).toEqual(['回复正文 0', '回复正文 1', '回复正文 2']);
   expect(within(area).queryByRole('button', { name: '收起回复' })).not.toBeInTheDocument();
 });
 
@@ -189,7 +189,7 @@ it('25条回复3/13/23/25、收起恢复缓存不重读，结束无下一批且�
   expect(requests[requests.length - 1]?.cursor).not.toBe(nextCursor);
   await user.click(within(area).getByRole('button', { name: '加载更多回复' }));
   expect(within(area).getAllByRole('listitem')).toHaveLength(25);
-  expect(within(area).getAllByRole('listitem').map(row => within(row).getByText(/^回复正文/).textContent)).toEqual([
+  expect(within(area).getAllByRole('listitem').map(row => getNodeText(within(row).getByText(/^回复正文/)).trim())).toEqual([
     '回复正文 0', '回复正文 1', '回复正文 2', '回复正文 3', '回复正文 4', '回复正文 5',
     '回复正文 6', '回复正文 7', '回复正文 8', '回复正文 9', '回复正文 10', '回复正文 11',
     '回复正文 12', '回复正文 13', '回复正文 14', '回复正文 15', '回复正文 16', '回复正文 17',
@@ -203,7 +203,7 @@ it('25条回复3/13/23/25、收起恢复缓存不重读，结束无下一批且�
   expect(requests).toHaveLength(4);
   expect(requests.map(input => input.limit)).toEqual([3, 10, 10, 10]);
   expect(screen.getByText('回复 25', { exact: true })).toBeVisible();
-  expect(screen.getByText('评论 26', { exact: true })).toBeVisible();
+  expect(screen.getByRole('button', { name: '评论 26' })).toBeVisible();
 });
 
 it('一级评论显示来源完整回复数，回复平铺并安全显示目标、身份、北京时间及缺失兜底', async () => {
@@ -226,11 +226,11 @@ it('一级评论显示来源完整回复数，回复平铺并安全显示目标�
   expect(within(authorReply).getByText('UP主')).toBeVisible();
   expect(within(authorReply).getByText('回复 @纸飞机')).toBeVisible();
   expect(within(authorReply).getByText('2026-02-04 12:04:05')).toBeVisible();
-  expect(within(authorReply).getByText('点赞 0')).toBeVisible();
+  expect(within(authorReply).getByRole('group', { name: '点赞 0' })).toBeVisible();
   const missing = rows.find(row => within(row).queryByText('暂无评论内容'))!;
   expect(within(missing).getByText('未知用户')).toBeVisible();
   expect(within(missing).getByText('时间未知')).toBeVisible();
-  expect(within(missing).getByText('点赞 —')).toBeVisible();
+  expect(within(missing).getByRole('group', { name: '点赞 —' })).toBeVisible();
   expect(within(missing).getByRole('img')).toHaveAttribute('src', '/default-avatar.svg');
   expect(within(missing).queryByText(/回复 @/)).not.toBeInTheDocument();
   expect(within(area).queryByText('回复 @未知用户')).not.toBeInTheDocument();

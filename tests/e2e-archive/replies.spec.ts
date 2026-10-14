@@ -48,6 +48,9 @@ const test = base.extend<{ archiveApi: { reopen(): Promise<void> } }>({
 
 test('实际 HTTP 与重开 SQLite 回复正序 3/13/23/25，收起复用且结束不再请求', async ({ page, archiveApi }) => {
   await archiveApi.reopen();
+  const batch = await (await page.request.get(`${replyPath}?limit=3`)).json();
+  expect(batch).toMatchObject({ source_reply_count: 25, local_reply_count: 25, replies_last_attempt: 'success' });
+  expect(batch.items).toHaveLength(3);
   const requests: string[] = [];
   const completed: string[] = [];
   page.on('request', request => {
@@ -61,7 +64,11 @@ test('实际 HTTP 与重开 SQLite 回复正序 3/13/23/25，收起复用且结�
   const rows = repliesOf(thread);
   await expect(rows).toHaveCount(3);
   expect(await ids(rows)).toEqual(replyIds.slice(0, 3));
-  await thread.getByRole('button', { name: '展开回复', exact: true }).click();
+  await expect(thread.getByText(/来源回复：/)).toHaveCount(0);
+  const expand = thread.getByRole('button', { name: '展开回复', exact: true });
+  await expect(expand).toHaveText('共25条回复，点击查看');
+  await expect(expand).toHaveAttribute('aria-expanded', 'false');
+  await expand.click();
   await expect(rows).toHaveCount(13);
   expect(await ids(rows)).toEqual(replyIds.slice(0, 13));
   await thread.getByRole('button', { name: '收起回复', exact: true }).click();
@@ -96,11 +103,12 @@ const textMetrics = (text: Locator) => text.evaluate(element => {
   const lineHeight = parseFloat(getComputedStyle(element).lineHeight);
   return { visibleLines: element.getBoundingClientRect().height / lineHeight, fullLines: element.scrollHeight / lineHeight };
 });
-const replyText = (row: Locator) => row.locator('p').filter({ hasText: /^回复第1行/ });
+const replyText = (row: Locator) => row.locator('p').filter({ hasText: /回复第1行/ });
 
 test('实际回复六/七行折叠与安全文本，关系、同名 UP 和缺失字段按归档展示', async ({ page, archiveApi }) => {
   await archiveApi.reopen();
-  await page.setViewportSize({ width: 390, height: 800 });
+  // inline身份也计入渲染行：宽屏先保证前缀与首正文行同排，验证精确六/七行边界。
+  await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/dynamics/9101');
   const thread = threadOf(page);
   await expect(repliesOf(thread)).toHaveCount(3);
@@ -116,8 +124,12 @@ test('实际回复六/七行折叠与安全文本，关系、同名 UP 和缺失
   await expect(replyText(seven)).toContainText('回复第7行 🙂');
   await seven.getByRole('button', { name: '收起回复正文', exact: true }).click();
   expect((await textMetrics(replyText(seven))).visibleLines).toBeCloseTo(6, 1);
+  await page.setViewportSize({ width: 390, height: 800 });
+  // 同一六行正文在窄屏因真实身份前缀换行达到七行，ResizeObserver必须新增展开入口。
+  await expect(six.getByRole('button', { name: '展开回复正文', exact: true })).toHaveCount(1);
+  expect((await textMetrics(replyText(six))).visibleLines).toBeCloseTo(6, 1);
   await expect(wrapped.getByRole('button', { name: '展开回复正文', exact: true })).toHaveCount(1);
-  const safeText = wrapped.locator('p').filter({ hasText: /^换行与 emoji/ });
+  const safeText = wrapped.locator('p').filter({ hasText: /换行与 emoji/ });
   expect((await textMetrics(safeText)).fullLines).toBeGreaterThan(6);
   await wrapped.getByRole('button', { name: '展开回复正文', exact: true }).click();
   await expect(safeText).toContainText('https://example.invalid/');
@@ -134,11 +146,11 @@ test('实际回复六/七行折叠与安全文本，关系、同名 UP 和缺失
   await expect(seven.getByText('回复 @虚构初始作者', { exact: true })).toHaveCount(1);
   await expect(wrapped.getByText(/^回复 @/)).toHaveCount(0);
   await expect(wrapped.getByText('未知用户', { exact: true })).toHaveCount(1);
-  await expect(wrapped.getByText('点赞 —', { exact: true })).toHaveCount(1);
+  await expect(wrapped.getByRole('group', { name: '点赞 —', exact: true })).toHaveCount(1);
   await expect(six.locator('img')).toHaveAttribute('src', '/default-avatar.svg');
   await six.getByText('虚构初始作者', { exact: true }).click();
   await six.locator('img').click();
-  await six.getByText('点赞 0', { exact: true }).click();
+  await six.getByRole('group', { name: '点赞 0', exact: true }).click();
   await expect(page).toHaveURL(/\/dynamics\/9101$/);
   await thread.getByRole('button', { name: '展开回复', exact: true }).click();
   await expect(repliesOf(thread)).toHaveCount(13);
@@ -148,7 +160,7 @@ test('实际回复六/七行折叠与安全文本，关系、同名 UP 和缺失
   await expect(repliesOf(thread)).toHaveCount(25);
   const empty = thread.locator('[data-reading-id="reply:10:125"]');
   await expect(empty.locator('time')).toHaveText('时间未知');
-  await expect(empty.getByText('暂无评论内容', { exact: true })).toHaveCount(1);
+  await expect(empty.locator('p').filter({ hasText: '暂无评论内容' })).toHaveCount(1);
   await expect(thread).not.toContainText('undefined');
 });
 

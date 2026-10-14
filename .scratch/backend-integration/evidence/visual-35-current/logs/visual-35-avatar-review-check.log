@@ -1,0 +1,8 @@
+
+Running 3 tests using 1 worker
+
+  ✓  1 tests/e2e-archive/visual-replica.spec.ts:5:1 › 列表与详情直接去掉归档文字块，保留正文、发布时间与评论入口 (566ms)
+  ✓  2 tests/e2e-archive/visual-replica.spec.ts:30:1 › 参考阅读主栏、身份和轻量评论入口；四宽度不溢出 (2.0s)
+  ✓  3 tests/e2e-archive/visual-replica.spec.ts:76:1 › 评论为白底平面行且图像不裁切；长身份不会与正文重叠 (1.6s)
+
+  3 passed (6.0s)

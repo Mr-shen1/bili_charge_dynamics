@@ -1,0 +1,38 @@
+
+> bili-charge-dynamics@0.1.0 test:e2e:archive /home/kevin/Projects/PI/bili_charge_dynamics
+> playwright test --config playwright.archive.config.ts
+
+
+Running 29 tests using 1 worker
+
+  ✓   1 tests/e2e-archive/archive.spec.ts:12:1 › 目标校验、首次同步、真实归档阅读和断源重开穿透生产装配 (4.9s)
+  ✓   2 tests/e2e-archive/comment-media-reading.spec.ts:20:1 › 生产评论单/四/其他/十二图四宽度网格、44px、长昵称与纯图/文字/空态 (4.2s)
+  ✓   3 tests/e2e-archive/comment-media-reading.spec.ts:65:1 › 两个评论组与同 ID 动态组隔离，反复切组、后退/前进恢复组内末图、焦点与滚动 (2.7s)
+  ✓   4 tests/e2e-archive/comment-media-reading.spec.ts:113:1 › 排序卸载触发处后前进仍恢复原评论图，关闭聚焦 main；刷新清理遗留预览且不多退 (1.5s)
+  ✓   5 tests/e2e-archive/comment-media-reading.spec.ts:153:1 › 归档 pending/failed 与浏览器坏图区分，原 URL 局部重试、切走/关闭、不回退来源 (1.7s)
+  ✓   6 tests/e2e-archive/comment-media-reading.spec.ts:211:1 › 缩略 lazy、预览 eager，未看评论组无请求，打开一图不预取全组 (895ms)
+  ✓   7 tests/e2e-archive/comment-media-reading.spec.ts:241:1 › 慢长图占位稳定；四宽度完整/适宽，原生触控纵读不误切不滚底层、切图归零与首尾单图边界 (6.1s)
+  ✓   8 tests/e2e-archive/media-live.spec.ts:45:1 › 实际初始化及独立媒体同步后，列表与预览直接读取完整公开 URL (2.3s)
+  ✓   9 tests/e2e-archive/media-live.spec.ts:101:1 › 未上传与上传失败保留原位且不影响正文，断源及删除监控后重开仍可读 (2.9s)
+  ✓  10 tests/e2e-archive/media-live.spec.ts:186:1 › 实际评论图片 HTTP→Adapter→详情：两个纯图评论组与动态图独立，逐图状态及断源重开保留 (4.2s)
+  ✓  11 tests/e2e-archive/media-reading.spec.ts:5:1 › 生产图片逐图归档状态与浏览器坏图不同，不请求来源图，纯图无空正文提示 (767ms)
+  ✓  12 tests/e2e-archive/media-reading.spec.ts:29:1 › 生产单/四/九/十二图四宽度网格；列表九格是展示上限，纯文字无空图区 (5.9s)
+  ✓  13 tests/e2e-archive/media-reading.spec.ts:58:1 › 公开 URL 原样直连、缩略懒加载；打开九格末图不预取整组，详情可访问十二张 (1.4s)
+  ✓  14 tests/e2e-archive/media-reading.spec.ts:90:1 › 坏图原 URL 局部重试，切图与关闭可用，不触发卡片导航或丢正文 (907ms)
+  ✓  15 tests/e2e-archive/media-reading.spec.ts:121:1 › 生产预览历史只一条、前进恢复最后图片，关闭恢复多批/展开/焦点与阅读位置；刷新有界清理 (2.0s)
+  ✓  16 tests/e2e-archive/media-reading.spec.ts:175:1 › 生产缺尺寸慢长图保持占位；四宽度完整/适宽和触控纵读不误切、不动底层，单图不切换 (5.5s)
+  ✓  17 tests/e2e-archive/media-reading.spec.ts:245:1 › 生产多批历史遇慢图片、缺尺寸与跨宽度恢复后，迟到图片不会覆盖用户滚动 (1.1s)
+  ✓  18 tests/e2e-archive/replies.spec.ts:49:1 › 实际 HTTP 与重开 SQLite 回复正序 3/13/23/25，收起复用且结束不再请求 (2.5s)
+  ✓  19 tests/e2e-archive/replies.spec.ts:101:1 › 实际回复六/七行折叠与安全文本，关系、同名 UP 和缺失字段按归档展示 (2.5s)
+  ✓  20 tests/e2e-archive/replies.spec.ts:174:1 › 同动态两个历史访问独立恢复排序、多批根/回复、文字、cursor 与位置，主动入口覆盖旧位置 (4.8s)
+  ✓  21 tests/e2e-archive/root-comments.spec.ts:45:1 › 真实 SQLite/HTTP→详情：最热与最新完整排序，20/20/5 且结束不再请求 (2.8s)
+  ✓  22 tests/e2e-archive/root-comments.spec.ts:86:1 › 真实归档评论按实际六/七行折叠，长 URL/emoji 安全文本随宽度重排 (2.0s)
+  ✓  23 tests/e2e-archive/root-comments.spec.ts:120:1 › 气泡与来源数进入同页评论区，来源/本地计数分开且 UP 以作者 ID 标识 (2.1s)
+  ✓  24 tests/e2e-archive/root-comments.spec.ts:166:1 › 历史恢复本次详情的排序、多批、文字展开与位置，新主动访问不借用旧快照 (2.6s)
+  ✓  25 tests/e2e-archive/scope-navigation.spec.ts:9:1 › 生产 Adapter 气泡进入未归档评论区；读取等待期间用户滚动取消迟到定位 (1.1s)
+  ✓  26 tests/e2e-archive/scope-navigation.spec.ts:42:1 › 生产 Adapter HTTP：四宽度选择条局部横滑，跨 scope 同动态访问恢复各自多批、展开与位置 (2.3s)
+  ✓  27 tests/e2e-archive/scoped.spec.ts:9:1 › 真实 SQLite/API→生产 Reader→全部与单 UP 页面、刷新和断源重开 (4.1s)
+  ✓  28 tests/e2e-archive/visual-replica.spec.ts:6:1 › 参考阅读主栏、身份和轻量评论入口；四宽度不溢出 (1.9s)
+  ✓  29 tests/e2e-archive/visual-replica.spec.ts:41:1 › 评论为白底平面行且图像不裁切；长身份不会与正文重叠 (1.6s)
+
+  29 passed (1.4m)

@@ -2,7 +2,7 @@
 
 **What to build:** 维护者得到可复现构建/运行的单 API、单采集、SQLite 与静态前端交付；通过 Nginx 打开四类页面及真实归档、多 UP 管理和媒体，并取得逐项可复核验收记录，明确区分自动化通过与尚未授权/实测的上游、持续运行及真机项目。
 
-**Blocked by:** [31: 双进程与 Nginx](31-reproducible-deployment.md)、[32: 自动化与台账](32-automated-acceptance.md)、[33: 正式浏览器验收](33-browser-device-acceptance.md)、[34: 上游与持续运行](34-live-source-runtime-evidence.md)
+**Blocked by:** [31: 双进程与 Nginx](31-reproducible-deployment.md)、[32: 自动化与台账](32-automated-acceptance.md)、[33: 正式浏览器验收](33-browser-device-acceptance.md)、[34: 上游与持续运行](34-live-source-runtime-evidence.md)、[35: 视觉与管理改版](35-bilibili-visual-replica.md)
 
 **Status:** needs-triage
 
@@ -10,14 +10,16 @@
 
 ## 执行拆分（汇总票，不直接派工）
 
-原业务前置 [11](11-monitoring-lifecycle.md) 由 #29/#30 交付，以下四票区分代理可执行工作与必须维护者参与的实测。统一规则见[执行计划](../implementation-plan.md)，本票分诊标签不代表人工验收已完成。
+原业务前置 [11](11-monitoring-lifecycle.md) 由 #29/#30 交付，以下五票区分代理可执行工作与必须维护者参与的实测；用户新增的一比一阅读视觉及管理同风格改版由 #35 交付。统一规则见[执行计划](../implementation-plan.md)，本票分诊标签不代表人工验收已完成。
 
 - [31](31-reproducible-deployment.md)：可复现单 API/单采集/SQLite、实际隔离 Nginx、缓存和安全运行说明；依赖 #30。
-- [32](32-automated-acceptance.md)：本期自动化/穿透回归和 AC-01–AC-34 证据台账；依赖 #31，不等待人工票才能整理台账。
-- [33](33-browser-device-acceptance.md)：Linux Chrome 与 iPhone Safari 正式环境操作证据；依赖 #31，`ready-for-human`。
+- [32](32-automated-acceptance.md)：本期自动化/穿透回归和 AC-01–AC-34 证据台账；依赖 #31+#35，不等待人工票才能整理台账。
+- [33](33-browser-device-acceptance.md)：Linux Chrome 与 iPhone Safari 正式环境操作证据；依赖 #31+#35，`ready-for-human`。
 - [34](34-live-source-runtime-evidence.md)：授权上游、真实媒体、持续调度和资源实测；依赖 #31，`ready-for-human`。
 
-四票共同覆盖下列原清单。#32 完成但 #33/#34 必需项未验证时，本汇总票和整个功能都不能宣称完整验收；环境缺失须明确记录，不把写完步骤当成通过。
+- [35](35-bilibili-visual-replica.md)：阅读区域按两张参考图一比一视觉复刻，监控管理按同一视觉体系重做；复用当前分支已交付能力，无开工阻塞，不等待 #31/#32/#33，也不改写历史验收。
+
+五票共同覆盖下列清单。#32 完成但 #33/#34 必需项未验证时，本汇总票和整个功能都不能宣称完整验收；环境缺失须明确记录，不把写完步骤当成通过。
 
 ## 依据
 
@@ -35,7 +37,7 @@
 - [ ] 正常生产装配只用真实 API Adapter，独立 mock 与可控故障装配分别可跑，正常 UI 无故障控制面板；契约替身替换传输而不绕过生产映射，保留少量实际 API/浏览器穿透。
 - [ ] 按下方责任映射逐项回归全部 FR/DR/NFR 与 AC-01–AC-34，记录本期通过/失败/未验证及原因、环境和可复核证据；不得继承旧同号 AC 的通过结果或把前序票/规格文字当作实现证明。
 - [ ] 全流程覆盖“全部/单 UP → 卡片或气泡 → 详情 → 动态图/评论图 → 排序 → 回复 → 返回恢复”，加 UID/模式/目标/启停/删除/窗口、编辑图更新、评论变化图更新及错误/重启/新旧版本交错；原身份、读取、导航和焦点测试不丢。
-- [ ] 核验浅青背景、白卡、青蓝选中、粉色作者及评论回复层级；四宽度 360/390/768/1280px 无页面横向溢出，仅选择条内部可横滑，约 44px 触控目标、键盘焦点、详情全文/绝对发布时间及分钟编辑精度正确，无查看详情/转发/独立评论页/真实写回。
+- [ ] 汇入 #35 后版本的阅读参考图一比一视觉基准、截图/差异对照及管理页同风格规则映射/截图/操作回归，不只核验配色相近；四宽度 360/390/768/1280px 无页面横向溢出，仅选择条内部可横滑，约 44px 触控目标、键盘焦点、详情全文/绝对发布时间及分钟编辑精度正确，无查看详情/转发/独立评论页/真实写回。
 - [ ] Linux Chrome 与 iPhone Safari 正式兼容分别记录版本、设备和方法；移动 Chromium 模拟、桌面自动化或模拟器不作为 iPhone 真机通过。维护者未提供真机及授权时记录未验证，必需项未验证不能宣称完整验收。
 - [ ] 持续固定 15 秒调度、实际资源、来源计数映射、不同页面编辑时间及自然多次编辑逐项保留待验证边界；实际起始近期约 10 条、指定 1 UP 的 2 条不是容量硬限，13 GET/一次成功不证明稳定。无授权环境时只提供维护者执行步骤和采样记录要求，不自动采购、部署、读凭据或请求真实上游。
 - [ ] 用虚构秘密验证仓库交付物、产物、UI/API/日志/诊断不泄漏；凭据只在服务端仓库外、无凭据 UI。公开无鉴权管理/API、公开 OSS 外链、无首期备份/容量治理风险明确，不宣称隐藏入口能保护，不自加鉴权前置或容灾/容量/中间件能力。
@@ -46,7 +48,8 @@
 
 | 当前 SRS 验收 | 主要前序责任 |
 | --- | --- |
-| AC-01、AC-02、AC-05、AC-21、AC-31 | [03](03-multi-up-reading.md)；评论/回复身份及气泡由 [04](04-root-comments.md)、[05](05-replies.md) 接入 |
+| AC-01、AC-02、AC-05、AC-21 | [03](03-multi-up-reading.md)；评论/回复身份及气泡由 [04](04-root-comments.md)、[05](05-replies.md) 接入 |
+| AC-31 | [35](35-bilibili-visual-replica.md) 阅读一比一视觉及管理同风格实现/自动化对照；[32](32-automated-acceptance.md) 汇总台账，[33](33-browser-device-acceptance.md) 正式设备签收；原业务边界仍由 #01/#02/#03–#07/#24 提供 |
 | AC-03、AC-04、AC-13、AC-15、AC-17、AC-18 | [02](02-target-initial-archive.md)、[03](03-multi-up-reading.md) 建立正文/读取/导航；[04](04-root-comments.md)、[05](05-replies.md)、[06](06-dynamic-images.md)、[07](07-comment-images.md)、[08](08-periodic-edit-sync.md) 扩展对应评论/媒体/时间范围 |
 | AC-06、AC-07 | [04](04-root-comments.md) |
 | AC-08 | [05](05-replies.md) |
@@ -74,6 +77,7 @@
 | [25](25-comment-count-sync.md)、[26](26-comment-sync-status.md) | 评论计数触发/状态：AC-04、AC-14、AC-22、AC-24、AC-25、AC-27–AC-29 |
 | [27](27-recent-target-discovery.md)、[28](28-recent-window-lifecycle.md) | 原规则发现/窗口：AC-22–AC-25、AC-29、AC-33 |
 | [29](29-inflight-monitoring-lifecycle.md)、[30](30-integrated-archive-lifecycle.md) | 在途生命周期/自动媒体联动/聚合：AC-13、AC-17、AC-20–AC-30、AC-32、AC-33 |
+| [35](35-bilibili-visual-replica.md) | AC-31 阅读一比一视觉/管理同风格、基准/截图/差异及 AC-22 管理操作/状态回归；不替代 #33 真机 |
 | [31](31-reproducible-deployment.md) | AC-19 Nginx/构建、AC-33 双进程、AC-32 风险及脱敏，兼顾 AC-13/17/18 |
 | [32](32-automated-acceptance.md) | AC-01–AC-34 本期台账及可自动化项回归，AC-20 穿透和 AC-34 证据区分；人工证据由 #33/#34 分别回填 |
 | [33](33-browser-device-acceptance.md) | AC-16 正式浏览器/真机主责，以及 AC-10–AC-13、AC-20、AC-31、AC-34 的设备证据 |
@@ -83,4 +87,4 @@
 
 T1–T3 的自动化使用虚构/脱敏 HTML/JSON、受控时钟、模拟 OSS 和实际临时 SQLite，测试公开 HTTP、状态及用户行为，不读取真实 Cookie。业务全图保存但无全历史动态补扫；来源 count 与 synced 分开，受限/失败不归零覆盖，可信编辑检测仅 HTML 作者模块时间，不靠 pubts 或内容比对。
 
-历史验收、13 GET、本期自动化、隔离 Nginx、云运行/资源及真机各有独立证据栏。所需云/账号/真机环境由维护者提供并另行授权步骤；本票不授权自动采购部署、持续采集或真实 OSS。ignored 原脚本/截图不是跨机器交付依赖，缺失时请提供脱敏参考，必要无敏感逻辑/fixtures 随实现版本化，不 force add；tracked UI 文字规范可用。未测项如实记录，不用模拟器、一次成功或写完说明代替验收。
+历史验收、13 GET、本期自动化、隔离 Nginx、云运行/资源及真机各有独立证据栏。所需云/账号/真机环境由维护者提供并另行授权步骤；本票不授权自动采购部署、持续采集或真实 OSS。ignored 原脚本/截图不是跨机器交付依赖，缺失时请提供脱敏参考，必要无敏感逻辑/fixtures 随实现版本化，不 force add；tracked UI 视觉规范可用；#35 的原图对照必须读取两张参考素材，缺失时明确申请补充，不以文字主题近似冒充一比一视觉通过。未测项如实记录，不用模拟器、一次成功或写完说明代替验收。

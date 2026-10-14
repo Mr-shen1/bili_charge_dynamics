@@ -8,7 +8,7 @@ test('正常25条回复3/13/23/25、收起缓存恢复、排序重置及完整�
   const rows = area.getByRole('listitem');
   await expect(rows).toHaveCount(3);
   await expect(page.getByText('回复 25', { exact: true })).toBeVisible();
-  await expect(page.getByRole('article').getByText('评论 70', { exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: '评论区', exact: true }).getByRole('button', { name: '评论 70', exact: true })).toBeVisible();
   const expand = area.getByRole('button', { name: '展开回复', exact: true });
   await expect(expand).toHaveAttribute('aria-expanded', 'false');
   await expand.focus();
@@ -42,7 +42,7 @@ test('正常25条回复3/13/23/25、收起缓存恢复、排序重置及完整�
   await expect(rows.nth(1).getByText('UP主', { exact: true })).toHaveCount(0);
   await expect(rows.nth(2).getByText('回复 @纸飞机', { exact: true })).toHaveCount(0);
   await expect(page.getByText('回复 25', { exact: true })).toBeVisible();
-  await expect(page.getByRole('article').getByText('评论 70', { exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: '评论区', exact: true }).getByRole('button', { name: '评论 70', exact: true })).toBeVisible();
 });
 
 test('回复正文超过实际六行才折叠，键盘展开收起、安全文字与四宽度长昵称/目标可读', async ({ page }) => {

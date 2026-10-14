@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Identity, displayTime } from '../dynamics/DynamicContent';
+import { UserAvatar } from '../dynamics/UserAvatar';
 import type { ManagedUp, ManagementApi, MonitorConfig } from './managementApi';
 import type { ManagementRequests } from './useManagementRequests';
 import { TargetManager } from './TargetManager';
@@ -56,52 +56,72 @@ export function UpCard({ up, api, requests, onChange }: {
     if (result.status === 'success') { onChange(result.data); setNotice({ error: false, text: '保存成功。', action: 'save' }); }
     else if (result.status === 'error') setNotice({ error: true, text: result.message, action: 'save' });
   }
-  return <article className="manage-card" aria-label={`UP ${up.uid}`} aria-busy={busy}>
-    <Identity user={{ id: up.uid, nickname: up.name?.trim() ? up.name : null, avatarUrl: up.avatarUrl }} />
-    <p className="manage-muted">UID：{up.uid}</p>
-    <p>最近检查：{up.monitor?.lastCheckedAt ? displayTime(up.monitor.lastCheckedAt) : '未检查'}</p>
-    <p>最近成功：{up.monitor?.lastSucceededAt ? displayTime(up.monitor.lastSucceededAt) : '尚未成功'}</p>
-    <p className="manage-muted">以上为该 UP 历史目标记录的最近时间，不代表全部目标均已成功。</p>
-    <CheckStatusPanel uid={up.uid} api={api} />
-    {up.monitor && <>
-      <p>监控：{up.monitor.enabled ? '已启用' : '已停止'}</p>
-      <button type="button" disabled={busy} onClick={() => void toggle()}>
-        {pending === 'toggle' && busy ? `正在${up.monitor.enabled ? '停止' : '启用'}…`
-          : notice?.error && notice.action === 'toggle' ? `重试${up.monitor.enabled ? '停止' : '启用'}`
-          : up.monitor.enabled ? '停止监控' : '启用监控'}
-      </button>
-      <p className="manage-muted">启停立即生效，使用已保存配置，不会保存下方草稿。</p>
-    </>}
-    {up.monitor && <form noValidate onSubmit={event => { event.preventDefault(); void save(); }}>
-      <fieldset disabled={busy}>
-        <legend>监控配置</legend>
-        <label htmlFor={`manage-mode-${up.uid}`}>监控模式</label>
-        <select id={`manage-mode-${up.uid}`} value={mode} onChange={event => {
-          const value = event.target.value;
-          if (value === 'recent' || value === 'specified') { setMode(value); setNotice(null); }
-        }}>
-          <option value="recent">近期 N 条</option><option value="specified">指定动态 ID</option>
-        </select>
-        {mode === 'recent' ? <div className="manage-field">
-          <label htmlFor={`manage-n-${up.uid}`}>近期 N 条</label>
-          <input id={`manage-n-${up.uid}`} type="text" inputMode="numeric" value={recentN}
-            onChange={event => { setRecentN(event.target.value); setNotice(null); }} />
-        </div> : <p className="manage-muted">保存指定模式后仅监控下方关联目标；不附加近期动态。</p>}
-        <button type="submit">{busy && pending === 'save' ? '正在保存…' : notice?.error && notice.action === 'save' ? '重试保存' : '保存配置'}</button>
-      </fieldset>
-    </form>}
-    {up.monitor && mode === 'specified' && <TargetManager uid={up.uid} api={api} requests={requests} />}
-    {up.monitor ? <div className="manage-actions">
-      <button className="manage-delete" type="button" disabled={busy} onClick={() => void remove()}>
-        {busy && pending === 'delete' ? '正在删除…' : notice?.error && notice.action === 'delete' ? '重试删除' : '删除监控配置'}
-      </button>
-      <span className="manage-muted">仅删除配置，保留身份和已有归档。</span>
-    </div> : <>
-      <p>监控配置已删除；身份和已有归档保留。</p>
-      <button type="button" disabled={busy} onClick={() => void reAdd()}>
-        {busy && pending === 'add' ? '正在重新添加…' : notice?.error && notice.action === 'add' ? '重试重新添加' : '重新添加监控'}
-      </button>
-    </>}
-    {notice && <p role={notice.error ? 'alert' : 'status'}>{notice.text}</p>}
+  const user = { id: up.uid, nickname: up.name?.trim() ? up.name : null, avatarUrl: up.avatarUrl };
+  return <article className="manage-card manage-up" aria-label={`UP ${up.uid}`} aria-busy={busy}>
+    <header className="manage-identity">
+      <UserAvatar user={user} className="manage-avatar" />
+      <div className="manage-identity-text">
+        <h2 className="manage-author">{user.nickname ?? '未知用户'}</h2>
+        <p className="manage-muted">UID：{up.uid}</p>
+      </div>
+      <span className="manage-badge">{up.monitor ? up.monitor.enabled ? '监控已启用' : '监控已停止' : '配置已删除'}</span>
+    </header>
+    <section className="manage-section" aria-label="监控配置">
+      <h2>监控配置</h2>
+      {up.monitor ? <>
+        <div className="manage-control-row">
+          <p>监控：{up.monitor.enabled ? '已启用' : '已停止'}</p>
+          <button type="button" disabled={busy} onClick={() => void toggle()}>
+            {pending === 'toggle' && busy ? `正在${up.monitor.enabled ? '停止' : '启用'}…`
+              : notice?.error && notice.action === 'toggle' ? `重试${up.monitor.enabled ? '停止' : '启用'}`
+              : up.monitor.enabled ? '停止监控' : '启用监控'}
+          </button>
+        </div>
+        <p className="manage-muted">启停立即生效，使用已保存配置，不会保存下方草稿。</p>
+        <form noValidate onSubmit={event => { event.preventDefault(); void save(); }}>
+          <fieldset disabled={busy}>
+            <legend className="manage-sr-only">配置草稿</legend>
+            <div className={`manage-config-fields${mode === 'specified' ? ' manage-config-specified' : ''}`}>
+              <div className="manage-field">
+                <label htmlFor={`manage-mode-${up.uid}`}>监控模式</label>
+                <select id={`manage-mode-${up.uid}`} value={mode} onChange={event => {
+                  const value = event.target.value;
+                  if (value === 'recent' || value === 'specified') { setMode(value); setNotice(null); }
+                }}>
+                  <option value="recent">近期 N 条</option><option value="specified">指定动态 ID</option>
+                </select>
+              </div>
+              {mode === 'recent' && <div className="manage-field">
+                <label htmlFor={`manage-n-${up.uid}`}>近期 N 条</label>
+                <input id={`manage-n-${up.uid}`} type="text" inputMode="numeric" value={recentN}
+                  onChange={event => { setRecentN(event.target.value); setNotice(null); }} />
+              </div>}
+              <button className="manage-primary" type="submit">{busy && pending === 'save' ? '正在保存…' : notice?.error && notice.action === 'save' ? '重试保存' : '保存配置'}</button>
+            </div>
+            {mode === 'specified' && <p className="manage-muted">保存指定模式后仅监控下方关联目标；不附加近期动态。</p>}
+          </fieldset>
+        </form>
+      </> : <p className="manage-muted">暂无监控配置，重新添加后可编辑。</p>}
+    </section>
+    {up.monitor && mode === 'specified' ? <TargetManager uid={up.uid} api={api} requests={requests} />
+      : <section className="manage-section" aria-label="指定动态目标">
+        <h2>指定动态目标</h2>
+        <p className="manage-muted">{up.monitor ? '近期模式按已保存的 N 值监控；切换指定模式可管理关联目标。' : '配置已删除，不再监控目标；已有归档保留。'}</p>
+      </section>}
+    <CheckStatusPanel uid={up.uid} api={api} monitor={up.monitor} />
+    <footer className="manage-section manage-footer">
+      {up.monitor ? <div className="manage-actions">
+        <button className="manage-delete" type="button" disabled={busy} onClick={() => void remove()}>
+          {busy && pending === 'delete' ? '正在删除…' : notice?.error && notice.action === 'delete' ? '重试删除' : '删除监控配置'}
+        </button>
+        <span className="manage-muted">仅删除配置，保留身份和已有归档。</span>
+      </div> : <>
+        <p>监控配置已删除；身份和已有归档保留。</p>
+        <button type="button" disabled={busy} onClick={() => void reAdd()}>
+          {busy && pending === 'add' ? '正在重新添加…' : notice?.error && notice.action === 'add' ? '重试重新添加' : '重新添加监控'}
+        </button>
+      </>}
+      {notice && <p className="manage-feedback" role={notice.error ? 'alert' : 'status'}>{notice.text}</p>}
+    </footer>
   </article>;
 }

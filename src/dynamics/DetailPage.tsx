@@ -7,7 +7,7 @@ import styles from './Dynamics.module.css';
 
 import { useInitialRead } from './useInitialRead';
 import { ReadNotice } from './ReadNotice';
-import { CommentSection, locateComments } from './CommentSection';
+import { CommentSection } from './CommentSection';
 import { DiscussionVisitContext } from './DiscussionVisit';
 import { emptyCommentSnapshot, type CommentSnapshot } from '../app/DetailSnapshot';
 import { captureReadingPosition, restoreReadingPosition } from '../app/readingPosition';
@@ -44,18 +44,17 @@ function DetailVisit({ reader }: { reader: DynamicReader }) {
     };
   }, [pageEntryId, saveDetailSnapshot]);
 
-  return <main ref={root} tabIndex={-1} className={styles.page}>
-    <button className={styles.button} type="button" onClick={returnToList}>返回列表</button>
-    <h1>动态详情</h1>
+  return <main ref={root} tabIndex={-1} className={`${styles.page} ${styles.detailPage}`}>
+    <button className={`${styles.button} ${styles.backButton}`} type="button" aria-label="返回列表" onClick={returnToList}>← 返回列表</button>
+    <h1 className={styles.pageTitle}>动态详情</h1>
     <ReadNotice status={state.status} area="动态详情" retry={retry} />
     {state.status === 'not-found' && <p role="status">动态不存在或不可用</p>}
-    {state.status === 'success' && <>
-      <article className={styles.card} data-reading-id={`dynamic:${dynamicId}`}><DynamicContent dynamic={state.data}
-        navigateToComments={() => locateComments(comments.current)} /></article>
+    {state.status === 'success' && <div className={styles.detailSurface}>
+      <article className={styles.card} data-reading-id={`dynamic:${dynamicId}`}><DynamicContent dynamic={state.data} /></article>
       <DiscussionVisitContext.Provider value={discussion}>
         {/* 只用挂载时的快照判断入口，StrictMode 清理生成的草稿不能改写主动意图。 */}
-        <CommentSection rootRef={comments} reader={reader} dynamicId={dynamicId} authorId={state.data.author.id} archive={state.data.archive} canLocateEntry={canLocateEntry} initialTarget={initial.current ? 'top' : detailTarget} />
+        <CommentSection rootRef={comments} reader={reader} dynamicId={dynamicId} authorId={state.data.author.id} sourceCommentCount={state.data.commentCount} archive={state.data.archive} canLocateEntry={canLocateEntry} initialTarget={initial.current ? 'top' : detailTarget} />
       </DiscussionVisitContext.Provider>
-    </>}
+    </div>}
   </main>;
 }
