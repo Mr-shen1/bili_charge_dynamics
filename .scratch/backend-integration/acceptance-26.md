@@ -48,9 +48,9 @@ Node `24.21.0`，pnpm `10.34.6`，Python `3.12.15`；Node 命令先 `source "$HO
 | `pnpm build` | 通过 |
 | `git diff --check` | 通过 |
 
-审查后复跑单元 252、后端 373、归档 36、管理 7 全部通过；管理/归档 harness 共用 API 端口，两套同时运行曾使管理读取另一套 fixture 状态，最终分开运行通过，不放宽断言。mock 全量维持 104 passed/10 skipped。
+审查后复跑单元 252、后端 373、归档 36、管理 7 全部通过；管理/归档 harness 共用 API 端口，两套同时运行曾使管理读取另一套 fixture 状态，最终分开运行通过，不放宽断言。审查后 mock 全量再跑仍为 104 passed/10 skipped。
 
-本机过程日志：`/tmp/26-unit-post-review.log`、`/tmp/26-backend-post-review.log`、`/tmp/26-e2e-archive-post-review.log`、`/tmp/26-e2e-manage-post-review-serial.log`、`/tmp/26-e2e-mock-final.log`；临时日志不作为跨机器依赖，仓库内测试/fixtures 和本记录可复现。
+本机过程日志：`/tmp/26-unit-post-review.log`、`/tmp/26-backend-post-review.log`、`/tmp/26-e2e-archive-post-review.log`、`/tmp/26-e2e-manage-post-review-serial.log`、`/tmp/26-e2e-mock-post-review.log`；临时日志不作为跨机器依赖，仓库内测试/fixtures 和本记录可复现。
 
 ## 与父 #09、#25 的核对
 
@@ -70,6 +70,8 @@ Node `24.21.0`，pnpm `10.34.6`，Python `3.12.15`；Node 命令先 `source "$HO
 
 初审无确认硬缺陷，4 个低置信判断/风险单独保留：首次读取失败“当前已加载”显示 0；只读刷新新增交互；显式 initial 使用真实 UTC 而 Collector 可注入 Clock；辅助 `comment_sync` 严格坏响应可使首次详情拒绝。处理说明：已加载是当前持有条数，首读失败真实为 0（来源/本地未知仍为 —），新增公开页面回归验证失败不显示“暂无评论”、原位重试后加载数更新；刷新正对应票内状态刷新要求且不采集；initial 仍记录真实实际时间，可控时钟证据由 T3 Collector 提供；严格拒绝坏 DTO 保持安全契约，已有页面刷新失败保留旧正文/评论/状态，不把损坏协议当成正常采集失败。未以这些风险虚构产品缺陷或声称上游已验收。
 
-两轴分别收口：Standards 4 项已处理、1 项非阻断启发；Spec 0 个确认缺陷、4 个低置信项的语义/证据边界已记录。修正后的只读复核结果随后追加。
+两轴分别收口：Standards 初审 4 项已处理、1 项非阻断启发；Spec 0 个确认缺陷、4 个低置信项的语义/证据边界已记录。
+
+修正后两轴分别复核 `6fb1850`：Standards 确认契约下沉/死参数/统一规则/公开投影断言均落实，保留一个旧档案 fallback 翻译的低置信重复判断；同时发现第 11 个回归用例尚未进入该提交，证据与 revision 不一致。已以 `785790f` 提交该用例（此前实测 252 已包含它），Standards 最终窄复核确认源代码现为 11 用例、工作区干净、证据提交缺陷消除，新增测试遵守公开 seam；它锁定已有语义，不虚报为新增产品 red。Spec 修正后复核确认 0 个新增规格缺陷、无 scope creep，四项低置信风险边界不变。最终无残余确认阻断项；非硬设计启发/证据限制仍如上如实保留，不用审查替代验收。
 
 未访问真实 B站、Cookie、仓库外凭据或 OSS；所有秘密标记均虚构。来源独立 count 是否在所有接口/权限下精确包含根＋全部回复仍承接 #25/#34 的待人工证据，不用 501 fixture 或历史 235/501 相等宣称已实测普遍口径。未做真实云上传、Linux Chrome 人工签收、iPhone Safari 真机、部署、实际规模持续节拍或 2GB 容量验收。页面不保证实时、完整来源或所有受限评论可读，父 #09/#12 全部 AC 不自动收口。
