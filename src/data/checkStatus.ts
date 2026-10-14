@@ -1,10 +1,10 @@
-import type { ArchiveWorkState } from '../data/contracts';
-import { isRecord } from '../data/guards';
-import { isValidId } from '../data/identifiers';
+import type { ArchiveWorkState } from './contracts';
+import { isRecord } from './guards';
+import { isValidId } from './identifiers';
 
 export type CheckError = 'SOURCE_UNAVAILABLE' | 'SIGNAL_INVALID' | 'SYNC_INCOMPLETE';
 export type CommentSyncError = 'ROOT_COMMENTS_FAILED' | 'REPLIES_FAILED' | 'COMMENT_LOCATOR_UNCONFIRMED';
-export interface ManagedCheck {
+export interface TargetCheck {
   readonly id: string;
   readonly active: boolean;
   readonly checkStatus: 'unchecked' | 'checked' | 'unchanged' | 'failed';
@@ -43,7 +43,7 @@ function count(value: unknown): value is number | null {
 function version(value: unknown): value is string | null {
   return value === null || typeof value === 'string';
 }
-export function parseCheck(value: unknown, timestamp: (value: unknown) => value is string | null): ManagedCheck | null {
+export function parseCheck(value: unknown, timestamp: (value: unknown) => value is string | null): TargetCheck | null {
   if (!isRecord(value) || !isValidId(value.id) || typeof value.active !== 'boolean'
     || typeof value.revision !== 'number' || !Number.isSafeInteger(value.revision) || value.revision < 0
     || !timestamp(value.last_checked_at) || !timestamp(value.last_succeeded_at)

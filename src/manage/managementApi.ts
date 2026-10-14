@@ -1,6 +1,6 @@
 import { isValidId } from '../data/identifiers';
 import { isRecord as record } from '../data/guards';
-import { parseCheck, type ManagedCheck } from './checkStatus';
+import { parseCheck, type TargetCheck } from '../data/checkStatus';
 import { timestamp } from '../data/timestamp';
 
 export interface MonitorConfig {
@@ -106,7 +106,7 @@ export function createManagementApi(transport: ManagementTransport = (url, init)
     } catch { return signal.aborted ? { status: 'cancelled' } : invalidResponse; }
   }
   return {
-    async listChecks({ uid, signal }: { readonly uid: string; readonly signal: AbortSignal }): Promise<ManagementResult<readonly ManagedCheck[]>> {
+    async listChecks({ uid, signal }: { readonly uid: string; readonly signal: AbortSignal }): Promise<ManagementResult<readonly TargetCheck[]>> {
       if (!isValidUid(uid)) return { status: 'error', message: invalidUidMessage };
       try {
         if (signal.aborted) return { status: 'cancelled' };
@@ -115,7 +115,7 @@ export function createManagementApi(transport: ManagementTransport = (url, init)
         if (signal.aborted) return { status: 'cancelled' };
         if (!response.ok) return httpError(body, response.status);
         if (response.status !== 200 || !record(body) || !Array.isArray(body.checks)) return invalidResponse;
-        const checks: ManagedCheck[] = [];
+        const checks: TargetCheck[] = [];
         for (const raw of body.checks) {
           const check = parseCheck(raw, timestamp);
           if (!check || checks.some(existing => existing.id === check.id)) return invalidResponse;

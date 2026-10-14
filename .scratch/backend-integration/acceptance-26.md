@@ -16,7 +16,7 @@
 
 | 要求 | 自动化证据 |
 | --- | --- |
-| API→生产 Adapter→计数/状态/时间/安全文案 | `tests/manage-checks.test.tsx` 13 项；`tests/comment-sync-status.test.tsx` 10 项；原 `archive-reader.test.ts` 32 项回归 |
+| API→生产 Adapter→计数/状态/时间/安全文案 | `tests/manage-checks.test.tsx` 13 项；`tests/comment-sync-status.test.tsx` 11 项；原 `archive-reader.test.ts` 32 项回归 |
 | 来源大于本地、未知/零、部分失败/成功空、正文受限可读 | `backend/tests/test_comment_sync_status.py` 10 项；#25 count/recovery 专项；实际浏览器同一 SQLite 来源 501/根 45/回复 20→25 |
 | 分项成功时间真实且失败/无变化不补造 | 新后端专项在受控 Clock 经 Collector 公开入口观察 HTTP；管理/阅读 RTL 分别检查时间和独立错误 |
 | 无新计数重试、重开、冻结旧 cursor 保留 | 新后端专项、旧计数/编辑/迁移/根回复/媒体专项；浏览器 fixture runner 公开执行 Collector，再重开同一 SQLite |
@@ -40,7 +40,7 @@ Node `24.21.0`，pnpm `10.34.6`，Python `3.12.15`；Node 命令先 `source "$HO
 | 命令 | 结果 |
 | --- | --- |
 | `pnpm typecheck`（开发中多次） | 通过 |
-| `pnpm test --maxWorkers=2` | 23 文件，251 passed |
+| `pnpm test --maxWorkers=2` | 23 文件，252 passed |
 | `uv run pytest backend/tests -q`（修正契约后串行） | 373 passed，3 条依赖弃用警告 |
 | `NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost HTTP_PROXY= HTTPS_PROXY= ALL_PROXY= pnpm test:e2e:archive --reporter=line` | 36 passed |
 | 同样 proxy 环境 `pnpm test:e2e:manage --reporter=line` | 7 passed |
@@ -48,7 +48,9 @@ Node `24.21.0`，pnpm `10.34.6`，Python `3.12.15`；Node 命令先 `source "$HO
 | `pnpm build` | 通过 |
 | `git diff --check` | 通过 |
 
-本机过程日志：`/tmp/26-unit-final.log`、`/tmp/26-backend-regression-full.log`、`/tmp/26-e2e-archive-final.log`、`/tmp/26-e2e-manage-final.log`、`/tmp/26-e2e-mock-final.log`；临时日志不作为跨机器依赖，仓库内测试/fixtures 和本记录可复现。
+审查后复跑单元 252、后端 373、归档 36、管理 7 全部通过；管理/归档 harness 共用 API 端口，两套同时运行曾使管理读取另一套 fixture 状态，最终分开运行通过，不放宽断言。mock 全量维持 104 passed/10 skipped。
+
+本机过程日志：`/tmp/26-unit-post-review.log`、`/tmp/26-backend-post-review.log`、`/tmp/26-e2e-archive-post-review.log`、`/tmp/26-e2e-manage-post-review-serial.log`、`/tmp/26-e2e-mock-final.log`；临时日志不作为跨机器依赖，仓库内测试/fixtures 和本记录可复现。
 
 ## 与父 #09、#25 的核对
 
@@ -56,6 +58,18 @@ Node `24.21.0`，pnpm `10.34.6`，Python `3.12.15`；Node 命令先 `source "$HO
 
 ## 审查与未验证
 
-Standards/Spec 双轴审查结果在完成审查后追加。自动化通过不代表人工验收或生产持续运行。
+审查固定点 `cd89abfe1a6feb466a46f9e27d820c0708ba56f5`，首次实现提交 `41adc42`，两名 `review` 代理分别只审 Standards/Spec，先经 CodeGraph 再 live 核验。自动化通过不代表人工验收或生产持续运行。
+
+### Standards
+
+初审 5 项：读取层反向依赖管理解析（架构判断）；死参数/重复空态表达式；管理/阅读重复推导评论进度；持久 aggregate 错误/时间冗余（Data Clumps 判断）；旧计数测试排除实时投影但该文件未直接验证投影（覆盖判断）。已将 `TargetCheck/parseCheck` 下沉 `src/data/checkStatus.ts`、删除死参数、以 `src/data/commentProgress.ts` 统一两页规则，并补旧计数失败场景 `comment_sync == checks` 的公开契约断言，持久归档完整相等和旧 frozen cursor 仍保留。
+
+聚合评论成功时间/错误字段保留：它们记录实际根＋必要回复整轮完成/失败收据，方便公开检查状态追溯，字段明确绑定实际 checkpoint；这不是硬违规，未借审查删改本票的持久状态契约。初审无工具格式问题，余留 1 个非阻断设计启发。
+
+### Spec
+
+初审无确认硬缺陷，4 个低置信判断/风险单独保留：首次读取失败“当前已加载”显示 0；只读刷新新增交互；显式 initial 使用真实 UTC 而 Collector 可注入 Clock；辅助 `comment_sync` 严格坏响应可使首次详情拒绝。处理说明：已加载是当前持有条数，首读失败真实为 0（来源/本地未知仍为 —），新增公开页面回归验证失败不显示“暂无评论”、原位重试后加载数更新；刷新正对应票内状态刷新要求且不采集；initial 仍记录真实实际时间，可控时钟证据由 T3 Collector 提供；严格拒绝坏 DTO 保持安全契约，已有页面刷新失败保留旧正文/评论/状态，不把损坏协议当成正常采集失败。未以这些风险虚构产品缺陷或声称上游已验收。
+
+两轴分别收口：Standards 4 项已处理、1 项非阻断启发；Spec 0 个确认缺陷、4 个低置信项的语义/证据边界已记录。修正后的只读复核结果随后追加。
 
 未访问真实 B站、Cookie、仓库外凭据或 OSS；所有秘密标记均虚构。来源独立 count 是否在所有接口/权限下精确包含根＋全部回复仍承接 #25/#34 的待人工证据，不用 501 fixture 或历史 235/501 相等宣称已实测普遍口径。未做真实云上传、Linux Chrome 人工签收、iPhone Safari 真机、部署、实际规模持续节拍或 2GB 容量验收。页面不保证实时、完整来源或所有受限评论可读，父 #09/#12 全部 AC 不自动收口。

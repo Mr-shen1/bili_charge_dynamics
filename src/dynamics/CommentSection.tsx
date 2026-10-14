@@ -23,8 +23,7 @@ export function CommentSection({ reader, dynamicId, authorId, sourceCommentCount
 }) {
   return reader.discussions === 'not-archived'
     ? <UnarchivedComments sourceCommentCount={sourceCommentCount} archive={archive} initialTarget={initialTarget} canLocateEntry={canLocateEntry} root={rootRef} />
-    : <ArchivedComments reader={reader} dynamicId={dynamicId} authorId={authorId} sourceCommentCount={sourceCommentCount} archive={archive} initialTarget={initialTarget} canLocateEntry={canLocateEntry} root={rootRef}
-      emptyUnarchived={Boolean(archive && (archive.rootCommentsLastAttempt ?? archive.work.comments) !== 'success')} />;
+    : <ArchivedComments reader={reader} dynamicId={dynamicId} authorId={authorId} sourceCommentCount={sourceCommentCount} archive={archive} initialTarget={initialTarget} canLocateEntry={canLocateEntry} root={rootRef} />;
 }
 function CommentHeading({ sourceCommentCount, archive, root }: {
   sourceCommentCount: number | null; archive?: ArchiveMetadata; root: RefObject<HTMLElement | null>;
@@ -49,7 +48,7 @@ function UnarchivedComments({ sourceCommentCount, archive, initialTarget, canLoc
   </section>;
 }
 function ArchivedComments({ reader, dynamicId, authorId, sourceCommentCount: initialCount, archive: initialArchive, initialTarget, canLocateEntry, root }: {
-  reader: DynamicReader; dynamicId: string; authorId: string; sourceCommentCount: number | null; archive?: ArchiveMetadata; initialTarget: 'top' | 'comments'; canLocateEntry(): boolean; emptyUnarchived: boolean; root: RefObject<HTMLElement | null>;
+  reader: DynamicReader; dynamicId: string; authorId: string; sourceCommentCount: number | null; archive?: ArchiveMetadata; initialTarget: 'top' | 'comments'; canLocateEntry(): boolean; root: RefObject<HTMLElement | null>;
 }) {
   const visit = useDiscussionVisit();
   const [sort, setSort] = useState<CommentSort>(visit.current.sort);

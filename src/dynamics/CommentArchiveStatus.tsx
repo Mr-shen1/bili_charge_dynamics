@@ -1,28 +1,29 @@
 import type { ArchiveMetadata } from '../data/contracts';
 import { displayTime } from './DynamicContent';
 import { commentSyncErrors } from '../data/commentSyncErrors';
+import { commentProgress, type CommentProgress } from '../data/commentProgress';
 import styles from './Dynamics.module.css';
 
-export function commentsComplete(archive: ArchiveMetadata): boolean {
-  const check = archive.commentSync;
-  return check ? check.parts.comments === 'success' && check.parts.replies === 'success'
-    : archive.commentsLastAttempt === 'success';
-}
+const progressLabels: Record<CommentProgress, string> = {
+  unchecked: '评论未检查，待处理。',
+  complete: '本轮评论文本已完成；不代表拥有完整来源评论或实时更新。',
+  running: '评论同步中；已有归档仍可阅读。',
+  'partial-failed': '评论部分完成，最近同步失败，待后台重试。',
+  failed: '评论同步失败，待后台重试。',
+  partial: '评论部分完成，其余待处理。',
+  unconfirmed: '评论待处理或尚未确认；读取成功不代表采集完成。',
+  pending: '评论待处理或尚未确认；读取成功不代表采集完成。',
+};
 
 export function CommentArchiveStatus({ archive, sourceCount, loaded }: {
   archive: ArchiveMetadata; sourceCount: number | null; loaded: number;
 }) {
   const check = archive.commentSync;
-  const roots = check?.parts.comments ?? archive.work.comments;
-  const replies = check?.parts.replies ?? archive.work.replies;
-  const failed = (check?.commentsLastAttempt ?? archive.commentsLastAttempt) === 'failed'
-    || archive.rootCommentsLastAttempt === 'failed' || archive.repliesLastAttempt === 'failed' || roots === 'failed';
-  const partial = roots === 'success' || replies === 'success';
-  const state = check?.checkStatus === 'unchecked' ? '评论未检查，待处理。'
-    : commentsComplete(archive) ? '本轮评论文本已完成；不代表拥有完整来源评论或实时更新。'
-    : check?.work === 'running' ? '评论同步中；已有归档仍可阅读。'
-    : failed ? partial ? '评论部分完成，最近同步失败，待后台重试。' : '评论同步失败，待后台重试。'
-    : partial ? '评论部分完成，其余待处理。' : '评论待处理或尚未确认；读取成功不代表采集完成。';
+  const state = progressLabels[commentProgress(check ?? {
+    parts: { comments: archive.work.comments, replies: archive.work.replies ?? 'pending' },
+    commentsLastAttempt: archive.rootCommentsLastAttempt === 'failed' || archive.repliesLastAttempt === 'failed'
+      ? 'failed' : archive.commentsLastAttempt,
+  })];
   return <aside className={styles.status} aria-label="评论归档状态">
     <p>来源评论总数：{sourceCount ?? '—'}；本地一级评论：{check?.localCommentCount ?? archive.localCommentCount}；本地回复：{check?.localReplyCount ?? archive.localReplyCount ?? '—'}；当前已加载一级评论：{loaded}。</p>
     <p role="status">{state}</p>

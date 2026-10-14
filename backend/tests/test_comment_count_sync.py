@@ -177,6 +177,9 @@ def test_untrusted_count_never_becomes_zero_or_overwrites_old_trusted_total(tmp_
             state, archive = snapshot(path)
             assert state["observed"]["source_comment_count"] == 7
             assert state["observed"]["comment_count_status"] == "failed"
+            # 新实时投影应暴露本次计数失败，同时持久归档完整保留。
+            with archive_client(path) as api:
+                assert api.get(ARCHIVE).json()["comment_sync"] == state
             assert state["check_status"] == "failed"
             assert state["revision"] == before["revision"]
             assert state["last_succeeded_at"] == before["last_succeeded_at"]

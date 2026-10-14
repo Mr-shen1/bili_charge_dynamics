@@ -1,33 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
 import { displayTime } from '../dynamics/DynamicContent';
 import type { ManagementApi, Monitor } from './managementApi';
-import type { CheckError, ManagedCheck } from './checkStatus';
+import type { CheckError, TargetCheck } from '../data/checkStatus';
 import { commentSyncErrors as commentErrors } from '../data/commentSyncErrors';
+import { commentProgress, type CommentProgress } from '../data/commentProgress';
 
 const checkLabels = { unchecked: '未检查', checked: '已检查，已登记观察。', unchanged: '检查无变化；不代表同步完成。', failed: '检查失败' };
 const partLabels = { pending: '待处理', success: '已保存', restricted: '受限', failed: '失败' };
 const attemptLabels = { pending: '待处理', success: '成功', failed: '失败', unconfirmed: '未确认' };
+const progressLabels: Record<CommentProgress, string> = { unchecked: '未检查', complete: '对应评论观察已完成',
+  running: '同步中', 'partial-failed': '部分完成', partial: '部分完成', failed: '失败，待重试', unconfirmed: '未确认', pending: '待处理' };
 const errors: Record<CheckError, string> = {
   SOURCE_UNAVAILABLE: '来源暂不可用。', SIGNAL_INVALID: '编辑信号解析失败；保留已有可信值。',
   SYNC_INCOMPLETE: '同步未全部完成，将在固定节拍重试。',
 };
-function CheckStatus({ check }: { check: ManagedCheck }) {
+function CheckStatus({ check }: { check: TargetCheck }) {
   const partial = Object.values(check.parts).some(state => state === 'success');
   const partsComplete = Object.values(check.parts).every(state => state === 'success');
   const versionMismatch = check.observedVersion !== check.syncedVersion;
-  const commentParts = [check.parts.comments, check.parts.replies];
-  const commentsComplete = commentParts.every(state => state === 'success');
-  const commentPartErrors = [check.rootCommentsError, check.repliesError, check.commentsError];
-  const commentsFailed = commentParts.some(state => state === 'failed') || check.commentsLastAttempt === 'failed'
-    || commentPartErrors.some(error => error === 'ROOT_COMMENTS_FAILED' || error === 'REPLIES_FAILED');
-  const commentsUnconfirmed = check.commentsLastAttempt === 'unconfirmed'
-    || commentPartErrors.includes('COMMENT_LOCATOR_UNCONFIRMED');
-  const commentsProgress = check.checkStatus === 'unchecked' ? '未检查'
-    : commentsComplete ? '对应评论观察已完成'
-    : check.work === 'running' ? '同步中'
-    : commentParts.some(state => state === 'success') ? '部分完成'
-    : commentsFailed ? '失败，待重试'
-    : commentsUnconfirmed ? '未确认' : '待处理';
+  const commentsProgress = progressLabels[commentProgress(check)];
   return <section className="manage-check" aria-label={`动态 ${check.id} 检查状态`}>
     <h3>动态 {check.id}</h3>
     <p>{check.active ? '已纳入检查' : '已停止或移出；保留已有归档与未完成工作。'}</p>
@@ -66,7 +57,7 @@ function CheckStatus({ check }: { check: ManagedCheck }) {
 
 /** 手动读取持久状态，不轮询，也不调用同步接口。 */
 export function CheckStatusPanel({ uid, api, monitor }: { uid: string; api: ManagementApi; monitor: Monitor | null }) {
-  const [checks, setChecks] = useState<readonly ManagedCheck[] | null>(null);
+  const [checks, setChecks] = useState<readonly TargetCheck[] | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const request = useRef<AbortController | null>(null);

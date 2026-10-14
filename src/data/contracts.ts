@@ -1,4 +1,4 @@
-import type { ManagedCheck } from '../manage/checkStatus';
+import type { TargetCheck } from './checkStatus';
 
 export interface User {
   readonly id: string;
@@ -36,7 +36,7 @@ export type ArchiveWorkState = 'pending' | 'success' | 'restricted' | 'failed';
 
 export interface ArchiveMetadata {
   // 最新持久检查状态；旧冻结归档缺字段时不猜测执行时间或同步中。
-  readonly commentSync?: ManagedCheck | null;
+  readonly commentSync?: TargetCheck | null;
   readonly title: string | null;
   readonly editedAt: string | null;
   readonly editStatus: 'observed' | 'unknown' | 'error';

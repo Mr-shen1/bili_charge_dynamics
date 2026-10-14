@@ -1,4 +1,4 @@
-import type { CommentSyncError } from '../manage/checkStatus';
+import type { CommentSyncError } from './checkStatus';
 
 /** 只展示封闭错误码的本地文案，绝不显示来源响应或异常原文。 */
 export const commentSyncErrors: Readonly<Record<CommentSyncError, string>> = {

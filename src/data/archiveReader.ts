@@ -2,7 +2,7 @@ import type { ArchiveMetadata, ArchiveWorkState, Comment, CommentBatch, DetailRe
 import { replyAppendSize, replyPreviewSize } from './contracts';
 import { isValidId } from './identifiers';
 import { isRecord as record } from './guards';
-import { parseCheck } from '../manage/checkStatus';
+import { parseCheck } from './checkStatus';
 import { timestamp } from './timestamp';
 
 export type ArchiveTransport = (url: string, init: RequestInit) => Promise<Response>;
