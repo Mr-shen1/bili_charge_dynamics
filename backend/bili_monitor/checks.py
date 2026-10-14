@@ -8,8 +8,15 @@ from .contracts import APIError
 from .comment_status import COMMENT_STATUS_FIELDS
 
 
-ACTIVE_TARGET = """SELECT 1 FROM targets t JOIN monitors m ON m.uid = t.uid
-    WHERE t.uid = ? AND t.id = ? AND m.enabled = 1 AND m.mode = 'specified'"""
+# 可信结果的整轮提交即窗口发布。模式分支互斥，不能把近期成员写入指定关联。
+SELECTED_TARGETS = """SELECT t.uid, t.id FROM targets t JOIN monitors m ON m.uid = t.uid
+    WHERE m.enabled = 1 AND m.mode = 'specified'
+    UNION ALL
+    SELECT d.uid, member.value AS id FROM recent_discoveries d
+    JOIN monitors m ON m.uid = d.uid
+    JOIN json_each(d.trusted_result, '$.ids') member
+    WHERE m.enabled = 1 AND m.mode = 'recent'"""
+ACTIVE_TARGET = f"SELECT 1 FROM ({SELECTED_TARGETS}) WHERE uid = ? AND id = ?"
 ARCHIVE_SIGNALS = """json_object(
     'author', json_extract(a.document, '$.author'),
     'published_at', json_extract(a.document, '$.published_at'),
@@ -101,10 +108,8 @@ class CheckStore:
 
     def enabled_targets(self):
         with self.connection() as connection:
-            return [dict(row) for row in connection.execute("""SELECT t.uid, t.id
-                FROM targets t JOIN monitors m ON m.uid = t.uid
-                WHERE m.enabled = 1 AND m.mode = 'specified'
-                ORDER BY t.uid COLLATE BINARY, t.id COLLATE BINARY""")]
+            return [dict(row) for row in connection.execute(f"""SELECT uid, id
+                FROM ({SELECTED_TARGETS}) ORDER BY uid COLLATE BINARY, id COLLATE BINARY""")]
 
     def record_check(self, uid, id, metadata, checked_at, error=None, *, comment_observation=None):
         with transaction(self) as connection:
@@ -165,7 +170,8 @@ class CheckStore:
             f"json_extract(a.document, '$.{field}') AS {field}" for field in COMMENT_STATUS_FIELDS)
         if not connection.execute("SELECT 1 FROM identities WHERE uid = ?", (uid,)).fetchone():
             raise APIError("NOT_FOUND")
-        rows = connection.execute(f"""SELECT ids.id, c.last_checked_at, c.last_succeeded_at,
+        rows = connection.execute(f"""WITH selected AS ({SELECTED_TARGETS})
+            SELECT ids.id, c.last_checked_at, c.last_succeeded_at,
             c.check_status, CASE WHEN c.observed IS NOT NULL THEN c.observed
                 WHEN a.id IS NOT NULL THEN {ARCHIVE_SIGNALS} ELSE NULL END AS observed,
             c.revision, c.work, c.check_error, c.sync_error,
@@ -185,16 +191,15 @@ class CheckStore:
                 AND NOT EXISTS (SELECT 1 FROM root_comments r WHERE r.dynamic_id = a.id
                     AND json_extract(r.document, '$.work.media') IS NOT 'success')
                 THEN 'success' ELSE 'pending' END AS comment_media,
-            CASE WHEN t.id IS NOT NULL AND m.enabled = 1 AND m.mode = 'specified'
-                 THEN 1 ELSE 0 END AS active
+            CASE WHEN s.id IS NOT NULL THEN 1 ELSE 0 END AS active
             FROM (SELECT uid, id FROM targets WHERE uid = ? UNION
-                  SELECT uid, id FROM target_checks WHERE uid = ?) ids
-            LEFT JOIN target_checks c ON c.uid = ? AND c.id = ids.id
-            LEFT JOIN targets t ON t.uid = ? AND t.id = ids.id
-            LEFT JOIN monitors m ON m.uid = ?
+                  SELECT uid, id FROM target_checks WHERE uid = ? UNION
+                  SELECT uid, id FROM selected WHERE uid = ?) ids
+            LEFT JOIN target_checks c ON c.uid = ids.uid AND c.id = ids.id
+            LEFT JOIN selected s ON s.uid = ids.uid AND s.id = ids.id
             LEFT JOIN archives a ON a.uid = ids.uid AND a.id = ids.id
             ORDER BY ids.id COLLATE BINARY""",
-            (uid, uid, uid, uid, uid)).fetchall()
+            (uid, uid, uid)).fetchall()
         return [{"id": row["id"], "active": bool(row["active"]),
                  "last_checked_at": row["last_checked_at"], "last_succeeded_at": row["last_succeeded_at"],
                  "check_status": row["check_status"] or "unchecked",
@@ -214,10 +219,9 @@ class CheckStore:
 
     def pending_checks(self):
         with self.connection() as connection:
-            return [dict(row) for row in connection.execute("""SELECT c.uid, c.id
-                FROM target_checks c JOIN targets t ON t.uid = c.uid AND t.id = c.id
-                JOIN monitors m ON m.uid = c.uid
-                WHERE c.work = 'pending' AND m.enabled = 1 AND m.mode = 'specified'
+            return [dict(row) for row in connection.execute(f"""SELECT c.uid, c.id
+                FROM target_checks c JOIN ({SELECTED_TARGETS}) s ON s.uid = c.uid AND s.id = c.id
+                WHERE c.work = 'pending'
                 ORDER BY c.uid COLLATE BINARY, c.id COLLATE BINARY""")]
 
     def claim_check_work(self, uid, id):

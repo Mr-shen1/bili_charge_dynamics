@@ -1,4 +1,4 @@
-"""按 UP 保存发现尝试与最近可信结果；不修改目标或归档。"""
+"""按 UP 保存发现尝试；最近可信结果原子发布为近期窗口，不修改归档。"""
 
 import json
 from uuid import uuid4
@@ -112,6 +112,7 @@ class DiscoveryStore:
             "enabled": bool(row["enabled"]), "active": active, "status": status,
             "attempt": json.loads(row["attempt"]) if row["attempt"] else None,
             "trusted_result": trusted,
+            "current_ids": trusted["ids"] if active and trusted is not None else [],
             "retryable": active and status != "running" and (
                 status != "discovered" or trusted["recent_n"] != row["recent_n"]),
             "incomplete": status != "discovered" or trusted is None or trusted["recent_n"] != row["recent_n"],

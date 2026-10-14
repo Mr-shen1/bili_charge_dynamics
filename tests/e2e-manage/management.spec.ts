@@ -50,6 +50,14 @@ test('实际 API 保存两 UP 配置，服务重启和页面刷新后仍可读�
     await expect(star.getByText('尚无目标检查记录。', { exact: true })).toBeVisible();
     await expect(dawn.getByLabel('近期 N 条', { exact: true })).toHaveValue('23');
     await expect(dawn.getByText('监控：已启用', { exact: true })).toBeVisible();
+    const discoveryRead = page.waitForResponse(response => response.url().endsWith('/api/manage/ups/202/discovery'));
+    await dawn.getByRole('button', { name: '读取发现状态', exact: true }).click();
+    expect(await (await discoveryRead).json()).toMatchObject({
+      mode: 'recent', recent_n: 23, current_ids: [], trusted_result: null, status: 'undiscovered',
+    });
+    await expect(dawn.getByText('尚未开始发现。', { exact: true })).toBeVisible();
+    await expect(dawn.getByText('读取时已保存模式：近期 N 条；N：23；监控：已启用。', { exact: true })).toBeVisible();
+    await expect(dawn.getByText('当前无启用的近期目标；不表示历史归档已删除。', { exact: true })).toBeVisible();
     const stored = await (await fetch(`${apiUrl}/${largeUid}`)).json();
     expect(stored.monitor).toMatchObject({ mode: 'specified', recent_n: 17, enabled: false,
       last_checked_at: null, last_succeeded_at: null });
