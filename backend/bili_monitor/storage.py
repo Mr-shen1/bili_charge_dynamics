@@ -9,7 +9,8 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from .contracts import APIError
-from .checks import CheckStore, ACTIVE_TARGET, SELECTED_TARGETS
+from .checks import CheckStore
+from .selection import refresh_selections, selection_token, selection_matches
 from .discovery_state import DiscoveryStore
 from .comment_status import comment_status, utc_now
 from .media import reconcile_media, refresh_media_progress
@@ -80,7 +81,7 @@ class Store(CheckStore, DiscoveryStore):
             connection.execute("BEGIN IMMEDIATE")
             try:
                 version = connection.execute("PRAGMA user_version").fetchone()[0]
-                if version > 12:
+                if version > 13:
                     raise RuntimeError("Unsupported database schema version")
                 if version == 0:
                     connection.execute("""CREATE TABLE identities (
@@ -198,7 +199,14 @@ class Store(CheckStore, DiscoveryStore):
                         status TEXT NOT NULL CHECK(status IN ('running', 'discovered', 'failed')),
                         attempt TEXT NOT NULL, trusted_result TEXT, claim_token TEXT
                     )""")
-                connection.execute("PRAGMA user_version = 12")
+                if version < 13:
+                    connection.execute("""CREATE TABLE target_selections (
+                        uid TEXT NOT NULL REFERENCES identities(uid), id TEXT NOT NULL,
+                        token TEXT NOT NULL, PRIMARY KEY(uid, id)
+                    )""")
+                    for row in connection.execute("SELECT uid FROM monitors").fetchall():
+                        refresh_selections(connection, row[0])
+                connection.execute("PRAGMA user_version = 13")
                 connection.commit()
             except BaseException:
                 connection.rollback()
@@ -263,6 +271,7 @@ class Store(CheckStore, DiscoveryStore):
                     (uid, name, avatar_url),
                 )
                 connection.execute("INSERT INTO monitors (uid) VALUES (?)", (uid,))
+                refresh_selections(connection, uid)
                 connection.commit()
             except BaseException:
                 connection.rollback()
@@ -283,6 +292,10 @@ class Store(CheckStore, DiscoveryStore):
             )
             if result.rowcount == 0:
                 raise APIError("NOT_FOUND")
+            selection_changed = (previous["mode"] != mode or previous["enabled"] != enabled
+                                 or (mode == "recent" and previous["recent_n"] != recent_n))
+            if selection_changed:
+                refresh_selections(connection, uid, reset=True)
         return self.read(uid)[0]
 
     def targets(self, uid):
@@ -304,6 +317,7 @@ class Store(CheckStore, DiscoveryStore):
                 ).fetchone():
                     raise APIError("NOT_FOUND")
                 connection.execute("INSERT OR IGNORE INTO targets (uid, id) VALUES (?, ?)", (uid, id))
+                refresh_selections(connection, uid)
                 connection.commit()
             except BaseException:
                 connection.rollback()
@@ -311,18 +325,22 @@ class Store(CheckStore, DiscoveryStore):
         return {"id": id}
 
     def delete_target(self, uid, id):
-        with self.connection() as connection:
+        with self.connection() as connection, connection:
+            connection.execute("BEGIN IMMEDIATE")
             if not connection.execute("SELECT 1 FROM identities WHERE uid = ?", (uid,)).fetchone():
                 raise APIError("NOT_FOUND")
             connection.execute("DELETE FROM targets WHERE uid = ? AND id = ?", (uid, id))
+            refresh_selections(connection, uid)
 
-    def selected_targets(self, uid):
+    def selected_targets(self, uid, *, with_selection=False):
         saved = self.read(uid)
         if not saved:
             raise APIError("NOT_FOUND")
+        # 与 enabled_targets/pending_checks 一致，默认保留 Store 列表契约。
+        columns = "id, token AS selection" if with_selection else "id"
         with self.connection() as connection:
             return [dict(row) for row in connection.execute(
-                f"SELECT id FROM ({SELECTED_TARGETS}) WHERE uid = ? ORDER BY id COLLATE BINARY", (uid,)
+                f"SELECT {columns} FROM target_selections WHERE uid = ? ORDER BY id COLLATE BINARY", (uid,)
             )]
 
     def read_archive(self, id):
@@ -388,7 +406,7 @@ class Store(CheckStore, DiscoveryStore):
                 connection.rollback()
                 raise
 
-    def claim_archive(self, uid, id):
+    def claim_archive(self, uid, id, *, selection=None):
         identity = self.read(uid)[0]
         document = {
             "id": id,
@@ -408,7 +426,8 @@ class Store(CheckStore, DiscoveryStore):
             connection.execute("BEGIN IMMEDIATE")
             try:
                 # 已选集合与领取之间可能停止/删除；提交前重新核验配置与关联。
-                if not connection.execute(ACTIVE_TARGET, (uid, id)).fetchone():
+                current = selection_token(connection, uid, id)
+                if not selection_matches(current, selection):
                     connection.commit()
                     return None
                 row = connection.execute("SELECT uid FROM archives WHERE id = ?", (id,)).fetchone()
@@ -809,3 +828,4 @@ class Store(CheckStore, DiscoveryStore):
                 raise APIError("NOT_FOUND")
             self.stop_discovery(connection, uid)
             connection.execute("DELETE FROM monitors WHERE uid = ?", (uid,))
+            refresh_selections(connection, uid)

@@ -9,12 +9,12 @@ from .media import sync_media
 
 
 async def initialize(store, client, uid, downloader=None, uploader=None):
-    targets = await to_thread.run_sync(store.selected_targets, uid)
+    targets = await to_thread.run_sync(lambda: store.selected_targets(uid, with_selection=True))
     checks = {item["id"]: item["observed"] for item in await to_thread.run_sync(store.read_checks, uid)}
     result = {"processed": 0, "succeeded": 0, "failed": 0}
     for target in targets:
         id = target["id"]
-        generation = await to_thread.run_sync(store.claim_archive, uid, id)
+        generation = await to_thread.run_sync(lambda: store.claim_archive(uid, id, selection=target["selection"]))
         if generation is None:
             continue
         result["processed"] += 1

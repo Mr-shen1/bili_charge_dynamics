@@ -24,18 +24,18 @@ def test_empty_unversioned_database_migrates_and_reopens(tmp_path):
     with client_for(path) as client:
         assert client.get(BASE).json() == saved
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 12
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 13
 
 
 def test_future_database_refuses_startup_without_downgrading(tmp_path, caplog):
     path = tmp_path / "FICTIONAL_SECRET_FUTURE.sqlite"
     with sqlite3.connect(path) as database:
-        database.execute("PRAGMA user_version = 13")
+        database.execute("PRAGMA user_version = 14")
     with pytest.raises(RuntimeError, match="Unsupported database schema version"):
         with client_for(path):
             pytest.fail("A future schema must not serve requests")
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 13
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 14
     assert "FICTIONAL_SECRET" not in caplog.text
 
 
@@ -190,6 +190,7 @@ def test_v11_discovery_migration_preserves_config_archive_and_pending_checks(tmp
     # 固定旧版本输入，不将schema introspection当用户结果断言。
     with sqlite3.connect(path) as database:
         database.execute("DROP TABLE recent_discoveries")
+        database.execute("DROP TABLE target_selections")
         database.execute("PRAGMA user_version = 11")
     for _ in range(2):
         with client_for(path) as api:
@@ -400,6 +401,7 @@ def test_real_v9_configuration_and_archive_migrate_to_checks_without_fabricating
     with sqlite3.connect(path) as database:
         database.execute("DROP TABLE target_checks")
         database.execute("DROP TABLE recent_discoveries")
+        database.execute("DROP TABLE target_selections")
         database.execute("PRAGMA user_version = 9")
     with client_for(path) as client:
         check = get_checks(client)[0]
@@ -409,7 +411,7 @@ def test_real_v9_configuration_and_archive_migrate_to_checks_without_fabricating
         assert current["comment_sync"] == check
         assert archive_content(current) == saved
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 12
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 13
         assert database.execute("PRAGMA foreign_key_check").fetchall() == []
     reopened = Store(path)
     assert reopened.record_check(UID, "123", {}, CHECKED_AT, None)
@@ -468,6 +470,7 @@ def test_v9_check_migration_failure_rolls_back_version_and_can_retry(tmp_path):
         database.execute("DROP TABLE target_checks")
         database.execute("CREATE TABLE target_checks (fixture TEXT)")
         database.execute("DROP TABLE recent_discoveries")
+        database.execute("DROP TABLE target_selections")
         database.execute("PRAGMA user_version = 9")
     with pytest.raises(RuntimeError, match="Database initialization failed"):
         with client_for(path):
@@ -478,4 +481,4 @@ def test_v9_check_migration_failure_rolls_back_version_and_can_retry(tmp_path):
     with client_for(path) as client:
         assert get_checks(client)[0]["check_status"] == "unchecked"
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 12
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 13

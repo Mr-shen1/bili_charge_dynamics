@@ -6,17 +6,9 @@ from uuid import uuid4
 
 from .contracts import APIError
 from .comment_status import COMMENT_STATUS_FIELDS
+from .selection import SELECTED_TARGETS, selection_token, selection_matches
 
 
-# 可信结果的整轮提交即窗口发布。模式分支互斥，不能把近期成员写入指定关联。
-SELECTED_TARGETS = """SELECT t.uid, t.id FROM targets t JOIN monitors m ON m.uid = t.uid
-    WHERE m.enabled = 1 AND m.mode = 'specified'
-    UNION ALL
-    SELECT d.uid, member.value AS id FROM recent_discoveries d
-    JOIN monitors m ON m.uid = d.uid
-    JOIN json_each(d.trusted_result, '$.ids') member
-    WHERE m.enabled = 1 AND m.mode = 'recent'"""
-ACTIVE_TARGET = f"SELECT 1 FROM ({SELECTED_TARGETS}) WHERE uid = ? AND id = ?"
 ARCHIVE_SIGNALS = """json_object(
     'author', json_extract(a.document, '$.author'),
     'published_at', json_extract(a.document, '$.published_at'),
@@ -106,14 +98,22 @@ def archive_complete(connection, uid, id, observed):
 class CheckStore:
     """Store 的检查能力，使用同一 SQLite 连接边界与身份生命周期。"""
 
-    def enabled_targets(self):
+    def enabled_targets(self, *, with_selection=False):
+        # 默认保留 Store 既有返回形状；采集快照附内部资格，HTTP 不暴露令牌。
+        columns = "uid, id, token AS selection" if with_selection else "uid, id"
         with self.connection() as connection:
-            return [dict(row) for row in connection.execute(f"""SELECT uid, id
-                FROM ({SELECTED_TARGETS}) ORDER BY uid COLLATE BINARY, id COLLATE BINARY""")]
+            return [dict(row) for row in connection.execute(f"""SELECT {columns}
+                FROM target_selections ORDER BY uid COLLATE BINARY, id COLLATE BINARY""")]
 
-    def record_check(self, uid, id, metadata, checked_at, error=None, *, comment_observation=None):
+    def check_selection(self, uid, id):
+        with self.connection() as connection:
+            return selection_token(connection, uid, id)
+
+    def record_check(self, uid, id, metadata, checked_at, error=None, *, comment_observation=None,
+                     selection=None):
         with transaction(self) as connection:
-            if not connection.execute(ACTIVE_TARGET, (uid, id)).fetchone():
+            current = selection_token(connection, uid, id)
+            if not selection_matches(current, selection):
                 return False
             row = connection.execute("SELECT * FROM target_checks WHERE uid = ? AND id = ?", (uid, id)).fetchone()
             if row:
@@ -217,16 +217,18 @@ class CheckStore:
                  **{field: row[field] for field in COMMENT_STATUS_FIELDS},
                  "parts": check_parts(row)} for row in rows]
 
-    def pending_checks(self):
+    def pending_checks(self, *, with_selection=False):
+        columns = "c.uid, c.id, s.token AS selection" if with_selection else "c.uid, c.id"
         with self.connection() as connection:
-            return [dict(row) for row in connection.execute(f"""SELECT c.uid, c.id
-                FROM target_checks c JOIN ({SELECTED_TARGETS}) s ON s.uid = c.uid AND s.id = c.id
+            return [dict(row) for row in connection.execute(f"""SELECT {columns}
+                FROM target_checks c JOIN target_selections s ON s.uid = c.uid AND s.id = c.id
                 WHERE c.work = 'pending'
                 ORDER BY c.uid COLLATE BINARY, c.id COLLATE BINARY""")]
 
-    def claim_check_work(self, uid, id):
+    def claim_check_work(self, uid, id, *, selection=None):
         with transaction(self) as connection:
-            if not connection.execute(ACTIVE_TARGET, (uid, id)).fetchone():
+            current = selection_token(connection, uid, id)
+            if not selection_matches(current, selection):
                 return None
             row = connection.execute("""SELECT revision, observed FROM target_checks
                 WHERE uid = ? AND id = ? AND work = 'pending'""", (uid, id)).fetchone()
@@ -235,14 +237,19 @@ class CheckStore:
             token = uuid4().hex
             connection.execute("UPDATE target_checks SET work = 'running', claim_token = ? WHERE uid = ? AND id = ?",
                                (token, uid, id))
-            return {"revision": row["revision"], "observed": json.loads(row["observed"]), "token": token}
+            return {"revision": row["revision"], "observed": json.loads(row["observed"]), "token": token,
+                    "selection": current}
 
-    def finish_check_work(self, uid, id, revision, succeeded, finished_at, error=None, *, token):
+    def finish_check_work(self, uid, id, revision, succeeded, finished_at, error=None, *, token,
+                          selection=None):
+        # 旧 Store 的 finish(None) 可释放失活目标的领取，跳过代次校验；不同于
+        # selection_matches(None) 仍要求当前入选。Collector 必传领取资格，不能省略。
         with transaction(self) as connection:
             row = connection.execute("SELECT revision, work, claim_token FROM target_checks WHERE uid = ? AND id = ?", (uid, id)).fetchone()
             if row is None or row["work"] != "running" or row["claim_token"] != token:
                 return False
-            complete = succeeded and row["revision"] == revision
+            complete = (succeeded and row["revision"] == revision
+                        and (selection is None or selection_token(connection, uid, id) == selection))
             connection.execute("""UPDATE target_checks SET work = ?, claim_token = NULL,
                 last_succeeded_at = CASE WHEN ? THEN ? ELSE last_succeeded_at END,
                 sync_error = ? WHERE uid = ? AND id = ?""",

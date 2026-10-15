@@ -6,6 +6,7 @@ from uuid import uuid4
 from .comment_status import utc_now
 
 from .contracts import APIError
+from .selection import refresh_selections
 
 
 class DiscoveryStore:
@@ -76,6 +77,8 @@ class DiscoveryStore:
                 trusted_result = COALESCE(?, trusted_result) WHERE uid = ?""",
                 ("discovered" if trusted is not None else "failed", json.dumps(attempt), trusted, uid),
             )
+            if trusted is not None:
+                refresh_selections(connection, uid)
             return True
 
     def stop_discovery(self, connection, uid):
