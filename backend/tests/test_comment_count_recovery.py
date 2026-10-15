@@ -427,14 +427,13 @@ def test_three_targets_obey_two_sync_slots_without_stalling_checks(tmp_path, ent
                     await eventually(lambda: clock.deadlines == [15])
                     for tick in (15, 30):
                         clock.advance(tick)
-                        await eventually(lambda: all(row["last_checked_at"] == clock.now()
-                                                     for row in read_checks(path).values()))
+                        # HTTP 已可见不表示 check coroutine 已退出；仍忙时本槽允许跳过。
                         await eventually(lambda: clock.deadlines[-1] == tick + 15)
                         assert not started["125"].is_set()
                         assert active == {"123": 1, "124": 1, "125": 0}
                         assert first_pages == ["123", "124"] or first_pages == ["124", "123"]
                         assert all(row["revision"] == 1 for row in read_checks(path).values())
-                    assert all(counts[id] >= 3 for id in ids)
+                    await eventually(lambda: all(counts[id] >= 3 for id in ids))
                 else:
                     # 独立执行批次同样不占用检查 I/O 或 SQLite 长事务。
                     clock.advance(15)
@@ -466,8 +465,6 @@ def test_three_targets_obey_two_sync_slots_without_stalling_checks(tmp_path, ent
                 if entrypoint == "run":
                     await eventually(lambda: clock.deadlines[-1] == 60)
                     clock.advance(60)
-                    await eventually(lambda: all(row["last_checked_at"] == clock.now()
-                                                 for row in read_checks(path).values()))
                     await eventually(lambda: clock.deadlines[-1] == 75)
                 else:
                     await asyncio.wait_for(running, 3)

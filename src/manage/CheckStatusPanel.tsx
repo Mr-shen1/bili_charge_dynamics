@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { displayTime } from '../dynamics/DynamicContent';
 import type { ManagementApi, Monitor } from './managementApi';
-import type { CheckError, TargetCheck } from '../data/checkStatus';
+import type { CheckError, MediaSyncError, TargetCheck } from '../data/checkStatus';
 import { commentSyncErrors as commentErrors } from '../data/commentSyncErrors';
 import { commentProgress, type CommentProgress } from '../data/commentProgress';
 
@@ -13,6 +13,10 @@ const progressLabels: Record<CommentProgress, string> = { unchecked: '未检查'
 const errors: Record<CheckError, string> = {
   SOURCE_UNAVAILABLE: '来源暂不可用。', SIGNAL_INVALID: '编辑信号解析失败；保留已有可信值。',
   SYNC_INCOMPLETE: '同步未全部完成，将在固定节拍重试。',
+};
+const mediaErrors: Record<MediaSyncError, string> = {
+  MEDIA_DOWNLOAD_FAILED: '图片下载失败；保留已有归档，将在固定节拍重试。',
+  MEDIA_UPLOAD_FAILED: '图片上传失败；保留已有归档，将在固定节拍重试。',
 };
 function CheckStatus({ check }: { check: TargetCheck }) {
   const partial = Object.values(check.parts).some(state => state === 'success');
@@ -43,10 +47,16 @@ function CheckStatus({ check }: { check: TargetCheck }) {
     <p>正文{partLabels[check.parts.text]}；动态图{partLabels[check.parts.media]}；评论{partLabels[check.parts.comments]}；回复{partLabels[check.parts.replies]}；评论图{partLabels[check.parts.comment_media]}。</p>
     <p>最近检查：{check.lastCheckedAt ? displayTime(check.lastCheckedAt) : '未检查'}</p>
     <p>实际整轮成功：{check.lastSucceededAt ? displayTime(check.lastSucceededAt) : '尚未成功'}</p>
+    <p>正文最近成功：{check.textLastSucceededAt ? displayTime(check.textLastSucceededAt) : '—'}</p>
+    <p>动态图最近成功：{check.mediaLastSucceededAt ? displayTime(check.mediaLastSucceededAt) : '—'}</p>
+    <p>评论图最近成功：{check.commentMediaLastSucceededAt ? displayTime(check.commentMediaLastSucceededAt) : '—'}</p>
     <p>根评论最近成功：{check.rootCommentsLastSucceededAt ? displayTime(check.rootCommentsLastSucceededAt) : '—'}</p>
     <p>回复最近成功：{check.repliesLastSucceededAt ? displayTime(check.repliesLastSucceededAt) : '—'}</p>
     <p>评论整轮最近成功：{check.commentsLastSucceededAt ? displayTime(check.commentsLastSucceededAt) : '—'}</p>
     <p className="manage-muted">历史分项成功时间不代表当前观察已完成；未知时间不补造。</p>
+    <p className="manage-muted">媒体错误来自实际已尝试的归档；无错误记录不代表图片已完成。</p>
+    {[...new Set(check.mediaErrors)].map(error => <p key={error} className="manage-state-error" role="status">动态图：{mediaErrors[error]}</p>)}
+    {[...new Set(check.commentMediaErrors)].map(error => <p key={error} className="manage-state-error" role="status">评论图：{mediaErrors[error]}</p>)}
     {check.rootCommentsError && <p className="manage-state-error" role="status">根评论：{commentErrors[check.rootCommentsError]}</p>}
     {check.repliesError && <p className="manage-state-error" role="status">回复：{commentErrors[check.repliesError]}</p>}
     {check.commentsError && <p className="manage-state-error" role="status">评论整轮：{commentErrors[check.commentsError]}</p>}

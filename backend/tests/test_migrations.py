@@ -239,6 +239,8 @@ def test_checks_unchecked_http_is_read_only_and_rejects_queries(tmp_path):
             {"id": id, "active": True, "last_checked_at": None, "last_succeeded_at": None,
              "check_status": "unchecked", "observed": {}, "revision": 0,
              "work": "pending", "check_error": None, "sync_error": None,
+             "text_last_succeeded_at": None, "media_last_succeeded_at": None, "comment_media_last_succeeded_at": None,
+             "media_errors": [], "comment_media_errors": [],
              "synced_version": None, "synced_comment_count": None,
              "local_comment_count": None, "local_reply_count": None, "comments_last_attempt": "pending",
              "root_comments_last_attempt": "pending", "replies_last_attempt": "pending",

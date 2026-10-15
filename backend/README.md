@@ -69,6 +69,14 @@ checks HTTP 增量返回 `observed.comment_count_status`、`synced_comment_count
 
 专项：`uv run pytest backend/tests/test_comment_sync_status.py -q`。真实 SQLite、原始虚构协议、受控 Clock、Collector 与 HTTP 覆盖部分失败、无新信号重试、未知/零、受限正文、在途观察、成功时间及冻结旧页。状态/客户端契约见 [采集契约](../docs/backend/api/collector-api.md#26-评论分项状态与时间)，自动化和实际 API 页面穿透证据见 [26 记录](../.scratch/backend-integration/acceptance-26.md)。不宣称普遍来源计数口径、实时/完整来源、真实权限、OSS 或正式设备已验证；全媒体与聚合由 #30 收口。
 
+## 30 分页请求间隔
+
+API 的显式同步和正式采集进程使用共享 `PacedSourceTransport`：每次动态 feed 请求前异步等待随机 **0.8–1.5 秒**，每次根评论／楼中楼页请求前等待 **0.3–0.4 秒**，包括首页、翻页和空尾页复查。范围参考 ignored 示例脚本，但运行不导入该脚本，也不接入飞书。
+
+同一来源客户端的分页共享等待锁，避免多 UP／目标同时突发；仅串行化发送前的等待，不锁网络响应或 SQLite。独立 HTML／detail／评论计数等信号请求不排这个队，固定 15 秒调度、busy-skip 与有限并发规则不变；它不是自动退避、重试策略或不再限流的保证。API 和采集进程各有独立节奏，不提供跨进程／跨主机限速保证，手工写接口与采集进程并行使用仍可能触发上游限制。
+
+测试注入的 transport 由调用方管理时间；可用 `PacedSourceTransport(httpx.MockTransport(...), sleep=...)` 保留节奏逻辑并替换外部时间，不让现有 fixture 等待真实秒数。专项验证包括正式 API／采集入口装配、完整分页与空尾页复查、并发信号读取及取消：`uv run pytest backend/tests/test_source_pacing.py -q`。这只是无凭据自动化，不证明真实上游长期可用。
+
 ## 应用工厂与传输边界
 
 ```python

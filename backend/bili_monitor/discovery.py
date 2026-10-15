@@ -3,6 +3,7 @@
 import httpx
 
 from .identifiers import is_valid_id
+from .source_endpoints import FEED_URL
 
 
 class DiscoveryError(Exception):
@@ -75,7 +76,7 @@ async def _discover(client, uid, n, should_continue, on_progress):
             params["offset"] = offset
         try:
             response = await client.get(
-                "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space", params=params,
+                FEED_URL, params=params,
             )
             response.raise_for_status()
         except httpx.HTTPError:

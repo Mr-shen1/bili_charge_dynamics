@@ -4,6 +4,7 @@ from anyio import to_thread
 
 from .identifiers import is_valid_id
 from .source import media_sources, published_time, safe_url
+from .source_endpoints import ROOT_COMMENTS_URL
 
 
 def nonnegative(value):
@@ -79,7 +80,7 @@ async def fetch_comment_count(client, locator):
 
 
 async def fetch_root_page(client, dynamic_id, locator, number):
-    response = await client.get("https://api.bilibili.com/x/v2/reply", params={
+    response = await client.get(ROOT_COMMENTS_URL, params={
         "oid": locator["oid"], "type": locator["type"], "pn": number, "ps": 20, "sort": 0,
     })
     response.raise_for_status()

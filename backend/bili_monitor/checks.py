@@ -176,6 +176,17 @@ class CheckStore:
                 WHEN a.id IS NOT NULL THEN {ARCHIVE_SIGNALS} ELSE NULL END AS observed,
             c.revision, c.work, c.check_error, c.sync_error,
             json_extract(a.document, '$.work') AS parts,
+            json_extract(a.document, '$.text_last_succeeded_at') AS text_last_succeeded_at,
+            json_extract(a.document, '$.media_last_succeeded_at') AS media_last_succeeded_at,
+            json_extract(a.document, '$.comment_media_last_succeeded_at') AS comment_media_last_succeeded_at,
+            (SELECT json_group_array(DISTINCT json_extract(m.value, '$.error'))
+                FROM json_each(a.document, '$.media') m
+                WHERE json_extract(m.value, '$.status') = 'failed'
+                AND json_extract(m.value, '$.error') IN ('MEDIA_DOWNLOAD_FAILED', 'MEDIA_UPLOAD_FAILED')) AS media_errors,
+            (SELECT json_group_array(DISTINCT json_extract(m.value, '$.error'))
+                FROM root_comments r, json_each(r.document, '$.media') m
+                WHERE r.dynamic_id = ids.id AND json_extract(m.value, '$.status') = 'failed'
+                AND json_extract(m.value, '$.error') IN ('MEDIA_DOWNLOAD_FAILED', 'MEDIA_UPLOAD_FAILED')) AS comment_media_errors,
             json_extract(a.document, '$.synced_version') AS synced_version,
             json_extract(a.document, '$.media_version') AS media_version,
             json_extract(a.document, '$.synced_comment_count') AS synced_comment_count,
@@ -206,6 +217,11 @@ class CheckStore:
                  "observed": json.loads(row["observed"]) if row["observed"] else {},
                  "revision": row["revision"] or 0, "work": row["work"] or "pending",
                  "check_error": row["check_error"], "sync_error": row["sync_error"],
+                 "text_last_succeeded_at": row["text_last_succeeded_at"],
+                 "media_last_succeeded_at": row["media_last_succeeded_at"],
+                 "comment_media_last_succeeded_at": row["comment_media_last_succeeded_at"],
+                 "media_errors": sorted(json.loads(row["media_errors"])),
+                 "comment_media_errors": sorted(json.loads(row["comment_media_errors"])),
                  "synced_version": row["synced_version"],
                  "synced_comment_count": row["synced_comment_count"],
                  "local_comment_count": row["local_comment_count"], "local_reply_count": row["local_reply_count"],

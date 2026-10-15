@@ -4,6 +4,7 @@ import { isValidId } from './identifiers';
 
 export type CheckError = 'SOURCE_UNAVAILABLE' | 'SIGNAL_INVALID' | 'SYNC_INCOMPLETE';
 export type CommentSyncError = 'ROOT_COMMENTS_FAILED' | 'REPLIES_FAILED' | 'COMMENT_LOCATOR_UNCONFIRMED';
+export type MediaSyncError = 'MEDIA_DOWNLOAD_FAILED' | 'MEDIA_UPLOAD_FAILED';
 export interface TargetCheck {
   readonly id: string;
   readonly active: boolean;
@@ -12,6 +13,11 @@ export interface TargetCheck {
   readonly revision: number;
   readonly lastCheckedAt: string | null;
   readonly lastSucceededAt: string | null;
+  readonly textLastSucceededAt: string | null;
+  readonly mediaLastSucceededAt: string | null;
+  readonly commentMediaLastSucceededAt: string | null;
+  readonly mediaErrors: readonly MediaSyncError[];
+  readonly commentMediaErrors: readonly MediaSyncError[];
   readonly observedVersion: string | null;
   readonly syncedVersion: string | null;
   readonly editStatus: 'observed' | 'unknown' | 'error';
@@ -36,6 +42,9 @@ function workState(value: unknown): value is ArchiveWorkState {
 }
 function errorCode(value: unknown): value is CheckError | null {
   return value === null || value === 'SOURCE_UNAVAILABLE' || value === 'SIGNAL_INVALID' || value === 'SYNC_INCOMPLETE';
+}
+function mediaErrorCodes(value: unknown): value is MediaSyncError[] {
+  return Array.isArray(value) && value.every(code => code === 'MEDIA_DOWNLOAD_FAILED' || code === 'MEDIA_UPLOAD_FAILED');
 }
 function count(value: unknown): value is number | null {
   return value === null || typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
@@ -63,6 +72,13 @@ export function parseCheck(value: unknown, timestamp: (value: unknown) => value 
     || commentCountStatus !== null && commentCountStatus !== 'observed' && commentCountStatus !== 'failed'
     || commentsLastAttempt !== null && commentsLastAttempt !== 'pending' && commentsLastAttempt !== 'success'
       && commentsLastAttempt !== 'failed' && commentsLastAttempt !== 'unconfirmed') return null;
+  const textLastSucceededAt = value.text_last_succeeded_at ?? null;
+  const mediaLastSucceededAt = value.media_last_succeeded_at ?? null;
+  const commentMediaLastSucceededAt = value.comment_media_last_succeeded_at ?? null;
+  const mediaErrors = value.media_errors === undefined ? [] : value.media_errors;
+  const commentMediaErrors = value.comment_media_errors === undefined ? [] : value.comment_media_errors;
+  if (!timestamp(textLastSucceededAt) || !timestamp(mediaLastSucceededAt) || !timestamp(commentMediaLastSucceededAt)
+    || !mediaErrorCodes(mediaErrors) || !mediaErrorCodes(commentMediaErrors)) return null;
   const rootCommentsLastSucceededAt = value.root_comments_last_succeeded_at ?? null;
   const repliesLastSucceededAt = value.replies_last_succeeded_at ?? null;
   const commentsLastSucceededAt = value.comments_last_succeeded_at ?? null;
@@ -84,6 +100,7 @@ export function parseCheck(value: unknown, timestamp: (value: unknown) => value 
     || work !== 'pending' && work !== 'running' && work !== 'complete') return null;
   return { id: value.id, active: value.active, checkStatus, work, revision: value.revision,
     lastCheckedAt: value.last_checked_at, lastSucceededAt: value.last_succeeded_at,
+    textLastSucceededAt, mediaLastSucceededAt, commentMediaLastSucceededAt, mediaErrors, commentMediaErrors,
     observedVersion: observed.observed_version ?? null, syncedVersion: value.synced_version, editStatus,
     sourceCommentCount, localCommentCount, localReplyCount, commentCountStatus, commentsLastAttempt, syncedCommentCount,
     rootCommentsLastSucceededAt, repliesLastSucceededAt, commentsLastSucceededAt, rootCommentsError, repliesError, commentsError,

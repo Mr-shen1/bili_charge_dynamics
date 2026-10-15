@@ -64,6 +64,27 @@ describe('目标检查生产映射', () => {
     ] });
     expect(JSON.stringify(result)).not.toContain('SECRET_TOKEN');
   });
+  it('正文和两类媒体实际成功时间、固定错误独立映射，旧响应缺字段为 null 和空数组', async () => {
+    const result = await createManagementApi(async () => Response.json({ checks: [
+      { ...check, last_succeeded_at: '2025-06-01T02:01:00Z' },
+      { ...check, id: '2', text_last_succeeded_at: '2025-06-01T02:02:00Z',
+        media_last_succeeded_at: '2025-06-01T10:03:00+08:00', comment_media_last_succeeded_at: null,
+        media_errors: ['MEDIA_DOWNLOAD_FAILED', 'MEDIA_UPLOAD_FAILED'], comment_media_errors: ['MEDIA_UPLOAD_FAILED'],
+        error_message: 'SECRET_TOKEN https://origin.invalid/?signature=secret' },
+      { ...check, id: '3', text_last_succeeded_at: null, media_last_succeeded_at: null,
+        comment_media_last_succeeded_at: '2025-06-01T02:04:00Z', media_errors: [], comment_media_errors: [] },
+    ] })).listChecks({ uid: '123', signal });
+    expect(result).toMatchObject({ status: 'success', data: [
+      { textLastSucceededAt: null, mediaLastSucceededAt: null, commentMediaLastSucceededAt: null,
+        mediaErrors: [], commentMediaErrors: [] },
+      { textLastSucceededAt: '2025-06-01T02:02:00Z', mediaLastSucceededAt: '2025-06-01T10:03:00+08:00',
+        commentMediaLastSucceededAt: null, mediaErrors: ['MEDIA_DOWNLOAD_FAILED', 'MEDIA_UPLOAD_FAILED'],
+        commentMediaErrors: ['MEDIA_UPLOAD_FAILED'] },
+      { textLastSucceededAt: null, mediaLastSucceededAt: null, commentMediaLastSucceededAt: '2025-06-01T02:04:00Z',
+        mediaErrors: [], commentMediaErrors: [] },
+    ] });
+    expect(JSON.stringify(result)).not.toMatch(/SECRET_TOKEN|origin\.invalid|signature/);
+  });
   it('管理页展示分项及较新版本待同步，手动读取不执行同步', async () => {
     const user = userEvent.setup();
     let current: unknown = check;
@@ -206,6 +227,56 @@ describe('目标检查生产映射', () => {
     expect(document.body).not.toHaveTextContent('SECRET_TOKEN');
     expect(document.body).not.toHaveTextContent('<script>');
   });
+  it('管理页展示真实正文和媒体分项时间与固定错误，无变化和重读不伪造成功', async () => {
+    const user = userEvent.setup();
+    let current: unknown = { ...check, last_succeeded_at: '2025-06-01T02:01:00Z' };
+    const api = createManagementApi(async (url, init) => {
+      expect(init.method).toBe('GET');
+      expect(url.startsWith('/api/manage/')).toBe(true);
+      return url.endsWith('/checks') ? Response.json({ checks: [current] })
+        : Response.json({ ups: [{ ...up, monitor: { ...up.monitor, mode: 'recent' } }] });
+    });
+    render(<MemoryRouter initialEntries={['/manage']}><App reader={reader} manageApi={api} /></MemoryRouter>);
+    await user.click(await screen.findByRole('button', { name: '读取检查状态' }));
+    const status = within(await screen.findByRole('region', { name: `动态 ${check.id} 检查状态` }));
+    expect(status.getByText('正文最近成功：—')).toBeInTheDocument();
+    expect(status.getByText('动态图最近成功：—')).toBeInTheDocument();
+    expect(status.getByText('评论图最近成功：—')).toBeInTheDocument();
+    const attempted = { ...check, text_last_succeeded_at: '2025-06-01T01:10:00Z',
+      media_last_succeeded_at: '2025-06-01T09:20:00+08:00', comment_media_last_succeeded_at: '2025-06-01T01:30:00Z',
+      parts: { ...check.parts, text: 'success', media: 'failed', comment_media: 'failed' },
+      media_errors: ['MEDIA_DOWNLOAD_FAILED', 'MEDIA_UPLOAD_FAILED'],
+      comment_media_errors: ['MEDIA_DOWNLOAD_FAILED', 'MEDIA_UPLOAD_FAILED'],
+      error_message: 'SECRET_TOKEN https://origin.invalid/?signature=secret <script>' };
+    current = attempted;
+    await user.click(screen.getByRole('button', { name: '重新读取检查状态' }));
+    expect(await status.findByText('正文最近成功：2025-06-01 09:10:00')).toBeInTheDocument();
+    expect(status.getByText('动态图最近成功：2025-06-01 09:20:00')).toBeInTheDocument();
+    expect(status.getByText('评论图最近成功：2025-06-01 09:30:00')).toBeInTheDocument();
+    for (const part of ['动态图', '评论图']) {
+      expect(status.getByText(`${part}：图片下载失败；保留已有归档，将在固定节拍重试。`)).toBeInTheDocument();
+      expect(status.getByText(`${part}：图片上传失败；保留已有归档，将在固定节拍重试。`)).toBeInTheDocument();
+    }
+    expect(status.getByText('部分完成')).toBeInTheDocument();
+    expect(status.getByText('实际整轮成功：尚未成功')).toBeInTheDocument();
+    expect(status.getByText('历史分项成功时间不代表当前观察已完成；未知时间不补造。')).toBeInTheDocument();
+    expect(status.getByText('媒体错误来自实际已尝试的归档；无错误记录不代表图片已完成。')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(/SECRET_TOKEN|origin\.invalid|signature|<script>|MEDIA_DOWNLOAD_FAILED|MEDIA_UPLOAD_FAILED/);
+    current = { ...attempted, check_status: 'unchanged', last_checked_at: '2025-06-01T03:00:00Z' };
+    await user.click(screen.getByRole('button', { name: '重新读取检查状态' }));
+    expect(await status.findByText('最近检查：2025-06-01 11:00:00')).toBeInTheDocument();
+    expect(status.getByText('正文最近成功：2025-06-01 09:10:00')).toBeInTheDocument();
+    expect(status.getByText('动态图最近成功：2025-06-01 09:20:00')).toBeInTheDocument();
+    expect(status.getByText('评论图最近成功：2025-06-01 09:30:00')).toBeInTheDocument();
+    current = { ...attempted, media_errors: [], comment_media_errors: [],
+      parts: { ...attempted.parts, media: 'pending', comment_media: 'pending' } };
+    await user.click(screen.getByRole('button', { name: '重新读取检查状态' }));
+    expect(await status.findByText('正文已保存；动态图待处理；评论已保存；回复已保存；评论图待处理。')).toBeInTheDocument();
+    expect(status.queryByText(/图片下载失败|图片上传失败/)).not.toBeInTheDocument();
+    expect(status.getByText('部分完成')).toBeInTheDocument();
+    expect(status.getByText('动态图最近成功：2025-06-01 09:20:00')).toBeInTheDocument();
+    expect(status.getByText('评论图最近成功：2025-06-01 09:30:00')).toBeInTheDocument();
+  });
   it('未检查、未知信号、失败与停用记录不冒充成功，错误只显示固定提示', async () => {
     const user = userEvent.setup();
     const api = createManagementApi(async url => url.endsWith('/checks') ? Response.json({ checks: [
@@ -333,6 +404,27 @@ describe('目标检查生产映射', () => {
       rootCommentsError: 'COMMENT_LOCATOR_UNCONFIRMED', repliesError: null, commentsError: 'COMMENT_LOCATOR_UNCONFIRMED',
       rootCommentsLastSucceededAt: null, repliesLastSucceededAt: null, commentsLastSucceededAt: null,
     }] });
+  });
+  it('新增分项时间严格校验，两类媒体错误只接受白名单数组且拒绝 null 和任意原文', async () => {
+    for (const field of ['text_last_succeeded_at', 'media_last_succeeded_at', 'comment_media_last_succeeded_at']) {
+      for (const value of ['2025-02-30T02:00:00Z', '2025-06-01T02:00:00', 'SECRET_TOKEN', 0, true, {}, []]) {
+        const result = await createManagementApi(async () => Response.json({ checks: [{ ...check, [field]: value }] }))
+          .listChecks({ uid: '123', signal });
+        expect(result).toEqual({ status: 'error', message: '管理接口响应异常，请重试。' });
+        expect(JSON.stringify(result)).not.toContain('SECRET_TOKEN');
+      }
+    }
+    for (const field of ['media_errors', 'comment_media_errors']) {
+      for (const value of [null, 'MEDIA_UPLOAD_FAILED', 0, false, {}, ['SECRET_TOKEN'], ['SOURCE_UNAVAILABLE'],
+        ['SYNC_INCOMPLETE'], ['ROOT_COMMENTS_FAILED'], ['REPLIES_FAILED'], ['COMMENT_LOCATOR_UNCONFIRMED'],
+        ['MEDIA_DOWNLOAD_FAILED', 'SECRET_TOKEN'], [null], [true], [{}], [['MEDIA_UPLOAD_FAILED']],
+        ['https://origin.invalid/?signature=SECRET_TOKEN'], ['__proto__'], ['constructor']]) {
+        const result = await createManagementApi(async () => Response.json({ checks: [{ ...check, [field]: value }] }))
+          .listChecks({ uid: '123', signal });
+        expect(result).toEqual({ status: 'error', message: '管理接口响应异常，请重试。' });
+        expect(JSON.stringify(result)).not.toMatch(/SECRET_TOKEN|origin\.invalid|signature/);
+      }
+    }
   });
   it('拒绝非法、重复状态与未知错误码；取消和 HTTP 错误不泄漏原文', async () => {
     for (const body of [null, { checks: [check, check] }, ...[
