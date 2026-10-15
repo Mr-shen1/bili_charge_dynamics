@@ -21,6 +21,7 @@ from .media import ImageDownloader
 from .oss import OSSUploader
 from .safety import configure_safe_logging
 from .storage import Store
+from .selection import selection_matches
 
 
 CADENCE_SECONDS = 15
@@ -93,10 +94,15 @@ class Collector:
             return False
         return await to_thread.run_sync(self.store.finish_discovery, uid, token, result, self.clock.now())
 
-    async def check_once(self, uid, id):
-        selected = await to_thread.run_sync(self.store.enabled_targets)
-        if {"uid": uid, "id": id} not in selected:
+    async def check_once(self, uid, id, *, selection=None):
+        current = await to_thread.run_sync(self.store.check_selection, uid, id)
+        if not selection_matches(current, selection):
             return False
+        selection = current
+
+        async def still_selected():
+            return await to_thread.run_sync(self.store.check_selection, uid, id) == selection
+
         metadata, error = None, None
         try:
             metadata = page_metadata(await fetch_page(self.client, id), uid)
@@ -104,16 +110,22 @@ class Collector:
                 error = "SIGNAL_INVALID"
         except Exception:
             error = "SOURCE_UNAVAILABLE"
+        if not await still_selected():
+            return False
         # 定位可复用旧可信值；缺失时通过已校验归属的 detail 获取，不猜 oid。
         checks = await to_thread.run_sync(self.store.read_checks, uid)
         observed = next((item["observed"] for item in checks if item["id"] == id), {})
         locator = observed.get("comment_locator")
         if not valid_locator(locator):
+            if not await still_selected():
+                return False
             try:
                 detail, _ = await fetch_detail(self.client, id, uid)
                 locator = detail.get("comment_locator")
             except Exception:
                 pass
+        if not await still_selected():
+            return False
         comments = {"comment_locator": locator, "comment_count_status": "failed"}
         try:
             comments["source_comment_count"] = await fetch_comment_count(self.client, locator)
@@ -124,11 +136,11 @@ class Collector:
         if metadata is not None:
             metadata.pop("source_comment_count", None)
         return await to_thread.run_sync(lambda: self.store.record_check(
-            uid, id, metadata, self.clock.now(), error, comment_observation=comments))
+            uid, id, metadata, self.clock.now(), error, comment_observation=comments, selection=selection))
 
     async def execute_pending(self):
         """一次领取遍历；失败留待下一节拍，不在本轮无限重试。"""
-        targets = await to_thread.run_sync(self.store.pending_checks)
+        targets = await to_thread.run_sync(lambda: self.store.pending_checks(with_selection=True))
         pending = iter(targets)
 
         async def worker():
@@ -139,12 +151,14 @@ class Collector:
 
     async def _execute_target(self, target):
         uid, id = target["uid"], target["id"]
-        claim = await to_thread.run_sync(self.store.claim_check_work, uid, id)
+        claim = await to_thread.run_sync(lambda: self.store.claim_check_work(
+            uid, id, selection=target["selection"]))
         if claim is None:
             return
         succeeded = False
         try:
-            generation = await to_thread.run_sync(self.store.claim_archive, uid, id)
+            generation = await to_thread.run_sync(lambda: self.store.claim_archive(
+                uid, id, selection=claim["selection"]))
             if generation is not None:
                 text_succeeded = await sync_target(
                     self.store, self.client, uid, id, generation, self.downloader, self.uploader,
@@ -161,7 +175,8 @@ class Collector:
             pass
         await to_thread.run_sync(
             lambda: self.store.finish_check_work(uid, id, claim["revision"], succeeded, self.clock.now(),
-                                               None if succeeded else "SYNC_INCOMPLETE", token=claim["token"]))
+                                               None if succeeded else "SYNC_INCOMPLETE", token=claim["token"],
+                                               selection=claim["selection"]))
 
     async def run(self):
         """从启动时刻起固定节拍；有限并发、忙即跳过，没有检查队列。"""
@@ -197,7 +212,7 @@ class Collector:
                                 discoveries[uid] = asyncio.create_task(self.discover_once(uid))
                                 launched += 1
                         discovery_offset = (discovery_offset + max(1, launched)) % len(recent_ups)
-                    targets = await to_thread.run_sync(self.store.enabled_targets)
+                    targets = await to_thread.run_sync(lambda: self.store.enabled_targets(with_selection=True))
                     if targets:
                         offset %= len(targets)
                         ordered = targets[offset:] + targets[:offset]
@@ -205,10 +220,10 @@ class Collector:
                         for target in ordered:
                             key = (target["uid"], target["id"])
                             if key not in checks and len(checks) < self.max_checks:
-                                checks[key] = asyncio.create_task(self.check_once(*key))
+                                checks[key] = asyncio.create_task(self.check_once(*key, selection=target["selection"]))
                                 launched += 1
                         offset = (offset + max(1, launched)) % len(targets)
-                    pending = await to_thread.run_sync(self.store.pending_checks)
+                    pending = await to_thread.run_sync(lambda: self.store.pending_checks(with_selection=True))
                     if pending:
                         sync_offset %= len(pending)
                         launched = 0
@@ -242,8 +257,8 @@ async def serve(database, *, once=False):
             if once:
                 with collector_lock(database):
                     await to_thread.run_sync(collector.store.migrate)
-                    for target in await to_thread.run_sync(collector.store.enabled_targets):
-                        await collector.check_once(target["uid"], target["id"])
+                    for target in await to_thread.run_sync(lambda: collector.store.enabled_targets(with_selection=True)):
+                        await collector.check_once(target["uid"], target["id"], selection=target["selection"])
                     for up in await to_thread.run_sync(collector.store.enabled_recent):
                         await collector.discover_once(up["uid"])
                 return
