@@ -2,6 +2,7 @@
 
 import json
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from pathlib import Path
 from threading import Event
 
@@ -198,7 +199,9 @@ def test_readable_full_page_archives_metadata_media_locator_and_version_idempote
         assert client.post("/api/sync/initial", json={"uid": UID}).json() == {"processed": 1, "succeeded": 1, "failed": 0}
         saved = client.get("/api/archive/dynamics/123").json()
         media_fields = {"media", "previous_media", "media_version", "synced_media_version", "media_last_attempt"}
-        assert {key: value for key, value in archive_content(saved).items() if key not in media_fields} == {
+        assert datetime.fromisoformat(saved["text_last_succeeded_at"]).utcoffset() is not None
+        assert {key: value for key, value in archive_content(saved).items()
+                if key not in media_fields | {"text_last_succeeded_at"}} == {
             "id": "123", "author": {"id": UID, "nickname": "虚构星海", "avatar_url": "https://example.invalid/avatar.png"},
             "published_at": "2026-10-09T10:38:16+08:00", "edited_at": "2026-10-09T13:01+08:00", "edit_status": "observed",
             "title": None, "text": "虚构全文\n第二行 <b>仍是文本</b> 🙂", "content_state": "success", "last_attempt": "success",

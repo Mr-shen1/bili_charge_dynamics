@@ -33,7 +33,7 @@ def comment_metadata(observation):
             if key in observation}
 
 
-async def sync_body(store, client, uid, id, generation, comment_observation):
+async def sync_body(store, client, uid, id, generation, comment_observation, now=None):
     """正文仅提交实际读取版本；评论计数不得被正文 metadata 覆盖。"""
     page_meta, body = {"edit_status": "error"}, None
     try:
@@ -65,7 +65,7 @@ async def sync_body(store, client, uid, id, generation, comment_observation):
         if not body["media_sources"]:
             body["media_sources"] = detail_meta.get("media_sources", [])
     succeeded = await to_thread.run_sync(
-        store.finish_archive, id, generation, status, body, page_meta.get("observed_version")
+        store.finish_archive, id, generation, status, body, page_meta.get("observed_version"), now() if now else None
     )
     return succeeded
 
@@ -81,12 +81,12 @@ async def sync_target(store, client, uid, id, generation, downloader=None, uploa
         metadata = comment_metadata(comment_observation)
         succeeded = await to_thread.run_sync(store.observe_archive, id, generation, metadata)
     else:
-        succeeded = await sync_body(store, client, uid, id, generation, comment_observation)
+        succeeded = await sync_body(store, client, uid, id, generation, comment_observation, now)
     archive = await to_thread.run_sync(store.read_archive, id)
     if not pending_comments_only or any(archive["work"][part] != "success" for part in ("comments", "replies")):
         roots_result = await sync_roots(store, client, id, generation, now=now)
         await sync_replies(store, client, id, generation, roots_result, now=now)
-    await sync_media(store, downloader, uploader, id, current_only=True)
+    await sync_media(store, downloader, uploader, id, current_only=True, now=now)
     for root_id in await to_thread.run_sync(store.media_root_ids, id):
-        await sync_media(store, downloader, uploader, id, current_only=True, root_id=root_id)
+        await sync_media(store, downloader, uploader, id, current_only=True, root_id=root_id, now=now)
     return succeeded

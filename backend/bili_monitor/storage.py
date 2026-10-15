@@ -485,7 +485,7 @@ class Store(CheckStore, DiscoveryStore):
                 connection.rollback()
                 raise
 
-    def finish_archive(self, id, generation, status, body, version):
+    def finish_archive(self, id, generation, status, body, version, succeeded_at=None):
         with self.connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
@@ -501,8 +501,15 @@ class Store(CheckStore, DiscoveryStore):
                 document["last_attempt"] = status
                 if status == "success":
                     if document["work"]["text"] == "pending":
+                        previous_media_version = document.get("media_version")
+                        media_was_complete = document["work"]["media"] == "success"
                         document.update(body)
                         reconcile_media(document, document["media_sources"], version)
+                        completed_at = succeeded_at or utc_now()
+                        document["text_last_succeeded_at"] = completed_at
+                        if document["work"]["media"] == "success" and (
+                                not document["media"] or not media_was_complete or previous_media_version != version):
+                            document["media_last_succeeded_at"] = completed_at
                         self._prune_media_attempts(connection, id, document["media"])
                         document["content_state"] = "success"
                         if version is not None:
@@ -576,7 +583,7 @@ class Store(CheckStore, DiscoveryStore):
                 connection.rollback()
                 raise
 
-    def finish_media(self, id, media_id, token, public_url, error, root_id=None):
+    def finish_media(self, id, media_id, token, public_url, error, root_id=None, succeeded_at=None):
         with self.connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
@@ -589,12 +596,32 @@ class Store(CheckStore, DiscoveryStore):
                     return False
                 item.update(public_url=public_url, status="failed" if error else "success", error=error)
                 refresh_media_progress(document)
+                if root_id is None and document["work"]["media"] == "success" and error is None:
+                    document["media_last_succeeded_at"] = succeeded_at or utc_now()
                 self._write_media_owner(connection, id, root_id, document)
+                if root_id is not None:
+                    self._refresh_comment_media_success(connection, id, succeeded_at, media_completed=error is None)
                 connection.commit()
                 return True
             except BaseException:
                 connection.rollback()
                 raise
+
+    def _refresh_comment_media_success(self, connection, id, succeeded_at, *, media_completed=False):
+        # 仅在实际根分页或上传提交时推进；读取/检查不补造旧归档的成功时间。
+        row = connection.execute("SELECT document FROM archives WHERE id = ?", (id,)).fetchone()
+        archive = json.loads(row[0])
+        if (archive["work"].get("comments") != "success"
+                or connection.execute("""SELECT 1 FROM root_comments WHERE dynamic_id = ?
+                    AND json_extract(document, '$.work.media') IS NOT 'success' LIMIT 1""", (id,)).fetchone()):
+            return
+        # 有图时仅由真正的上传完成推进；全空组由实际成功根分页确认。
+        # 旧成功图片缺时间不能在检查、读取或同版本重扫时被补成“刚上传”。
+        has_images = connection.execute("""SELECT 1 FROM root_comments WHERE dynamic_id = ?
+            AND json_array_length(document, '$.media') > 0 LIMIT 1""", (id,)).fetchone()
+        if media_completed or not has_images:
+            archive["comment_media_last_succeeded_at"] = succeeded_at or utc_now()
+            self._write_media_owner(connection, id, None, archive)
 
     def begin_roots(self, id, generation):
         return self._change_roots(id, generation, "pending", None, [])
@@ -650,6 +677,8 @@ class Store(CheckStore, DiscoveryStore):
                         archive["work"]["comments"] = "success"
                 connection.execute("UPDATE archives SET document = ? WHERE id = ? AND generation = ?",
                                    (json.dumps(archive, ensure_ascii=False), id, generation))
+                if status == "success":
+                    self._refresh_comment_media_success(connection, id, succeeded_at)
                 connection.commit()
                 return True
             except BaseException:

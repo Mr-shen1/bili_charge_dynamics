@@ -89,7 +89,7 @@ class ImageDownloader:
         return response.content, content_type
 
 
-async def sync_media(store, downloader, uploader, id, current_only=False, media_id=None, root_id=None):
+async def sync_media(store, downloader, uploader, id, current_only=False, media_id=None, root_id=None, *, now=None):
     archive = await to_thread.run_sync(store.read_media_owner, id, root_id)
     if archive is None:
         raise APIError("NOT_FOUND")
@@ -120,6 +120,7 @@ async def sync_media(store, downloader, uploader, id, current_only=False, media_
         except Exception:
             # 不保存异常文本、HTTP headers、签名 URL 或 OSS 凭据。
             public_url = None
-        accepted = await to_thread.run_sync(store.finish_media, id, item["id"], token, public_url, error, root_id)
+        accepted = await to_thread.run_sync(store.finish_media, id, item["id"], token, public_url, error, root_id,
+                                           now() if now else None)
         result["succeeded" if accepted and error is None else "failed"] += 1
     return result

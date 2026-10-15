@@ -16,6 +16,7 @@ from .profiles import fetch_profile
 from .safety import configure_safe_logging
 from .storage import Store
 from .source import verify_author
+from .source_transport import PacedSourceTransport
 from .sync import initialize
 from .media import ImageDownloader, MediaUploader, sync_media
 from .oss import OSSUploader
@@ -50,7 +51,8 @@ def create_app(
         try:
             uploader = media_uploader if media_uploader is not None else OSSUploader.from_environment()
             async with httpx.AsyncClient(
-                transport=profile_transport, timeout=10, trust_env=False
+                transport=profile_transport if profile_transport is not None else PacedSourceTransport(),
+                timeout=10, trust_env=False
             ) as profiles, httpx.AsyncClient(
                 transport=media_transport, timeout=30, trust_env=False
             ) as media_client:

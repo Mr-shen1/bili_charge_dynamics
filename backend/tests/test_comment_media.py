@@ -92,6 +92,7 @@ def test_pending_pure_image_comments_recover_independently_after_reopen(tmp_path
         assert retried["123"]["work"]["media"] == "pending"
         assert client.post(RETRY).json() == {"processed": 1, "succeeded": 1, "failed": 0}
         assert roots_by_id(client)["123"]["work"]["media"] == "success"
+        assert "media_last_succeeded_at" not in roots_by_id(client)["123"]
         assert client.get("/api/archive/dynamics/123").json() == archive
         assert client.post(RETRY).json() == {"processed": 0, "succeeded": 0, "failed": 0}
         assert client.post(RETRY, params={"media_id": saved["124"]["media"][0]["id"]}).status_code == 404
@@ -154,6 +155,9 @@ def test_single_image_failure_retains_other_images_text_and_checkpoints(tmp_path
         archive = client.get(ARCHIVE).json()
         assert archive["comments_last_attempt"] == "success"
         assert archive["synced_comment_count"] == 7
+        assert archive["comment_sync"]["media_errors"] == []
+        assert archive["comment_sync"]["comment_media_errors"] == [
+            "MEDIA_DOWNLOAD_FAILED" if failure_boundary == "download" else "MEDIA_UPLOAD_FAILED"]
         assert "FICTIONAL_COMMENT" not in str(saved) + str(archive) + caplog.text
         failing = False
         started_at = datetime.now(timezone.utc).replace(microsecond=0)
@@ -173,8 +177,12 @@ def test_single_image_failure_retains_other_images_text_and_checkpoints(tmp_path
             assert started_at <= timestamp <= datetime.now(timezone.utc)
             assert timestamp >= datetime.fromisoformat(archive[field])
             succeeded_times[field] = current[field]
+        media_time = datetime.fromisoformat(current["comment_media_last_succeeded_at"])
+        assert started_at <= media_time <= datetime.now(timezone.utc)
+        succeeded_times["comment_media_last_succeeded_at"] = current["comment_media_last_succeeded_at"]
         assert archive_content(current) == {**archive_content(archive), **succeeded_times}
         assert current["comment_sync"]["parts"]["comment_media"] == "success"
+        assert current["comment_sync"]["comment_media_errors"] == []
         assert archive["comment_sync"]["parts"]["comment_media"] == "pending"
 
 

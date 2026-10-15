@@ -15,6 +15,7 @@ from pathlib import Path
 from anyio import to_thread
 
 from .source import fetch_page, page_metadata, fetch_detail
+from .source_transport import PacedSourceTransport
 from .root_comments import fetch_comment_count, valid_locator
 from .sync import sync_target
 from .media import ImageDownloader
@@ -250,7 +251,7 @@ async def serve(database, *, once=False):
     configure_safe_logging()
     uploader = OSSUploader.from_environment()
     try:
-        async with httpx.AsyncClient(timeout=10, trust_env=False) as source_client, httpx.AsyncClient(
+        async with httpx.AsyncClient(transport=PacedSourceTransport(), timeout=10, trust_env=False) as source_client, httpx.AsyncClient(
             timeout=30, trust_env=False
         ) as media_client:
             collector = Collector(Store(database), source_client, ImageDownloader(media_client), uploader)

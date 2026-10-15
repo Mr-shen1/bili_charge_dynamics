@@ -3,6 +3,7 @@
 from anyio import to_thread
 
 from .root_comments import comment_fields, nonnegative, root_document, source_id
+from .source_endpoints import REPLIES_URL
 
 
 def reply_document(reply, dynamic_id, root_id, locator):
@@ -20,7 +21,7 @@ def reply_document(reply, dynamic_id, root_id, locator):
 
 
 async def fetch_reply_page(client, dynamic_id, root_id, locator, number):
-    response = await client.get("https://api.bilibili.com/x/v2/reply/reply", params={
+    response = await client.get(REPLIES_URL, params={
         "oid": locator["oid"], "type": locator["type"], "root": root_id, "pn": number, "ps": 20,
     })
     response.raise_for_status()
