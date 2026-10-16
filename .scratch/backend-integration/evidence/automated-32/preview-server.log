@@ -1,0 +1,22 @@
+
+警告：虚构视觉演示 · 非真实 B 站内容 · 非生产归档
+数据库（退出即删除）：/tmp/bili-fictional-visual-ukqze09u/preview.sqlite
+HTTP API：http://127.0.0.1:19080/
+先接受临时开发证书：https://127.0.0.1:19443/
+
+INFO:     Started server process [86154]
+INFO:     Started server process [86154]
+INFO:     Waiting for application startup.
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:19080 (Press CTRL+C to quit)
+INFO:     Application startup complete.
+INFO:     Uvicorn running on https://127.0.0.1:19443 (Press CTRL+C to quit)
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [86154]
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [86154]

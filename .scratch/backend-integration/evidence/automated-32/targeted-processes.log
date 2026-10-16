@@ -1,0 +1,8 @@
+started_at=2026-10-16T12:23:45+08:00
+source_commit=769da3d79250a0e748e8b0a539ca7082bc42879b
+command=uv run --no-sync pytest backend/tests/test_deployment_processes.py -q
+......                                                                   [100%]
+6 passed in 54.20s
+
+exit_code=0
+finished_at=2026-10-16T12:24:40+08:00

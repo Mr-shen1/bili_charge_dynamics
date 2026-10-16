@@ -1,0 +1,11 @@
+recorded_at=2026-10-16T12:39:49+08:00
+source_commit=769da3d79250a0e748e8b0a539ca7082bc42879b
+command: nginx -v; sha256sum reference PNGs and restored production build
+nginx version: nginx/1.28.0
+bf808076f2303796d286d125e4c3628854d05a7149e5e0cbcbd2196882c8270b  docs/assets/ui-reference/current-35/dynamics-list.png
+9e493af337d9d5f836ab4c7729412be8bd525157d78d1761472d017e27f21954  docs/assets/ui-reference/current-35/dynamic-detail.png
+c8a0abe1e4af9ebb1d9b611ec9cd68463d2acaacfdb0835c9e83e8f58426d3eb  dist/index.html
+044fddbb9c90becf3107e76c9b285b0dc189185029336b851db27584d8f085cb  dist/assets/index-BTVOgYMH.js
+0b8b4349c44cae919a1781937378206ad5d699b3a00370c1bc35c525cc92c5c4  dist/assets/index-D9OlUKhP.css
+
+Product implementation changes since source_commit (expected empty):

@@ -1,0 +1,19 @@
+started_at=2026-10-16T12:23:17+08:00
+source_commit=769da3d79250a0e748e8b0a539ca7082bc42879b
+command=pnpm build
+
+> bili-charge-dynamics@0.1.0 build /home/kevin/Projects/PI/bili_charge_dynamics
+> tsc --noEmit && vite build
+
+vite v7.3.1 building client environment for production...
+transforming...
+✓ 82 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.45 kB │ gzip:  0.31 kB
+dist/assets/index-D9OlUKhP.css   17.82 kB │ gzip:  4.13 kB
+dist/assets/index-BTVOgYMH.js   315.60 kB │ gzip: 98.08 kB
+✓ built in 1.04s
+
+exit_code=0
+finished_at=2026-10-16T12:23:22+08:00

@@ -1,0 +1,6 @@
+started_at=2026-10-16T12:40:10+08:00
+source_commit=769da3d79250a0e748e8b0a539ca7082bc42879b
+command=uv run --no-sync python (AC coverage and local Markdown link validation)
+PASS: exactly AC-01–AC-34, ordered and unique; 113 local Markdown links resolve
+exit_code=0
+finished_at=2026-10-16T12:40:10+08:00
