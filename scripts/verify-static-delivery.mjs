@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
-import { cp, mkdtemp, mkdir, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium } from '@playwright/test';
+import { deliveryEnv, verifyProductionDeployment } from './verify-production-deployment.mjs';
+import { publishAndVerifyEntryUpdate } from './verify-entry-update.mjs';
 
 // 只在临时目录启动 Nginx，不 reload 系统服务，也不修改源文件或真实发布目录。
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -16,7 +18,7 @@ const mimeTypes = process.env.NGINX_MIME_TYPES;
 assert(mimeTypes, 'Set NGINX_MIME_TYPES to an existing Nginx mime.types file');
 await readFile(mimeTypes);
 
-function run(command, args, cwd = repo, env = process.env) {
+function run(command, args, cwd = repo, env = deliveryEnv) {
   const result = spawnSync(command, args, { cwd, env, stdio: 'inherit' });
   if (result.error) throw result.error;
   assert.equal(result.status, 0, `${command} ${args.join(' ')} failed`);
@@ -40,7 +42,14 @@ run(nginxBin, ['-v']);
 run('pnpm', ['build']);
 
 const workspace = await mkdtemp(join(tmpdir(), 'dynamics-static-'));
+// 使用空闲回环端口，不复用或停止维护者已有的 API。
+const apiProbe = createServer();
+apiProbe.listen(0, '127.0.0.1');
+await once(apiProbe, 'listening');
+const apiPort = apiProbe.address().port;
+await new Promise((accept, reject) => apiProbe.close(error => error ? reject(error) : accept()));
 let nginx;
+let nginxLogs = '';
 let browser;
 try {
   const releaseA = join(workspace, 'release-a');
@@ -56,7 +65,8 @@ try {
   await mkdir(join(workspace, 'logs'));
   const quote = path => `"${path.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`;
   const serverBlock = (await readFile(join(repo, 'deploy/nginx.conf'), 'utf8'))
-    .replace('/srv/dynamics-viewer/current', quote(current));
+    .replace('/srv/dynamics-viewer/current', quote(current))
+    .replaceAll('127.0.0.1:8000', `127.0.0.1:${apiPort}`);
   await writeFile(join(workspace, 'server.conf'), serverBlock);
   const config = join(workspace, 'nginx.conf');
   await writeFile(config, `pid nginx.pid;
@@ -70,7 +80,8 @@ http {
 }
 `);
   run(nginxBin, ['-t', '-p', `${workspace}/`, '-c', config]);
-  nginx = spawn(nginxBin, ['-p', `${workspace}/`, '-c', config, '-g', 'daemon off;'], { stdio: 'inherit' });
+  nginx = spawn(nginxBin, ['-p', `${workspace}/`, '-c', config, '-g', 'daemon off;'], { stdio: ['ignore', 'pipe', 'pipe'] });
+  for (const stream of [nginx.stdout, nginx.stderr]) stream.on('data', chunk => { nginxLogs += String(chunk); });
   let startupError;
   nginx.on('error', error => { startupError = error; });
   const baseURL = 'http://127.0.0.1:4173';
@@ -88,7 +99,7 @@ http {
   }
   assert(ready, 'Nginx did not serve release A');
   run('pnpm', ['exec', 'playwright', 'test', ...process.argv.slice(2)], repo, {
-    ...process.env, E2E_TARGET: 'nginx',
+    ...deliveryEnv, E2E_TARGET: 'nginx',
     NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost',
   });
 
@@ -114,40 +125,21 @@ http {
   const entryPath = join(buildSource, 'index.html');
   await writeFile(entryPath, (await readFile(entryPath, 'utf8')).replace('</title>', ' — delivery update</title>'));
   run('pnpm', ['build:mock'], buildSource);
-  const updatedEntry = await readFile(join(releaseB, 'index.html'), 'utf8');
-  const scriptPath = html => {
-    const match = html.match(/src="(\/assets\/[^\"]+\.js)"/);
-    assert(match, 'Entry has no hashed script');
-    return match[1];
-  };
-  const oldScript = scriptPath(originalEntry);
-  const newScript = scriptPath(updatedEntry);
-  assert.notEqual(newScript, oldScript);
-  // 保留旧哈希资源，避免切换时已打开页面的后续请求失效。
-  await cp(join(releaseA, 'assets'), join(releaseB, 'assets'), { recursive: true, force: false, errorOnExist: false });
-  const before = await fetch(baseURL);
-  const etag = before.headers.get('etag');
-  assert(etag, 'Entry has no ETag');
   browser = await chromium.launch();
   const page = await browser.newPage();
   await page.goto(`${baseURL}/dynamics/90071992547409934`);
   await page.getByRole('button', { name: '预览图片 1', exact: true }).waitFor();
-  await symlink(releaseB, join(workspace, 'next'));
-  await rename(join(workspace, 'next'), current);
-  const after = await fetch(baseURL, { headers: { 'If-None-Match': etag } });
-  assert.equal(after.status, 200, 'Changed entry must not return stale 304');
-  assert.equal(after.headers.get('cache-control'), 'no-cache');
-  assert.equal(await after.text(), updatedEntry);
-  for (const path of [oldScript, newScript]) {
-    const response = await fetch(`${baseURL}${path}`);
-    assert.equal(response.status, 200);
-    assert.equal(response.headers.get('cache-control'), 'public, max-age=31536000, immutable');
-  }
-  await page.reload();
-  await page.waitForFunction(() => document.documentElement.dataset.deliveryRevision === 'release-b');
+  await publishAndVerifyEntryUpdate({
+    baseURL, workspace, current, previousBuild: releaseA, nextBuild: releaseB, page,
+  });
   await page.getByRole('button', { name: '预览图片 1', exact: true }).click();
   await page.getByRole('dialog', { name: '图片预览' }).waitFor();
-  console.log(`PASS: build update ${oldScript} -> ${newScript}; conditional entry and browser reload use release B`);
+  await browser.close();
+  browser = undefined;
+  await verifyProductionDeployment({
+    repo, workspace, current, productionBuild, buildSource, apiPort, baseURL,
+    nginxLogs: () => nginxLogs,
+  });
 } finally {
   await browser?.close();
   if (nginx && nginx.exitCode === null && nginx.signalCode === null) {

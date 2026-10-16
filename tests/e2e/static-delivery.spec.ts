@@ -5,8 +5,8 @@ test.skip(process.env.E2E_TARGET !== 'nginx', '仅在真实 Nginx 静态交付�
 const revalidate = 'no-cache';
 const immutable = 'public, max-age=31536000, immutable';
 
-test('详情深链接和带扩展名的页面仍返回重新验证的入口，资源按明确路径分类', async ({ request }) => {
-  for (const path of ['/', '/index.html', '/dynamics/90071992547409934', '/dynamics/id.with.dot', '/unknown.page']) {
+test('四类页面深链接和带扩展名的页面仍返回重新验证的入口，资源按明确路径分类', async ({ request }) => {
+  for (const path of ['/', '/index.html', '/ups/202', '/manage', '/dynamics/90071992547409934', '/dynamics/id.with.dot', '/unknown.page']) {
     const response = await request.get(path);
     expect(response.status()).toBe(200);
     expect(response.headers()['content-type']).toContain('text/html');
