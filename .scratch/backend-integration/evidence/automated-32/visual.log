@@ -1,0 +1,48 @@
+started_at=2026-10-16T12:24:56+08:00
+source_commit=769da3d79250a0e748e8b0a539ca7082bc42879b
+command=pnpm exec playwright test --config playwright.visual.config.ts
+
+Running 3 tests using 1 worker
+
+  ✘  1 tests/e2e-archive/visual-replica.spec.ts:5:1 › 列表与详情直接去掉归档文字块，保留正文、发布时间与评论入口 (5.4s)
+  ✓  2 tests/e2e-archive/visual-replica.spec.ts:30:1 › 参考阅读主栏、身份和轻量评论入口；四宽度不溢出 (2.9s)
+  ✓  3 tests/e2e-archive/visual-replica.spec.ts:76:1 › 评论为白底平面行且图像不裁切；长身份不会与正文重叠 (2.0s)
+
+
+  1) tests/e2e-archive/visual-replica.spec.ts:5:1 › 列表与详情直接去掉归档文字块，保留正文、发布时间与评论入口 ──────────────────
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: getByRole('article').filter({ has: getByText('纯文字 1006', { exact: true }) })
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 5000ms[22m
+    [2m  - waiting for getByRole('article').filter({ has: getByText('纯文字 1006', { exact: true }) })[22m
+
+
+       7 |   await page.goto('/');
+       8 |   const card = page.getByRole('article').filter({ has: page.getByText('纯文字 1006', { exact: true }) });
+    >  9 |   await expect(card).toBeVisible();
+         |                      ^
+      10 |   await expect(card.getByRole('complementary', { name: '归档状态', exact: true })).toHaveCount(0);
+      11 |   await expect(card).not.toContainText(/编辑于|编辑信号|本地已归档|正文已保存|媒体已归档/);
+      12 |   await expect(card.getByText('2026-03-01 10:03:04', { exact: true })).toBeVisible();
+        at /home/kevin/Projects/PI/bili_charge_dynamics/tests/e2e-archive/visual-replica.spec.ts:9:22
+
+    attachment #1: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/visual-replica-列表与详情直接去掉归档文字块，保留正文、发布时间与评论入口/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results/visual-replica-列表与详情直接去掉归档文字块，保留正文、发布时间与评论入口/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    tests/e2e-archive/visual-replica.spec.ts:5:1 › 列表与详情直接去掉归档文字块，保留正文、发布时间与评论入口 ───────────────────
+  2 passed (13.7s)
+
+exit_code=1
+finished_at=2026-10-16T12:25:10+08:00

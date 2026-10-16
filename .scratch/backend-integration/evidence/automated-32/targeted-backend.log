@@ -1,0 +1,16 @@
+started_at=2026-10-16T12:23:14+08:00
+source_commit=769da3d79250a0e748e8b0a539ca7082bc42879b
+command=uv run --no-sync pytest backend/tests/test_integrated_archive_lifecycle.py backend/tests/test_inflight_lifecycle.py backend/tests/test_versioned_edit_sync.py backend/tests/test_comment_count_sync.py -q
+........................................................................ [ 42%]
+........................................................................ [ 85%]
+.........................                                                [100%]
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/starlette/testclient.py:37
+  /home/kevin/Projects/PI/bili_charge_dynamics/.venv/lib/python3.12/site-packages/starlette/testclient.py:37: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = typing.Callable[[], typing.ContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+169 passed, 1 warning in 31.02s
+
+exit_code=0
+finished_at=2026-10-16T12:23:45+08:00

@@ -1,0 +1,23 @@
+recorded_at=2026-10-16T12:29:00+08:00
+source_commit=769da3d79250a0e748e8b0a539ca7082bc42879b
+Linux 7.2.9-2-cachyos x86_64
+v24.21.0
+10.34.6
+uv 0.12.23 (x86_64-unknown-linux-gnu)
+3.12.15 (main, Oct  3 2026, 01:03:07) [Clang 22.1.3 ]
+Linux-7.2.9-2-cachyos-x86_64-with-glibc2.44
+FastAPI=0.115.12
+pytest=8.4.2
+httpx=0.28.1
+uvicorn=0.34.3
+oss2=2.19.1
+Playwright Chromium=145.0.7632.6
+
+Lockfile hashes
+fcf1e92e7293968487a038a5dbec8b9eacd7db2efd6b586419f6b2d104007d56  pnpm-lock.yaml
+f818bbf7205aa969ef80c84ec9e392a9a89bcea66823a85f9a28027b52b0cfba  uv.lock
+
+Production build hashes
+c8a0abe1e4af9ebb1d9b611ec9cd68463d2acaacfdb0835c9e83e8f58426d3eb  dist/index.html
+044fddbb9c90becf3107e76c9b285b0dc189185029336b851db27584d8f085cb  dist/assets/index-BTVOgYMH.js
+0b8b4349c44cae919a1781937378206ad5d699b3a00370c1bc35c525cc92c5c4  dist/assets/index-D9OlUKhP.css
