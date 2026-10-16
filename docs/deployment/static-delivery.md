@@ -1,12 +1,102 @@
-# 静态交付与 Nginx 验证（任务 08）
+# 静态交付与 Nginx 运行说明
 
-> 范围说明：本文保留任务 08 的模拟前端静态交付基线与复现步骤。文中的“本期 / 本票”仅指该历史阶段，不代表新增 API、SQLite、采集进程或 OSS 已部署或验收。下一阶段总体设计见 [HLD](../design/HLD.md)，新增页面路径及 API 代理规则需在后续实施时扩展并重新验证；本轮不修改现有部署配置。
+## 当前范围：后端集成 #31
 
-## 当前执行方式（后端集成 02）
+依据：[SRS](../product/SRS.md) FR-02、NFR-04/05、[HLD](../design/HLD.md#11-构建与部署设计)、[#31](../../.scratch/backend-integration/issues/31-reproducible-deployment.md) 与[执行计划](../../.scratch/backend-integration/implementation-plan.md)。本节是可复用操作说明，不是验收结果；本次执行结果及未验证项另见 [#31 验收记录](../../.scratch/backend-integration/acceptance-31.md)。下方保留历史任务 08 的静态基线；历史 mock、fixture 隔离部署、真实上游/OSS、云部署、真机与持续运行证据不能互相替代。
 
-默认 `pnpm dev` / `pnpm build` 现在使用生产归档 Adapter，需要 Python API；没有归档时显示成功空，不再自动装配演示数据。历史阅读回归必须显式使用 `pnpm dev --mode mock` / `pnpm build:mock`。`test:e2e:preview` 使用 mock 构建；`test:delivery` 分别校验生产构建重现和 fault 构建隔离，再用显式 mock 运行历史 Nginx 阅读及更新测试，结束恢复生产 `dist/`。它不证明真实归档部署或真机兼容；生产 Adapter/SQLite 穿透证据另见后端集成 02 验收。以下历史阶段说明不作为新后端验收。
+### 干净检出与固定依赖
 
-该阶段是纯静态 SPA：Vite 在本地或 CI 构建，Nginx 只读取 `dist/`，不需要 SSR、常驻 Node.js 应用、模拟 HTTP 服务或服务器代理。部署在域名根路径，非子路径。任务 09 对最终集成产物的复跑结果见 [09 验收记录](../../.scratch/dynamics-viewer/acceptance-09.md)，不能仅沿用任务 08 的结果。
+从维护者选定的同一版本干净检出，在仓库根目录执行，不依赖 ignored 素材或脚本：
+
+```bash
+source ~/.nvm/nvm.sh
+nvm install
+nvm use
+corepack enable
+corepack prepare pnpm@10.34.6 --activate
+pnpm install --frozen-lockfile
+uv sync --locked
+pnpm build
+```
+
+Node.js `24.21.0`（`.nvmrc`）、pnpm `10.34.6`（`package.json`）、Python `3.12`（`.python-version`）；直接依赖和传递依赖分别由清单及 `pnpm-lock.yaml` / `uv.lock` 固定。Python 仅固定到 3.12 系列，记录实跑补丁版本及 uv/Nginx 版本，不声称跨补丁环境字节一致。纯生产 Python 环境可用 `uv sync --locked --no-dev`；测试前须重新 `uv sync --locked` 安装 pytest。前端在本地/CI 构建后仅交付 `dist/`，不用常驻 Node 或 SSR。生产 `pnpm build` 使用归档 Adapter；`build:mock` / `dev --mode mock` 与 `dev:fault` 仅用于独立回归，不得发布。
+
+### 单 API、单 collector：启动、停止、升级
+
+选择**仓库外、持久卷上的同一个绝对 SQLite 文件路径**；以下 `/srv/bili-monitor/monitor.sqlite` 只是示例，目录需运行用户可写，不放在临时目录或发布目录中。默认 `backend/data/monitor.sqlite` 只适合本地开发。API 与 collector 必须使用同一路径和同一代码版本，勿用硬链接别名；运行一个 API、一个 collector，不设 `--workers`、`--reload` 或 `WEB_CONCURRENCY`，无 Redis/Celery/额外任务服务。
+
+各开一个独立终端，均先进入实际仓库根目录。依赖同步完成后直接执行 uv 创建的解释器，`exec` 将该终端 shell 替换成真正的 Python 进程，避免只终止 `uv run` 父进程却留下 Python：
+
+```bash
+# 终端 A：单 API；先确认未设置 WEB_CONCURRENCY
+unset WEB_CONCURRENCY
+export BILI_DATABASE_PATH=/srv/bili-monitor/monitor.sqlite
+printf 'API PID=%s\n' "$$"
+exec .venv/bin/python -m uvicorn backend.bili_monitor.app:app --host 127.0.0.1 --port 8000 --no-access-log
+```
+
+```bash
+# 终端 B：待 API 启动成功、下列只读请求为 200 后，再启动单 collector
+export BILI_DATABASE_PATH=/srv/bili-monitor/monitor.sqlite
+curl --fail --silent --show-error http://127.0.0.1:8000/api/manage/ups || exit 1
+printf 'collector PID=%s\n' "$$"
+exec .venv/bin/python -m backend.bili_monitor.collector
+```
+
+两端的服务端 OSS 环境须一致，配置名与未配置行为见[后端说明](../../backend/README.md#19-oss-服务端配置)；凭据由维护者在仓库外受限环境注入，应用不自动加载 `.env`。勿输出环境、使用命令行传秘密或交给前端构建环境。当前来源客户端无 Cookie 输入，不新增凭据入口。
+
+停止可在各前台终端 Ctrl-C；或第三个 Bash 终端按已记录并核实的 Python PID 发 TERM，**先 collector 后 API，分别等待真正退出**：
+
+```bash
+read -r -p 'collector Python PID: ' collector_pid
+read -r -p 'API Python PID: ' api_pid
+[[ $collector_pid =~ ^[1-9][0-9]*$ && $api_pid =~ ^[1-9][0-9]*$ ]] || exit 1
+ps -p "$collector_pid,$api_pid" -o pid=,comm=
+# 核实为本次启动的两个 Python 进程后执行：
+for pid in "$collector_pid" "$api_pid"; do
+  kill -TERM "$pid"
+  while kill -0 "$pid" 2>/dev/null; do sleep 0.2; done
+done
+```
+
+第三终端不是进程父级，不能用 `wait PID`；用退出检测并确认两个前台终端已结束。不要在旧进程尚存时重启、删除锁文件或强制复制覆盖数据库。collector 在退出时取消在途任务并等待清理；内核释放数据库旁 `.collector.lock` 的排他锁，持久未完成工作由下次取得锁的正常 collector 恢复；API 启动不恢复 running。`--once` 仅检查/发现登记，不执行同步，也不恢复中断工作，不是迁移工具或常驻运行替代品。
+
+`Store.migrate` 在 API 的 ASGI lifespan、collector 启动取得锁后自动执行，当前 schema 为 v13；空库创建、旧库按序事务升级，失败回滚，未来版本拒绝启动。**升级必须先停两个进程并等退出，再切换到同一新版本、同步锁定依赖，先启动 API 完成迁移并确认 HTTP 就绪，再启动 collector**。普通重启也重用原绝对数据库路径。没有独立迁移 CLI、自动降级或备份能力；迁移失败时停止排查，不改 `user_version`、删库或用旧版本强开新库。
+
+### Nginx、发布和排障
+
+当前 [deploy/nginx.conf](../../deploy/nginx.conf) 放在 `http` 上下文，主配置加载匹配的 `mime.types`；默认 `root /srv/dynamics-viewer/current`、监听 `127.0.0.1:4173`、API 上游 `127.0.0.1:8000`。维护者将 root 改为可读的完整生产发布目录或 `current` 链接；`/`、`/ups/:upId`、`/dynamics/:dynamicId`、`/manage` 直达/刷新回入口。`/api`、`/api/…` 原样转发 API，不拦截其错误；API 200/404/422、API 不可达的 Nginx 502 都不得成为 SPA 入口（代理 502 可是 Nginx 错误 HTML，不能是应用入口）。缺失资源 404 + `no-store`；其余缓存与资源命名空间规则见下方第 2 节。
+
+路径/端口不是自动发现：改 API `--port` 须同步改两处 `proxy_pass`；模板不会展开 `BILI_DATABASE_PATH` 或 shell 环境变量。开发 Vite 的 `/api` 代理另见 `vite.config.ts`，不是生产代理。发布按第 3 节保留旧哈希资源，在同一文件系统原子切换入口；不可就地逐个覆盖 `dist/`，或发布 mock/fault 服务。
+
+模板显式 `access_log off; error_log /dev/null;`，禁止记录原始请求。只关 access 日志不够：API 不可达时 Nginx 默认 error 日志也会带原始 query；#31 用 `token=虚构秘密` 的 502 场景发现此泄露并修正。取舍是放弃该 server 的逐请求错误日志，改用 `nginx -t`、HTTP 状态、进程退出和 API 固定脱敏错误定位；**外层代理、托管平台和新增 location 不得重新开启原始 URI/请求体日志**，不要以临时 debug 为由打印秘密。
+
+- `nginx -t -c /absolute/path/to/nginx.conf` 失败：核对配置上下文、mime.types、root 可读性、监听端口及权限；启用/停止独立 Nginx 由维护者按实际主配置执行（前台可用 `nginx -c /absolute/path/to/nginx.conf -g 'daemon off;'`）。不 reload 不属于本次运行的系统服务。
+- `/api/manage/ups` 直连 8000 成功而 4173 失败：核对上游端口/地址和生效配置；502 时确认 API 仍在运行及启动是否失败，不用 SPA 回退掩盖。
+- HTTP 200 但空归档：核对两个进程的绝对数据库路径、管理启用配置与 checks/discovery 状态；只有 API 不会自动采集。`Collector failed` 时检查是否已有 collector、目录可写、版本及 OSS 配置完整性，勿删除运行中的锁。
+- 页面可用但资源 404：核对 root/current、入口所引用哈希与旧资源保留；失败状态只用脱敏错误码排查，不打印环境或上游响应。
+
+**风险边界**：管理页、写 API、初始化/媒体重试均无鉴权，公网可被读取归档或修改配置；隐藏入口不是保护。公开 OSS URL 可被直接访问/外链，未来登录也不会自动保护图片。秘密仅留服务端仓库外，不进版本库、产物、HTTP/UI/日志。本交付不新增鉴权、服务、云采购、备份或容量治理；损坏、误操作和磁盘/OSS 增长可能丢数据或停止写入。2 核 2GB 只是评估目标，不保证容量、并发或 15 秒内同步完成。
+
+### 隔离验证入口与证据边界
+
+```bash
+# 仓库根目录；已完成上面的 nvm/pnpm frozen 安装
+uv sync --locked
+pnpm exec playwright install chromium
+uv run --no-sync pytest backend/tests/test_deployment_processes.py -q
+NGINX_BIN=/absolute/path/to/nginx \
+NGINX_MIME_TYPES=/absolute/path/to/mime.types \
+pnpm test:delivery
+```
+
+需要 uv 的 dev 依赖、可执行 Nginx/mime.types、Chromium 及其系统库，且 Nginx `127.0.0.1:4173` 空闲。脚本选择临时空闲 API 端口并仅在临时配置替换上游，不占用维护者的 8000、不修改系统服务。`scripts/verify-static-delivery.mjs` 保留历史 mock 阅读/缓存/更新与生产重建/fault 隔离，再通过 `verify-production-deployment.mjs`、`verify-production-delivery.mjs` 启动实际 API/独立 collector 共享临时 SQLite，验证生产四类页面直达/刷新、未知页、只读浏览、API 200/404/422/502、资源 404/cache、生产构建真实更新、旧哈希保留及 HTTP/UI/产物/日志的虚构秘密扫描；结束恢复生产 `dist/`。给 `test:delivery` 传 Playwright 文件只筛选历史 mock 部分，不跳过生产阶段。
+
+隔离 API 是 `backend.tests.deployment_fixture:create_app --factory`，必须指定 `BILI_DATABASE_PATH`；独立采集入口为 `python -m backend.tests.deployment_fixture --database PATH`，PATH 与 API 相同（均用 uv 环境）。它们复用生产实现，只替换外部来源/下载/上传，不访问真实上游/OSS；上传返回 `https://media.example.invalid/deployment.png`，浏览器仅 route 外部图片传输，不替换 API/Adapter/SQLite。`test_deployment_processes.py` 负责两进程持久化、检查/同步和重启/恢复边界。实际结果见 #31 验收记录；本文不替代执行证据，不把 fixture 公开图当真实 OSS 或真机证据。
+
+## 历史任务 08：静态基线与复现说明
+
+> 下方“本期 / 本票”仅指历史模拟前端阶段，不表示当前后端已部署或验收。该阶段是纯静态 SPA：Vite 本地/CI 构建，Nginx 读取 `dist/`，没有 API 代理需求；当前配置已增加上述 API 隔离。任务 09 对最终历史产物的复跑见 [09 验收记录](../../.scratch/dynamics-viewer/acceptance-09.md)，不能继承为 #31 通过。历史阅读回归须显式 mock，`test:e2e:preview` 也只使用 mock 构建。
 
 ## 1. 可复现构建
 
@@ -69,7 +159,7 @@ Nginx 默认静态 ETag/Last-Modified 用于重新验证；`no-cache` 不是 `no
 
 ## 4. 可执行 Nginx 验证
 
-需要本地可执行的 Nginx、与其匹配的 `mime.types`、Playwright Chromium 和空闲的 `127.0.0.1:4173`。以非 root 用户运行，不需要系统服务、Docker、云账号或凭据。
+需要本地可执行的 Nginx、与其匹配的 `mime.types`、Playwright Chromium 和空闲的 `127.0.0.1:4173`。当前统一入口还需 `uv sync --locked` 安装 dev 依赖并运行上方 #31 生产阶段；API 使用临时空闲端口。以非 root 用户运行，不需要系统服务、Docker、云账号或凭据。
 
 ```bash
 source ~/.nvm/nvm.sh
@@ -79,13 +169,13 @@ NGINX_BIN=/absolute/path/to/nginx \
 NGINX_MIME_TYPES=/absolute/path/to/mime.types \
 pnpm test:delivery
 
-# 只跑静态交付专项（仍包含构建可复现、fault 构建隔离和更新演练）：
+# 历史 mock 浏览器仅选静态专项；仍包含构建/fault/更新及当前 #31 生产阶段：
 NGINX_BIN=/absolute/path/to/nginx \
 NGINX_MIME_TYPES=/absolute/path/to/mime.types \
 pnpm test:delivery tests/e2e/static-delivery.spec.ts
 ```
 
-系统已有 Nginx 时也可用 `NGINX_BIN=nginx NGINX_MIME_TYPES=/etc/nginx/mime.types`。脚本先检查端口空闲并构建；生成临时主配置，**直接包含交付示例**，只替换 root；验证配置、启动独立 Nginx、执行全部正常浏览器回归（桌面 Chromium / Pixel 7 模拟视口，不启动 Vite）、再核对相同输入重建和 `--mode fault` 的入口/bundle 字节一致，最后实际构建更新并验证条件请求和浏览器刷新。正常结束或测试失败均退出临时 Nginx、删除临时目录；若被系统强制终止，需自行清理残留临时进程/目录。
+系统已有 Nginx 时也可用 `NGINX_BIN=nginx NGINX_MIME_TYPES=/etc/nginx/mime.types`。脚本先检查端口空闲并构建；生成临时主配置，**直接包含交付示例**，替换 root 和临时 API 上游端口；验证配置、启动独立 Nginx、执行历史 mock 浏览器回归（桌面 Chromium / Pixel 7 模拟视口，不启动 Vite）、再核对相同输入重建和 `--mode fault` 的入口/bundle 字节一致，实际构建更新并验证条件请求和浏览器刷新。随后执行上方 #31 生产装配阶段。正常结束或测试失败均退出临时进程、删除临时目录并恢复生产构建；若被系统强制终止，需自行清理残留临时进程/目录。
 
 没有现成 Nginx、但已有编译器/make/PCRE2/zlib 时，可按以下方式在用户临时目录复现本票环境；不运行 `make install`，不修改系统设施。源码下载/编译失败应记录为环境限制，不能替换成 Vite 验收。
 

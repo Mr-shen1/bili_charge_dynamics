@@ -4,14 +4,20 @@
 
 ## 运行
 
-在仓库根目录执行：
+完整干净检出、nvm/pnpm frozen 构建、双进程启停/升级及 Nginx 排障见[当前 #31 运行说明](../docs/deployment/static-delivery.md#当前范围后端集成-31)。在仓库根目录准备依赖，再在专用终端前台运行 API：
 
 ```sh
 uv sync --locked
-BILI_DATABASE_PATH=/absolute/path/monitor.sqlite uv run uvicorn backend.bili_monitor.app:app --host 127.0.0.1 --port 8000
+# 纯生产可改用 uv sync --locked --no-dev；测试需要 dev 依赖
+unset WEB_CONCURRENCY
+export BILI_DATABASE_PATH=/srv/bili-monitor/monitor.sqlite
+printf 'API PID=%s\n' "$$"
+exec .venv/bin/python -m uvicorn backend.bili_monitor.app:app --host 127.0.0.1 --port 8000 --no-access-log
 ```
 
-Python 使用 `.python-version` 固定的 3.12；FastAPI、HTTPX、Uvicorn 和 pytest 版本固定于 `uv.lock`。默认数据库为 `backend/data/monitor.sqlite`，启动时创建目录并迁移；仅启动一个 API worker。没有 API 内嵌定时器或常驻 Node.js；23 的采集进程需单独启动（见下节）。
+Python 使用 `.python-version` 的 3.12 系列（记录实际补丁版本）；FastAPI、HTTPX、Uvicorn、OSS SDK 和测试依赖由清单/`uv.lock` 固定。上述路径是示例，须选择**仓库外持久、可写的绝对 SQLite 路径**，与 collector 完全相同，不随发布目录切换；默认 `backend/data/monitor.sqlite` 仅适合本地开发。依赖经 uv 同步后直接 `exec` 其解释器，打印的 shell PID 随即成为 Python PID，不会只杀掉 uv 父进程而留下子进程。仅一个 API，不加 `--workers` / `--reload`；没有内嵌定时器或常驻 Node.js，collector 另起终端。
+
+API 的 ASGI lifespan 与取得锁的 collector 启动都调用 `Store.migrate`（当前 v13）。升级先 TERM/Ctrl-C 停两个进程、等退出，再切换同一代码版本并 `uv sync --locked`；先启动 API 完成迁移并确认 `GET /api/manage/ups` 为 200，再启动 collector。未来 schema 拒绝启动，失败事务回滚；无独立迁移 CLI、自动降级或备份，勿删库、改版本号或让旧进程与新迁移并行。
 
 **首期无鉴权**：管理、初始化及归档接口均可被访问者调用，可能暴露内容或被修改配置。请通过监听地址、防火墙或反向代理限制暴露；隐藏入口不是保护。本期没有备份或容量治理。
 
@@ -20,10 +26,16 @@ Python 使用 `.python-version` 固定的 3.12；FastAPI、HTTPX、Uvicorn 和 p
 API 和采集进程使用同一 SQLite 路径，分别启动，不能增加多个采集进程。处理持久启用的指定集合或近期可信窗口的检查/同步，以及近期 UP 发现，默认最多 4 个同时检查、4 个独立目标同步、2 个独立 UP 发现；同目标不叠加，慢分页期间其他目标仍可检查／同步。固定 15 秒检查与慢同步分离，状态从 `GET /api/manage/ups/{uid}/checks` 读取；完整节拍、重启与状态语义见 [采集契约](../docs/backend/api/collector-api.md)。API 不内嵌定时器。
 
 ```sh
-# 前台运行；Ctrl-C 停止（也支持 kill -TERM <pid>）
-BILI_DATABASE_PATH=/absolute/path/monitor.sqlite uv run python -m backend.bili_monitor.collector
-# 一次检查/发现并登记，既不执行同步，也不恢复中断执行
-uv run python -m backend.bili_monitor.collector --database /absolute/path/monitor.sqlite --once
+# 独立终端、仓库根目录；使用与 API 相同的持久路径和服务端 OSS 环境
+export BILI_DATABASE_PATH=/srv/bili-monitor/monitor.sqlite
+printf 'collector PID=%s\n' "$$"
+exec .venv/bin/python -m backend.bili_monitor.collector
+```
+
+Ctrl-C 或从第三终端向已记录的**实际 Python PID** 发 TERM，先停 collector 再停 API，并等两者退出再重启；非父终端不能用 `wait PID`，完整退出检测命令见上述 #31 说明。collector 取得数据库旁排他锁后恢复持久未完成工作，API 不恢复 running；正常重启复用原路径，运行时不能删除锁文件。一次检查/发现仅用于登记，既不执行同步，也不恢复中断执行，不是迁移命令：
+
+```sh
+uv run --no-sync python -m backend.bili_monitor.collector --database /srv/bili-monitor/monitor.sqlite --once
 ```
 
 先通过管理 HTTP 配置启用的指定目标（mode 值为 `specified`）或近期 UP（默认 recent、N=10）。近期发现独立调度，`GET /api/manage/ups/{uid}/discovery` 只读查看本轮进度/错误、最近可信结果与 `current_ids` 当前启用窗口；N 改动后新发现成功前保留旧窗口，停用/指定模式/删配置时近期目标不再入选。不会把候选当成成功归档或混入指定 targets。完整契约见 [近期发现](../docs/backend/api/discovery-api.md)。配置、观察和待处理都持久化，退出时正在执行的工作保留，正常运行重启后恢复为待处理。锁文件位于数据库旁，运行时不要删除或使用硬链接别名。
@@ -168,11 +180,13 @@ initial 在根／回复独立提交后处理评论图；正文受限不阻断实
 
 ## SQLite 与安全
 
-schema 顺序：v1 身份/配置、v2 targets、v3 archives/generation、v4 持久分页、v5 cursor 资源/过期/索引、v6 根评论及独立持久评论页、v7 回复／逐根同步状态／回复持久页、v8 媒体尝试令牌及归档文档媒体字段、v9 评论 owner 尝试标识与旧根来源 pending 回填、v10 持久目标检查/观察/工作/时间/独立错误、v11 目标领取 fencing 令牌、v12 按 UP 发现尝试/可信结果/领取令牌。v0–v11 短事务迁移到 v12，冲突回滚、未来版本拒绝启动；旧 v4 无限期 cursor 被失效，但归档不删。每次操作独立连接并启用外键，等待锁最多 2 秒；数据库操作在线程池执行，网络不进事务。删除配置只 cascade 指定关联，绝不 cascade 身份或归档。
+schema 顺序：v1 身份/配置、v2 targets、v3 archives/generation、v4 持久分页、v5 cursor 资源/过期/索引、v6 根评论及独立持久评论页、v7 回复／逐根同步状态／回复持久页、v8 媒体尝试令牌及归档文档媒体字段、v9 评论 owner 尝试标识与旧根来源 pending 回填、v10 持久目标检查/观察/工作/时间/独立错误、v11 目标领取 fencing 令牌、v12 按 UP 发现尝试/可信结果/领取令牌、v13 当前入选目标令牌。v0–v12 短事务迁移到 v13，冲突回滚、未来版本拒绝启动；旧 v4 无限期 cursor 被失效，但归档不删。每次操作独立连接并启用外键，等待锁最多 2 秒；数据库操作在线程池执行，网络不进事务。删除配置只 cascade 指定关联，绝不 cascade 身份或归档。
 
-错误响应使用固定错误码与提示，不记录请求体、上游原文或异常秘密。HTTPX/HTTPCore、OSS SDK、Requests/urllib3 传输日志及 Uvicorn access 日志禁用，部署代理也应避免记录敏感查询。本票测试不读取真实 Cookie、不执行/导入参考脚本、不请求真实上游。
+错误响应使用固定错误码与提示，不记录请求体、上游原文或异常秘密。HTTPX/HTTPCore、OSS SDK、Requests/urllib3 传输日志及 Uvicorn access 日志禁用。Nginx 模板显式 `access_log off; error_log /dev/null;`：默认 error 日志在 API 不可达时也会泄露 query，所以不用原始请求日志诊断，改查 `nginx -t`、HTTP 状态、进程退出及固定脱敏 API 错误；外层代理也不得重新记录原始 URI/请求体。本票测试不读取真实 Cookie、不执行/导入参考脚本、不请求真实上游。
 
 ## 测试与 E2E 装配
+
+#31 双进程专项：`uv sync --locked` 后执行 `uv run --no-sync pytest backend/tests/test_deployment_processes.py -q`。API fixture 为 `backend.tests.deployment_fixture:create_app --factory`，要求显式 `BILI_DATABASE_PATH`；独立采集入口 `uv run --no-sync python -m backend.tests.deployment_fixture --database PATH` 使用同一路径。它们仅替换外部 I/O，运行真实 API/collector/SQLite，不访问真实上游或 OSS；模拟上传返回 `https://media.example.invalid/deployment.png`。Nginx/生产构建/浏览器一并验证用 `pnpm test:delivery`（需 dev 依赖、Nginx/mime.types、Chromium，4173 空闲，API 使用临时空闲端口），浏览器仅 route 外部图片。命令与范围见[交付说明](../docs/deployment/static-delivery.md#隔离验证入口与证据边界)，结果见 [#31 验收记录](../.scratch/backend-integration/acceptance-31.md)；不据此宣称真实 OSS、云部署、真机或持续运行已验证。
 
 ```sh
 uv run pytest backend/tests/test_discovery_source.py backend/tests/test_recent_discovery.py -q

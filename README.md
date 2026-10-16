@@ -2,6 +2,10 @@
 
 文档入口：[文档导航](docs/README.md) · [后端集成执行计划](.scratch/backend-integration/implementation-plan.md) · [后端运行说明](backend/README.md)。需求、设计、接口和各阶段验收记录按职责从导航页进入。
 
+## 当前交付入口（后端集成 #31）
+
+[双进程与 Nginx 运行说明](docs/deployment/static-delivery.md#当前范围后端集成-31)覆盖干净检出、固定 nvm/pnpm/uv 依赖、仓库外共享 SQLite、单 API + 单 collector 的前台启停/迁移/重启、静态发布与排障。生产读取归档 API，业务图直取公开 OSS URL；独立 mock 仅供历史回归。隔离验证不访问真实上游/OSS，不代表云部署、真机、持续运行或 2 核 2GB 容量保证；本次结果见 [#31 验收记录](.scratch/backend-integration/acceptance-31.md)，不继承下方历史通过结论。
+
 ## 当前功能与历史范围
 
 目前完成 [任务 01](.scratch/dynamics-viewer/issues/01-browse-text-dynamics.md)、[任务 02](.scratch/dynamics-viewer/issues/02-continue-reading-dynamics.md)、[任务 03](.scratch/dynamics-viewer/issues/03-read-and-sort-comments.md)、[任务 04](.scratch/dynamics-viewer/issues/04-expand-comment-replies.md)、[任务 05](.scratch/dynamics-viewer/issues/05-preview-dynamic-images.md)、[任务 06](.scratch/dynamics-viewer/issues/06-mobile-image-history.md)、[任务 07](.scratch/dynamics-viewer/issues/07-restore-discussion-history.md)、[任务 08](.scratch/dynamics-viewer/issues/08-static-delivery.md) 和 [任务 09](.scratch/dynamics-viewer/issues/09-cross-device-acceptance.md)：固定虚构 UP 主、每批最多 10 条图文动态、独立完整正文详情、站内返回、详情直达/刷新、加载/空态/错误重试及安全文本展示；列表支持显式追加、超过六个渲染行的正文展开/收起，以及会话内返回原列表阅读进度。
@@ -50,13 +54,15 @@ uv run python -m scripts.visual_preview --frontend-dir dist
 Python 环境和依赖只使用 uv。首次启动会事务迁移数据库；身份与监控配置分离，停止/删除配置保留身份，重启读取原数据库。
 
 ```bash
-uv sync --locked --group dev
-BILI_DATABASE_PATH=/absolute/path/to/monitor.sqlite uv run uvicorn backend.bili_monitor.app:app --host 127.0.0.1 --port 8000
-# 另一终端，先按上节 nvm/pnpm 步骤准备
-pnpm dev
+# 专用 API 终端，仓库根目录；纯生产可 uv sync --locked --no-dev
+uv sync --locked
+unset WEB_CONCURRENCY
+export BILI_DATABASE_PATH=/srv/bili-monitor/monitor.sqlite
+printf 'API PID=%s\n' "$$"
+exec .venv/bin/python -m uvicorn backend.bili_monitor.app:app --host 127.0.0.1 --port 8000 --no-access-log
 ```
 
-访问 `http://localhost:5173/manage`。Vite 开发服务器将 `/api` 代理到 8000；正式部署沿用静态构建和 [Nginx 示例](deploy/nginx.conf)，另外启动仅监听回环的 FastAPI。数据库默认 `backend/data/monitor.sqlite`，应放在仓库外的可持久化目录。服务端公开资料传输有超时，上游拒绝或缺字段会明确失败，不制造成功身份。UID 为字符串，页面不能编辑昵称、头像或凭据。
+另一终端先按上节 nvm/pnpm 步骤准备，再 `pnpm dev`，访问 `http://localhost:5173/manage`。Vite 开发服务器将 `/api` 代理到 8000；正式部署沿用静态构建和 [Nginx 示例](deploy/nginx.conf)，另外启动仅监听回环的 FastAPI。示例 SQLite 路径须改为实际仓库外持久绝对路径，API 与独立 collector 使用同一文件；默认 `backend/data/monitor.sqlite` 仅用于本地开发。不要使用多 workers/reload；升级先停两个 Python 进程并等退出，再切版本/同步依赖，API lifespan 自动迁移就绪后再启动 collector。`exec` 直接运行 uv 环境的 Python，避免仅终止 uv 父进程遗留服务；TERM 与等待/重启步骤见交付说明。服务端公开资料传输有超时，上游拒绝或缺字段会明确失败，不制造成功身份。UID 为字符串，页面不能编辑昵称、头像或凭据。
 
 [管理契约](docs/backend/api/management-api.md) 明确输入、错误、模式、默认值和迁移。每 UP 默认近期 10 条，可独立保存近期 N、切换指定模式、启停或删除。指定目标可添加/移除，服务端确认作者匹配才保存；不符或无法读取分别提示，不伪造校验成功。近期模式沿原规则跨页凑 N，并将整轮可信结果发布为当前窗口，复用指定模式同一检查/归档链；失败保留旧可信窗口和全部归档。管理页“近期发现与当前窗口”分区可手动读取已保存 N、候选/可信/当前目标及发现未完成/错误，不触发上游扫描，发现就绪不代表归档成功。固定 15 秒检查需单独启动 Python 采集进程，API 不内嵌定时器。启动/停止与隔离演示见 [后端运行说明](backend/README.md#23-独立采集进程)，检查状态 HTTP 见 [采集契约](docs/backend/api/collector-api.md)，检查/成功时间不混用。默认阅读经生产 Adapter 只查本地归档；来源不可用、停止或删除配置/目标不删除旧归档。首次初始化执行见 [归档契约](docs/backend/api/archive-api.md) 和 [后端说明](backend/README.md)，不由浏览器自动触发，也没有手动采集 UI；状态重读仅查询本地数据库。
 
@@ -82,7 +88,8 @@ pnpm build
 - `pnpm test:e2e:manage`：单独启动真实受测 Uvicorn API（4176）与 Vite（4175）；只替换上游传输，不 mock 数据库或生产管理映射。浏览器保存配置后关闭并重启 API，刷新验证同一临时数据库。测试装配 `backend.tests.live_app` 不是生产启动入口，不需要真实凭据。
 - `pnpm test:e2e:archive`：生产归档 Adapter、真实 Uvicorn 和临时 SQLite 经虚构 HTML/JSON fixture 穿透验证初始化与阅读、断源重开及删除保留；另用两 UP 共 25 条真实 SQLite 档案验证全部／单 UP 页面分页、刷新与身份保留，不访问真实上游。
 - `pnpm test:e2e:preview`：先 `build:mock`，再对显式 mock 静态产物运行历史阅读回归；不使用故障装配，不代替生产 Adapter 或 Nginx 验收。发布使用 `pnpm build`，不要发布 mock 产物。
-- `NGINX_BIN=/absolute/path/to/nginx NGINX_MIME_TYPES=/absolute/path/to/mime.types pnpm test:delivery`：在临时目录启动真实 Nginx，分别验证生产构建可复现/故障装配隔离，以及显式 mock 的历史 Nginx 阅读、资源错误/缓存与一次更新；不配置系统服务。准备步骤见下节。
+- `NGINX_BIN=/absolute/path/to/nginx NGINX_MIME_TYPES=/absolute/path/to/mime.types pnpm test:delivery`：需先 `uv sync --locked`（含 dev）、安装 Chromium，4173 空闲。临时真实 Nginx 保留显式 mock 历史阅读/缓存/更新与构建重现/fault 隔离，再启动实际 API + 独立 collector 共享临时 SQLite，使用生产 Adapter 验证四类页面/刷新、API 200/404/422/502、资源错误/cache、生产构建更新及 HTTP/UI/日志/产物虚构秘密扫描。API 选临时空闲端口，不配置系统服务，不访问真实上游/OSS；结果见 #31 记录，准备步骤见交付说明。
+- `uv run --no-sync pytest backend/tests/test_deployment_processes.py -q`：#31 两进程持久化、检查/同步和重启/恢复专项；fixture API/collector 入口见后端 README，与生产运行入口分开。
 - `HTTP_ACCEPTANCE_URL=http://192.168.8.20:4180/ pnpm test:http`：对已启动的可信局域网 Nginx 显式 `build:mock` 产物验证真实非 localhost HTTP 的启动、UUID v4、详情/预览历史与刷新；先重新构建并更新站点副本，地址替换为实际私有 IPv4。与 `test:delivery` 配合执行，详见静态交付说明；不等于真机验收。
 - 浏览器测试设设备时区为 `America/Los_Angeles`，检查页面仍显示北京时间。四种约定宽度为 360、390、768、1280px。
 - Linux 需要 Chromium 可用的系统库；缺库时按 Playwright 官方系统要求安装。模拟视口不能代替 Linux 品牌 Chrome 或 iPhone Safari 真机检查；既有 Pixel 7 参数保留作自动化视口/触摸配置，不意味着 Android 是本期兼容目标。
@@ -90,9 +97,11 @@ pnpm build
 
 ## 静态交付
 
-参见 [静态交付说明](docs/deployment/static-delivery.md) 和 [Nginx 示例](deploy/nginx.conf)：域名根路径部署，有效详情直达/刷新与未知页面回退到入口；明确资源路径缺失返回 HTTP 404，不回退成 HTML。入口重新验证，内容哈希 JS/CSS 和版本化图片长期缓存，未版本化资源不永久缓存，资源错误 `no-store`。前端“未找到页面”不等于服务器 HTTP 404。
+参见 [交付运行说明](docs/deployment/static-delivery.md) 和 [Nginx 示例](deploy/nginx.conf)：域名根路径部署，默认 root 为 `/srv/dynamics-viewer/current`、本机监听 4173、API 上游 8000；路径与端口修改须同步配置。四类页面直达/刷新与未知页面回退入口；API 成功/错误和明确资源路径缺失不得回退入口，资源缺失 HTTP 404 + `no-store`。入口重新验证，哈希 JS/CSS 和版本化图片长期缓存，未版本化资源不永久缓存。前端“未找到页面”不等于服务器 HTTP 404。
 
-发布应保留旧哈希资源并原子切换入口；本期是项目内演示素材，未来 OSS 由浏览器直连给定 URL，不加服务器代理。2 核 2GB 仅是目标，不是容量保证；后端、数据库和爬虫需另行评估。本期不实施云部署、自动发布或容量压测；09 的自动化与本机静态交付结果已汇总，正式兼容目标仅为 Linux Chrome 与 iPhone Safari，用户已补齐实际版本与必要人工专项结果，09 已按这两目标完成收口，证据及范围边界见 09 记录第 13 节。
+发布保留旧哈希资源并原子切换入口；生产业务图直取给定公开 OSS URL，不加服务器代理，项目内演示素材仅用于 mock。模板关闭 access 和该 server 的 error 日志，防止 API 不可达时原始 query 泄露；排障用 `nginx -t`、HTTP 状态、退出状态及脱敏错误，外层代理也不能重开原始 URI 日志。秘密只留服务端仓库外；无鉴权管理/API 可被读取或修改、公开图可外链，无备份/容量治理可能丢数据或停止写入，不新增鉴权或服务。2 核 2GB 仅是评估目标，不是容量保证，不宣称已实施云部署或容量压测。
+
+历史任务 09 的自动化与本机静态交付结果已汇总，其兼容目标仅为 Linux Chrome 与 iPhone Safari；用户已补齐当时的实际版本与人工专项结果，09 按这两目标完成收口（见 09 记录第 13 节）。这些历史 mock 结果不证明当前后端或生产浏览器验收完成。
 
 ## 装配与边界
 
