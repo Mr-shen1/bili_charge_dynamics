@@ -99,6 +99,43 @@ test('实际 HTTP 与重开 SQLite 回复正序 3/13/23/25，收起复用且结�
   await expect(page.locator('[data-reading-id="comment:2"]').getByRole('region', { name: /回复区/ })).toHaveCount(0);
 });
 
+for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
+  for (const sort of ['最热', '最新']) {
+    test(`收起回复后回到所属根评论并保留已读回复：${viewport.width}px ${sort}`, async ({ page, archiveApi }) => {
+      await archiveApi.reopen();
+      await page.setViewportSize(viewport);
+      await page.goto('/dynamics/9101');
+      await page.getByRole('button', { name: sort, exact: true }).click();
+      const root = page.locator('[data-reading-id="comment:10"]');
+      const thread = threadOf(page);
+      const rows = repliesOf(thread);
+      await expect(rows).toHaveCount(3);
+      await thread.getByRole('button', { name: '展开回复', exact: true }).click();
+      await expect(rows).toHaveCount(13);
+      for (const count of [23, 25]) {
+        await thread.getByRole('button', { name: '加载更多回复', exact: true }).click();
+        await expect(rows).toHaveCount(count);
+      }
+      const collapse = thread.getByRole('button', { name: '收起回复', exact: true });
+      await collapse.scrollIntoViewIfNeeded();
+      const rootTop = () => root.evaluate(element => element.getBoundingClientRect().top);
+      await expect.poll(rootTop).toBeLessThan(0);
+      let additionalReads = 0;
+      page.on('request', request => {
+        if (new URL(request.url()).pathname === replyPath) additionalReads += 1;
+      });
+      await collapse.click();
+      await expect(rows).toHaveCount(3);
+      await expect.poll(rootTop).toBeGreaterThanOrEqual(-1);
+      await expect.poll(rootTop).toBeLessThan(viewport.height);
+      await expect(root.locator('[data-display-identity]').first()).toBeInViewport({ ratio: 1 });
+      await thread.getByRole('button', { name: '展开回复', exact: true }).click();
+      await expect(rows).toHaveCount(25);
+      expect(additionalReads).toBe(0);
+    });
+  }
+}
+
 const textMetrics = (text: Locator) => text.evaluate(element => {
   const lineHeight = parseFloat(getComputedStyle(element).lineHeight);
   return { visibleLines: element.getBoundingClientRect().height / lineHeight, fullLines: element.scrollHeight / lineHeight };

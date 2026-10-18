@@ -1,0 +1,17 @@
+
+> bili-charge-dynamics@0.1.0 build /home/kevin/Projects/PI/bili_charge_dynamics
+> tsc --noEmit && vite build --outDir /tmp/bili-device-33-xMpA6LHL/fixed-dist
+
+vite v7.3.1 building client environment for production...
+transforming...
+✓ 82 modules transformed.
+
+(!) outDir /tmp/bili-device-33-xMpA6LHL/fixed-dist is not inside project root and will not be emptied.
+Use --emptyOutDir to override.
+
+rendering chunks...
+computing gzip size...
+../../../../../tmp/bili-device-33-xMpA6LHL/fixed-dist/index.html                   0.45 kB │ gzip:  0.31 kB
+../../../../../tmp/bili-device-33-xMpA6LHL/fixed-dist/assets/index-D9OlUKhP.css   17.82 kB │ gzip:  4.13 kB
+../../../../../tmp/bili-device-33-xMpA6LHL/fixed-dist/assets/index-DLXpqo1_.js   315.82 kB │ gzip: 98.15 kB
+✓ built in 956ms

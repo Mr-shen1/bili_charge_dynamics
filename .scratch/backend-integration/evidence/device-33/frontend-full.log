@@ -1,0 +1,93 @@
+
+> bili-charge-dynamics@0.1.0 test /home/kevin/Projects/PI/bili_charge_dynamics
+> vitest run --maxWorkers=2
+
+
+[1m[46m RUN [49m[22m [36mv4.0.18 [39m[90m/home/kevin/Projects/PI/bili_charge_dynamics[39m
+
+ [32m✓[39m tests/comments-app.test.tsx [2m([22m[2m22 tests[22m[2m)[22m[33m 6411[2mms[22m[39m
+   [33m[2m✓[22m[39m 评论和回复的 UP 标识按当前动态作者 ID，不按全局身份或同名判断 [33m 309[2mms[22m[39m
+   [33m[2m✓[22m[39m 首次、目标排序及追加错误各自局部重试，追加保留内容并重读原批次 [33m 1247[2mms[22m[39m
+   [33m[2m✓[22m[39m 两种排序20、20、5连续读完，切换丢弃旧进度但保留上方动态节点 [33m 2380[2mms[22m[39m
+ [32m✓[39m tests/replies-app.test.tsx [2m([22m[2m14 tests[22m[2m)[22m[33m 6128[2mms[22m[39m
+   [33m[2m✓[22m[39m 首次和追加失败原区原批重试、重复点击不重读，其他根评论请求不受重试影响 [33m 846[2mms[22m[39m
+   [33m[2m✓[22m[39m 切换排序使旧回复append success及完成失效，切回首批且顺序仍正序 [33m 373[2mms[22m[39m
+   [33m[2m✓[22m[39m 切换排序使旧回复append error及完成失效，切回首批且顺序仍正序 [33m 415[2mms[22m[39m
+   [33m[2m✓[22m[39m 切换排序使旧回复append rejection及完成失效，切回首批且顺序仍正序 [33m 371[2mms[22m[39m
+   [33m[2m✓[22m[39m 追加中收起只改变可见范围，迟到的有效结果保留缓存，再展开不重复请求 [33m 487[2mms[22m[39m
+   [33m[2m✓[22m[39m 25条回复3/13/23/25、收起恢复缓存不重读，结束无下一批且完整计数保持不变 [33m 2010[2mms[22m[39m
+ [32m✓[39m tests/app.test.tsx [2m([22m[2m27 tests[22m[2m)[22m[33m 5318[2mms[22m[39m
+     [33m[2m✓[22m[39m 同路径的新访问从首批开始，后退只恢复原访问的范围，不共享可变进度 [33m 1118[2mms[22m[39m
+     [33m[2m✓[22m[39m 追加失败保留首批，在原批次重试，随后读完 25 条且不再提供加载入口 [33m 879[2mms[22m[39m
+     [33m[2m✓[22m[39m 重复追加不重复请求，离开后旧 success 不污染返回的列表，未完成批次可继续读取 [33m 554[2mms[22m[39m
+     [33m[2m✓[22m[39m 重复追加不重复请求，离开后旧 error 不污染返回的列表，未完成批次可继续读取 [33m 548[2mms[22m[39m
+     [33m[2m✓[22m[39m 重复追加不重复请求，离开后旧 rejection 不污染返回的列表，未完成批次可继续读取 [33m 543[2mms[22m[39m
+ [32m✓[39m tests/discussion-history.test.tsx [2m([22m[2m18 tests[22m[2m)[22m[33m 21975[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回恢复该次评论排序、已读顺序和下一批，而非从首批重新开始 [33m 2619[2mms[22m[39m
+   [33m[2m✓[22m[39m 回复展开、已读范围和下一批在历史返回后保留，收起再离开仍可展开缓存 [33m 2851[2mms[22m[39m
+   [33m[2m✓[22m[39m 同一动态两次访问的排序、评论范围及回复展开互不覆盖，成功详情不重复读取 [33m 3605[2mms[22m[39m
+   [33m[2m✓[22m[39m 加载中离开恢复comments原批次，保留成功内容且取消不显示为错误 [33m 1566[2mms[22m[39m
+   [33m[2m✓[22m[39m 加载中离开恢复replies原批次，保留成功内容且取消不显示为错误 [33m 1599[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回comments append仍在读取时，旧success及完成不污染当前状态 [33m 992[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回comments append仍在读取时，旧error及完成不污染当前状态 [33m 1079[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回comments append仍在读取时，旧rejection及完成不污染当前状态 [33m 1060[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回replies initial仍在读取时，旧success及完成不污染当前状态 [33m 730[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回replies initial仍在读取时，旧error及完成不污染当前状态 [33m 725[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回replies initial仍在读取时，旧rejection及完成不污染当前状态 [33m 724[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回replies append仍在读取时，旧success及完成不污染当前状态 [33m 948[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回replies append仍在读取时，旧error及完成不污染当前状态 [33m 982[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回replies append仍在读取时，旧rejection及完成不污染当前状态 [33m 979[2mms[22m[39m
+   [33m[2m✓[22m[39m 评论和回复读取中往返预览沿用底层访问，不取消请求、不重置分页或展开 [33m 963[2mms[22m[39m
+ [32m✓[39m tests/archive-replies-app.test.tsx [2m([22m[2m23 tests[22m[2m)[22m[33m 4102[2mms[22m[39m
+   [33m[2m✓[22m[39m 生产Adapter确认成功且来源与本地25条相等时，3条预览不重复显示归档统计 [33m 303[2mms[22m[39m
+   [33m[2m✓[22m[39m 生产Adapter保留服务端25条顺序及3/13/23/25范围，失败同批重试，历史保存元数据和cursor [33m 2311[2mms[22m[39m
+ [32m✓[39m tests/manage-page.test.tsx [2m([22m[2m10 tests[22m[2m)[22m[33m 3440[2mms[22m[39m
+     [33m[2m✓[22m[39m UID 与近期 N 校验失败不发请求；非法成功 JSON 保留该卡草稿而非显示保存成功 [33m 1105[2mms[22m[39m
+     [33m[2m✓[22m[39m 忽略取消的旧保存 success 不污染新页面访问或另一 UP [33m 404[2mms[22m[39m
+     [33m[2m✓[22m[39m 忽略取消的旧保存 error 不污染新页面访问或另一 UP [33m 403[2mms[22m[39m
+     [33m[2m✓[22m[39m 删除失败保留草稿，删除仅配置后身份保留；重新添加失败保留身份且同 UID 防重 [33m 480[2mms[22m[39m
+     [33m[2m✓[22m[39m 启停只使用该 UP 已保存配置，失败原位重试，既不提交也不丢失未保存草稿 [32m 300[2mms[22m[39m
+     [33m[2m✓[22m[39m 两 UP 草稿独立、互斥模式可键盘保存；一张卡保存失败及阻塞不锁另一张卡 [33m 462[2mms[22m[39m
+ [32m✓[39m tests/archive-app.test.tsx [2m([22m[2m19 tests[22m[2m)[22m[33m 3351[2mms[22m[39m
+     [33m[2m✓[22m[39m 生产根评论完整采用服务端顺序20/20/5，失败重读同批、结束不请求，来源零回复不展开 [33m 1354[2mms[22m[39m
+     [33m[2m✓[22m[39m 生产分页 10/10/5 按服务器顺序追加，失败重试原 cursor、连点不重复且返回保留多批 [33m 962[2mms[22m[39m
+ [32m✓[39m tests/scoped-app.test.tsx [2m([22m[2m12 tests[22m[2m)[22m[33m 3138[2mms[22m[39m
+     [33m[2m✓[22m[39m 跨 UP 阅读多批后从详情返回和历史后退恢复对应访问，继续使用各自 cursor [33m 1837[2mms[22m[39m
+     [33m[2m✓[22m[39m 直接打开单 UP，作者导航到全部和另一 UP，数据互不串用，详情返回其来源列表 [33m 318[2mms[22m[39m
+ [32m✓[39m tests/manage-discovery-page.test.tsx [2m([22m[2m8 tests[22m[2m)[22m[33m 3000[2mms[22m[39m
+   [33m[2m✓[22m[39m 管理页只手动读取发现窗口，展示实际保存的 N/mode 而不是草稿，窗口就绪不冒充归档成功 [33m 450[2mms[22m[39m
+   [33m[2m✓[22m[39m 保存配置使旧发现读取失效，忽略取消的迟到成功/失败不覆盖新 N 的窗口或解除新读取锁 [33m 588[2mms[22m[39m
+   [33m[2m✓[22m[39m 未发现、首次失败无可信结果、成功空窗口与停用/指定/删除后的历史结果明确区分 [33m 412[2mms[22m[39m
+   [33m[2m✓[22m[39m 旧管理访问的迟到成功、HTTP 失败及坏 JSON 不污染新访问，也不提前结束新发现读取 [33m 913[2mms[22m[39m
+ [32m✓[39m tests/manage-target-page.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[33m 2598[2mms[22m[39m
+     [33m[2m✓[22m[39m StrictMode 下取消旧目标读取，忽略取消的旧集合不覆盖当前列表 [33m 459[2mms[22m[39m
+     [33m[2m✓[22m[39m 同 UID 添加连点防重、离开会取消，忽略取消的旧 success 不污染新访问 [33m 559[2mms[22m[39m
+     [33m[2m✓[22m[39m 同 UID 添加连点防重、离开会取消，忽略取消的旧 error 不污染新访问 [33m 514[2mms[22m[39m
+     [33m[2m✓[22m[39m 归属不符/未知不添加，正确添加与移除后新管理访问读取持久结果；删除不影响归档 [33m 781[2mms[22m[39m
+ [32m✓[39m tests/images.test.tsx [2m([22m[2m12 tests[22m[2m)[22m[33m 2010[2mms[22m[39m
+     [33m[2m✓[22m[39m 长图默认完整显示，键盘可切换适应宽度并保留可关闭的焦点 [33m 346[2mms[22m[39m
+     [33m[2m✓[22m[39m 内容坏图局部占位并重试原地址，仍能打开预览、切图和关闭 [33m 335[2mms[22m[39m
+ [32m✓[39m tests/manage-checks.test.tsx [2m([22m[2m16 tests[22m[2m)[22m[33m 2002[2mms[22m[39m
+     [33m[2m✓[22m[39m 管理页展示分项及较新版本待同步，手动读取不执行同步 [33m 418[2mms[22m[39m
+     [33m[2m✓[22m[39m 评论进度独立于正文和图片，并依据当前根回复分项区分待处理、同步中、部分完成和失败 [33m 520[2mms[22m[39m
+ [32m✓[39m tests/comment-sync-status.test.tsx [2m([22m[2m11 tests[22m[2m)[22m[33m 1121[2mms[22m[39m
+     [33m[2m✓[22m[39m 只读刷新状态保留已加载评论、排序和原 cursor；失败不替换旧状态或正文 [33m 316[2mms[22m[39m
+ [32m✓[39m tests/archive-navigation.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[33m 881[2mms[22m[39m
+ [32m✓[39m tests/archive-comment-images.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[33m 750[2mms[22m[39m
+     [33m[2m✓[22m[39m 上传失败不假装浏览器可重试，浏览器坏图只重试原地址；未完成纯图不显示空正文 [33m 455[2mms[22m[39m
+ [32m✓[39m tests/archive-reader.test.ts [2m([22m[2m32 tests[22m[2m)[22m[32m 46[2mms[22m[39m
+ [32m✓[39m tests/manage-discovery-api.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m tests/manage-api.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m tests/scoped-reader.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m tests/manage-target-api.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m tests/replies-data.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m tests/comments-data.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m tests/production-assembly.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m tests/data.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m tests/image-data.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 3[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m25 passed[39m[22m[90m (25)[39m
+[2m      Tests [22m [1m[32m268 passed[39m[22m[90m (268)[39m
+[2m   Start at [22m 19:14:51
+[2m   Duration [22m 41.90s[2m (transform 766ms, setup 2.41s, import 2.00s, tests 66.35s, environment 10.33s)[22m
+

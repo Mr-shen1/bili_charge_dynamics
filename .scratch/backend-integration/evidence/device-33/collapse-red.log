@@ -1,0 +1,130 @@
+
+Running 4 tests using 1 worker
+
+  ✘  1 tests/e2e-archive/replies.spec.ts:104:5 › 收起回复后回到所属根评论并保留已读回复：1280px 最热 (7.4s)
+  ✘  2 tests/e2e-archive/replies.spec.ts:104:5 › 收起回复后回到所属根评论并保留已读回复：1280px 最新 (7.2s)
+  ✘  3 tests/e2e-archive/replies.spec.ts:104:5 › 收起回复后回到所属根评论并保留已读回复：390px 最热 (7.1s)
+  ✘  4 tests/e2e-archive/replies.spec.ts:104:5 › 收起回复后回到所属根评论并保留已读回复：390px 最新 (7.3s)
+
+
+  1) tests/e2e-archive/replies.spec.ts:104:5 › 收起回复后回到所属根评论并保留已读回复：1280px 最热 ───────────────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeGreaterThanOrEqual[2m([22m[32mexpected[39m[2m)[22m
+
+    Expected: >= [32m-1[39m
+    Received:    [31m-1733[39m
+
+    Call Log:
+    - Timeout 5000ms exceeded while waiting on the predicate
+
+      123 |       await collapse.click();
+      124 |       await expect(rows).toHaveCount(3);
+    > 125 |       await expect.poll(rootTop).toBeGreaterThanOrEqual(-1);
+          |       ^
+      126 |       await expect.poll(rootTop).toBeLessThan(viewport.height);
+      127 |       await thread.getByRole('button', { name: '展开回复', exact: true }).click();
+      128 |       await expect(rows).toHaveCount(25);
+        at /home/kevin/Projects/PI/bili_charge_dynamics/tests/e2e-archive/replies.spec.ts:125:7
+
+    Error Context: test-results/replies-收起回复后回到所属根评论并保留已读回复：1280px-最热/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/replies-收起回复后回到所属根评论并保留已读回复：1280px-最热/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results/replies-收起回复后回到所属根评论并保留已读回复：1280px-最热/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) tests/e2e-archive/replies.spec.ts:104:5 › 收起回复后回到所属根评论并保留已读回复：1280px 最新 ───────────────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeGreaterThanOrEqual[2m([22m[32mexpected[39m[2m)[22m
+
+    Expected: >= [32m-1[39m
+    Received:    [31m-1733[39m
+
+    Call Log:
+    - Timeout 5000ms exceeded while waiting on the predicate
+
+      123 |       await collapse.click();
+      124 |       await expect(rows).toHaveCount(3);
+    > 125 |       await expect.poll(rootTop).toBeGreaterThanOrEqual(-1);
+          |       ^
+      126 |       await expect.poll(rootTop).toBeLessThan(viewport.height);
+      127 |       await thread.getByRole('button', { name: '展开回复', exact: true }).click();
+      128 |       await expect(rows).toHaveCount(25);
+        at /home/kevin/Projects/PI/bili_charge_dynamics/tests/e2e-archive/replies.spec.ts:125:7
+
+    Error Context: test-results/replies-收起回复后回到所属根评论并保留已读回复：1280px-最新/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/replies-收起回复后回到所属根评论并保留已读回复：1280px-最新/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results/replies-收起回复后回到所属根评论并保留已读回复：1280px-最新/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) tests/e2e-archive/replies.spec.ts:104:5 › 收起回复后回到所属根评论并保留已读回复：390px 最热 ────────────────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeGreaterThanOrEqual[2m([22m[32mexpected[39m[2m)[22m
+
+    Expected: >= [32m-1[39m
+    Received:    [31m-2280[39m
+
+    Call Log:
+    - Timeout 5000ms exceeded while waiting on the predicate
+
+      123 |       await collapse.click();
+      124 |       await expect(rows).toHaveCount(3);
+    > 125 |       await expect.poll(rootTop).toBeGreaterThanOrEqual(-1);
+          |       ^
+      126 |       await expect.poll(rootTop).toBeLessThan(viewport.height);
+      127 |       await thread.getByRole('button', { name: '展开回复', exact: true }).click();
+      128 |       await expect(rows).toHaveCount(25);
+        at /home/kevin/Projects/PI/bili_charge_dynamics/tests/e2e-archive/replies.spec.ts:125:7
+
+    Error Context: test-results/replies-收起回复后回到所属根评论并保留已读回复：390px-最热/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/replies-收起回复后回到所属根评论并保留已读回复：390px-最热/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results/replies-收起回复后回到所属根评论并保留已读回复：390px-最热/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  4) tests/e2e-archive/replies.spec.ts:104:5 › 收起回复后回到所属根评论并保留已读回复：390px 最新 ────────────────────────
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeGreaterThanOrEqual[2m([22m[32mexpected[39m[2m)[22m
+
+    Expected: >= [32m-1[39m
+    Received:    [31m-2280[39m
+
+    Call Log:
+    - Timeout 5000ms exceeded while waiting on the predicate
+
+      123 |       await collapse.click();
+      124 |       await expect(rows).toHaveCount(3);
+    > 125 |       await expect.poll(rootTop).toBeGreaterThanOrEqual(-1);
+          |       ^
+      126 |       await expect.poll(rootTop).toBeLessThan(viewport.height);
+      127 |       await thread.getByRole('button', { name: '展开回复', exact: true }).click();
+      128 |       await expect(rows).toHaveCount(25);
+        at /home/kevin/Projects/PI/bili_charge_dynamics/tests/e2e-archive/replies.spec.ts:125:7
+
+    Error Context: test-results/replies-收起回复后回到所属根评论并保留已读回复：390px-最新/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/replies-收起回复后回到所属根评论并保留已读回复：390px-最新/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results/replies-收起回复后回到所属根评论并保留已读回复：390px-最新/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  4 failed
+    tests/e2e-archive/replies.spec.ts:104:5 › 收起回复后回到所属根评论并保留已读回复：1280px 最热 ────────────────────────
+    tests/e2e-archive/replies.spec.ts:104:5 › 收起回复后回到所属根评论并保留已读回复：1280px 最新 ────────────────────────
+    tests/e2e-archive/replies.spec.ts:104:5 › 收起回复后回到所属根评论并保留已读回复：390px 最热 ─────────────────────────
+    tests/e2e-archive/replies.spec.ts:104:5 › 收起回复后回到所属根评论并保留已读回复：390px 最新 ─────────────────────────

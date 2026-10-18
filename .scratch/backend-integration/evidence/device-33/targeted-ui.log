@@ -1,0 +1,38 @@
+
+> bili-charge-dynamics@0.1.0 test /home/kevin/Projects/PI/bili_charge_dynamics
+> vitest run tests/replies-app.test.tsx tests/archive-replies-app.test.tsx tests/discussion-history.test.tsx --maxWorkers=2
+
+
+[1m[46m RUN [49m[22m [36mv4.0.18 [39m[90m/home/kevin/Projects/PI/bili_charge_dynamics[39m
+
+ [32m✓[39m tests/replies-app.test.tsx [2m([22m[2m14 tests[22m[2m)[22m[33m 5963[2mms[22m[39m
+   [33m[2m✓[22m[39m 首次和追加失败原区原批重试、重复点击不重读，其他根评论请求不受重试影响 [33m 816[2mms[22m[39m
+   [33m[2m✓[22m[39m 切换排序使旧回复append success及完成失效，切回首批且顺序仍正序 [33m 348[2mms[22m[39m
+   [33m[2m✓[22m[39m 切换排序使旧回复append error及完成失效，切回首批且顺序仍正序 [33m 346[2mms[22m[39m
+   [33m[2m✓[22m[39m 切换排序使旧回复append rejection及完成失效，切回首批且顺序仍正序 [33m 343[2mms[22m[39m
+   [33m[2m✓[22m[39m 追加中收起只改变可见范围，迟到的有效结果保留缓存，再展开不重复请求 [33m 501[2mms[22m[39m
+   [33m[2m✓[22m[39m 25条回复3/13/23/25、收起恢复缓存不重读，结束无下一批且完整计数保持不变 [33m 2055[2mms[22m[39m
+ [32m✓[39m tests/archive-replies-app.test.tsx [2m([22m[2m23 tests[22m[2m)[22m[33m 4062[2mms[22m[39m
+   [33m[2m✓[22m[39m 生产Adapter保留服务端25条顺序及3/13/23/25范围，失败同批重试，历史保存元数据和cursor [33m 2317[2mms[22m[39m
+ [32m✓[39m tests/discussion-history.test.tsx [2m([22m[2m18 tests[22m[2m)[22m[33m 20803[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回恢复该次评论排序、已读顺序和下一批，而非从首批重新开始 [33m 2295[2mms[22m[39m
+   [33m[2m✓[22m[39m 回复展开、已读范围和下一批在历史返回后保留，收起再离开仍可展开缓存 [33m 2824[2mms[22m[39m
+   [33m[2m✓[22m[39m 同一动态两次访问的排序、评论范围及回复展开互不覆盖，成功详情不重复读取 [33m 3500[2mms[22m[39m
+   [33m[2m✓[22m[39m 加载中离开恢复comments原批次，保留成功内容且取消不显示为错误 [33m 1453[2mms[22m[39m
+   [33m[2m✓[22m[39m 加载中离开恢复replies原批次，保留成功内容且取消不显示为错误 [33m 1493[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回comments append仍在读取时，旧success及完成不污染当前状态 [33m 937[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回comments append仍在读取时，旧error及完成不污染当前状态 [33m 953[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回comments append仍在读取时，旧rejection及完成不污染当前状态 [33m 956[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回replies initial仍在读取时，旧success及完成不污染当前状态 [33m 708[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回replies initial仍在读取时，旧error及完成不污染当前状态 [33m 722[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回replies initial仍在读取时，旧rejection及完成不污染当前状态 [33m 708[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回replies append仍在读取时，旧success及完成不污染当前状态 [33m 924[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回replies append仍在读取时，旧error及完成不污染当前状态 [33m 926[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回replies append仍在读取时，旧rejection及完成不污染当前状态 [33m 966[2mms[22m[39m
+   [33m[2m✓[22m[39m 评论和回复读取中往返预览沿用底层访问，不取消请求、不重置分页或展开 [33m 922[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m3 passed[39m[22m[90m (3)[39m
+[2m      Tests [22m [1m[32m55 passed[39m[22m[90m (55)[39m
+[2m   Start at [22m 19:13:17
+[2m   Duration [22m 21.80s[2m (transform 489ms, setup 321ms, import 702ms, tests 30.83s, environment 1.31s)[22m
+
