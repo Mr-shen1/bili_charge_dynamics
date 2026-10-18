@@ -28,6 +28,13 @@ export function ReplySection({ reader, dynamicId, authorId, rootId }: {
   const initial = useRef(visit.current.replies[rootId]);
   const { state, load, restart } = useDiscussionRead(read, initial.current?.read);
   const [expanded, setExpanded] = useState(initial.current?.expanded ?? false);
+  const section = useRef<HTMLElement>(null);
+  const collapseRequested = useRef(false);
+  useLayoutEffect(() => {
+    if (expanded || !collapseRequested.current) return;
+    collapseRequested.current = false;
+    section.current?.closest<HTMLElement>('[data-reading-id^="comment:"]')?.scrollIntoView?.({ block: 'start', behavior: 'instant' });
+  }, [expanded]);
   const [expandedTexts, setExpandedTexts] = useState<Readonly<Record<string, boolean>>>(initial.current?.expandedTexts ?? {});
   useLayoutEffect(() => {
     visit.current = { ...visit.current, replies: { ...visit.current.replies,
@@ -44,7 +51,7 @@ export function ReplySection({ reader, dynamicId, authorId, rootId }: {
     if (state.data && state.data.items.length <= replyPreviewSize) void load();
   };
   const invalidCursor = state.reason === 'invalid-cursor';
-  return <section className={styles.replySection} aria-label={`回复区 ${rootId}`}>
+  return <section ref={section} className={styles.replySection} aria-label={`回复区 ${rootId}`}>
     {invalidCursor && <section className={styles.status}>
       <p role="alert">回复读取标记无效，请重新开始读取。</p>
       <button type="button" className={styles.button} onClick={() => {
@@ -88,7 +95,10 @@ export function ReplySection({ reader, dynamicId, authorId, rootId }: {
         {state.data.nextCursor !== null && (state.status === 'success' || state.status === 'loading') &&
           <button type="button" className={styles.button} disabled={state.status === 'loading'} onClick={() => void load()}>加载更多回复</button>}
         <button type="button" className={styles.button} aria-expanded={true} aria-controls={listId}
-          onClick={() => setExpanded(false)}>收起回复</button>
+          onClick={() => {
+            collapseRequested.current = true;
+            setExpanded(false);
+          }}>收起回复</button>
       </>}
       {state.data.nextCursor === null && <p role="status">{archiveNotice ? '本地归档回复已读完' : '回复已加载完毕'}</p>}
     </>}
