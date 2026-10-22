@@ -1,4 +1,4 @@
-"""上游分页共享节奏；只等待发送机会，不持有网络或存储事务。"""
+"""上游分页共享节奏；HTTPX 与 Requests 只等待发送机会，不锁网络或事务。"""
 
 import asyncio
 import random
@@ -11,25 +11,31 @@ from .source_endpoints import FEED_URL, ROOT_COMMENTS_URL, REPLIES_URL
 PAGE_DELAYS = {FEED_URL: (0.8, 1.5), ROOT_COMMENTS_URL: (0.3, 0.4), REPLIES_URL: (0.3, 0.4)}
 
 
-class PacedSourceTransport(httpx.AsyncBaseTransport):
-    """同一进程的上游客户端共用，避免多目标分页同时突发请求。
+class SourcePacer:
+    """在同一事件循环共享等待锁；实际同步网络请求另在线程池执行。"""
 
-    参考原脚本：动态页 0.8–1.5 秒，根评论／楼中楼页 0.3–0.4 秒。
-    每次发送前等待（包括首页及空尾页复查）；不重试、不改变检查节拍。
-    非分页信号请求无需排队，慢同步的网络 I/O 也不占等待锁。
-    sleep 仅作为外部时间边界供受控测试使用。
-    """
-
-    def __init__(self, transport=None, *, sleep=None):
-        self.transport = transport if transport is not None else httpx.AsyncHTTPTransport(trust_env=False)
+    def __init__(self, *, sleep=None):
         self.sleep = sleep if sleep is not None else asyncio.sleep
         self.lock = asyncio.Lock()
 
-    async def handle_async_request(self, request):
-        interval = PAGE_DELAYS.get(str(request.url.copy_with(query=None)))
+    async def wait(self, url):
+        interval = PAGE_DELAYS.get(str(httpx.URL(url).copy_with(query=None)))
         if interval is not None:
             async with self.lock:
                 await self.sleep(random.uniform(*interval))
+
+
+class PacedSourceTransport(httpx.AsyncBaseTransport):
+    """分页发送前等待，包括首页和空尾页；不改变检查节拍或自动重试。"""
+
+    def __init__(self, transport=None, *, sleep=None, pacer=None):
+        self.transport = transport if transport is not None else httpx.AsyncHTTPTransport(trust_env=False)
+        self.pacer = pacer if pacer is not None else SourcePacer(sleep=sleep)
+        self.sleep = self.pacer.sleep
+        self.lock = self.pacer.lock
+
+    async def handle_async_request(self, request):
+        await self.pacer.wait(request.url)
         return await self.transport.handle_async_request(request)
 
     async def aclose(self):

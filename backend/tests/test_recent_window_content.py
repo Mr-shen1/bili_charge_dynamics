@@ -195,10 +195,13 @@ def assert_complete_content(saved):
             assert item["source_url"] == source["url"]
             assert (item["width"], item["height"]) == (source["width"], source["height"])
             assert item["status"] == "success" and item["error"] is None
-            namespace = f"dynamics/{RECENT_ID}/"
+            # 对象键以 bili-charge/ 为命名空间前缀；评论媒体按 动态/根评论 两级归属。
+            namespace = f"bili-charge/dynamics/{RECENT_ID}/"
             if owner["type"] == "comment":
-                namespace += f"comments/{ROOT_ID}/"
+                namespace = f"bili-charge/comments/{RECENT_ID}/{ROOT_ID}/"
             assert item["public_url"].startswith("https://archive.example.invalid/" + namespace)
+            # 后缀按下载响应的 MIME 决定，不沿用来源 URL 的路径。
+            assert item["public_url"].endswith(".png")
             assert item["public_url"] != item["source_url"]
 
 

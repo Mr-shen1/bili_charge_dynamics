@@ -205,6 +205,7 @@ def test_readable_full_page_archives_metadata_media_locator_and_version_idempote
             "id": "123", "author": {"id": UID, "nickname": "虚构星海", "avatar_url": "https://example.invalid/avatar.png"},
             "published_at": "2026-10-09T10:38:16+08:00", "edited_at": "2026-10-09T13:01+08:00", "edit_status": "observed",
             "title": None, "text": "虚构全文\n第二行 <b>仍是文本</b> 🙂", "content_state": "success", "last_attempt": "success",
+            "content_visible": True,
             "source_comment_count": 7, "local_comment_count": 0, "local_reply_count": 0,
             "root_comments_last_attempt": "failed", "synced_root_comment_count": None,
             "comments_last_attempt": "failed", "replies_last_attempt": "unconfirmed",
@@ -213,7 +214,7 @@ def test_readable_full_page_archives_metadata_media_locator_and_version_idempote
             "synced_comment_count": None, "synced_reply_comment_count": None,
             "media_sources": [{"url": "https://example.invalid/first.png", "width": 640, "height": 480},
                               {"url": "https://example.invalid/second.png", "width": 200, "height": 1200}],
-            "comment_locator": {"oid": "99123", "type": 17},
+            "comment_locator": {"oid": "99123", "type": 17, "source": "basic", "policy_version": 1},
             "observed_version": "2026-10-09T13:01+08:00", "synced_version": "2026-10-09T13:01+08:00",
             "work": {"text": "success", "media": "pending", "comments": "pending", "replies": "pending"},
         }
@@ -299,7 +300,7 @@ def test_failed_html_keeps_independent_json_metadata_without_using_summary_as_bo
         assert saved["edited_at"] is None
         assert saved["edit_status"] == "error"
         assert saved["source_comment_count"] == 7
-        assert saved["comment_locator"] == {"oid": "99123", "type": 17}
+        assert saved["comment_locator"] == {"oid": "99123", "type": 17, "source": "basic", "policy_version": 1}
         assert saved["media_sources"] == [{"url": "https://example.invalid/first.png", "width": 640, "height": 480}]
         assert "FICTIONAL_SECRET" not in str(saved)
 
@@ -354,13 +355,14 @@ def test_json_normal_empty_restricted_and_failed_initialization_survives_reopen(
         assert saved["101"]["title"] == "虚构标题"
         assert saved["101"]["text"] == "正文\n<b>普通文本</b> 🙂"
         assert saved["101"]["media_sources"] == [{"url": "https://example.invalid/one.png", "width": 640, "height": 480}]
-        assert saved["101"]["comment_locator"] == {"oid": "99101", "type": 17}
+        assert saved["101"]["comment_locator"] == {"oid": "99101", "type": 17, "source": "basic", "policy_version": 1}
         assert saved["101"]["author"] == {"id": UID, "nickname": "虚构作者", "avatar_url": "https://example.invalid/author.png"}
         assert saved["102"]["text"] == ""
         assert saved["102"]["content_state"] == "success"
         assert saved["103"]["text"] == ""
         assert saved["103"]["content_state"] == saved["103"]["last_attempt"] == "restricted"
-        assert saved["103"]["work"]["text"] == "pending"
+        # 受限是本次观察的终态，工作状态不再标记待重试。
+        assert saved["103"]["work"]["text"] == "restricted"
         assert saved["103"]["synced_version"] is None
         assert saved["104"]["content_state"] == "failed"
         assert saved["104"]["work"]["text"] == "pending"
@@ -428,7 +430,8 @@ def test_optional_json_metadata_failures_do_not_block_body_or_erase_trusted_iden
         assert saved["author"] == before["author"]
         assert saved["published_at"] == before["published_at"]
         assert saved["source_comment_count"] == 7
-        assert saved["comment_locator"] == before["comment_locator"]
+        # basic 缺失时新策略按目标动态 ID/type11 兜底，并推进评论工作 revision。
+        assert saved["comment_locator"] == {"oid": "123", "type": 11, "source": "dynamic_id_fallback", "policy_version": 1}
         assert saved["edit_status"] == "error"
         assert saved["edited_at"] == saved["observed_version"] == saved["synced_version"] == before["synced_version"]
         assert saved["text"] == before["text"]
@@ -487,7 +490,7 @@ def test_invalid_body_and_counter_do_not_discard_other_parsed_metadata(tmp_path)
         assert saved["edit_status"] == "observed"
         assert saved["source_comment_count"] == 7
         assert saved["media_sources"] == [{"url": "https://example.invalid/first.png", "width": 640, "height": 480}]
-        assert saved["comment_locator"] == {"oid": "99123", "type": 17}
+        assert saved["comment_locator"] == {"oid": "99123", "type": 17, "source": "basic", "policy_version": 1}
 
 
 def test_cursor_rejects_forgery_and_cross_resource_or_unsupported_scope(tmp_path):

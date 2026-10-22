@@ -421,7 +421,8 @@ def test_production_cli_runs_without_api_and_stops_cleanly_with_no_targets(tmp_p
         assert acquired and daemon.poll() is None
         duplicate = subprocess.run(command + ["--once"], env=environment, capture_output=True, text=True, timeout=10)
         assert duplicate.returncode != 0
-        assert duplicate.stderr.strip() == "Collector failed"
+        # 采集诊断日志固定写在 stderr，失败结论文本仍单独一行且不携带来源内容。
+        assert duplicate.stderr.strip().splitlines()[-1] == "Collector failed"
         daemon.terminate()
         stdout, stderr = daemon.communicate(timeout=5)
         assert daemon.returncode == 0

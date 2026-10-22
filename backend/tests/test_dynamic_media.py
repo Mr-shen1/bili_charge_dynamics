@@ -100,7 +100,8 @@ def test_protocol_images_are_archived_in_order_with_public_urls_and_survive_reop
             assert item["owner"] == {"type": "dynamic", "id": "123"}
             assert item["status"] == "success"
             assert item["error"] is None
-            assert item["public_url"].startswith("https://archive.example.invalid/dynamics/123/")
+            assert item["public_url"].startswith("https://archive.example.invalid/bili-charge/dynamics/123/")
+            assert item["public_url"].endswith(".png")
         assert client.get("/api/archive/dynamics").json()["items"] == [archive_content(saved)]
         client.post(SYNC, json={"uid": UID})
         assert client.get(ARCHIVE).json() == saved
@@ -210,7 +211,8 @@ def test_configured_real_oss_adapter_uses_signed_put_and_never_exposes_credentia
 
     def send(session, request, **kwargs):
         assert request.method == "PUT"
-        assert unquote(request.url).startswith("https://fictional-archive.oss-cn-hangzhou.aliyuncs.com/dynamics/123/")
+        assert unquote(request.url).startswith("https://fictional-archive.oss-cn-hangzhou.aliyuncs.com/bili-charge/dynamics/123/")
+        assert unquote(request.url).endswith(".png")
         assert request.headers["Authorization"].startswith("OSS4-HMAC-SHA256 ")
         assert request.headers["x-oss-security-token"] == "FICTIONAL_SECURITY_TOKEN"
         assert request.headers["Content-Type"] == "image/png"
@@ -233,7 +235,7 @@ def test_configured_real_oss_adapter_uses_signed_put_and_never_exposes_credentia
         assert len(uploaded) == 1
         assert saved["media"][0]["status"] == ("success" if oss_status == 200 else "failed")
         if oss_status == 200:
-            assert saved["media"][0]["public_url"].startswith("https://archive.example.invalid/images/dynamics/123/")
+            assert saved["media"][0]["public_url"].startswith("https://archive.example.invalid/images/bili-charge/dynamics/123/")
             assert "?" not in saved["media"][0]["public_url"]
         else:
             assert saved["media"][0]["error"] == "MEDIA_UPLOAD_FAILED"

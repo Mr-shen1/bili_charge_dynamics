@@ -286,6 +286,8 @@ def test_actual_comment_interface_rejection_is_failed_and_preserves_old_checkpoi
                 old_roots = read_items(api, ARCHIVE + "/comments")
                 old_replies = read_items(api, ARCHIVE + f"/comments/{root_id}/replies")
             source.count = 8
+            # 楼中楼按根 rcount 变化增量重扫；这里同时模拟该根新增回复。
+            source.roots[0]["rcount"] = 6
             await collector.check_once(UID, "123")
             reject = True
             await collector.execute_pending()
@@ -341,7 +343,7 @@ def test_first_unknown_count_and_denied_webpage_initialize_comments_from_detail_
             assert checked["check_error"] == "SOURCE_UNAVAILABLE"
             assert checked["observed"].get("source_comment_count") is None
             assert checked["observed"]["comment_count_status"] == "failed"
-            assert checked["observed"]["comment_locator"] == {"oid": "99123", "type": 17}
+            assert checked["observed"]["comment_locator"] == {"oid": "99123", "type": 17, "source": "basic", "policy_version": 1}
             assert [route for route, _ in source.calls] == [
                 "/opus/123", "/x/polymer/web-dynamic/v1/detail", "/x/v2/reply/count"]
             await collector.execute_pending()

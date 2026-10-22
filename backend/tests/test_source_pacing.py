@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 import httpx
+import requests
 
 from fastapi.testclient import TestClient
 
@@ -13,7 +14,7 @@ from backend.bili_monitor.collector import Collector, serve
 from backend.bili_monitor.source_transport import PacedSourceTransport
 from backend.bili_monitor.storage import Store
 from backend.tests.archive_support import archive_client
-from backend.tests.management_support import BASE, UID, client_for, profile_response
+from backend.tests.management_support import BASE, UID, client_for, profile_response, enable
 from backend.tests.root_support import ARCHIVE, COMMENTS, prepare
 from backend.tests.test_replies import REPLIES, reply_source
 
@@ -25,6 +26,7 @@ def test_recent_pagination_waits_before_every_request_through_collector(tmp_path
     path = tmp_path / "monitor.sqlite"
     with client_for(path) as api:
         assert api.post(BASE, json={"uid": "101"}).status_code == 201
+        enable(api, "101")
     events = []
 
     async def sleep(seconds):
@@ -86,21 +88,41 @@ def test_default_api_transport_paces_real_initialization(monkeypatch, tmp_path):
     source, real_sleep = reply_source(state), asyncio.sleep
 
     async def sleep(seconds):
-        if seconds > 0:
-            assert 0.3 <= seconds <= 0.4
+        # 评论会话预热随机等 1–3 秒，不是分页节拍。
+        if 0.3 <= seconds <= 0.4:
             events.append("wait")
         await real_sleep(0)
 
     async def upstream(transport, request):
         if request.url.path == "/x/web-interface/card":
             return profile_response(request)
-        if request.url.path in ("/x/v2/reply", "/x/v2/reply/reply"):
-            events.append("page")
         return source(request)
 
-    # 只替换外部网络与时间，不替换应用的生产客户端装配。
+    class _Response:
+        """最小 requests 响应替身：Requests 已解压，_get 会转成 HTTPX 响应。"""
+
+        def __init__(self, response, request):
+            self.status_code = response.status_code
+            self.content = response.content
+            self.headers = dict(response.headers)
+            self.url = str(request.url)
+
+        def close(self):
+            pass
+
+    def comment_get(session, url, params=None, headers=None, timeout=None, **kwargs):
+        request = httpx.Request("GET", url, params=params)
+        if request.url.path in ("/x/v2/reply", "/x/v2/reply/reply"):
+            events.append("page")
+            return _Response(source(request), request)
+        # 首页/空间预热：不参与分页节拍断言。
+        return _Response(httpx.Response(200, text=""), request)
+
+    # 只替换外部网络与时间，不替换应用的生产客户端装配：
+    # 普通来源走 HTTPX 传输，评论根/回复页走 Requests 会话。
     monkeypatch.setattr(httpx.AsyncHTTPTransport, "handle_async_request", upstream)
     monkeypatch.setattr(asyncio, "sleep", sleep)
+    monkeypatch.setattr(requests.Session, "get", comment_get)
     with TestClient(create_app(tmp_path / "monitor.sqlite")) as api:
         prepare(api)
         assert api.post("/api/sync/initial", json={"uid": UID}).status_code == 200
@@ -114,6 +136,7 @@ def test_collector_process_entry_uses_paced_feed_transport(monkeypatch, tmp_path
     path = tmp_path / "monitor.sqlite"
     with client_for(path) as api:
         assert api.post(BASE, json={"uid": "101"}).status_code == 201
+        enable(api, "101")
     events, real_sleep = [], asyncio.sleep
 
     async def sleep(seconds):

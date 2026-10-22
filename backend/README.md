@@ -21,9 +21,22 @@ API 的 ASGI lifespan 与取得锁的 collector 启动都调用 `Store.migrate`�
 
 **首期无鉴权**：管理、初始化及归档接口均可被访问者调用，可能暴露内容或被修改配置。请通过监听地址、防火墙或反向代理限制暴露；隐藏入口不是保护。本期没有备份或容量治理。
 
+## API 与采集统一启动
+
+推荐在准备好 uv 环境后，使用统一入口，避免只启动 API 导致添加监控后始终没有动态：
+
+```sh
+export BILI_DATABASE_PATH=/srv/bili-monitor/monitor.sqlite
+exec .venv/bin/python -m backend.bili_monitor.service --host 127.0.0.1 --port 8000
+```
+
+该入口托管一个 API 子进程和一个独立 collector 子进程，不在 API 内运行定时器。等待 API 完成迁移和监听后才启动 collector；两者继承同一绝对数据库路径、可选 `BILI_COOKIE_FILE` 与 OSS 环境。任一子进程退出时会停止另一进程并报固定错误，便于外部服务托管发现故障；Ctrl-C/TERM 先等待 collector 退出，再停止 API。不要与下节的手动双进程入口同时使用，也不要在已有 collector 运行时重复启动。
+
+当前本机 `live-34/run-api.sh` 已改用该入口，仍保留原端口、数据库和 Cookie 文件路径；需要维护者重启原服务才会生效。它仍清除 OSS 配置，因此有图目标的媒体会保持待归档，不能把文本完成视为全项完成。本次未启动、重启服务，也未做测试或运行验证。
+
 ## 23 独立采集进程
 
-API 和采集进程使用同一 SQLite 路径，分别启动，不能增加多个采集进程。处理持久启用的指定集合或近期可信窗口的检查/同步，以及近期 UP 发现，默认最多 4 个同时检查、4 个独立目标同步、2 个独立 UP 发现；同目标不叠加，慢分页期间其他目标仍可检查／同步。固定 15 秒检查与慢同步分离，状态从 `GET /api/manage/ups/{uid}/checks` 读取；完整节拍、重启与状态语义见 [采集契约](../docs/backend/api/collector-api.md)。API 不内嵌定时器。
+也可按原方式让 API 和采集进程使用同一 SQLite 路径、分别启动，不能增加多个采集进程。处理持久启用的指定集合或近期可信窗口的检查/同步，以及近期 UP 发现，默认最多 4 个同时检查、4 个独立目标同步、2 个独立 UP 发现；同目标不叠加，慢分页期间其他目标仍可检查／同步。固定 15 秒检查与慢同步分离，状态从 `GET /api/manage/ups/{uid}/checks` 读取；完整节拍、重启与状态语义见 [采集契约](../docs/backend/api/collector-api.md)。API 不内嵌定时器。
 
 ```sh
 # 独立终端、仓库根目录；使用与 API 相同的持久路径和服务端 OSS 环境
@@ -50,6 +63,17 @@ uv run python -m backend.tests.collector_demo --database "$demo_dir/monitor.sqli
 ```
 
 独立 Python 进程输出 0/15/30/45 四个受控节拍的公开 HTTP 状态；首次检查 pending，随后实际无图/零评论归档完成，后续无变化检查只更新检查时间。时间替身只替换外部时钟，真实 SQLite、HTML/JSON 解析、归档及 HTTP 均执行。受控 45 秒不是实际等待 45 秒，也不证明长期运行稳定性。
+
+## collector 日志
+
+当前本机统一服务同时托管 API 与 collector，查看最近日志或持续跟随：
+
+```sh
+journalctl --user -u bili-charge-live-34.service -n 100 --no-pager
+journalctl --user -u bili-charge-live-34.service -f
+```
+
+每 15 秒的 `collector_tick` 会显示入选目标、待处理数、在途数和本轮新调度数；真正领取后输出 `sync_started`，完成时输出 `sync_finished`。同一同步尝试通过进程内 `attempt` 关联根评论、回复、正文和媒体阶段；失败包含固定分类、页号及 HTTP 状态（如有），不含 URL、业务 ID、来源原文或凭据。详细字段及如何区分空闲、在途、失败重试和进程退出见[采集日志契约](../docs/backend/api/collector-api.md#调度与失败日志)。正常失败仍按原固定节拍重试，日志本身不触发额外采集。本次日志增补按用户要求未经测试或运行验证。
 
 ## 24 编辑同步与版本提交
 
@@ -94,12 +118,62 @@ API 的显式同步和正式采集进程使用共享 `PacedSourceTransport`：�
 ```python
 from backend.bili_monitor.app import create_app
 
-app = create_app(database_path, profile_transport=None, media_transport=None, media_uploader=None)
+app = create_app(database_path, profile_transport=None, media_transport=None, media_uploader=None,
+                 comment_client_factory=None)
 ```
 
-工厂不打开数据库，ASGI lifespan 启动时迁移。`profile_transport` 是来源协议的外部 HTTP transport，覆盖 card、detail、`/opus/{id}` 页面、`/x/v2/reply/count` 独立计数、`/x/v2/reply` 根评论页及 `/x/v2/reply/reply` 楼中楼页；测试使用 `httpx.MockTransport`，不替换解析、同步或存储。`media_transport` 只替换独立图片下载 HTTP，`media_uploader` 是异步 `upload(key, content, content_type) -> 完整公开URL` 的外部 OSS 边界，测试替身不替换媒体协调或数据库。未注入 uploader 时从服务端环境装配真实 OSS，全部配置缺失则保持待上传。使用包含 lifespan 的服务器或 `with TestClient(app)`。
+工厂不打开数据库，ASGI lifespan 启动时迁移。默认生产的评论计数、根评论和楼中楼通过 `comment_client_factory` 创建每次尝试独立的 Requests 会话；正文/detail/feed 仍使用 HTTPX。显式注入 `profile_transport` 且未指定评论工厂时，全部来源请求继续经过该 transport，保留既有 `httpx.MockTransport` seam，不会静默绕过替身出真网。也可显式注入提供异步上下文管理器的评论工厂；两种 I/O 共用同一套协议解析、同步和存储。`media_transport` 只替换独立图片下载 HTTP，`media_uploader` 是异步 `upload(key, content, content_type) -> 完整公开URL` 的外部 OSS 边界，测试替身不替换媒体协调或数据库。未注入 uploader 时从服务端环境装配真实 OSS，全部配置缺失则保持待上传。使用包含 lifespan 的服务器或 `with TestClient(app)`。
 
-生产请求公开 card、通用动态 detail、普通 opus HTML、独立评论计数及根／回复页码接口；超时 10 秒，不跟随重定向、不使用环境代理，无 Cookie/凭据输入。不会绕过受限正文，不依赖 `opus/detail` JSON 或 ignored 原脚本。
+生产请求 card、通用动态 detail、普通 opus HTML、独立评论计数及根／回复页码接口。HTTPX 信号/正文请求默认超时 10 秒、不跟随重定向、不使用环境代理；评论 Requests 会话采用下节的参考脚本式初始化、15 秒超时及环境代理策略。默认匿名；可选登录 Cookie 仅从服务端私有文件加载，没有前端/API 凭据输入。不绕过受限正文，不依赖 `opus/detail` JSON，不导入或执行 ignored 原脚本。
+
+## 来源 client 初始化
+
+API 与 collector 的来源 `AsyncClient` 共用 `source_client.py` 中的普通请求配置：
+
+- 按用户要求采用参考脚本中相同的固定普通 `User-Agent`，不复制脚本的 Cookie 或其他凭据；这不是接口可用或访问权限的保证。
+- `Accept-Language: zh-CN,zh;q=0.9,en;q=0.8`；API 的 `Accept: application/json, text/plain, */*`，`Origin: https://space.bilibili.com`。普通页面仍使用 HTML 内容协商。
+- 根评论、楼中楼及独立计数请求逐次设置 `Referer: https://space.bilibili.com/{uid}/dynamic`，UID 由本轮归档/检查的 UP 传递，不把脚本的单一 UP 固定到共享客户端。
+- 正式评论链路使用 `RequestsCommentClientFactory`：每次独立计数检查或根＋回复采集尝试创建 Requests Session，结束关闭，不跨尝试保留可变会话。同步网络 I/O 在线程池执行，同一 Session 串行使用，不阻塞固定调度时钟。endpoint、主要参数和 15 秒超时对照参考脚本，解析逻辑不分叉。
+- 每个 Session 按 `create_session` 顺序预热 `https://www.bilibili.com/`、`https://space.bilibili.com/{uid}/dynamic`，各自 timeout 10 秒、成功取得响应后异步等 1–3 秒；每个 URL 独立 best-effort，异常不阻止下一个 URL。预热只记录 HTTP 成功，不宣称已登录；不再用 nav 预热。工厂创建时不发请求，空闲 API 启动不访问来源。
+- 私有 Cookie 文件每个进程启动读一次；名称和值分别 strip、不 URL 编解码。每轮从该不可变输入重建 Session CookieJar，域 `.bilibili.com`、path `/`；仅本轮保留正常来源 `Set-Cookie` 更新/删除。API、collector、不同尝试和媒体/OSS 不共享可变 jar。
+- Requests 使用环境代理、TLS 验证和默认 GET 重定向行为；实际发送（包括跳转）只允许 HTTPS 默认端口的 `api.bilibili.com`、`www.bilibili.com`、`space.bilibili.com`，其他域/明文/非 GET 在发送前拒绝。此范围约束有意严于参考脚本，Cookie 不会随任意跳转泄露。HTTPX 正文/detail/feed 和独立媒体仍保持各自原有代理策略。
+- 同一进程的 Requests 与 HTTPX 共用 `SourcePacer` 等待锁：feed 0.8–1.5 秒、根/回复0.3–0.4秒；网络不持锁，独立计数不加入分页队列。不新增来源请求即时重试。
+- locator 按参考脚本优先取合法 basic，再尝试同一已校验目标的 OPUS ID/type11、动态 ID/type11；记录 `source/policy_version`。旧策略下一次检查重新取已校验作者的 detail 核对一次；资源 oid/type 变化会登记新工作，即使计数不变也重扫根/回复。fallback 条目必须携带一致 oid/type，空页不算确认 fallback 成功；正来源计数却整轮无根也不推进成功。
+
+静态对照 ignored `script_demo/bili_charge_monitor.py`，不导入/执行脚本、不读取或复制其凭据。根评论和楼中楼按脚本不额外加 WBI；feed 的 WBI 不属于此次修改。Requests 显式固定为已有锁内的 `2.34.2`，不改变依赖包版本。根元信息版本升到 v2，旧启用归档补采一次，停用目标不采，不重写旧 cursor。修改不证明此前全零分页或 HTTP 412 已解决，不绕过来源权限。本次仅修改并重启后端，不运行测试、审查或额外诊断请求；正常采集会执行上述预热。实现记录见[Requests 评论链路变更](../.scratch/backend-integration/evidence/comment-requests-implementation.md)。
+
+## 可选 B站登录 Cookie（仅服务端）
+
+新增环境变量 `BILI_COOKIE_FILE` 只保存**仓库外绝对文件路径**，不要把 Cookie 内容放入环境变量、命令参数、前端构建、HTTP 请求体或聊天。未设置保持匿名；设置但为空、文件不可读或无效时启动失败，不静默退回匿名，也不回显原路径/内容。该配置不会自动加载 `.env` 或读取浏览器存储。
+
+文件必须为运行进程用户所有的普通文件、权限 `0600`、无符号/硬链接；直属目录为该用户所有的普通目录、权限 `0700`。路径解析后不能位于仓库内。内容为一行 Cookie 请求头的**值**，不含 `Cookie:` 前缀，最多 16 KiB ASCII；可有一个末尾换行，其余 CR/LF/控制字符或无效 Cookie 名拒绝启动。
+
+可由维护者在**交互式服务器终端**、以运行 API 的同一用户执行以下写入入口（本轮没有执行）：
+
+```bash
+uv run --offline --no-sync python -m backend.bili_monitor.source_cookies \
+  --write "$HOME/.local/state/bili-charge-dynamics/credentials/bilibili-cookie.txt"
+```
+
+入口创建私有目录并隐藏输入，原子保存且拒绝覆盖已有文件，不启动服务、不发网络请求。仅在自己的已登录浏览器中本地查看 Cookie；不要导出 HAR、Copy as cURL 或把值发到聊天。轮换时先写到一个新的私有文件名，再更新配置路径并重启；工具不会覆盖用户原文件。
+
+在实际启动 API 的环境中增加路径后，由维护者自行重启加载：
+
+```bash
+export BILI_COOKIE_FILE="$HOME/.local/state/bili-charge-dynamics/credentials/bilibili-cookie.txt"
+```
+
+**现有 systemd 服务不会继承另一个终端刚 export 的变量。** 本机会话的启动脚本是仓库外 `/home/kevin/.local/state/bili-charge-dynamics/live-34/run-api.sh`，现已改用上节的 API＋独立 collector 统一入口；它的 `exec` 前配置 `BILI_COOKIE_FILE` 后，两子进程会继承同一路径，仍须维护者自行重启 `bili-charge-live-34.service` 才会加载。此前实例证据见 [#34 Cookie 接入记录](../.scratch/backend-integration/evidence/live-34/cookie-file-implementation.md)，不代表本次修改已经运行。若改用手动双进程方式，须分别配置同一路径；本次未启动或重启服务。
+
+API 和 collector 分别在启动时读取私有文件一次，修改文件不会热加载；不自动登录、调用续期接口或轮换账号。HTTPX 信号客户端使用独立 jar，请求前先移除已有 Cookie，只有 GET＋HTTPS＋默认443＋精确 `api.bilibili.com`/`www.bilibili.com`＋无 URL 用户信息时才重新附加，并仅接受相同范围的响应更新。Requests 评论客户端每次尝试从启动时的 Cookie 输入重建 Session，本轮允许 `api.bilibili.com`、`www.bilibili.com`、`space.bilibili.com` 的 HTTPS GET 和响应 Cookie，跳出此范围的请求（包括重定向）在发送前拒绝；完成后关闭。每轮重建是对照参考脚本的生命周期，不是刷新或续期账号。未配置文件时两种路径仍遵守发送范围约束。媒体下载使用独立客户端，OSS 不接入来源凭据；其他代理、头和预热规则见上一节。
+
+凭据不写数据库、API 响应或日志。过期/无权/风控拒绝仍如实失败，不轮换账号或绕过限制。停用需移除 `BILI_COOKIE_FILE` 并由维护者重启持有该会话的进程；应按平台方式撤销不再使用的会话。
+
+**启用后仍无管理/API 鉴权**：能访问服务的人可能使用该账号的来源读取权限并读取归档，应继续仅监听本机或使用受限网络。Cookie 不向前端公开并不等于归档内容受访问控制；未配置 OSS 的媒体仍待归档。
+
+测试、E2E、演示或 fixture 装配不得读取真实 Cookie。`backend/tests/conftest.py` 会在 pytest 用例开始时清除 `BILI_COOKIE_FILE`；Cookie 专项测试须显式使用虚构临时文件。非 pytest 的测试服务/演示入口需由执行者先清除该变量，不把真实凭据注入 MockTransport。此前仓库外临时取样工具也不会继承此配置，不能把它的匿名结果当作已登录验证。
+
+**本增补未经验证**：按用户要求不运行本地测试、回归、双轴审查或真实请求；此前 748 项结果不覆盖本次 Cookie 变更。配置和真实验证由维护者自行执行，不承诺能解决 HTTP 412。
 
 ## 02 HTTP 合同
 
@@ -153,7 +227,7 @@ initial 在本轮根页成功后同步非零／未知回复数的根，完整来
 
 动态图按照完整来源顺序下载，原字节上传；每张图保存状态、脱敏错误和完整公开 URL。`POST /api/sync/media/{dynamicId}` 独立恢复未完成图片，可加 `?media_id=<当前关联ID>` 只重试一张；不会请求正文、评论或重新宣称正文成功。已成功项跳过；未配置 uploader 返回零，图片保持 pending。完整 DTO、来源切换、旧成功保留和版本／尝试 fencing 见 [19 契约](../docs/backend/api/archive-api.md#19-动态媒体归档独立重试与公开-url)，证据见 [acceptance-19.md](../.scratch/backend-integration/acceptance-19.md)。
 
-仅在**仓库外的受限服务环境**提供下列配置，勿将真实值写入仓库、前端、命令记录或本 README；应用不读取 ignored 参考脚本／配置，也不自动加载凭据文件：
+仅在**仓库外的受限服务环境**提供下列配置，勿将真实值写入仓库、前端、命令记录或本 README；应用不读取 ignored 参考脚本／配置，也不自动加载 OSS 凭据文件；可选 B站 Cookie 仅通过显式 `BILI_COOKIE_FILE` 读取，与 OSS 无关：
 
 | 环境变量 | 用途 |
 | --- | --- |
@@ -182,7 +256,9 @@ initial 在根／回复独立提交后处理评论图；正文受限不阻断实
 
 schema 顺序：v1 身份/配置、v2 targets、v3 archives/generation、v4 持久分页、v5 cursor 资源/过期/索引、v6 根评论及独立持久评论页、v7 回复／逐根同步状态／回复持久页、v8 媒体尝试令牌及归档文档媒体字段、v9 评论 owner 尝试标识与旧根来源 pending 回填、v10 持久目标检查/观察/工作/时间/独立错误、v11 目标领取 fencing 令牌、v12 按 UP 发现尝试/可信结果/领取令牌、v13 当前入选目标令牌。v0–v12 短事务迁移到 v13，冲突回滚、未来版本拒绝启动；旧 v4 无限期 cursor 被失效，但归档不删。每次操作独立连接并启用外键，等待锁最多 2 秒；数据库操作在线程池执行，网络不进事务。删除配置只 cascade 指定关联，绝不 cascade 身份或归档。
 
-错误响应使用固定错误码与提示，不记录请求体、上游原文或异常秘密。HTTPX/HTTPCore、OSS SDK、Requests/urllib3 传输日志及 Uvicorn access 日志禁用。Nginx 模板显式 `access_log off; error_log /dev/null;`：默认 error 日志在 API 不可达时也会泄露 query，所以不用原始请求日志诊断，改查 `nginx -t`、HTTP 状态、进程退出及固定脱敏 API 错误；外层代理也不得重新记录原始 URI/请求体。本票测试不读取真实 Cookie、不执行/导入参考脚本、不请求真实上游。
+错误响应使用固定错误码与提示，不记录请求体、完整上游响应或异常秘密；错误消息只允许管理接口诊断约定所引用的固定安全目录。HTTPX/HTTPCore、OSS SDK、Requests/urllib3 传输日志及 Uvicorn access 日志禁用。Nginx 模板显式 `access_log off; error_log /dev/null;`：默认 error 日志在 API 不可达时也会泄露 query，所以不用原始请求日志诊断，改查 `nginx -t`、HTTP 状态、进程退出及固定脱敏 API 错误；外层代理也不得重新记录原始 URI/请求体。本票测试不读取真实 Cookie、不执行/导入参考脚本、不请求真实上游。
+
+公开资料失败另写应用自身的固定 WARNING 事件 `profile_lookup_failed reason=... http_status=...`，不启用传输日志。分类、状态限界与回退、资料字段边界统一见[管理接口诊断约定](../docs/backend/api/management-api.md#服务端资料失败诊断)。HTTP 非成功/业务拒绝会解析有限大小的错误响应，追加 `message_state` 和 `upstream_message`；只有完全匹配固定安全目录的 `message/msg` 才输出，未知原文、HTML、过长消息等只记分类及 null。没有 UID、URL、完整响应原文、业务原码或 traceback，HTTP `502 PROFILE_UNAVAILABLE` 及前端文案不变。这只改进定位能力，不证明来源可用，不触发或授权自动重试。
 
 ## 测试与 E2E 装配
 

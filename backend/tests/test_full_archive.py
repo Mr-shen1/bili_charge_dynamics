@@ -32,7 +32,7 @@ def test_opus_summary_is_not_successful_full_body_when_html_content_missing(tmp_
         assert saved["synced_version"] is None
         assert saved["work"]["text"] == "pending"
         assert saved["source_comment_count"] == 7
-        assert saved["comment_locator"] == {"oid": "99123", "type": 17}
+        assert saved["comment_locator"] == {"oid": "99123", "type": 17, "source": "basic", "policy_version": 1}
         assert saved["media_sources"][0]["url"] == "https://example.invalid/first.png"
 
 
@@ -68,7 +68,8 @@ def test_restricted_attempt_is_not_counted_as_successful_body(tmp_path):
         }
         saved = client.get("/api/archive/dynamics/123").json()
         assert saved["content_state"] == saved["last_attempt"] == "restricted"
-        assert saved["work"]["text"] == "pending"
+        # 受限是稳定登记而非待重试工作；受限尝试不冒充正文成功。
+        assert saved["work"]["text"] == "restricted"
         assert saved["synced_version"] is None
 
 

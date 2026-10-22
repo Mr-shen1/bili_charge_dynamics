@@ -12,10 +12,20 @@ BASE = "/api/manage/ups"
 DEFAULT_MONITOR = {
     "mode": "recent",
     "recent_n": 10,
-    "enabled": True,
+    "enabled": False,
     "last_checked_at": None,
     "last_succeeded_at": None,
 }
+
+
+def enable(client, uid=UID, *, mode="recent", recent_n=10):
+    """新增 UP 默认停止监控；需要监控行为的用例显式启用。"""
+    response = client.patch(
+        f"{BASE}/{uid}/monitor",
+        json={"mode": mode, "recent_n": recent_n, "enabled": True},
+    )
+    assert response.status_code == 200
+    return response
 
 
 def card(uid=UID, name="虚构星海"):

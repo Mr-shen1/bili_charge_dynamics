@@ -8,6 +8,7 @@ from anyio import to_thread
 
 from .source import safe_url
 from .contracts import APIError
+from .collector_logging import collector_failure
 
 
 class MediaUploader(Protocol):
@@ -15,6 +16,14 @@ class MediaUploader(Protocol):
 
 
 IMAGE_SOURCE_DOMAINS = ("hdslb.com", "biliimg.com")
+IMAGE_EXTENSIONS = {
+    "image/jpeg": ".jpg", "image/jpg": ".jpg", "image/pjpeg": ".jpg",
+    "image/png": ".png", "image/x-png": ".png", "image/apng": ".apng",
+    "image/gif": ".gif", "image/webp": ".webp", "image/avif": ".avif",
+    "image/bmp": ".bmp", "image/x-ms-bmp": ".bmp", "image/tiff": ".tiff",
+    "image/svg+xml": ".svg", "image/x-icon": ".ico", "image/vnd.microsoft.icon": ".ico",
+    "image/heic": ".heic", "image/heif": ".heif", "image/jxl": ".jxl",
+}
 
 
 def is_image_source_host(host):
@@ -111,14 +120,21 @@ async def sync_media(store, downloader, uploader, id, current_only=False, media_
         error, public_url = "MEDIA_DOWNLOAD_FAILED", None
         try:
             content, content_type = await downloader.download(item["source_url"])
+            # 来源 URL 可能无后缀或与响应格式不同，按下载响应的 MIME 选择固定后缀。
+            extension = IMAGE_EXTENSIONS.get(content_type)
+            if extension is None:
+                raise ValueError("Unsupported image content type")
             error = "MEDIA_UPLOAD_FAILED"
-            owner_path = f"dynamics/{id}" if root_id is None else f"dynamics/{id}/comments/{root_id}"
-            public_url = await uploader.upload(f"{owner_path}/{item['id']}/{token}", content, content_type)
+            owner_path = (f"bili-charge/dynamics/{id}" if root_id is None
+                          else f"bili-charge/comments/{id}/{root_id}")
+            public_url = await uploader.upload(f"{owner_path}/{item['id']}/{token}{extension}", content, content_type)
             if not is_archive_delivery_url(public_url):
                 raise ValueError("Invalid public media URL")
             error = None
-        except Exception:
+        except Exception as exception:
             # 不保存异常文本、HTTP headers、签名 URL 或 OSS 凭据。
+            collector_failure("media_sync_failed", exception,
+                              stage="download" if error == "MEDIA_DOWNLOAD_FAILED" else "upload")
             public_url = None
         accepted = await to_thread.run_sync(store.finish_media, id, item["id"], token, public_url, error, root_id,
                                            now() if now else None)

@@ -240,8 +240,9 @@ def test_restricted_body_does_not_block_comment_success_unknown_is_not_zero(tmp_
             await collector.execute_pending()
             check, archive = snapshot(path)
             assert archive["content_state"] == archive["last_attempt"] == "restricted"
-            assert check["work"] == "pending"  # 评论成功不冒充正文/媒体完成。
-            assert check["parts"]["text"] == "pending"
+            # 受限是稳定登记：整轮收敛完成，正文/媒体分项不冒充成功。
+            assert check["work"] == "complete"
+            assert check["parts"]["text"] == "restricted"
             assert check["parts"]["comments"] == check["parts"]["replies"] == "success"
             assert check["comments_last_attempt"] == "success"
             assert archive["source_comment_count"] == archive["synced_comment_count"] == total
@@ -255,7 +256,7 @@ def test_restricted_body_does_not_block_comment_success_unknown_is_not_zero(tmp_
             assert check["root_comments_error"] is check["replies_error"] is check["comments_error"] is None
             assert check["last_succeeded_at"] is None
             assert archive["comment_sync"] == check
-            # 正文仍可重试，但已成功的评论分项不得因此重扫或更新成功时间。
+            # 受限稳定登记不再重抓正文，也不重扫已成功评论或更新成功时间。
             source.calls.clear()
             clock.advance(30)
             await collector.check_once(UID, "123")
@@ -302,19 +303,26 @@ def test_legacy_success_without_timestamp_is_not_backdated_or_resynchronized(tmp
             await collector.execute_pending()
             check, archive = snapshot(path)
             assert check["work"] == "complete"
-            assert check["last_succeeded_at"] is None
+            # 旧归档缺根元信息版本 → 本轮补采一次根/必要回复；时间来自本次真实同步，不回填旧成功。
+            assert check["last_succeeded_at"] is not None
+            assert "/x/v2/reply" in source.calls
             assert check["comments_last_attempt"] == "success"
-            assert "/x/v2/reply" not in source.calls
             assert archive["text"] == "旧档案仍可阅读"
             for field in ("root_comments_last_succeeded_at", "replies_last_succeeded_at", "comments_last_succeeded_at"):
-                assert check[field] is archive[field] is None
+                assert check[field] == archive[field] is not None
+            source.calls.clear()
+            await collector.check_once(UID, "123")
+            await collector.execute_pending()
+            # 补采只发生一次：无新信号时不再重扇根页。
+            assert "/x/v2/reply" not in source.calls
+            check, archive = snapshot(path)
             # 旧配置、归档和新状态在再次开启 API 后不丢失；新列表首读补未知 null。
             with archive_client(path) as api:
                 item = api.get("/api/archive/dynamics").json()["items"][0]
                 assert item["text"] == archive["text"]
-                assert item["root_comments_last_succeeded_at"] is None
-                assert item["replies_last_succeeded_at"] is None
-                assert item["comments_last_succeeded_at"] is None
+                assert item["root_comments_last_succeeded_at"] is not None
+                assert item["replies_last_succeeded_at"] is not None
+                assert item["comments_last_succeeded_at"] is not None
             assert snapshot(path) == (check, archive)
 
     asyncio.run(scenario())
@@ -457,6 +465,8 @@ def test_new_root_success_does_not_advance_old_reply_or_whole_round_success_time
             await collector.execute_pending()
             before, saved = snapshot(path)
             source.count = 71
+            # 增量策略按根 rcount 决定是否展开楼层；变化后才能实际触发页失败。
+            source.roots[0]["rcount"] += 1
             source.fail_reply_page = 2
             clock.advance(30)
             await collector.check_once(UID, "123")

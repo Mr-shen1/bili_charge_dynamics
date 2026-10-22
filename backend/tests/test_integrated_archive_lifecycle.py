@@ -91,7 +91,7 @@ def test_trusted_edit_updates_body_and_media_with_actual_part_times_and_retries_
             assert current["media_errors"] == current["comment_media_errors"] == []
             assert current["text_last_succeeded_at"] == failed["text_last_succeeded_at"]
             assert current["media_last_succeeded_at"] == current["last_succeeded_at"] == "2030-01-01T00:01:00+00:00"
-            assert archive["media"][0]["public_url"].startswith("https://archive.example.invalid/dynamics/123/")
+            assert archive["media"][0]["public_url"].startswith("https://archive.example.invalid/bili-charge/dynamics/123/")
             assert source.calls == ["/opus/123", "/x/v2/reply/count"]
             source.html = readable_html("not a trusted edit", pictures=[DYNAMIC_PICS[0]]).replace("13:01", "13:02")
             clock.advance(75)
@@ -142,6 +142,7 @@ def test_count_change_media_retry_and_new_observation_keep_independent_checkpoin
             assert baseline["synced_comment_count"] == 70
             # 计数变化自动根+回复+一级评论图；回复分页失败不推进整轮 checkpoint。
             source.count = 71
+            source.roots[0]["rcount"] = 6  # 楼中楼增量判定依据根 rcount
             picture("https://i0.hdslb.com/bfs/new/comment-v2.png")
             source.fail_reply_page = 2
             clock.advance(30)
@@ -224,7 +225,7 @@ def test_count_change_media_retry_and_new_observation_keep_independent_checkpoin
                 roots = read_all(api, ARCHIVE + "/comments")
                 media = next(item for item in roots if item["id"] == ROOT_ID)["media"]
                 assert media[0]["status"] == "success"
-                assert media[0]["public_url"].startswith(f"https://archive.example.invalid/dynamics/123/comments/{ROOT_ID}/")
+                assert media[0]["public_url"].startswith(f"https://archive.example.invalid/bili-charge/comments/123/{ROOT_ID}/")
                 assert all("media" not in item for item in read_all(api, ARCHIVE + f"/comments/{ROOT_ID}/replies"))
 
     asyncio.run(scenario())
@@ -258,11 +259,12 @@ def test_restricted_body_and_invalid_edit_do_not_block_comment_recovery_or_inven
             await Collector(Store(path), client, clock=clock).execute_pending()
             partial, archive = snapshot(path)
             assert archive["content_state"] == "restricted"
-            assert partial["parts"]["text"] == "pending"
+            # 受限是稳定登记：正文分项不冒充成功，整轮收敛完成。
+            assert partial["parts"]["text"] == "restricted"
             assert partial["parts"]["comments"] == partial["parts"]["replies"] == partial["parts"]["comment_media"] == "success"
             assert partial["synced_comment_count"] == 70
             assert partial["observed"]["source_comment_count"] == 70
-            assert partial["work"] == "pending" and partial["last_succeeded_at"] is None
+            assert partial["work"] == "complete" and partial["last_succeeded_at"] is None
             assert partial["text_last_succeeded_at"] is partial["media_last_succeeded_at"] is None
             for field in ("root_comments_last_succeeded_at", "replies_last_succeeded_at", "comments_last_succeeded_at",
                           "comment_media_last_succeeded_at"):
