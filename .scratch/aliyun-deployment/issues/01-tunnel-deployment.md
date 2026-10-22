@@ -94,6 +94,33 @@ bili-monitor.service: Unable to locate executable
 
 至此系统准备、SSH/`uv`/CPython、依赖锁定、统一入口、systemd 托管均已实测通过。仍待验：前端发布、Nginx、SSH 隧道访问、gzip 与缓存响应头（第 4–7 节）。
 
+### 2026-10-23 前端发布、Nginx 与 SSH 隧道验通（runbook 第 4–6 节完成）
+
+**前端发布**：`scripts/deploy-frontend.sh` 在本地构建后 rsync 上传，原子切换成功。
+
+- 版本目录 `20261022T170911Z-f65ff68`，`readlink -f current` 指向它；`current/index.html` 可读
+- 构建产物体积：`index.html` 0.45 kB、CSS 23.40 kB（gzip 5.05 kB）、JS 324.34 kB（gzip 100.44 kB）
+- `mv -Tf` 原子切换与旧版本清理均按预期执行
+
+**Nginx**（nginx/1.26.3）：
+
+- `nginx -t` 通过；片段与两份 server 配置按模板路径安装
+- `ss -tlnp` 确认 4173 **只监听 `127.0.0.1`**，无公网绑定
+- `GET /` → 200，`GET /manage` → 200
+- `GET /api/manage/ups` → 200（经 Nginx 反代到 8000）
+- `GET /api/nope` → **404**（未回退 SPA HTML）
+- 哈希资源带 `Cache-Control: public, max-age=31536000, immutable`
+- 缺失资源 → 404且 `Cache-Control: no-store`
+- gzip 实测：JS `324335 → 100945` bytes（压到 31%）；`index.html` 与空库下 `/api/manage/ups` 因小于 `gzip_min_length 1024` 不压缩，符合预期
+
+**SSH 隧道**：本地 `ssh -N -L` 转发后经 `127.0.0.1:4173` 访问，`/`、`/manage`、`/api/manage/ups` 均返回 200。
+
+**备份**：已配置 bili 用户 crontab（每日 04:10 `sqlite3 .backup`，保留 14 天），手动试跑产出 131072 bytes 备份文件，`PRAGMA integrity_check` 返回 `ok`。
+
+**顺带发现的文档漂移**：目标库实测 `PRAGMA user_version = 14`，但 `docs/deployment/static-delivery.md:73` 与 `backend/README.md:20` 均写「当前 schema 为 v13」（`backend/README.md:257` 的 schema 列表也只到 v13），代码 `storage.py:217` 已到 v14。本票只修正自己新增的运行手册，既有文档的 v13 说法未动，属另行处理的范围。
+
+仍待验：浏览器内的完整操作流程（添加 UP 后 1 分钟内 checks 出现记录）、持续运行内存曲线、阶段二的 HTTPS 与 Basic Auth。
+
 ### 2026-10-23 修复环境模板可选变量空值
 
 首次配置环境文件前发现模板缺陷：`BILI_OSS_*= ` 与 `BILI_COOKIE_FILE=` 的空值形式会让 systemd 注入空字符串，触发 `oss.py:39-45` 的
