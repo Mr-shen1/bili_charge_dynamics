@@ -76,6 +76,24 @@ INFO collector_configuration media_upload=disabled
 
 **尚未验证**：systemd 托管形态，尤其是 `ProtectSystem=strict` + `ReadWritePaths=/srv/bili-monitor` 下能否正常写入 SQLite 与 `.collector.lock`。
 
+### 2026-10-23 systemd 托管形态验证通过（runbook 第 3 节完成）
+
+首次移交 systemd 时持续 `status=203/EXEC`（restart 计数累积至 28）。根因：unit 原设 `ProtectHome=yes`，而 uv 将 CPython 安装在 `/home/bili/.local/share/uv/python/`，`.venv/bin/python` 仅为指向该路径的软链；屏蔽 `/home` 导致 systemd 无法定位解释器：
+
+```
+bili-monitor.service: Unable to locate executable
+  '/srv/bili-monitor/app/.venv/bin/python': No such file or directory
+```
+
+改为 `ProtectHome=read-only` 后正常启动（提交 `5b5ab2c`）：
+
+- `Active: active (running)`，`Application startup complete`，`collector_started cadence_seconds=15`
+- `GET /api/manage/ups` → **HTTP 200**
+- `/srv/bili-monitor/monitor.sqlite` 属主 `bili`，`monitor.sqlite.collector.lock` 正常创建
+- 证明 `ProtectSystem=strict` + `ReadWritePaths=/srv/bili-monitor` 下 SQLite 与采集锁均可写入
+
+至此系统准备、SSH/`uv`/CPython、依赖锁定、统一入口、systemd 托管均已实测通过。仍待验：前端发布、Nginx、SSH 隧道访问、gzip 与缓存响应头（第 4–7 节）。
+
 ### 2026-10-23 修复环境模板可选变量空值
 
 首次配置环境文件前发现模板缺陷：`BILI_OSS_*= ` 与 `BILI_COOKIE_FILE=` 的空值形式会让 systemd 注入空字符串，触发 `oss.py:39-45` 的
