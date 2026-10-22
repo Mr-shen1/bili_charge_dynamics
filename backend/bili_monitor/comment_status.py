@@ -3,6 +3,10 @@
 from datetime import datetime, timezone
 
 
+# 根评论采集格式版本：v1 置顶，v2 Requests 会话和定位策略；旧归档只补采一次。
+ROOT_METADATA_VERSION = 2
+
+
 COMMENT_STATUS_FIELDS = (
     "root_comments_last_succeeded_at", "replies_last_succeeded_at", "comments_last_succeeded_at",
     "root_comments_error", "replies_error", "comments_error",

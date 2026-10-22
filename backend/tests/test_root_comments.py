@@ -30,7 +30,9 @@ def test_initial_archives_existing_roots_independently_of_restricted_body(tmp_pa
         assert saved["local_comment_count"] == 2
         assert saved["local_reply_count"] == 0
         assert saved["work"]["comments"] == "success"
-        assert saved["work"]["replies"] == saved["work"]["media"] == "pending"
+        # 受限是本次观察的终态：正文/媒体不再标 pending 待重试，回复仍按待办保留。
+        assert saved["work"]["replies"] == "pending"
+        assert saved["work"]["media"] == "restricted"
         assert saved["root_comments_last_attempt"] == "success"
         assert saved["synced_root_comment_count"] == 7
         roots = client.get(COMMENTS).json()
@@ -43,7 +45,9 @@ def test_initial_archives_existing_roots_independently_of_restricted_body(tmp_pa
             "author": {"id": UID, "nickname": "虚构星海", "avatar_url": "https://example.invalid/avatar.png"},
             "published_at": "2026-10-09T10:38:16+08:00", "text": "已有根评论\n<b>只作文本</b> 🙂",
             "like_count": 8, "source_reply_count": 5,
-            "root_id": "0", "parent_id": "0", "comment_locator": {"oid": "99123", "type": 17},
+            "root_id": "0", "parent_id": "0",
+            "comment_locator": {"oid": "99123", "type": 17, "source": "basic", "policy_version": 1},
+            "is_pinned": False, "up_reply": None,
             "media_sources": [{"url": "https://example.invalid/comment.png", "width": 640, "height": 480}],
             "work": {"media": "pending"}, "media_last_attempt": "pending",
             "media_version": "comments:7", "observed_version": "comments:7",
@@ -111,17 +115,20 @@ def test_partial_page_failure_retains_old_roots_and_checkpoint_then_retries_afte
 
 
 @pytest.mark.parametrize("basic", [None, {}, {"comment_id_str": "0", "comment_type": 17}, {"comment_id_str": "99123", "comment_type": True}])
-def test_missing_locator_is_unconfirmed_not_successful_empty(tmp_path, basic):
+def test_missing_basic_locator_falls_back_to_dynamic_id_and_archives(tmp_path, basic):
+    """无合法 basic 定位时不猜空，而按目标动态 ID/type11 兜底；来源回显同资源才归档。"""
     state = {"basic": basic}
     with archive_client(tmp_path / "unknown.sqlite", source_handler(state)) as client:
         prepare(client)
         client.post("/api/sync/initial", json={"uid": UID})
         saved = client.get(ARCHIVE).json()
-        assert saved["root_comments_last_attempt"] == "unconfirmed"
-        assert saved["work"]["comments"] == "pending"
-        assert saved["synced_root_comment_count"] is None
-        assert client.get(COMMENTS).json() == {"items": [], "next_cursor": None}
-        assert "pages" not in state
+        assert set(state["locators"]) == {("123", "11")}
+        assert saved["root_comments_last_attempt"] == "success"
+        assert saved["work"]["comments"] == "success"
+        assert saved["synced_root_comment_count"] == 7
+        assert saved["local_comment_count"] == 2
+        assert [item["id"] for item in client.get(COMMENTS).json()["items"]] == [
+            "900719925474099312346", "2"]
 
 
 def forty_five_roots():
@@ -243,7 +250,7 @@ def test_pinned_roots_are_deduplicated_and_reply_preview_is_not_archived(tmp_pat
         assert [item["id"] for item in client.get(COMMENTS).json()["items"]] == ["900719925474099312346", "2"]
 
 
-def test_valid_empty_source_and_unknown_counts_are_distinct_from_failure(tmp_path):
+def test_positive_dynamic_count_with_empty_source_page_is_unconfirmed_failure(tmp_path):
     state = {"payload": root_fixture()}
     state["payload"]["data"]["replies"] = []
     state["payload"]["data"]["page"].update(count=0, acount=0)
@@ -251,13 +258,32 @@ def test_valid_empty_source_and_unknown_counts_are_distinct_from_failure(tmp_pat
         prepare(client)
         client.post("/api/sync/initial", json={"uid": UID})
         saved = client.get(ARCHIVE).json()
-        assert saved["work"]["comments"] == "success"
+        # 观察总数为正而整轮无根：留待重试，不冒充成功空。
+        assert saved["comments_last_attempt"] == "failed"
+        assert saved["work"]["comments"] == "pending"
         assert saved["local_comment_count"] == saved["local_reply_count"] == 0
         assert saved["source_comment_count"] == 7  # 不拿接口不同口径的数冒充动态信号。
+        assert saved["synced_root_comment_count"] is None
         assert client.get(COMMENTS).json() == {"items": [], "next_cursor": None}
         assert client.get("/api/archive/dynamics/999/comments").status_code == 404
         for query in ("sort=wrong", "limit=21", "limit=0", "sort=hot&sort=latest", "unknown=1"):
             assert client.get(COMMENTS + "?" + query).status_code == 422
+
+
+def test_confirmed_empty_source_page_with_unknown_dynamic_count_is_success(tmp_path):
+    state = {"unknown_count": True, "payload": root_fixture()}
+    state["payload"]["data"]["replies"] = []
+    state["payload"]["data"]["page"].update(count=0, acount=0)
+    with archive_client(tmp_path / "empty-unknown.sqlite", source_handler(state)) as client:
+        prepare(client)
+        client.post("/api/sync/initial", json={"uid": UID})
+        saved = client.get(ARCHIVE).json()
+        # 没有正来源计数冲突时，接口明确 count=0 且集合空才是成功空。
+        assert saved["root_comments_last_attempt"] == "success"
+        assert saved["work"]["comments"] == "success"
+        assert saved["source_comment_count"] is None
+        assert saved["local_comment_count"] == saved["local_reply_count"] == 0
+        assert client.get(COMMENTS).json() == {"items": [], "next_cursor": None}
 
 
 def test_v5_locator_and_dynamic_cursor_survive_upgrade_and_root_retry(tmp_path):

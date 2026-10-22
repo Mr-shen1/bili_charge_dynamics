@@ -58,7 +58,8 @@ def test_root_json_images_are_isolated_ordered_idempotent_and_http_readable(tmp_
                 assert item["owner"] == {"type": "comment", "id": id}
                 assert item["status"] == "success"
                 assert item["error"] is None
-                assert item["public_url"].startswith(f"https://archive.example.invalid/dynamics/123/comments/{id}/")
+                assert item["public_url"].startswith(f"https://archive.example.invalid/bili-charge/comments/123/{id}/")
+                assert item["public_url"].endswith(".png")
         assert {item["id"] for item in saved["123"]["media"]}.isdisjoint(item["id"] for item in saved["124"]["media"])
         client.post(SYNC, json={"uid": UID})
         assert roots_by_id(client) == saved
@@ -346,7 +347,7 @@ def test_slow_initial_comment_upload_keeps_text_complete_and_owners_isolated(tmp
         other_root = next(root for root in others if root["id"] == "123")
         assert other_root["dynamic_id"] == "124"
         assert {item["id"] for item in other_root["media"]}.isdisjoint(item["id"] for item in roots["123"]["media"])
-        assert all("/dynamics/124/comments/123/" in item["public_url"] for item in other_root["media"])
+        assert all("/bili-charge/comments/124/123/" in item["public_url"] for item in other_root["media"])
         assert roots_by_id(client) == roots
         set_specified(client, enabled=False)
         assert client.post(SYNC, json={"uid": UID}).json()["processed"] == 0

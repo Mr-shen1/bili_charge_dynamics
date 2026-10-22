@@ -86,44 +86,33 @@ class CommentSource:
 def test_independent_source_total_is_observed_and_changes_rescan_completed_comments(tmp_path):
     path = tmp_path / "monitor.sqlite"
     configured(path)
+    source = CommentSource()
+
+    def paths():
+        return [item for item, _ in source.calls]
 
     async def scenario():
-        total = 7
-        calls = []
-
-        def upstream(request):
-            calls.append(request.url.path)
-            if request.url.path == "/x/v2/reply/count":
-                assert dict(request.url.params) == {"oid": "99123", "type": "17"}
-                payload = count_fixture()
-                payload["data"]["count"] = total
-                return httpx.Response(200, json=payload)
-            # 网页 count=7、通用 detail=0、根分页=0，不假定与独立总数相等。
-            if request.url.path.startswith("/opus/"):
-                return httpx.Response(200, text=readable_html(pictures=[]))
-            return empty_upstream(request)
-
-        async with httpx.AsyncClient(transport=httpx.MockTransport(upstream)) as client:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(source)) as client:
             collector = Collector(Store(path), client)
             await collector.check_once(UID, "123")
             state, _ = snapshot(path)
             assert state["observed"]["source_comment_count"] == 7
-            assert "/x/v2/reply/count" in calls
+            assert "/x/v2/reply/count" in paths()
             await collector.execute_pending()
             state, archive = snapshot(path)
             assert archive["source_comment_count"] == archive["synced_comment_count"] == 7
-            assert archive["local_comment_count"] == archive["local_reply_count"] == 0
+            assert archive["local_comment_count"] == 2
             assert state["synced_comment_count"] == 7
-            assert state["local_comment_count"] == state["local_reply_count"] == 0
             assert state["comments_last_attempt"] == "success"
             assert state["work"] == "complete"
-            calls.clear()
+            source.calls.clear()
             await collector.check_once(UID, "123")
             await collector.execute_pending()
-            assert "/x/v2/reply/count" in calls
-            assert "/x/v2/reply" not in calls
-            total = 8
-            calls.clear()
+            assert "/x/v2/reply/count" in paths()
+            # 计数未变时不重扫已完成根页。
+            assert "/x/v2/reply" not in paths()
+            source.count = 8
+            source.calls.clear()
             await collector.check_once(UID, "123")
             state, archive = snapshot(path)
             assert state["work"] == "pending"
@@ -131,7 +120,7 @@ def test_independent_source_total_is_observed_and_changes_rescan_completed_comme
             assert archive["synced_comment_count"] == 7
             await Collector(Store(path), client).execute_pending()
             state, archive = snapshot(path)
-            assert "/x/v2/reply" in calls
+            assert "/x/v2/reply" in paths()
             assert archive["synced_comment_count"] == 8
             assert state["work"] == "complete"
 
@@ -145,25 +134,26 @@ def test_untrusted_count_never_becomes_zero_or_overwrites_old_trusted_total(tmp_
 
     async def scenario():
         value = 7
-        calls = []
+        source = CommentSource()
 
         def upstream(request):
-            calls.append(request.url.path)
-            if request.url.path == "/x/v2/reply/count":
-                if value == "network":
-                    raise httpx.ReadError("FICTIONAL_SECRET_COUNT")
-                if value == "denied":
-                    return httpx.Response(403, text="FICTIONAL_SECRET_COUNT")
-                payload = count_fixture()
-                if value == "missing":
-                    payload["data"].pop("count")
-                else:
-                    payload["data"]["count"] = value
-                if value == "business":
-                    payload["code"] = -403
-                    payload["message"] = "FICTIONAL_SECRET_COUNT"
-                return httpx.Response(200, json=payload)
-            return empty_upstream(request)
+            # 根页／回复页由 CommentSource 提供与总数一致的数据；仅替换独立计数响应。
+            if request.url.path != "/x/v2/reply/count":
+                return source(request)
+            source.calls.append((request.url.path, dict(request.url.params)))
+            if value == "network":
+                raise httpx.ReadError("FICTIONAL_SECRET_COUNT")
+            if value == "denied":
+                return httpx.Response(403, text="FICTIONAL_SECRET_COUNT")
+            payload = count_fixture()
+            if value == "missing":
+                payload["data"].pop("count")
+            else:
+                payload["data"]["count"] = value
+            if value == "business":
+                payload["code"] = -403
+                payload["message"] = "FICTIONAL_SECRET_COUNT"
+            return httpx.Response(200, json=payload)
 
         async with httpx.AsyncClient(transport=httpx.MockTransport(upstream)) as client:
             collector = Collector(Store(path), client)
@@ -171,7 +161,7 @@ def test_untrusted_count_never_becomes_zero_or_overwrites_old_trusted_total(tmp_
             await collector.execute_pending()
             before, saved = snapshot(path)
             value = invalid
-            calls.clear()
+            source.calls.clear()
             await collector.check_once(UID, "123")
             await collector.execute_pending()
             state, archive = snapshot(path)
@@ -184,7 +174,7 @@ def test_untrusted_count_never_becomes_zero_or_overwrites_old_trusted_total(tmp_
             assert state["revision"] == before["revision"]
             assert state["last_succeeded_at"] == before["last_succeeded_at"]
             assert archive == saved
-            assert "/x/v2/reply" not in calls
+            assert "/x/v2/reply" not in [item for item, _ in source.calls]
             assert "FICTIONAL_SECRET" not in str(state) + str(archive)
 
     asyncio.run(scenario())
@@ -433,7 +423,17 @@ def test_slow_comment_pages_do_not_block_fixed_checks_or_another_targets_sync(tm
                 if url.params["oid"] == "99124":
                     return httpx.Response(200, json={"code": 0, "data": {"count": 1 if clock.value >= 30 else 0}})
             if url.path == "/x/v2/reply" and url.params["oid"] == "99124":
-                return empty_upstream(request)
+                # 124 的根页与独立计数保持一致：计数为 1 时给出 1 条根，避免正计数＋空集合被拒。
+                total = 1 if clock.value >= 30 else 0
+                number = int(url.params["pn"])
+                payload = copy.deepcopy(root_fixture())
+                root = payload["data"]["replies"][0]
+                root.update(rpid_str="900719925474099399999", oid=99124, rcount=0)  # type 沿用定位的 17
+                payload["data"].pop("hots", None)
+                payload["data"]["upper"] = {**payload["data"]["upper"], "top": None}
+                payload["data"]["page"].update(num=number, count=total, acount=total)
+                payload["data"]["replies"] = [root] if total and number == 1 else None
+                return httpx.Response(200, json=payload)
             if url.path == "/x/v2/reply" and url.params["pn"] == "2":
                 blocked.set()
                 await release.wait()

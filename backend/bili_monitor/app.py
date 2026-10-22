@@ -16,7 +16,10 @@ from .profiles import fetch_profile
 from .safety import configure_safe_logging
 from .storage import Store
 from .source import verify_author
-from .source_transport import PacedSourceTransport
+from .source_transport import PacedSourceTransport, SourcePacer
+from .source_client import SOURCE_HEADERS, source_client_event_hooks
+from .source_cookies import load_source_cookie_pairs
+from .comment_client import RequestsCommentClientFactory
 from .sync import initialize
 from .media import ImageDownloader, MediaUploader, sync_media
 from .oss import OSSUploader
@@ -37,6 +40,7 @@ def create_app(
     profile_transport: httpx.AsyncBaseTransport | None = None,
     media_transport: httpx.AsyncBaseTransport | None = None,
     media_uploader: MediaUploader | None = None,
+    comment_client_factory=None,
 ) -> FastAPI:
     """启动 lifespan 时迁移指定文件数据库；transport 只替换外部 HTTP。"""
     configure_safe_logging()
@@ -49,16 +53,24 @@ def create_app(
         except (sqlite3.Error, OSError):
             raise RuntimeError("Database initialization failed") from None
         try:
+            cookie_pairs = load_source_cookie_pairs()
+            source_hooks = source_client_event_hooks(cookie_pairs=cookie_pairs)
+            pacer = SourcePacer()
+            comments = comment_client_factory
+            if comments is None and profile_transport is None:
+                comments = RequestsCommentClientFactory(cookie_pairs=cookie_pairs, pacer=pacer)
             uploader = media_uploader if media_uploader is not None else OSSUploader.from_environment()
             async with httpx.AsyncClient(
-                transport=profile_transport if profile_transport is not None else PacedSourceTransport(),
-                timeout=10, trust_env=False
+                transport=profile_transport if profile_transport is not None else PacedSourceTransport(pacer=pacer),
+                timeout=10, trust_env=False, follow_redirects=False,
+                headers=SOURCE_HEADERS, event_hooks=source_hooks,
             ) as profiles, httpx.AsyncClient(
                 transport=media_transport, timeout=30, trust_env=False
             ) as media_client:
                 application.state.profiles = profiles
                 application.state.downloader = ImageDownloader(media_client)
                 application.state.media_uploader = uploader
+                application.state.comment_client_factory = comments
                 try:
                     yield
                 finally:
@@ -159,7 +171,8 @@ def create_app(
     @application.post("/api/sync/initial")
     async def initial_sync(body: AddUP):
         return await initialize(store, application.state.profiles, body.uid,
-                                application.state.downloader, application.state.media_uploader)
+                                application.state.downloader, application.state.media_uploader,
+                                comment_client_factory=application.state.comment_client_factory)
 
     @application.post("/api/sync/media/{id}")
     async def retry_media(
@@ -219,8 +232,13 @@ def create_app(
         id: UID, root_id: UID, request: Request,
         limit: Annotated[int | None, Query(ge=1, le=10)] = None,
         cursor: Annotated[str | None, Query(max_length=64)] = None,
+        page: Annotated[str | None, Query(pattern=r"^[1-9][0-9]*$")] = None,
     ):
-        validate_query(request, ("limit", "cursor"))
+        validate_query(request, ("limit", "cursor", "page"))
+        if page is not None:
+            if cursor is not None or (limit is not None and limit != 10):
+                raise APIError("INVALID_INPUT")
+            return await run_store(store.list_replies, id, root_id, None, page)
         expected_limit = 3 if cursor is None else 10
         if limit is not None and limit != expected_limit:
             raise APIError("INVALID_INPUT" if cursor is None else "CURSOR_INVALID")

@@ -59,7 +59,7 @@ async def discover_recent(client, uid, n, *, should_continue=None, on_progress=N
     任务取消原样传播 CancelledError，保留调用者的中断恢复边界。
     有效页的累计候选副本经 on_progress 上报，成功提交由调用者另行完成。
     只在不足 N 且协议明确结束时 exhausted=true；失败不返回空集合。
-    客户端由调用者管理，不增加凭据、签名或风控参数，不回填全部历史。
+    客户端由调用者管理；本函数不处理凭据，不增加签名或风控参数，不回填全部历史。
     """
     if not is_valid_id(uid) or type(n) is not int or n <= 0:
         raise DiscoveryError("SIGNAL_INVALID") from None

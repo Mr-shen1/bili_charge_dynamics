@@ -9,7 +9,7 @@ import pytest
 
 from backend.bili_monitor.collector import Collector
 from backend.bili_monitor.storage import Store
-from backend.tests.management_support import BASE, UID, client_for
+from backend.tests.management_support import BASE, UID, client_for, enable
 from backend.tests.archive_support import archive_client
 from backend.tests.collector_clock import ControlledClock, eventually
 from backend.tests.collector_support import configured, empty_upstream
@@ -29,6 +29,7 @@ def test_discovery_unstarted_is_read_only_and_independent_of_specified_targets(t
     path = tmp_path / "monitor.sqlite"
     with client_for(path) as api:
         assert api.post(BASE, json={"uid": UID}).status_code == 201
+        enable(api)
         response = api.get(DISCOVERY)
         assert response.status_code == 200
         assert response.json() == {
@@ -62,6 +63,7 @@ def test_first_failed_empty_is_distinct_from_later_trusted_exhausted_empty(tmp_p
     path = tmp_path / "monitor.sqlite"
     with client_for(path) as api:
         api.post(BASE, json={"uid": UID})
+        enable(api)
 
     async def scenario():
         success = False
@@ -89,6 +91,7 @@ def test_raw_multi_page_feed_fixtures_cross_collector_sqlite_and_http(tmp_path):
     uid = "101"
     with client_for(path) as api:
         api.post(BASE, json={"uid": uid})
+        enable(api, uid)
 
     async def scenario():
         def upstream(request):
@@ -115,7 +118,8 @@ def test_discovered_results_are_per_up_persisted_and_not_content_archives(tmp_pa
     with client_for(path) as api:
         for uid in (UID, other):
             api.post(BASE, json={"uid": uid})
-        api.patch(f"{BASE}/{UID}/monitor", json={"mode": "recent", "recent_n": 2, "enabled": True})
+        enable(api, recent_n=2)
+        enable(api, other)
 
     async def discover():
         def upstream(request):
@@ -241,6 +245,7 @@ def test_interrupted_discovery_persists_through_api_reopen_and_collector_restart
     with client_for(path) as api:
         for uid in (UID, "1"):
             api.post(BASE, json={"uid": uid})
+            enable(api, uid)
 
     async def scenario():
         interrupted = False
@@ -310,6 +315,7 @@ def test_inflight_config_change_invalidates_old_results_without_deleting_trusted
     path = tmp_path / "monitor.sqlite"
     with client_for(path) as api:
         api.post(BASE, json={"uid": UID})
+        enable(api)
 
     async def scenario():
         slow = False
@@ -412,6 +418,7 @@ def test_fixed_discovery_ticks_retry_and_skip_busy_without_blocking_checks_or_ht
     with client_for(path) as api:
         for uid in ("201", "202"):
             api.post(BASE, json={"uid": uid})
+            enable(api, uid)
 
     async def scenario():
         clock = ControlledClock()

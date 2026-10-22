@@ -5,6 +5,8 @@ from anyio import to_thread
 from .identifiers import is_valid_id
 from .source import media_sources, published_time, safe_url
 from .source_endpoints import ROOT_COMMENTS_URL
+from .source_client import comment_request_headers
+from .collector_logging import collector_event, collector_failure
 
 
 def nonnegative(value):
@@ -26,11 +28,17 @@ def valid_locator(locator):
 def comment_fields(reply, dynamic_id, locator):
     """根与回复共用的来源身份／文本字段，不涉及层级或业务图片。"""
     id = source_id(reply.get("rpid_str", reply.get("rpid")))
+    if locator.get("source") in ("opus_fallback", "dynamic_id_fallback") and not (
+            "oid" in reply and "type" in reply):
+        raise ValueError("Unverified fallback comment resource")
     if "oid" in reply and source_id(reply["oid"]) != locator["oid"]:
         raise ValueError("Mismatched comment resource")
     if "type" in reply and (type(reply["type"]) is not int or reply["type"] != locator["type"]):
         raise ValueError("Mismatched comment type")
-    content = reply["content"]
+    content = reply.get("content")
+    content = {} if content is None else content
+    if not isinstance(content, dict):
+        raise ValueError("Invalid comment content")
     text = content.get("message")
     if text is not None and not isinstance(text, str):
         raise ValueError("Invalid comment text")
@@ -50,25 +58,30 @@ def comment_fields(reply, dynamic_id, locator):
 
 
 def root_document(reply, dynamic_id, locator):
+    if not isinstance(reply, dict):
+        raise ValueError("Invalid root comment")
     root = source_id(reply.get("root_str", reply.get("root")), allow_zero=True)
     parent = source_id(reply.get("parent_str", reply.get("parent")), allow_zero=True)
     if root != "0" or parent != "0":
         raise ValueError("Not a root comment")
     document = comment_fields(reply, dynamic_id, locator)
-    content = reply["content"]
-    # 缺字段不是来源确认无图；仓储会保留旧元信息，新评论仍公开空数组。
-    media = media_sources(content["pictures"], "img_src", "img_") if "pictures" in content else None
+    content = reply.get("content") or {}
+    # 缺失或 null 都不是来源确认无图；参考脚本还支持 picture 单图回退。
+    pictures = content.get("pictures")
+    if not pictures and isinstance(content.get("picture"), dict):
+        pictures = [content["picture"]]
+    media = media_sources(pictures, "img_src", "img_") if pictures is not None else None
     return {**document, "source_reply_count": nonnegative(reply.get("rcount")),
             "root_id": root, "parent_id": parent, "comment_locator": locator, "media_sources": media}
 
 
-async def fetch_comment_count(client, locator):
+async def fetch_comment_count(client, locator, *, uid=None):
     """读取独立评论区总数信号，不由根页／本地条数推导。"""
     if not valid_locator(locator):
         raise ValueError("Unknown comment resource")
     response = await client.get("https://api.bilibili.com/x/v2/reply/count", params={
         "oid": locator["oid"], "type": locator["type"],
-    })
+    }, headers=comment_request_headers(uid), timeout=15)
     response.raise_for_status()
     payload = response.json()
     if type(payload.get("code")) is not int or payload["code"] != 0:
@@ -79,10 +92,10 @@ async def fetch_comment_count(client, locator):
     return count
 
 
-async def fetch_root_page(client, dynamic_id, locator, number):
+async def fetch_root_page(client, dynamic_id, locator, number, *, on_pin=None, uid=None):
     response = await client.get(ROOT_COMMENTS_URL, params={
         "oid": locator["oid"], "type": locator["type"], "pn": number, "ps": 20, "sort": 0,
-    })
+    }, headers=comment_request_headers(uid), timeout=15)
     response.raise_for_status()
     payload = response.json()
     if type(payload.get("code")) is not int or payload["code"] != 0:
@@ -105,10 +118,18 @@ async def fetch_root_page(client, dynamic_id, locator, number):
     if not isinstance(replies, list) or len(replies) > 20 or (count == 0 and replies):
         raise ValueError("Invalid comment page")
     extras = []
+    pin_known, pinned_id = False, None
     if number == 1:
-        top = (data.get("upper") or {}).get("top")
+        upper = data.get("upper")
+        if upper is not None and not isinstance(upper, dict):
+            raise ValueError("Invalid comment upper metadata")
+        pin_known = isinstance(upper, dict) and "top" in upper
+        top = upper.get("top") if isinstance(upper, dict) else None
         if top is not None:
+            if not isinstance(top, dict):
+                raise ValueError("Invalid top comment")
             extras.append(top)
+            pinned_id = source_id(top.get("rpid_str", top.get("rpid")))
         hots = data.get("hots") or []
         if not isinstance(hots, list):
             raise ValueError("Invalid hot comments")
@@ -119,44 +140,77 @@ async def fetch_root_page(client, dynamic_id, locator, number):
         raise ValueError("Unconfirmed empty comment resource")
     if count == 0 and documents:
         raise ValueError("Contradictory empty comment resource")
+    # 置顶来自首页 envelope，与普通列表的同 ID 副本分开，避免去重时丢失。
+    # 缺失 upper.top 表示未知；显式 null 才表示确认没有置顶。
+    if number == 1 and pin_known and on_pin is not None:
+        on_pin(pinned_id)
     return list(documents.values()), [source_id(reply.get("rpid_str", reply.get("rpid"))) for reply in replies], counts
 
 
-async def sync_roots(store, client, id, generation, *, now=None):
+async def sync_roots(store, client, id, generation, *, now=None, uid=None):
     archive = await to_thread.run_sync(store.read_archive, id)
+    if uid is None:
+        uid = archive["author"]["id"]
     locator = archive.get("comment_locator")
     if not valid_locator(locator):
+        collector_event("root_sync_unconfirmed", warning=True, reason="locator_missing")
         await to_thread.run_sync(store.finish_roots, id, generation, "unconfirmed", None)
         return
     observed_count = archive.get("source_comment_count")
     if not await to_thread.run_sync(store.begin_roots, id, generation):
+        collector_event("root_sync_skipped", reason="stale_generation")
         return
+    collector_event("root_sync_started")
+    phase = "page_fetch"
+    pin_known, pinned_id = False, None
+
+    def observe_pin(value):
+        nonlocal pin_known, pinned_id
+        pin_known, pinned_id = True, value
+
     try:
         number, baseline, seen, roots = 1, None, set(), {}
         while True:
-            documents, ids, counts = await fetch_root_page(client, id, locator, number)
+            phase = "page_fetch"
+            documents, ids, counts = await fetch_root_page(client, id, locator, number, on_pin=observe_pin, uid=uid)
+            phase = "pagination"
             if baseline is not None and counts != baseline:
                 raise ValueError("Comment counts changed during scan")
             baseline = counts
             if ids and not set(ids) - seen:
                 raise ValueError("Comment pagination did not advance")
+            phase = "save_page"
             if not await to_thread.run_sync(store.save_roots, id, generation, documents, observed_count):
+                collector_event("root_sync_skipped", reason="stale_generation", page=number)
                 return
             roots.update({document["id"]: document["source_reply_count"] for document in documents})
             if not ids:
                 if number > 1:
                     # 对候选空尾页复查；瞬时空、后续页失败或计数变化不能推进成功。
-                    confirmation, confirmed_ids, confirmed_counts = await fetch_root_page(client, id, locator, number)
+                    phase = "tail_fetch"
+                    confirmation, confirmed_ids, confirmed_counts = await fetch_root_page(client, id, locator, number, uid=uid)
+                    phase = "tail_save"
                     if not await to_thread.run_sync(store.save_roots, id, generation, confirmation, observed_count):
+                        collector_event("root_sync_skipped", reason="stale_generation", page=number)
                         return
+                    phase = "tail_validate"
                     if confirmed_ids or confirmed_counts != baseline:
                         raise ValueError("Unstable empty comment tail")
                 break
             seen.update(ids)
             number += 1
-    except Exception:
+        phase = "empty_confirmation"
+        if not roots and (
+                type(observed_count) is int and observed_count > 0
+                or locator.get("source") in ("opus_fallback", "dynamic_id_fallback")):
+            raise ValueError("Unconfirmed empty comment resource")
+    except Exception as error:
+        collector_failure("root_sync_failed", error, stage=phase, page=number)
         await to_thread.run_sync(store.finish_roots, id, generation, "failed", None)
         return
-    if await to_thread.run_sync(store.finish_roots, id, generation, "success", observed_count,
-                                now() if now is not None else None):
+    if await to_thread.run_sync(lambda: store.finish_roots(
+            id, generation, "success", observed_count, now() if now is not None else None,
+            pin_known=pin_known, pinned_id=pinned_id)):
+        collector_event("root_sync_finished", pages=number, roots=len(roots), pin_known=pin_known)
         return roots, observed_count
+    collector_event("root_sync_skipped", reason="stale_generation", stage="finish")

@@ -104,6 +104,19 @@ def page_metadata(detail, uid):
         "nickname": author.get("name") if isinstance(author.get("name"), str) else None,
         "avatar_url": safe_url(author.get("face")),
     }}
+    # 受限页没有正文模块；可见性变化驱动受限登记的重领，转公开时恢复完整同步。
+    try:
+        module_data(detail, "CONTENT")
+        metadata["content_visible"] = True
+    except ValueError:
+        metadata["content_visible"] = False
+    try:
+        title_module = module_data(detail, "TITLE")
+        title = title_module.get("text") if isinstance(title_module, dict) else None
+        if isinstance(title, str):
+            metadata["title"] = title
+    except ValueError:
+        pass
     if edited is not None:
         metadata.update(edited_at=edited, observed_version=edited)
     published = published_time(author.get("pub_ts"))
@@ -219,6 +232,32 @@ async def fetch_item(client, id):
     return item
 
 
+COMMENT_LOCATOR_VERSION = 1
+
+
+def comment_target(item):
+    """参考 get_comment_target 的字段优先级；调用者须先核对动态 ID 和作者。"""
+    basic = item.get("basic")
+    basic = basic if isinstance(basic, dict) else {}
+    oid, kind = basic.get("comment_id_str"), basic.get("comment_type", 11)
+    oid = str(oid) if type(oid) is int else oid
+    source = "basic"
+    if not (is_valid_id(oid) and type(kind) is int and kind > 0):
+        dynamic = item.get("modules", {}).get("module_dynamic", {})
+        major = dynamic.get("major") if isinstance(dynamic, dict) else None
+        major = major if isinstance(major, dict) else {}
+        opus = major.get("opus")
+        opus_id = opus.get("id") if isinstance(opus, dict) else None
+        opus_id = str(opus_id) if type(opus_id) is int else opus_id
+        if major.get("type") == "MAJOR_TYPE_OPUS" and is_valid_id(opus_id):
+            oid, kind, source = opus_id, 11, "opus_fallback"
+        else:
+            oid, kind, source = item.get("id_str"), 11, "dynamic_id_fallback"
+    if not is_valid_id(oid) or type(kind) is not int or kind < 1:
+        raise ValueError("Invalid comment locator")
+    return {"oid": oid, "type": kind, "source": source, "policy_version": COMMENT_LOCATOR_VERSION}
+
+
 async def fetch_detail(client, id, uid):
     """读取独立身份、计数、评论定位和媒体 metadata，不把摘要当完整正文。"""
     item = await fetch_item(client, id)
@@ -238,11 +277,7 @@ async def fetch_detail(client, id, uid):
     count = comment.get("count") if isinstance(comment, dict) else None
     if type(count) is int and count >= 0:
         metadata["source_comment_count"] = count
-    basic = item.get("basic")
-    basic = basic if isinstance(basic, dict) else {}
-    oid, kind = basic.get("comment_id_str"), basic.get("comment_type")
-    if is_valid_id(oid) and type(kind) is int and kind > 0:
-        metadata["comment_locator"] = {"oid": oid, "type": kind}
+    metadata["comment_locator"] = comment_target(item)
     dynamic = modules.get("module_dynamic")
     major = dynamic.get("major") if isinstance(dynamic, dict) else None
     major = major if isinstance(major, dict) else {}

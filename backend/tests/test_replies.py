@@ -80,7 +80,8 @@ def test_initial_archives_complete_replies_and_relations_after_reopen(tmp_path, 
         assert saved["work"]["comments"] == saved["work"]["replies"] == "success"
         assert saved["comments_last_attempt"] == "success"
         assert saved["synced_comment_count"] == 7
-        assert saved["work"]["media"] == "pending"
+        # 受限正文下媒体是稳定受限登记，不是待重试工作。
+        assert saved["work"]["media"] == "restricted"
         client.post("/api/sync/initial", json={"uid": UID})
         current = client.get(ARCHIVE).json()
         expected = copy.deepcopy(saved)

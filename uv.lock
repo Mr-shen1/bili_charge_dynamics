@@ -56,6 +56,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "httpx" },
     { name = "oss2" },
+    { name = "requests" },
     { name = "uvicorn" },
 ]
 
@@ -69,6 +70,7 @@ requires-dist = [
     { name = "fastapi", specifier = "==0.115.12" },
     { name = "httpx", specifier = "==0.28.1" },
     { name = "oss2", specifier = "==2.19.1" },
+    { name = "requests", specifier = "==2.34.2" },
     { name = "uvicorn", specifier = "==0.34.3" },
 ]
 

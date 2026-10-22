@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from uuid import uuid4
 
 from .contracts import APIError
-from .comment_status import COMMENT_STATUS_FIELDS
+from .comment_status import COMMENT_STATUS_FIELDS, ROOT_METADATA_VERSION
 from .selection import SELECTED_TARGETS, selection_token, selection_matches
 
 
@@ -15,10 +15,12 @@ ARCHIVE_SIGNALS = """json_object(
     'edited_at', json_extract(a.document, '$.edited_at'),
     'edit_status', json_extract(a.document, '$.edit_status'),
     'observed_version', json_extract(a.document, '$.observed_version'),
+    'content_visible', json_extract(a.document, '$.content_visible'),
     'source_comment_count', json_extract(a.document, '$.source_comment_count'),
     'comment_locator', json_extract(a.document, '$.comment_locator'))"""
 SIGNALS = {"published_at", "edited_at", "edit_status", "observed_version",
-           "edited_version", "source_comment_count", "comment_locator", "comment_count_status"}
+           "edited_version", "source_comment_count", "comment_locator", "comment_count_status",
+           "content_visible"}
 
 
 def safe_error(error):
@@ -66,9 +68,12 @@ def check_parts(row):
     observed = json.loads(row["observed"]) if row["observed"] else {}
     # 管理分项针对最新检查观察；旧归档成功不能冒充新正文/媒体完成。
     version = observed.get("observed_version")
-    if version != row["synced_version"]:
+    restricted_current = (parts["text"] == "restricted"
+                          and row["restricted_version"] == version
+                          and observed.get("content_visible") is not True)
+    if not restricted_current and (version != row["synced_version"] or parts["text"] == "restricted"):
         parts["text"] = "pending"
-    if version != row["media_version"]:
+    if not restricted_current and version != row["media_version"]:
         parts["media"] = "pending"
     count = observed.get("source_comment_count")
     roots_current = count == row["synced_root_comment_count"]
@@ -82,17 +87,28 @@ def check_parts(row):
 def archive_complete(connection, uid, id, observed):
     # 已保留的可信版本不因最近信号 unknown/error 而失效；正文/根文档不加载到写事务。
     version = observed.get("observed_version")
+    locator = observed.get("comment_locator") or {}
     return connection.execute("""SELECT 1 FROM archives a WHERE a.uid = ? AND a.id = ?
         AND json_extract(a.document, '$.observed_version') IS ?
-        AND json_extract(a.document, '$.synced_version') IS ?
+        AND ((json_extract(a.document, '$.work.text') = 'success'
+              AND json_extract(a.document, '$.synced_version') IS ?)
+             OR (json_extract(a.document, '$.work.text') = 'restricted'
+                 AND json_extract(a.document, '$.restricted_version') IS ? AND ? = 0))
         AND json_extract(a.document, '$.synced_comment_count') IS ?
-        AND json_extract(a.document, '$.work.text') = 'success'
-        AND json_extract(a.document, '$.work.media') = 'success'
+        AND json_extract(a.document, '$.comment_locator.oid') IS ?
+        AND json_extract(a.document, '$.comment_locator.type') IS ?
+        AND ((json_extract(a.document, '$.work.media') = 'success'
+              AND json_extract(a.document, '$.media_version') IS ?)
+             OR (json_extract(a.document, '$.work.media') = 'restricted'
+                 AND json_extract(a.document, '$.work.text') = 'restricted'))
         AND json_extract(a.document, '$.work.comments') = 'success'
         AND json_extract(a.document, '$.work.replies') = 'success'
+        AND json_extract(a.document, '$.synced_root_metadata_version') >= ?
         AND NOT EXISTS (SELECT 1 FROM root_comments r WHERE r.dynamic_id = a.id
             AND json_extract(r.document, '$.work.media') IS NOT 'success')""",
-        (uid, id, version, version, observed.get("source_comment_count"))).fetchone() is not None
+        (uid, id, version, version, version, int(observed.get("content_visible") is True),
+         observed.get("source_comment_count"), locator.get("oid"), locator.get("type"),
+         version, ROOT_METADATA_VERSION)).fetchone() is not None
 
 
 class CheckStore:
@@ -133,8 +149,14 @@ class CheckStore:
                 observed = merge_signals(observed, comment_observation)
             # 可信总数是独立评论版本；失败/未知不清旧值，也不阻断其他可信信号。
             count_changed = observed.get("source_comment_count") != previous.get("source_comment_count")
-            changed = row is None or count_changed or (version is not None and version != (
-                previous.get("edited_version") or previous.get("observed_version")))
+            old_locator, new_locator = previous.get("comment_locator") or {}, observed.get("comment_locator") or {}
+            locator_changed = any(old_locator.get(key) != new_locator.get(key) for key in ("oid", "type"))
+            visibility_changed = (previous.get("content_visible") is not None
+                                  and "content_visible" in observed
+                                  and bool(observed["content_visible"]) != bool(previous["content_visible"]))
+            changed = (row is None or count_changed or locator_changed or visibility_changed
+                       or (version is not None and version != (
+                           previous.get("edited_version") or previous.get("observed_version"))))
             if comment_observation is not None and comment_observation["comment_count_status"] != "observed":
                 failed = True
                 error = error or "SOURCE_UNAVAILABLE"
@@ -188,6 +210,7 @@ class CheckStore:
                 WHERE r.dynamic_id = ids.id AND json_extract(m.value, '$.status') = 'failed'
                 AND json_extract(m.value, '$.error') IN ('MEDIA_DOWNLOAD_FAILED', 'MEDIA_UPLOAD_FAILED')) AS comment_media_errors,
             json_extract(a.document, '$.synced_version') AS synced_version,
+            json_extract(a.document, '$.restricted_version') AS restricted_version,
             json_extract(a.document, '$.media_version') AS media_version,
             json_extract(a.document, '$.synced_comment_count') AS synced_comment_count,
             json_extract(a.document, '$.synced_root_comment_count') AS synced_root_comment_count,
@@ -257,7 +280,7 @@ class CheckStore:
                     "selection": current}
 
     def finish_check_work(self, uid, id, revision, succeeded, finished_at, error=None, *, token,
-                          selection=None):
+                          selection=None, record_success=True):
         # 旧 Store 的 finish(None) 可释放失活目标的领取，跳过代次校验；不同于
         # selection_matches(None) 仍要求当前入选。Collector 必传领取资格，不能省略。
         with transaction(self) as connection:
@@ -269,7 +292,7 @@ class CheckStore:
             connection.execute("""UPDATE target_checks SET work = ?, claim_token = NULL,
                 last_succeeded_at = CASE WHEN ? THEN ? ELSE last_succeeded_at END,
                 sync_error = ? WHERE uid = ? AND id = ?""",
-                ("complete" if complete else "pending", complete, finished_at,
+                ("complete" if complete else "pending", complete and record_success, finished_at,
                  None if succeeded else (safe_error(error) or "SOURCE_UNAVAILABLE"), uid, id))
             return bool(complete)
 

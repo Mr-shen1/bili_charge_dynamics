@@ -12,7 +12,7 @@ from .contracts import APIError
 from .checks import CheckStore
 from .selection import refresh_selections, selection_token, selection_matches
 from .discovery_state import DiscoveryStore
-from .comment_status import comment_status, utc_now
+from .comment_status import comment_status, utc_now, ROOT_METADATA_VERSION
 from .media import reconcile_media, refresh_media_progress
 
 
@@ -81,7 +81,7 @@ class Store(CheckStore, DiscoveryStore):
             connection.execute("BEGIN IMMEDIATE")
             try:
                 version = connection.execute("PRAGMA user_version").fetchone()[0]
-                if version > 13:
+                if version > 14:
                     raise RuntimeError("Unsupported database schema version")
                 if version == 0:
                     connection.execute("""CREATE TABLE identities (
@@ -206,7 +206,15 @@ class Store(CheckStore, DiscoveryStore):
                     )""")
                     for row in connection.execute("SELECT uid FROM monitors").fetchall():
                         refresh_selections(connection, row[0])
-                connection.execute("PRAGMA user_version = 13")
+                if version < 14:
+                    # 楼中楼增量判定：记录上次成功时的根页 rcount 与成功时间。
+                    # 已被更高版本建过表的降级副本也要能重放，先核对缺失列。
+                    columns = {row[1] for row in connection.execute("PRAGMA table_info(reply_sync)")}
+                    if "synced_at" not in columns:
+                        connection.execute("ALTER TABLE reply_sync ADD COLUMN synced_at TEXT")
+                    if "observed_reply_count" not in columns:
+                        connection.execute("ALTER TABLE reply_sync ADD COLUMN observed_reply_count INTEGER")
+                connection.execute("PRAGMA user_version = 14")
                 connection.commit()
             except BaseException:
                 connection.rollback()
@@ -270,7 +278,11 @@ class Store(CheckStore, DiscoveryStore):
                 """,
                     (uid, name, avatar_url),
                 )
-                connection.execute("INSERT INTO monitors (uid) VALUES (?)", (uid,))
+                # 新增 UP 默认停止监控：先保存身份与配置，由用户显式启用后才进入检查/发现。
+                connection.execute(
+                    "INSERT INTO monitors (uid, enabled) VALUES (?, 0)",
+                    (uid,),
+                )
                 refresh_selections(connection, uid)
                 connection.commit()
             except BaseException:
@@ -455,6 +467,7 @@ class Store(CheckStore, DiscoveryStore):
                 updates = dict(metadata)
                 if document["content_state"] == "success":
                     updates.pop("media_sources", None)
+                    updates.pop("title", None)
                 if "author" in updates:
                     updates["author"] = _merge_known(document["author"], updates["author"])
                 document.update(updates)
@@ -473,9 +486,11 @@ class Store(CheckStore, DiscoveryStore):
                 if "media_sources" in updates:
                     reconcile_media(document, updates["media_sources"], updates.get("observed_version"))
                     self._prune_media_attempts(connection, id, document["media"])
-                if document["observed_version"] != document["synced_version"]:
+                restricted_current = (document["work"]["text"] == "restricted"
+                                      and document.get("restricted_version") == document["observed_version"])
+                if not restricted_current and document["observed_version"] != document["synced_version"]:
                     document["work"]["text"] = "pending"
-                if document["observed_version"] != document["media_version"]:
+                if not restricted_current and document["observed_version"] != document["media_version"]:
                     document["work"]["media"] = "pending"
                 connection.execute("UPDATE archives SET document = ? WHERE id = ? AND generation = ?",
                                    (json.dumps(document, ensure_ascii=False), id, generation))
@@ -500,7 +515,8 @@ class Store(CheckStore, DiscoveryStore):
                     status = "failed"
                 document["last_attempt"] = status
                 if status == "success":
-                    if document["work"]["text"] == "pending":
+                    if (document["work"]["text"] in ("pending", "restricted")
+                            or (version == document["observed_version"] and document["media_version"] != version)):
                         previous_media_version = document.get("media_version")
                         media_was_complete = document["work"]["media"] == "success"
                         document.update(body)
@@ -512,6 +528,7 @@ class Store(CheckStore, DiscoveryStore):
                             document["media_last_succeeded_at"] = completed_at
                         self._prune_media_attempts(connection, id, document["media"])
                         document["content_state"] = "success"
+                        document.pop("restricted_version", None)
                         if version is not None:
                             document["synced_version"] = version
                     document["work"]["text"] = (
@@ -520,11 +537,18 @@ class Store(CheckStore, DiscoveryStore):
                 else:
                     if document["content_state"] != "success":
                         document["content_state"] = status
-                    document["work"]["text"] = "pending"
+                    if status == "restricted":
+                        # 受限是本次观察的终态，不冒充正文/媒体上传成功，也不删除历史归档。
+                        document["restricted_version"] = document["observed_version"]
+                        document["work"]["text"] = "restricted"
+                        if document["work"]["media"] != "success":
+                            document["work"]["media"] = "restricted"
+                    else:
+                        document["work"]["text"] = "pending"
                 connection.execute("UPDATE archives SET document = ? WHERE id = ? AND generation = ?",
                                    (json.dumps(document, ensure_ascii=False), id, generation))
                 connection.commit()
-                # 只有当前可信观察版本已提交 checkpoint 才计正文成功。
+                # 返回值仍表示实际正文成功；collector 另行识别受限终态。
                 return status == "success" and document["work"]["text"] == "success"
             except BaseException:
                 connection.rollback()
@@ -629,10 +653,13 @@ class Store(CheckStore, DiscoveryStore):
     def save_roots(self, id, generation, documents, observed_count):
         return self._change_roots(id, generation, "pending", observed_count, documents)
 
-    def finish_roots(self, id, generation, status, observed_count, succeeded_at=None):
-        return self._change_roots(id, generation, status, observed_count, [], succeeded_at)
+    def finish_roots(self, id, generation, status, observed_count, succeeded_at=None, *,
+                     pin_known=False, pinned_id=None):
+        return self._change_roots(id, generation, status, observed_count, [], succeeded_at,
+                                  pin_known=pin_known, pinned_id=pinned_id)
 
-    def _change_roots(self, id, generation, status, observed_count, documents, succeeded_at=None):
+    def _change_roots(self, id, generation, status, observed_count, documents, succeeded_at=None, *,
+                      pin_known=False, pinned_id=None):
         with self.connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
@@ -671,6 +698,13 @@ class Store(CheckStore, DiscoveryStore):
                 archive["replies_last_attempt"] = "pending"
                 archive["comments_last_attempt"] = "pending" if status in ("pending", "success") else status
                 if status == "success":
+                    # 只有整轮分页成功才发布置顶状态；失败/缺失字段保留旧可信值。
+                    # 取消置顶仅清标记，不删除历史评论，也不改写已冻结分页。
+                    if pin_known:
+                        connection.execute("""UPDATE root_comments SET document = json_set(
+                            document, '$.is_pinned', json(CASE WHEN id = ? THEN 'true' ELSE 'false' END))
+                            WHERE dynamic_id = ?""", (pinned_id, id))
+                    archive["synced_root_metadata_version"] = ROOT_METADATA_VERSION
                     archive["synced_root_comment_count"] = observed_count
                     archive["root_comments_last_succeeded_at"] = succeeded_at or utc_now()
                     if archive.get("source_comment_count") == observed_count:
@@ -702,9 +736,11 @@ class Store(CheckStore, DiscoveryStore):
             try:
                 documents = [json.loads(row[0]) for row in connection.execute(
                     "SELECT document FROM root_comments WHERE dynamic_id = ? ORDER BY "
+                    + "CASE WHEN json_extract(document, '$.is_pinned') = 1 THEN 0 ELSE 1 END ASC, "
                     + ("json_extract(document, '$.like_count') DESC, " if sort == "hot" else "")
                     + "json_extract(document, '$.published_at') DESC, id COLLATE BINARY ASC", (id,)
                 )]
+                self._attach_up_replies(connection, id, documents)
                 first, following = _freeze_pages(documents, limit)
                 for token, result in following:
                     connection.execute("INSERT INTO root_comment_pages VALUES (?, ?, ?, ?)",
@@ -715,6 +751,31 @@ class Store(CheckStore, DiscoveryStore):
                 connection.rollback()
                 raise
 
+    def _attach_up_replies(self, connection, id, documents):
+        """为楼中楼预览附上作者最早的一条回复；未参与讨论时为 null。"""
+        row = connection.execute("SELECT uid FROM archives WHERE id = ?", (id,)).fetchone()
+        if row is None:
+            return
+        authors = {document["id"]: document["author"] for document in documents}
+        up_first = {}
+        ordering = ("json_extract(document, '$.published_at') IS NULL ASC, "
+                    "json_extract(document, '$.published_at') ASC, id COLLATE BINARY ASC")
+        for stored in connection.execute(
+                "SELECT document FROM replies WHERE dynamic_id = ? ORDER BY " + ordering, (id,)):
+            reply = json.loads(stored[0])
+            authors.setdefault(reply["id"], reply["author"])
+            if reply["author"].get("id") == row[0]:
+                up_first.setdefault(reply["root_id"], reply)
+        for document in documents:
+            reply = up_first.get(document["id"])
+            parent = authors.get(reply["parent_id"]) if reply is not None else None
+            document["up_reply"] = None if reply is None else {
+                "id": reply["id"], "author": reply["author"], "published_at": reply["published_at"],
+                "text": reply["text"], "like_count": reply["like_count"],
+                # 直接回根评论不重复“回复 X”；回复其他楼才带目标昵称。
+                "reply_to": None if reply["parent_id"] == document["id"] else parent,
+            }
+
     def roots_for_replies(self, id, ids):
         with self.connection() as connection:
             documents = (json.loads(row[0]) for row in connection.execute(
@@ -722,23 +783,42 @@ class Store(CheckStore, DiscoveryStore):
             ))
             return [document for document in documents if document["id"] in ids]
 
-    def change_reply_root(self, id, generation, root_id, status, count=None):
+    def change_reply_root(self, id, generation, root_id, status, count=None, *, observed=None, succeeded_at=None):
         with self.connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 if not connection.execute("SELECT 1 FROM archives WHERE id = ? AND generation = ?", (id, generation)).fetchone():
                     connection.commit()
                     return False
-                connection.execute("""INSERT INTO reply_sync VALUES (?, ?, ?, ?)
+                # 只在成功时推进增量基准；失败保留上次可用的 rcount、来源数与时间。
+                connection.execute("""INSERT INTO reply_sync
+                    (dynamic_id, root_id, status, synced_source_reply_count, observed_reply_count, synced_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
                     ON CONFLICT(dynamic_id, root_id) DO UPDATE SET status = excluded.status,
                     synced_source_reply_count = CASE WHEN excluded.status = 'success'
-                    THEN excluded.synced_source_reply_count ELSE reply_sync.synced_source_reply_count END""",
-                    (id, root_id, status, count))
+                    THEN excluded.synced_source_reply_count ELSE reply_sync.synced_source_reply_count END,
+                    observed_reply_count = CASE WHEN excluded.status = 'success'
+                    THEN excluded.observed_reply_count ELSE reply_sync.observed_reply_count END,
+                    synced_at = CASE WHEN excluded.status = 'success'
+                    THEN excluded.synced_at ELSE reply_sync.synced_at END""",
+                    (id, root_id, status, count, observed,
+                     (succeeded_at or utc_now()) if status == "success" else None))
                 connection.commit()
                 return True
             except BaseException:
                 connection.rollback()
                 raise
+
+    def reply_progress(self, id):
+        """逐根增量基准：上次成功时的根页 rcount、来源数与时间。"""
+        with self.connection() as connection:
+            return {row["root_id"]: {"status": row["status"],
+                                     "source_count": row["synced_source_reply_count"],
+                                     "observed_count": row["observed_reply_count"],
+                                     "synced_at": row["synced_at"]}
+                    for row in connection.execute(
+                        "SELECT root_id, status, synced_source_reply_count, observed_reply_count, synced_at"
+                        " FROM reply_sync WHERE dynamic_id = ?", (id,))}
 
     def save_replies(self, id, generation, root_id, documents, count):
         return self._change_replies(id, generation, "pending", None, root_id, documents, count)
@@ -798,9 +878,14 @@ class Store(CheckStore, DiscoveryStore):
                 connection.rollback()
                 raise
 
-    def list_replies(self, id, root_id, cursor=None):
+    def list_replies(self, id, root_id, cursor=None, page=None):
         resource = f"replies:{id}:{root_id}:time-asc:id-binary:3-10:v1"
         with self.connection() as connection:
+            if page is not None:
+                if cursor is not None:
+                    raise APIError("INVALID_INPUT")
+                # 页码读取在同一短只读事务内取得根、回复、计数与状态，不访问持久分页快照。
+                connection.execute("BEGIN")
             row = connection.execute("SELECT document FROM root_comments WHERE dynamic_id = ? AND id = ?", (id, root_id)).fetchone()
             if row is None:
                 raise APIError("NOT_FOUND")
@@ -811,7 +896,8 @@ class Store(CheckStore, DiscoveryStore):
                 if saved is None:
                     raise APIError("CURSOR_INVALID")
                 return json.loads(saved[0])
-            connection.execute("BEGIN IMMEDIATE")
+            if page is None:
+                connection.execute("BEGIN IMMEDIATE")
             try:
                 root = json.loads(connection.execute(
                     "SELECT document FROM root_comments WHERE dynamic_id = ? AND id = ?", (id, root_id)
@@ -825,15 +911,24 @@ class Store(CheckStore, DiscoveryStore):
                 for document in documents:
                     author = authors.get(document["parent_id"])
                     document["reply_to"] = author if author and author.get("id") is not None else None
-                # 预览与追加是同一持久读取上下文，不按首批大小切所有后续页。
-                first, following = _freeze_pages(documents[3:], 10)
-                result = {"items": documents[:3], "next_cursor": uuid4().hex if documents[3:] else None}
-                pages = [(result["next_cursor"], first)] + following if documents[3:] else []
                 progress = connection.execute("SELECT status, synced_source_reply_count FROM reply_sync WHERE dynamic_id = ? AND root_id = ?",
                                               (id, root_id)).fetchone()
                 metadata = {"source_reply_count": root.get("source_reply_count"), "local_reply_count": len(documents),
                             "replies_last_attempt": progress["status"] if progress else "pending",
                             "synced_source_reply_count": progress["synced_source_reply_count"] if progress else None}
+                if page is not None:
+                    # 超长正整数页码必然越界，避免转换为 Python/SQLite 整数时溢出。
+                    offset = (int(page) - 1) * 10 if len(str(page)) <= len(str(len(documents))) else len(documents)
+                    result = {"items": documents[offset:offset + 10], "next_cursor": None,
+                              "root": root, "count": len(documents), **metadata}
+                    connection.commit()
+                    return result
+                # 预览与追加是同一持久读取上下文，不按首批大小切所有后续页。
+                first, following = _freeze_pages(documents[3:], 10)
+                result = {"items": documents[:3], "next_cursor": uuid4().hex if documents[3:] else None}
+                # 楼中楼详情页需要根评论本身；只在首批返回，不重复到后续分页。
+                result["root"] = root
+                pages = [(result["next_cursor"], first)] + following if documents[3:] else []
                 result.update(metadata)
                 for token, page in pages:
                     page.update(metadata)

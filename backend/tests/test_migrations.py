@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.bili_monitor.app import create_app
+from backend.bili_monitor.comment_status import ROOT_METADATA_VERSION
 from backend.tests.sqlite_fixtures import management_relation, quote
 from backend.tests.management_support import BASE, UID, client_for
 from backend.tests.archive_support import archive_content, NULL_COMMENT_STATUS
@@ -24,18 +25,18 @@ def test_empty_unversioned_database_migrates_and_reopens(tmp_path):
     with client_for(path) as client:
         assert client.get(BASE).json() == saved
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 13
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 14
 
 
 def test_future_database_refuses_startup_without_downgrading(tmp_path, caplog):
     path = tmp_path / "FICTIONAL_SECRET_FUTURE.sqlite"
     with sqlite3.connect(path) as database:
-        database.execute("PRAGMA user_version = 14")
+        database.execute("PRAGMA user_version = 15")
     with pytest.raises(RuntimeError, match="Unsupported database schema version"):
         with client_for(path):
             pytest.fail("A future schema must not serve requests")
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 14
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 15
     assert "FICTIONAL_SECRET" not in caplog.text
 
 
@@ -381,6 +382,9 @@ def test_existing_archive_baseline_does_not_fabricate_sync_time(tmp_path, comple
     document["synced_version"] = document["observed_version"]
     document["source_comment_count"] = document["synced_comment_count"] = 1 if same_count else 0
     document["work"] = dict.fromkeys(("text", "media", "comments", "replies"), "success")
+    # 基线已是最新根元信息版本，媒体版本与正文同步；本用例只考察时间戳不回填。
+    document["synced_root_metadata_version"] = ROOT_METADATA_VERSION
+    document["media_version"] = document["observed_version"]
     if not complete:
         document["work"]["media"] = "pending"
     with sqlite3.connect(path) as database:
@@ -413,7 +417,7 @@ def test_real_v9_configuration_and_archive_migrate_to_checks_without_fabricating
         assert current["comment_sync"] == check
         assert archive_content(current) == saved
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 13
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 14
         assert database.execute("PRAGMA foreign_key_check").fetchall() == []
     reopened = Store(path)
     assert reopened.record_check(UID, "123", {}, CHECKED_AT, None)
@@ -483,4 +487,4 @@ def test_v9_check_migration_failure_rolls_back_version_and_can_retry(tmp_path):
     with client_for(path) as client:
         assert get_checks(client)[0]["check_status"] == "unchecked"
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 13
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 14

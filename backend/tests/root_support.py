@@ -32,8 +32,11 @@ def source_handler(state):
             payload["data"]["item"]["modules"]["module_stat"]["comment"]["count"] = count
             return httpx.Response(200, json=payload)
         assert request.url.path == "/x/v2/reply"
-        assert request.url.params["oid"] == "99123"  # 不等于动态 ID
-        assert request.url.params["type"] == "17"
+        # 定位来源可为 basic（oid=99123）或兜底（动态 ID=123）；真实上游按请求回显资源身份。
+        oid, kind = request.url.params["oid"], request.url.params["type"]
+        assert oid in ("99123", "123")
+        assert kind == ("17" if oid == "99123" else "11")
+        state.setdefault("locators", []).append((oid, kind))
         assert request.url.params["ps"] == "20"
         assert request.url.params["sort"] == "0"
         page = int(request.url.params["pn"])
@@ -46,6 +49,15 @@ def source_handler(state):
         payload["data"]["replies"] = roots[(page - 1) * 20:page * 20] or None
         if "roots" in state:
             payload["data"]["page"].update(count=len(roots), acount=len(roots) + 5)
+        # 回显本次请求的资源身份，否则条目会被当作其它资源而拒绝。
+        uppers = (payload["data"].get("upper") or {}).get("top")
+        echoed = [item for item in (payload["data"]["replies"] or []) + (payload["data"].get("hots") or [])
+                  + ([uppers] if isinstance(uppers, dict) else [])]
+        for item in echoed:
+            if "oid" in item:
+                item["oid"] = int(oid)
+            if "type" in item:
+                item["type"] = int(kind)
         return httpx.Response(200, json=payload)
     return handler
 
