@@ -103,6 +103,8 @@ sudo editor /etc/bili-monitor/env
 
 必填项只有一个：`BILI_DATABASE_PATH=/srv/bili-monitor/monitor.sqlite`。
 
+> ⚠️ **可选变量不要留空值。** OSS 七项与 `BILI_COOKIE_FILE` 不用时**保持模板中的注释状态**。写成 `BILI_OSS_ENDPOINT=` 会让 systemd 注入空字符串，而 `oss.py:39-45` 区分「未设置」与「已设置为空」：空字符串会触发 `ValueError: Incomplete OSS configuration` 直接退出；`source_cookies.py:91-103` 同理，空值会去读空路径并报配置错误。
+
 **先手动跑一次，确认能起来再交给 systemd**（统一入口在上游文档里声明未验证）：
 
 ```bash
