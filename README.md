@@ -51,6 +51,15 @@ uv run python -m scripts.visual_preview --frontend-dir dist
 
 ## UP 管理与 Python API
 
+真实监控推荐使用统一入口，避免漏启采集进程。准备好 uv 环境并停止旧 API/collector 后，在专用终端运行：
+
+```bash
+export BILI_DATABASE_PATH=/srv/bili-monitor/monitor.sqlite
+exec .venv/bin/python -m backend.bili_monitor.service --host 127.0.0.1 --port 8000
+```
+
+它等待 API 迁移并监听后启动独立 collector，共享数据库及服务端 Cookie/OSS 环境，任一进程退出会停止另一进程；Ctrl-C/TERM 按 collector、API 顺序退出。不要同时使用该入口和下方手动双进程方式。添加监控后由 collector 的固定节拍发现并归档，不承诺即时完成；仅启动 API 不会采集。详情见[后端统一启动说明](backend/README.md#api-与采集统一启动)。
+
 Python 环境和依赖只使用 uv。首次启动会事务迁移数据库；身份与监控配置分离，停止/删除配置保留身份，重启读取原数据库。
 
 ```bash

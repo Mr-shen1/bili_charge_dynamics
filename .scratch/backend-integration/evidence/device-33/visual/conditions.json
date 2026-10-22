@@ -1,0 +1,3701 @@
+{
+  "startedAt": "2026-10-18T12:20:36.036Z",
+  "baseURL": "https://192.168.8.20:18443",
+  "repositoryHead": "057921bc182626a743a8ea158f97f3482e4a4c70",
+  "productFix": "d2bbeef",
+  "expectedJS": "index-DLXpqo1_.js",
+  "viewportWidths": [
+    360,
+    390,
+    768,
+    1280
+  ],
+  "viewportHeight": 900,
+  "dpr": 1,
+  "zoom": "100%",
+  "timezone": "Asia/Shanghai",
+  "mode": "现有生产归档 Adapter + 独立本地 SQLite/fixtures；仅 GET；串行；不使用 mockReader，不构建/不改 dist，不点击管理按钮，不修改 N/目标。",
+  "networkPolicy": "仅允许 GET 且 hostname 为 192.168.8.20 的浏览器网络请求；其他请求 abort；serviceWorkers block。没有替换 API/响应/图片。",
+  "fontProbe": {
+    "systemUI": "NotoSansCJK-Regular.ttc: \"Noto Sans CJK KR\" \"Regular\"",
+    "chinese": "NotoSansCJK-Regular.ttc: \"Noto Sans CJK KR\" \"Regular\""
+  },
+  "reference": {
+    "directory": "/tmp/bili-device-33-xMpA6LHL/visual-reference/2026-10-18T12-20-36.035Z",
+    "scale": 0.5,
+    "reason": "动态作者头像来源约96图片px→48CSS px推定；不是来源已知DPR。",
+    "unknown": [
+      "字体",
+      "CSS视口",
+      "DPR",
+      "浏览器缩放"
+    ],
+    "missing": [
+      "完整三条预览组／展开25条来源样本",
+      "详情动态图片完整来源样本",
+      "评论图片完整来源样本",
+      "管理来源截图"
+    ],
+    "caution": "根头像来源框约97图片px，而当前40CSS px；可能存在装扮/框或量测差异，仅待核。业务内容不同，不作像素通过判定。",
+    "files": [
+      {
+        "path": "docs/assets/ui-reference/current-35/dynamics-list.png",
+        "sha256": "bf808076f2303796d286d125e4c3628854d05a7149e5e0cbcbd2196882c8270b",
+        "width": 1442,
+        "height": 1156
+      },
+      {
+        "path": "docs/assets/ui-reference/current-35/dynamic-detail.png",
+        "sha256": "9e493af337d9d5f836ab4c7729412be8bd525157d78d1761472d017e27f21954",
+        "width": 1384,
+        "height": 1688
+      }
+    ],
+    "crops": [
+      {
+        "name": "root-comment",
+        "rectXYXY": [
+          110,
+          1210,
+          1320,
+          1390
+        ],
+        "basis": "代理按本地参考图定位的根评论本体矩形，非用户签收",
+        "source": "dynamic-detail.png",
+        "scale": 0.5,
+        "normalized": {
+          "width": 605,
+          "height": 90
+        },
+        "implementation": {
+          "width": 596,
+          "height": 2
+        },
+        "cell": {
+          "width": 605,
+          "height": 90
+        },
+        "padding": "左右各一格；只在各图右/下补至两侧最小共同画布；实现未缩放；无内容/图标遮罩。",
+        "normalizedFile": "/tmp/bili-device-33-xMpA6LHL/visual-reference/2026-10-18T12-20-36.035Z/root-comment-source-0.5.png",
+        "pairFile": "/tmp/bili-device-33-xMpA6LHL/visual-reference/2026-10-18T12-20-36.035Z/root-comment-side-by-side.png"
+      }
+    ]
+  },
+  "samples": [
+    {
+      "name": "list",
+      "path": "/ups/740",
+      "width": 360,
+      "height": 900,
+      "startedAt": "2026-10-18T12:20:36.144Z",
+      "blocked": [],
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/ups/740"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-DLXpqo1_.js"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-D9OlUKhP.css"
+        },
+        {
+          "method": "GET",
+          "path": "/api/archive/ups"
+        },
+        {
+          "method": "GET",
+          "path": "/api/archive/dynamics"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-710.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-720.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-730.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/device-33-avatar.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/device-33-tall.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/device-33-landscape.svg"
+        }
+      ],
+      "requestFailures": [],
+      "httpErrors": [],
+      "pageErrors": [],
+      "consoleErrors": [],
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 360,
+        "height": 714.625,
+        "top": 0,
+        "right": 360,
+        "bottom": 714.625,
+        "left": 0
+      },
+      "scrollHeight": 900,
+      "images": [
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-720.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-730.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/device-33-avatar.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/device-33-avatar.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/device-33-tall.svg",
+          "complete": true,
+          "naturalWidth": 720,
+          "naturalHeight": 2880
+        },
+        {
+          "path": "/visual-assets/device-33-landscape.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        }
+      ],
+      "layoutAndImagesStable": true,
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.7632.6 Safari/537.36",
+      "font": {
+        "status": "loaded",
+        "family": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "lineHeight": "normal",
+        "faces": [],
+        "probes": {
+          "Arial": true,
+          "Noto Sans CJK SC": true,
+          "sans-serif": true,
+          "system-ui": true
+        }
+      },
+      "document": {
+        "scrollWidth": 360,
+        "clientWidth": 360,
+        "innerWidth": 360,
+        "overflow": false
+      },
+      "display": {
+        "dpr": 1,
+        "visualViewportScale": 1,
+        "cssZoom": "1"
+      },
+      "scripts": [
+        "/assets/index-DLXpqo1_.js"
+      ],
+      "roots": 0,
+      "root710001001VisibleReplies": 0,
+      "uiAlerts": [],
+      "jsMatchesExpected": true,
+      "file": "list-360.png",
+      "capturedAt": "2026-10-18T12:20:37.253Z",
+      "png": {
+        "width": 360,
+        "height": 900
+      },
+      "finishedAt": "2026-10-18T12:20:37.272Z"
+    },
+    {
+      "name": "scope",
+      "path": "/ups/710",
+      "width": 360,
+      "height": 900,
+      "startedAt": "2026-10-18T12:20:37.272Z",
+      "blocked": [],
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/ups/710"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-DLXpqo1_.js"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-D9OlUKhP.css"
+        },
+        {
+          "method": "GET",
+          "path": "/api/archive/ups"
+        },
+        {
+          "method": "GET",
+          "path": "/api/archive/dynamics"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-710.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-720.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-730.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/device-33-avatar.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-1.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-2.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-3.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-4.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-5.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-6.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-7.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-8.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-9.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/tall.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-2.svg"
+        }
+      ],
+      "requestFailures": [],
+      "httpErrors": [],
+      "pageErrors": [],
+      "consoleErrors": [],
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 360,
+        "height": 4808.5625,
+        "top": 0,
+        "right": 360,
+        "bottom": 4808.5625,
+        "left": 0
+      },
+      "scrollHeight": 4809,
+      "images": [
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-720.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-730.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/device-33-avatar.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/landscape-1.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/landscape-1.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-2.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-3.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-4.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/landscape-1.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-2.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-3.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-4.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-5.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-6.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-7.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-8.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-9.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/landscape-1.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-2.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-3.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-4.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-5.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-6.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-7.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-8.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-9.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/tall.svg",
+          "complete": true,
+          "naturalWidth": 720,
+          "naturalHeight": 2880
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/landscape-2.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        }
+      ],
+      "layoutAndImagesStable": true,
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.7632.6 Safari/537.36",
+      "font": {
+        "status": "loaded",
+        "family": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "lineHeight": "normal",
+        "faces": [],
+        "probes": {
+          "Arial": true,
+          "Noto Sans CJK SC": true,
+          "sans-serif": true,
+          "system-ui": true
+        }
+      },
+      "document": {
+        "scrollWidth": 360,
+        "clientWidth": 360,
+        "innerWidth": 360,
+        "overflow": false
+      },
+      "display": {
+        "dpr": 1,
+        "visualViewportScale": 1,
+        "cssZoom": "1"
+      },
+      "scripts": [
+        "/assets/index-DLXpqo1_.js"
+      ],
+      "roots": 0,
+      "root710001001VisibleReplies": 0,
+      "uiAlerts": [],
+      "jsMatchesExpected": true,
+      "file": "scope-360.png",
+      "capturedAt": "2026-10-18T12:20:38.349Z",
+      "png": {
+        "width": 360,
+        "height": 4809
+      },
+      "finishedAt": "2026-10-18T12:20:38.469Z"
+    },
+    {
+      "name": "detail",
+      "path": "/dynamics/710001",
+      "width": 360,
+      "height": 900,
+      "startedAt": "2026-10-18T12:20:38.469Z",
+      "blocked": [],
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/dynamics/710001"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-DLXpqo1_.js"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-D9OlUKhP.css"
+        },
+        {
+          "method": "GET",
+          "path": "/api/archive/dynamics/710001"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-710.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/api/archive/dynamics/710001/comments"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-710.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-reader.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-1.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-2.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-3.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-4.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/tall.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/api/archive/dynamics/710001/comments/710001001/replies"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-reader.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-710.svg"
+        }
+      ],
+      "requestFailures": [],
+      "httpErrors": [],
+      "pageErrors": [],
+      "consoleErrors": [],
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 360,
+        "height": 2669,
+        "top": 0,
+        "right": 360,
+        "bottom": 2669,
+        "left": 0
+      },
+      "scrollHeight": 2669,
+      "images": [
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-reader.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-reader.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-reader.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/landscape-1.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-2.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-3.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-4.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/avatar-reader.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/tall.svg",
+          "complete": true,
+          "naturalWidth": 720,
+          "naturalHeight": 2880
+        }
+      ],
+      "layoutAndImagesStable": true,
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.7632.6 Safari/537.36",
+      "font": {
+        "status": "loaded",
+        "family": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "lineHeight": "normal",
+        "faces": [],
+        "probes": {
+          "Arial": true,
+          "Noto Sans CJK SC": true,
+          "sans-serif": true,
+          "system-ui": true
+        }
+      },
+      "document": {
+        "scrollWidth": 360,
+        "clientWidth": 360,
+        "innerWidth": 360,
+        "overflow": false
+      },
+      "display": {
+        "dpr": 1,
+        "visualViewportScale": 1,
+        "cssZoom": "1"
+      },
+      "scripts": [
+        "/assets/index-DLXpqo1_.js"
+      ],
+      "roots": 3,
+      "root710001001VisibleReplies": 3,
+      "uiAlerts": [],
+      "jsMatchesExpected": true,
+      "file": "detail-360.png",
+      "capturedAt": "2026-10-18T12:20:39.488Z",
+      "png": {
+        "width": 360,
+        "height": 2669
+      },
+      "finishedAt": "2026-10-18T12:20:39.574Z"
+    },
+    {
+      "name": "manage",
+      "path": "/manage",
+      "width": 360,
+      "height": 900,
+      "startedAt": "2026-10-18T12:20:39.574Z",
+      "blocked": [],
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/manage"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-DLXpqo1_.js"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-D9OlUKhP.css"
+        },
+        {
+          "method": "GET",
+          "path": "/api/manage/ups"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-710.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-720.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-730.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/device-33-avatar.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/api/manage/ups/710/targets"
+        },
+        {
+          "method": "GET",
+          "path": "/api/manage/ups/730/targets"
+        },
+        {
+          "method": "GET",
+          "path": "/api/manage/ups/740/targets"
+        }
+      ],
+      "requestFailures": [],
+      "httpErrors": [],
+      "pageErrors": [],
+      "consoleErrors": [],
+      "main": {
+        "x": 12,
+        "y": 0,
+        "width": 336,
+        "height": 7867,
+        "top": 0,
+        "right": 348,
+        "bottom": 7867,
+        "left": 12
+      },
+      "scrollHeight": 7867,
+      "images": [
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-720.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-730.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/device-33-avatar.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        }
+      ],
+      "layoutAndImagesStable": true,
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.7632.6 Safari/537.36",
+      "font": {
+        "status": "loaded",
+        "family": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "lineHeight": "25px",
+        "faces": [],
+        "probes": {
+          "Arial": true,
+          "Noto Sans CJK SC": true,
+          "sans-serif": true,
+          "system-ui": true
+        }
+      },
+      "document": {
+        "scrollWidth": 360,
+        "clientWidth": 360,
+        "innerWidth": 360,
+        "overflow": false
+      },
+      "display": {
+        "dpr": 1,
+        "visualViewportScale": 1,
+        "cssZoom": "1"
+      },
+      "scripts": [
+        "/assets/index-DLXpqo1_.js"
+      ],
+      "roots": 0,
+      "root710001001VisibleReplies": 0,
+      "uiAlerts": [],
+      "jsMatchesExpected": true,
+      "file": "manage-360.png",
+      "capturedAt": "2026-10-18T12:20:40.868Z",
+      "png": {
+        "width": 360,
+        "height": 7867
+      },
+      "finishedAt": "2026-10-18T12:20:41.002Z"
+    },
+    {
+      "name": "list",
+      "path": "/ups/740",
+      "width": 390,
+      "height": 900,
+      "startedAt": "2026-10-18T12:20:41.002Z",
+      "blocked": [],
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/ups/740"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-DLXpqo1_.js"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-D9OlUKhP.css"
+        },
+        {
+          "method": "GET",
+          "path": "/api/archive/ups"
+        },
+        {
+          "method": "GET",
+          "path": "/api/archive/dynamics"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-710.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-720.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-730.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/device-33-avatar.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/device-33-tall.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/device-33-landscape.svg"
+        }
+      ],
+      "requestFailures": [],
+      "httpErrors": [],
+      "pageErrors": [],
+      "consoleErrors": [],
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 729.046875,
+        "top": 0,
+        "right": 390,
+        "bottom": 729.046875,
+        "left": 0
+      },
+      "scrollHeight": 900,
+      "images": [
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-720.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-730.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/device-33-avatar.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/device-33-avatar.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/device-33-tall.svg",
+          "complete": true,
+          "naturalWidth": 720,
+          "naturalHeight": 2880
+        },
+        {
+          "path": "/visual-assets/device-33-landscape.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        }
+      ],
+      "layoutAndImagesStable": true,
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.7632.6 Safari/537.36",
+      "font": {
+        "status": "loaded",
+        "family": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "lineHeight": "normal",
+        "faces": [],
+        "probes": {
+          "Arial": true,
+          "Noto Sans CJK SC": true,
+          "sans-serif": true,
+          "system-ui": true
+        }
+      },
+      "document": {
+        "scrollWidth": 390,
+        "clientWidth": 390,
+        "innerWidth": 390,
+        "overflow": false
+      },
+      "display": {
+        "dpr": 1,
+        "visualViewportScale": 1,
+        "cssZoom": "1"
+      },
+      "scripts": [
+        "/assets/index-DLXpqo1_.js"
+      ],
+      "roots": 0,
+      "root710001001VisibleReplies": 0,
+      "uiAlerts": [],
+      "jsMatchesExpected": true,
+      "file": "list-390.png",
+      "capturedAt": "2026-10-18T12:20:41.973Z",
+      "png": {
+        "width": 390,
+        "height": 900
+      },
+      "finishedAt": "2026-10-18T12:20:41.993Z"
+    },
+    {
+      "name": "scope",
+      "path": "/ups/710",
+      "width": 390,
+      "height": 900,
+      "startedAt": "2026-10-18T12:20:41.993Z",
+      "blocked": [],
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/ups/710"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-DLXpqo1_.js"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-D9OlUKhP.css"
+        },
+        {
+          "method": "GET",
+          "path": "/api/archive/ups"
+        },
+        {
+          "method": "GET",
+          "path": "/api/archive/dynamics"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-710.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-720.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-730.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/device-33-avatar.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-1.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-2.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-3.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-4.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-5.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-6.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-7.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-8.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-9.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/tall.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-2.svg"
+        }
+      ],
+      "requestFailures": [],
+      "httpErrors": [],
+      "pageErrors": [],
+      "consoleErrors": [],
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 4962.3125,
+        "top": 0,
+        "right": 390,
+        "bottom": 4962.3125,
+        "left": 0
+      },
+      "scrollHeight": 4962,
+      "images": [
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-720.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-730.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/device-33-avatar.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/landscape-1.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/landscape-1.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-2.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-3.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-4.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/landscape-1.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-2.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-3.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-4.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-5.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-6.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-7.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-8.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-9.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/landscape-1.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-2.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-3.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-4.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-5.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-6.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-7.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-8.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-9.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/tall.svg",
+          "complete": true,
+          "naturalWidth": 720,
+          "naturalHeight": 2880
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/landscape-2.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        }
+      ],
+      "layoutAndImagesStable": true,
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.7632.6 Safari/537.36",
+      "font": {
+        "status": "loaded",
+        "family": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "lineHeight": "normal",
+        "faces": [],
+        "probes": {
+          "Arial": true,
+          "Noto Sans CJK SC": true,
+          "sans-serif": true,
+          "system-ui": true
+        }
+      },
+      "document": {
+        "scrollWidth": 390,
+        "clientWidth": 390,
+        "innerWidth": 390,
+        "overflow": false
+      },
+      "display": {
+        "dpr": 1,
+        "visualViewportScale": 1,
+        "cssZoom": "1"
+      },
+      "scripts": [
+        "/assets/index-DLXpqo1_.js"
+      ],
+      "roots": 0,
+      "root710001001VisibleReplies": 0,
+      "uiAlerts": [],
+      "jsMatchesExpected": true,
+      "file": "scope-390.png",
+      "capturedAt": "2026-10-18T12:20:43.073Z",
+      "png": {
+        "width": 390,
+        "height": 4962
+      },
+      "finishedAt": "2026-10-18T12:20:43.179Z"
+    },
+    {
+      "name": "detail",
+      "path": "/dynamics/710001",
+      "width": 390,
+      "height": 900,
+      "startedAt": "2026-10-18T12:20:43.179Z",
+      "blocked": [],
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/dynamics/710001"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-DLXpqo1_.js"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-D9OlUKhP.css"
+        },
+        {
+          "method": "GET",
+          "path": "/api/archive/dynamics/710001"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-710.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/api/archive/dynamics/710001/comments"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-710.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-reader.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/api/archive/dynamics/710001/comments/710001001/replies"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-1.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-2.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-3.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-4.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/tall.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-reader.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-710.svg"
+        }
+      ],
+      "requestFailures": [],
+      "httpErrors": [],
+      "pageErrors": [],
+      "consoleErrors": [],
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 2651,
+        "top": 0,
+        "right": 390,
+        "bottom": 2651,
+        "left": 0
+      },
+      "scrollHeight": 2651,
+      "images": [
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-reader.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-reader.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-reader.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/landscape-1.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-2.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-3.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-4.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/avatar-reader.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/tall.svg",
+          "complete": true,
+          "naturalWidth": 720,
+          "naturalHeight": 2880
+        }
+      ],
+      "layoutAndImagesStable": true,
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.7632.6 Safari/537.36",
+      "font": {
+        "status": "loaded",
+        "family": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "lineHeight": "normal",
+        "faces": [],
+        "probes": {
+          "Arial": true,
+          "Noto Sans CJK SC": true,
+          "sans-serif": true,
+          "system-ui": true
+        }
+      },
+      "document": {
+        "scrollWidth": 390,
+        "clientWidth": 390,
+        "innerWidth": 390,
+        "overflow": false
+      },
+      "display": {
+        "dpr": 1,
+        "visualViewportScale": 1,
+        "cssZoom": "1"
+      },
+      "scripts": [
+        "/assets/index-DLXpqo1_.js"
+      ],
+      "roots": 3,
+      "root710001001VisibleReplies": 3,
+      "uiAlerts": [],
+      "jsMatchesExpected": true,
+      "file": "detail-390.png",
+      "capturedAt": "2026-10-18T12:20:44.171Z",
+      "png": {
+        "width": 390,
+        "height": 2651
+      },
+      "finishedAt": "2026-10-18T12:20:44.260Z"
+    },
+    {
+      "name": "manage",
+      "path": "/manage",
+      "width": 390,
+      "height": 900,
+      "startedAt": "2026-10-18T12:20:44.260Z",
+      "blocked": [],
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/manage"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-DLXpqo1_.js"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-D9OlUKhP.css"
+        },
+        {
+          "method": "GET",
+          "path": "/api/manage/ups"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-710.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-720.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-730.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/device-33-avatar.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/api/manage/ups/710/targets"
+        },
+        {
+          "method": "GET",
+          "path": "/api/manage/ups/730/targets"
+        },
+        {
+          "method": "GET",
+          "path": "/api/manage/ups/740/targets"
+        }
+      ],
+      "requestFailures": [],
+      "httpErrors": [],
+      "pageErrors": [],
+      "consoleErrors": [],
+      "main": {
+        "x": 12,
+        "y": 0,
+        "width": 366,
+        "height": 7599,
+        "top": 0,
+        "right": 378,
+        "bottom": 7599,
+        "left": 12
+      },
+      "scrollHeight": 7599,
+      "images": [
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-720.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-730.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/device-33-avatar.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        }
+      ],
+      "layoutAndImagesStable": true,
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.7632.6 Safari/537.36",
+      "font": {
+        "status": "loaded",
+        "family": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "lineHeight": "25px",
+        "faces": [],
+        "probes": {
+          "Arial": true,
+          "Noto Sans CJK SC": true,
+          "sans-serif": true,
+          "system-ui": true
+        }
+      },
+      "document": {
+        "scrollWidth": 390,
+        "clientWidth": 390,
+        "innerWidth": 390,
+        "overflow": false
+      },
+      "display": {
+        "dpr": 1,
+        "visualViewportScale": 1,
+        "cssZoom": "1"
+      },
+      "scripts": [
+        "/assets/index-DLXpqo1_.js"
+      ],
+      "roots": 0,
+      "root710001001VisibleReplies": 0,
+      "uiAlerts": [],
+      "jsMatchesExpected": true,
+      "file": "manage-390.png",
+      "capturedAt": "2026-10-18T12:20:45.502Z",
+      "png": {
+        "width": 390,
+        "height": 7599
+      },
+      "finishedAt": "2026-10-18T12:20:45.648Z"
+    },
+    {
+      "name": "list",
+      "path": "/ups/740",
+      "width": 768,
+      "height": 900,
+      "startedAt": "2026-10-18T12:20:45.649Z",
+      "blocked": [],
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/ups/740"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-DLXpqo1_.js"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-D9OlUKhP.css"
+        },
+        {
+          "method": "GET",
+          "path": "/api/archive/ups"
+        },
+        {
+          "method": "GET",
+          "path": "/api/archive/dynamics"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-710.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-720.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-730.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/device-33-avatar.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/device-33-tall.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/device-33-landscape.svg"
+        }
+      ],
+      "requestFailures": [],
+      "httpErrors": [],
+      "pageErrors": [],
+      "consoleErrors": [],
+      "main": {
+        "x": 22,
+        "y": 0,
+        "width": 724,
+        "height": 780.984375,
+        "top": 0,
+        "right": 746,
+        "bottom": 780.984375,
+        "left": 22
+      },
+      "scrollHeight": 900,
+      "images": [
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-720.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-730.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/device-33-avatar.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/device-33-avatar.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/device-33-tall.svg",
+          "complete": true,
+          "naturalWidth": 720,
+          "naturalHeight": 2880
+        },
+        {
+          "path": "/visual-assets/device-33-landscape.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        }
+      ],
+      "layoutAndImagesStable": true,
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.7632.6 Safari/537.36",
+      "font": {
+        "status": "loaded",
+        "family": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "lineHeight": "normal",
+        "faces": [],
+        "probes": {
+          "Arial": true,
+          "Noto Sans CJK SC": true,
+          "sans-serif": true,
+          "system-ui": true
+        }
+      },
+      "document": {
+        "scrollWidth": 768,
+        "clientWidth": 768,
+        "innerWidth": 768,
+        "overflow": false
+      },
+      "display": {
+        "dpr": 1,
+        "visualViewportScale": 1,
+        "cssZoom": "1"
+      },
+      "scripts": [
+        "/assets/index-DLXpqo1_.js"
+      ],
+      "roots": 0,
+      "root710001001VisibleReplies": 0,
+      "uiAlerts": [],
+      "jsMatchesExpected": true,
+      "file": "list-768.png",
+      "capturedAt": "2026-10-18T12:20:46.627Z",
+      "png": {
+        "width": 768,
+        "height": 900
+      },
+      "finishedAt": "2026-10-18T12:20:46.660Z"
+    },
+    {
+      "name": "scope",
+      "path": "/ups/710",
+      "width": 768,
+      "height": 900,
+      "startedAt": "2026-10-18T12:20:46.660Z",
+      "blocked": [],
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/ups/710"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-DLXpqo1_.js"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-D9OlUKhP.css"
+        },
+        {
+          "method": "GET",
+          "path": "/api/archive/ups"
+        },
+        {
+          "method": "GET",
+          "path": "/api/archive/dynamics"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-710.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-720.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-730.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/device-33-avatar.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-1.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-2.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-3.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-4.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-5.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-6.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-7.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-8.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-9.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/tall.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-2.svg"
+        }
+      ],
+      "requestFailures": [],
+      "httpErrors": [],
+      "pageErrors": [],
+      "consoleErrors": [],
+      "main": {
+        "x": 22,
+        "y": 0,
+        "width": 724,
+        "height": 5214.96875,
+        "top": 0,
+        "right": 746,
+        "bottom": 5214.96875,
+        "left": 22
+      },
+      "scrollHeight": 5215,
+      "images": [
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-720.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-730.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/device-33-avatar.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/landscape-1.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/landscape-1.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-2.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-3.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-4.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/landscape-1.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-2.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-3.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-4.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-5.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-6.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-7.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-8.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-9.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/landscape-1.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-2.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-3.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-4.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-5.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-6.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-7.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-8.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-9.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/tall.svg",
+          "complete": true,
+          "naturalWidth": 720,
+          "naturalHeight": 2880
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/landscape-2.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        }
+      ],
+      "layoutAndImagesStable": true,
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.7632.6 Safari/537.36",
+      "font": {
+        "status": "loaded",
+        "family": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "lineHeight": "normal",
+        "faces": [],
+        "probes": {
+          "Arial": true,
+          "Noto Sans CJK SC": true,
+          "sans-serif": true,
+          "system-ui": true
+        }
+      },
+      "document": {
+        "scrollWidth": 768,
+        "clientWidth": 768,
+        "innerWidth": 768,
+        "overflow": false
+      },
+      "display": {
+        "dpr": 1,
+        "visualViewportScale": 1,
+        "cssZoom": "1"
+      },
+      "scripts": [
+        "/assets/index-DLXpqo1_.js"
+      ],
+      "roots": 0,
+      "root710001001VisibleReplies": 0,
+      "uiAlerts": [],
+      "jsMatchesExpected": true,
+      "file": "scope-768.png",
+      "capturedAt": "2026-10-18T12:20:47.790Z",
+      "png": {
+        "width": 768,
+        "height": 5215
+      },
+      "finishedAt": "2026-10-18T12:20:47.947Z"
+    },
+    {
+      "name": "detail",
+      "path": "/dynamics/710001",
+      "width": 768,
+      "height": 900,
+      "startedAt": "2026-10-18T12:20:47.947Z",
+      "blocked": [],
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/dynamics/710001"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-DLXpqo1_.js"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-D9OlUKhP.css"
+        },
+        {
+          "method": "GET",
+          "path": "/api/archive/dynamics/710001"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-710.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/api/archive/dynamics/710001/comments"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-710.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-reader.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/api/archive/dynamics/710001/comments/710001001/replies"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-reader.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-710.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-1.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-2.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-3.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-4.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/tall.svg"
+        }
+      ],
+      "requestFailures": [],
+      "httpErrors": [],
+      "pageErrors": [],
+      "consoleErrors": [],
+      "main": {
+        "x": 30,
+        "y": 0,
+        "width": 708,
+        "height": 2506,
+        "top": 0,
+        "right": 738,
+        "bottom": 2506,
+        "left": 30
+      },
+      "scrollHeight": 2506,
+      "images": [
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-reader.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-reader.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-reader.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/landscape-1.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-2.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-3.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-4.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/avatar-reader.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/tall.svg",
+          "complete": true,
+          "naturalWidth": 720,
+          "naturalHeight": 2880
+        }
+      ],
+      "layoutAndImagesStable": true,
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.7632.6 Safari/537.36",
+      "font": {
+        "status": "loaded",
+        "family": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "lineHeight": "normal",
+        "faces": [],
+        "probes": {
+          "Arial": true,
+          "Noto Sans CJK SC": true,
+          "sans-serif": true,
+          "system-ui": true
+        }
+      },
+      "document": {
+        "scrollWidth": 768,
+        "clientWidth": 768,
+        "innerWidth": 768,
+        "overflow": false
+      },
+      "display": {
+        "dpr": 1,
+        "visualViewportScale": 1,
+        "cssZoom": "1"
+      },
+      "scripts": [
+        "/assets/index-DLXpqo1_.js"
+      ],
+      "roots": 3,
+      "root710001001VisibleReplies": 3,
+      "uiAlerts": [],
+      "jsMatchesExpected": true,
+      "file": "detail-768.png",
+      "capturedAt": "2026-10-18T12:20:48.944Z",
+      "png": {
+        "width": 768,
+        "height": 2506
+      },
+      "finishedAt": "2026-10-18T12:20:49.044Z"
+    },
+    {
+      "name": "manage",
+      "path": "/manage",
+      "width": 768,
+      "height": 900,
+      "startedAt": "2026-10-18T12:20:49.044Z",
+      "blocked": [],
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/manage"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-DLXpqo1_.js"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-D9OlUKhP.css"
+        },
+        {
+          "method": "GET",
+          "path": "/api/manage/ups"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-710.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-720.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-730.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/device-33-avatar.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/api/manage/ups/710/targets"
+        },
+        {
+          "method": "GET",
+          "path": "/api/manage/ups/730/targets"
+        },
+        {
+          "method": "GET",
+          "path": "/api/manage/ups/740/targets"
+        }
+      ],
+      "requestFailures": [],
+      "httpErrors": [],
+      "pageErrors": [],
+      "consoleErrors": [],
+      "main": {
+        "x": 26,
+        "y": 0,
+        "width": 716,
+        "height": 6130,
+        "top": 0,
+        "right": 742,
+        "bottom": 6130,
+        "left": 26
+      },
+      "scrollHeight": 6130,
+      "images": [
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-720.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-730.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/device-33-avatar.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        }
+      ],
+      "layoutAndImagesStable": true,
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.7632.6 Safari/537.36",
+      "font": {
+        "status": "loaded",
+        "family": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "lineHeight": "25px",
+        "faces": [],
+        "probes": {
+          "Arial": true,
+          "Noto Sans CJK SC": true,
+          "sans-serif": true,
+          "system-ui": true
+        }
+      },
+      "document": {
+        "scrollWidth": 768,
+        "clientWidth": 768,
+        "innerWidth": 768,
+        "overflow": false
+      },
+      "display": {
+        "dpr": 1,
+        "visualViewportScale": 1,
+        "cssZoom": "1"
+      },
+      "scripts": [
+        "/assets/index-DLXpqo1_.js"
+      ],
+      "roots": 0,
+      "root710001001VisibleReplies": 0,
+      "uiAlerts": [],
+      "jsMatchesExpected": true,
+      "file": "manage-768.png",
+      "capturedAt": "2026-10-18T12:20:50.150Z",
+      "png": {
+        "width": 768,
+        "height": 6130
+      },
+      "finishedAt": "2026-10-18T12:20:50.317Z"
+    },
+    {
+      "name": "list",
+      "path": "/ups/740",
+      "width": 1280,
+      "height": 900,
+      "startedAt": "2026-10-18T12:20:50.317Z",
+      "blocked": [],
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/ups/740"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-DLXpqo1_.js"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-D9OlUKhP.css"
+        },
+        {
+          "method": "GET",
+          "path": "/api/archive/ups"
+        },
+        {
+          "method": "GET",
+          "path": "/api/archive/dynamics"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-710.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-720.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-730.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/device-33-avatar.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/device-33-tall.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/device-33-landscape.svg"
+        }
+      ],
+      "requestFailures": [],
+      "httpErrors": [],
+      "pageErrors": [],
+      "consoleErrors": [],
+      "main": {
+        "x": 278,
+        "y": 0,
+        "width": 724,
+        "height": 780.984375,
+        "top": 0,
+        "right": 1002,
+        "bottom": 780.984375,
+        "left": 278
+      },
+      "scrollHeight": 900,
+      "images": [
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-720.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-730.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/device-33-avatar.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/device-33-avatar.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/device-33-tall.svg",
+          "complete": true,
+          "naturalWidth": 720,
+          "naturalHeight": 2880
+        },
+        {
+          "path": "/visual-assets/device-33-landscape.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        }
+      ],
+      "layoutAndImagesStable": true,
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.7632.6 Safari/537.36",
+      "font": {
+        "status": "loaded",
+        "family": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "lineHeight": "normal",
+        "faces": [],
+        "probes": {
+          "Arial": true,
+          "Noto Sans CJK SC": true,
+          "sans-serif": true,
+          "system-ui": true
+        }
+      },
+      "document": {
+        "scrollWidth": 1280,
+        "clientWidth": 1280,
+        "innerWidth": 1280,
+        "overflow": false
+      },
+      "display": {
+        "dpr": 1,
+        "visualViewportScale": 1,
+        "cssZoom": "1"
+      },
+      "scripts": [
+        "/assets/index-DLXpqo1_.js"
+      ],
+      "roots": 0,
+      "root710001001VisibleReplies": 0,
+      "uiAlerts": [],
+      "jsMatchesExpected": true,
+      "file": "list-1280.png",
+      "capturedAt": "2026-10-18T12:20:51.287Z",
+      "png": {
+        "width": 1280,
+        "height": 900
+      },
+      "finishedAt": "2026-10-18T12:20:51.316Z"
+    },
+    {
+      "name": "scope",
+      "path": "/ups/710",
+      "width": 1280,
+      "height": 900,
+      "startedAt": "2026-10-18T12:20:51.316Z",
+      "blocked": [],
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/ups/710"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-DLXpqo1_.js"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-D9OlUKhP.css"
+        },
+        {
+          "method": "GET",
+          "path": "/api/archive/ups"
+        },
+        {
+          "method": "GET",
+          "path": "/api/archive/dynamics"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-710.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-720.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-730.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/device-33-avatar.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-1.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-2.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-3.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-4.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-5.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-6.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-7.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-8.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-9.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/tall.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-2.svg"
+        }
+      ],
+      "requestFailures": [],
+      "httpErrors": [],
+      "pageErrors": [],
+      "consoleErrors": [],
+      "main": {
+        "x": 278,
+        "y": 0,
+        "width": 724,
+        "height": 5214.96875,
+        "top": 0,
+        "right": 1002,
+        "bottom": 5214.96875,
+        "left": 278
+      },
+      "scrollHeight": 5215,
+      "images": [
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-720.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-730.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/device-33-avatar.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/landscape-1.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/landscape-1.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-2.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-3.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-4.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/landscape-1.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-2.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-3.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-4.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-5.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-6.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-7.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-8.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-9.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/landscape-1.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-2.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-3.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-4.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-5.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-6.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-7.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-8.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-9.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/tall.svg",
+          "complete": true,
+          "naturalWidth": 720,
+          "naturalHeight": 2880
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/landscape-2.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        }
+      ],
+      "layoutAndImagesStable": true,
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.7632.6 Safari/537.36",
+      "font": {
+        "status": "loaded",
+        "family": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "lineHeight": "normal",
+        "faces": [],
+        "probes": {
+          "Arial": true,
+          "Noto Sans CJK SC": true,
+          "sans-serif": true,
+          "system-ui": true
+        }
+      },
+      "document": {
+        "scrollWidth": 1280,
+        "clientWidth": 1280,
+        "innerWidth": 1280,
+        "overflow": false
+      },
+      "display": {
+        "dpr": 1,
+        "visualViewportScale": 1,
+        "cssZoom": "1"
+      },
+      "scripts": [
+        "/assets/index-DLXpqo1_.js"
+      ],
+      "roots": 0,
+      "root710001001VisibleReplies": 0,
+      "uiAlerts": [],
+      "jsMatchesExpected": true,
+      "file": "scope-1280.png",
+      "capturedAt": "2026-10-18T12:20:52.435Z",
+      "png": {
+        "width": 1280,
+        "height": 5215
+      },
+      "finishedAt": "2026-10-18T12:20:52.621Z"
+    },
+    {
+      "name": "detail",
+      "path": "/dynamics/710001",
+      "width": 1280,
+      "height": 900,
+      "startedAt": "2026-10-18T12:20:52.622Z",
+      "blocked": [],
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/dynamics/710001"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-DLXpqo1_.js"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-D9OlUKhP.css"
+        },
+        {
+          "method": "GET",
+          "path": "/api/archive/dynamics/710001"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-710.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/api/archive/dynamics/710001/comments"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-710.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-reader.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/api/archive/dynamics/710001/comments/710001001/replies"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-1.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-2.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-3.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/landscape-4.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/tall.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-reader.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-710.svg"
+        }
+      ],
+      "requestFailures": [],
+      "httpErrors": [],
+      "pageErrors": [],
+      "consoleErrors": [],
+      "main": {
+        "x": 286,
+        "y": 0,
+        "width": 708,
+        "height": 2506,
+        "top": 0,
+        "right": 994,
+        "bottom": 2506,
+        "left": 286
+      },
+      "scrollHeight": 2506,
+      "images": [
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-reader.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-reader.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-reader.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/landscape-1.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-2.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-3.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/landscape-4.svg",
+          "complete": true,
+          "naturalWidth": 960,
+          "naturalHeight": 720
+        },
+        {
+          "path": "/visual-assets/avatar-reader.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/tall.svg",
+          "complete": true,
+          "naturalWidth": 720,
+          "naturalHeight": 2880
+        }
+      ],
+      "layoutAndImagesStable": true,
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.7632.6 Safari/537.36",
+      "font": {
+        "status": "loaded",
+        "family": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "lineHeight": "normal",
+        "faces": [],
+        "probes": {
+          "Arial": true,
+          "Noto Sans CJK SC": true,
+          "sans-serif": true,
+          "system-ui": true
+        }
+      },
+      "document": {
+        "scrollWidth": 1280,
+        "clientWidth": 1280,
+        "innerWidth": 1280,
+        "overflow": false
+      },
+      "display": {
+        "dpr": 1,
+        "visualViewportScale": 1,
+        "cssZoom": "1"
+      },
+      "scripts": [
+        "/assets/index-DLXpqo1_.js"
+      ],
+      "roots": 3,
+      "root710001001VisibleReplies": 3,
+      "uiAlerts": [],
+      "jsMatchesExpected": true,
+      "file": "detail-1280.png",
+      "capturedAt": "2026-10-18T12:20:53.615Z",
+      "png": {
+        "width": 1280,
+        "height": 2506
+      },
+      "regionDOM": {
+        "root": {
+          "x": 342,
+          "y": 898,
+          "width": 596,
+          "height": 450,
+          "top": 898,
+          "right": 938,
+          "bottom": 1348,
+          "left": 342
+        },
+        "section": {
+          "x": 422,
+          "y": 1017,
+          "width": 516,
+          "height": 308,
+          "top": 1017,
+          "right": 938,
+          "bottom": 1325,
+          "left": 422
+        },
+        "reply": {
+          "x": 422,
+          "y": 1017,
+          "width": 516,
+          "height": 88,
+          "top": 1017,
+          "right": 938,
+          "bottom": 1105,
+          "left": 422
+        },
+        "entry": {
+          "x": 422,
+          "y": 1281,
+          "width": 149.78125,
+          "height": 44,
+          "top": 1281,
+          "right": 571.78125,
+          "bottom": 1325,
+          "left": 422
+        },
+        "entryText": "共5条回复，点击查看",
+        "rootAvatar": {
+          "x": 362,
+          "y": 920,
+          "width": 40,
+          "height": 40,
+          "top": 920,
+          "right": 402,
+          "bottom": 960,
+          "left": 362
+        },
+        "replyAvatar": {
+          "x": 422,
+          "y": 1017,
+          "width": 24,
+          "height": 24,
+          "top": 1017,
+          "right": 446,
+          "bottom": 1041,
+          "left": 422
+        },
+        "replyTime": {
+          "x": 456,
+          "y": 1069,
+          "width": 120.1875,
+          "height": 24,
+          "top": 1069,
+          "right": 576.1875,
+          "bottom": 1093,
+          "left": 456
+        },
+        "replyLike": {
+          "x": 592.1875,
+          "y": 1069,
+          "width": 28.21875,
+          "height": 24,
+          "top": 1069,
+          "right": 620.40625,
+          "bottom": 1093,
+          "left": 592.1875
+        }
+      },
+      "captureError": "page.screenshot: Clipped area is either empty or outside the resulting image\nCall log:\n\u001b[2m  - taking page screenshot\u001b[22m\n\u001b[2m  - waiting for fonts to load...\u001b[22m\n\u001b[2m  - fonts loaded\u001b[22m\n",
+      "finishedAt": "2026-10-18T12:20:53.791Z"
+    },
+    {
+      "name": "manage",
+      "path": "/manage",
+      "width": 1280,
+      "height": 900,
+      "startedAt": "2026-10-18T12:20:53.791Z",
+      "blocked": [],
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/manage"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-DLXpqo1_.js"
+        },
+        {
+          "method": "GET",
+          "path": "/assets/index-D9OlUKhP.css"
+        },
+        {
+          "method": "GET",
+          "path": "/api/manage/ups"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-710.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-720.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/avatar-730.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/visual-assets/device-33-avatar.svg"
+        },
+        {
+          "method": "GET",
+          "path": "/api/manage/ups/710/targets"
+        },
+        {
+          "method": "GET",
+          "path": "/api/manage/ups/730/targets"
+        },
+        {
+          "method": "GET",
+          "path": "/api/manage/ups/740/targets"
+        }
+      ],
+      "requestFailures": [],
+      "httpErrors": [],
+      "pageErrors": [],
+      "consoleErrors": [],
+      "main": {
+        "x": 282,
+        "y": 0,
+        "width": 716,
+        "height": 6130,
+        "top": 0,
+        "right": 998,
+        "bottom": 6130,
+        "left": 282
+      },
+      "scrollHeight": 6130,
+      "images": [
+        {
+          "path": "/visual-assets/avatar-710.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-720.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/avatar-730.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        },
+        {
+          "path": "/visual-assets/device-33-avatar.svg",
+          "complete": true,
+          "naturalWidth": 240,
+          "naturalHeight": 240
+        }
+      ],
+      "layoutAndImagesStable": true,
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.7632.6 Safari/537.36",
+      "font": {
+        "status": "loaded",
+        "family": "\"PingFang SC\", \"Microsoft YaHei\", system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "lineHeight": "25px",
+        "faces": [],
+        "probes": {
+          "Arial": true,
+          "Noto Sans CJK SC": true,
+          "sans-serif": true,
+          "system-ui": true
+        }
+      },
+      "document": {
+        "scrollWidth": 1280,
+        "clientWidth": 1280,
+        "innerWidth": 1280,
+        "overflow": false
+      },
+      "display": {
+        "dpr": 1,
+        "visualViewportScale": 1,
+        "cssZoom": "1"
+      },
+      "scripts": [
+        "/assets/index-DLXpqo1_.js"
+      ],
+      "roots": 0,
+      "root710001001VisibleReplies": 0,
+      "uiAlerts": [],
+      "jsMatchesExpected": true,
+      "file": "manage-1280.png",
+      "capturedAt": "2026-10-18T12:20:54.917Z",
+      "png": {
+        "width": 1280,
+        "height": 6130
+      },
+      "finishedAt": "2026-10-18T12:20:55.139Z"
+    }
+  ],
+  "regions": [
+    {
+      "name": "root-comment-region",
+      "file": "root-comment-region.png",
+      "rect": {
+        "x": 342,
+        "y": 898,
+        "width": 596,
+        "height": 119
+      },
+      "clip": {
+        "x": 342,
+        "y": 898,
+        "width": 596,
+        "height": 119
+      },
+      "png": {
+        "width": 596,
+        "height": 2
+      },
+      "rule": "公开根li顶端至回复section顶端，排除全部嵌套回复；保留前置间距。"
+    }
+  ],
+  "servedBuilds": {
+    "/assets/index-DLXpqo1_.js": {
+      "sha256": "6ff6060d4f85d24e5e9364bacd100bee22c2ba33ccea68aecbbafa3b2a2556be",
+      "bytes": 315821
+    }
+  },
+  "errors": [
+    "detail-1280: page.screenshot: Clipped area is either empty or outside the resulting image\nCall log:\n\u001b[2m  - taking page screenshot\u001b[22m\n\u001b[2m  - waiting for fonts to load...\u001b[22m\n\u001b[2m  - fonts loaded\u001b[22m\n",
+    "Error: ENOENT: no such file or directory, open '/home/kevin/Projects/PI/bili_charge_dynamics/.scratch/backend-integration/evidence/device-33/visual/single-reply-region.png'\n    at async open (node:internal/fs/promises:1345:25)\n    at async readFile (node:internal/fs/promises:1996:14)\n    at async file:///home/kevin/Projects/PI/bili_charge_dynamics/.scratch/backend-integration/evidence/device-33/visual/capture.mjs:167:28"
+  ],
+  "userReportedContext": "用户补充：已提供Chrome UA/1920×965 DPR1并确认当前CachyOS，管理/布局步骤两端正常；本附件不重抄未取得的UA字符串，不冒充本轮自动化环境。仍无真机截图/Safari UA，不记像素通过。",
+  "limitations": [
+    "SRS默认预览3条与来源可见1条为内容/数量差异。实现第2/3条不隐藏，展开入口不搬动；整组高度不宣称相同。",
+    "自动化 Chromium 不是 Linux Chrome/iPhone Safari 正式设备截图或人工像素签收。",
+    "来源可见区域可比较；没有展开25条不妨碍比较可见单条回复。",
+    "管理是同风格规则映射；本轮只读取初始 UI，未点击读取检查状态或任何写按钮。",
+    "并排无拉伸、无遮罩；仅右/下最小补白，不产生通过率。"
+  ],
+  "browser": "145.0.7632.6",
+  "finishedAt": "2026-10-18T12:20:55.222Z"
+}

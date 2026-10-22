@@ -16,7 +16,7 @@
 | `GET /api/archive/dynamics` | `scope=all\|up`、条件必需的 `uid`、`limit`、可选 `cursor` | `{items: Archive[], next_cursor: string \| null}` |
 | `GET /api/archive/dynamics/{id}` | 无 | `Archive`；本地不存在时 `404` |
 | `GET /api/archive/dynamics/{id}/comments` | `sort=hot\|latest`、`limit`、可选 `cursor` | `{items: RootComment[], next_cursor: string \| null}` |
-| `GET /api/archive/dynamics/{id}/comments/{root_id}/replies` | 首批 `limit=3`，续批 `limit=10`，可选 `cursor` | `{items: Reply[], next_cursor, source_reply_count, local_reply_count, replies_last_attempt, synced_source_reply_count}` |
+| `GET /api/archive/dynamics/{id}/comments/{root_id}/replies` | 首批 `limit=3`，续批 `limit=10`，可选 `cursor` | `{items: Reply[], next_cursor, source_reply_count, local_reply_count, replies_last_attempt, synced_source_reply_count}`，首批另含 `root`（该楼根评论） |
 
 UID 和动态 ID 必须是十进制字符串，不经 JavaScript Number 转换。不符返回 `409 TARGET_AUTHOR_MISMATCH`，无法确认返回 `502 TARGET_UNVERIFIED`；都不建立关联。上游请求不在数据库事务内，错误只返回固定脱敏提示，不传递上游响应、URL、请求头或异常文本。
 
@@ -57,7 +57,7 @@ curl --fail-with-body -X POST http://127.0.0.1:8000/api/sync/initial \
   -H 'Content-Type: application/json' --data "{\"uid\":\"$UP_UID\"}"
 ```
 
-此命令会使用生产传输读取上游；自动化验收只用专用 fixture 装配，不执行该生产命令。源站限制会如实保留受限/失败，不配置凭据或绕过权限。
+此命令会使用生产传输读取上游；自动化验收只用专用 fixture 装配，不执行该生产命令。源站限制会如实保留受限/失败，不绕过权限。来源默认匿名，可选登录态仅按[后端 Cookie 配置](../../../backend/README.md#可选-b站登录-cookie仅服务端)读取仓库外私有文件，不能通过本初始化请求体或前端提交凭据；图片/OSS 不使用来源 Cookie。新配置不会自动执行初始化，也不保证解除 HTTP 412。
 
 ## Archive 的信息边界
 
@@ -77,22 +77,25 @@ curl --fail-with-body -X POST http://127.0.0.1:8000/api/sync/initial \
 
 - `root_comments_last_attempt` 为 `pending`、`success`、`failed` 或 `unconfirmed`；`work.comments` 为 `pending|success`。领取根工作时先持久保存 pending，任一必要页失败仍 pending；关闭重开后再次 initial 可在无新信号时重试。
 - `synced_root_comment_count` 只在所有必要根页归档成功后保存本轮开始的动态来源计数（未知仍 null）；失败不推进旧 checkpoint。未知计数不阻断实际可读根页，但根页成功不代表计数观察、回复或媒体成功。generation 条件提交拒绝较旧执行覆盖新记录／完成状态。
-- 复用已归档的 `comment_locator:{oid:string,type:positive integer}`；新 detail 定位缺失／无效或请求失败不清掉旧 locator。没有可信 locator 则 unconfirmed，不用动态 ID 猜 oid，不请求伪造资源。
+- `comment_locator` 保留 `oid/type`，新策略增加 `source/policy_version`。在动态 ID 和作者已校验的 detail item 中，按参考函数优先选择合法 basic locator，再回退 OPUS ID/type11、匹配目标动态ID/type11，来源分别为 `basic/opus_fallback/dynamic_id_fallback`。旧 locator 缺策略版本时在后续检查重新核对，失败保留旧观察而不伪造成功；oid/type 变化会推进工作 revision 并重新同步评论，不只比较总数。fallback 条目必须明确带匹配 oid/type；无条目的空页不能作为 fallback 已确认的证据。
+- 正式根评论、楼中楼与独立计数通过每次尝试独立的 Requests Session 执行，普通头/15秒超时/环境代理对照参考脚本；同步 I/O 在线程池运行。每轮先预热 B站首页与本轮 UP 空间 `/dynamic` 页，各10秒，取得响应后等1–3秒，每个 URL 独立忽略异常；不再做 nav 评论预热，不因此确认登录。私有文件启动读一次，每轮重新初始化 jar，本轮 Cookie 更新保留，结束关闭。重定向只允许 api/www/space 三个精确B站主机的默认HTTPS GET，避免凭据外泄；不为评论接口加 WBI。正文/detail/feed 保持原 HTTPX 路径，两种客户端共享分页等待锁。显式传输替身仍可拦截全部来源 I/O，不复制一套业务解析。
 - `/x/v2/reply` 使用 locator、`sort=0`、`ps=20`、递增 `pn`。普通根页、第一页 `upper.top` 及 `hots` 幂等去重保存，不采条目内嵌回复预览。短页仍读下一页直到明确空页，非首屏的空尾页再读取同页确认；复查非空、失败或计数变化均保留已得内容并留待重试，不提前宣布结束。不由有口径争议的 `page.count` 推算页数。第一页 count 非零却无任何根数据、缺失 replies／分页计数、业务／网络／结构错误、连续页计数变化或分页不前进均失败，而不是成功空。
-- `module_stat.comment.count`（HTML STAT 可作为独立观察）仍是动态来源总数。`page.count/acount` 仅用于当前接口分页校验，不覆盖动态信号，也不假设跨接口永久相等。明确 count=0 且根集合空是成功空；不会清除历史根记录。来源分页不是事务快照，未引起计数变化的上游挪动可能漏检，真实全量及长期稳定性尚未验证。
+- 置顶状态仅取首页明确的 `upper.top`：合法对象确认对应根 ID 置顶，显式 `null` 确认无置顶，缺失字段为未知。`hots` 不代表置顶，普通列表同 ID 副本不会覆盖置顶观察。只有整轮根分页成功后才同事务更新全部根的 `is_pinned`；明确取消置顶只清标记、不删旧评论，扫描失败或字段未知保留旧可信标记。
+- 归档 JSON 使用内部 `synced_root_metadata_version` 标记根元信息采集格式，v1 为置顶，v2 为 Requests/定位链路。旧归档缺标记或低于当前版本时，启用且入选的目标在后续检查重新登记工作，补采一次根与必要回复；成功后不会因该标记每节拍重扫。停用目标不补采；失败仍按既有 pending 重试。没有 schema 迁移，也不重写已有 cursor。后续普通同步仍沿用首次/未完成/来源计数变化规则，单独改变置顶但计数不变可能延后反映。
+- `module_stat.comment.count`（HTML STAT 可作为独立观察）仍是动态来源总数。`page.count/acount` 仅用于当前接口分页校验，不覆盖动态信号，也不假设跨接口永久相等。只有定位可确认且没有正来源计数冲突时，明确 count=0 的根集合空才可成功；若观察总数为正而整轮没有根，仍视为未确认失败。不会清除历史根记录。来源分页不是事务快照，未引起计数变化的上游挪动可能漏检，真实全量及长期稳定性尚未验证。
 - 正文 BLOCKED、网页评论无权提示不阻断评论接口；接口明确拒绝统一记录根分项 failed，不冒充空或承诺绕权。每页独立短事务保存，失败保留已取得内容和旧记录；停止、删除配置／目标、来源消失均不删评论。
 
 ### RootComment DTO
 
-`id`、`dynamic_id`、`author.id` 均为字符串（未知作者 ID 为 null）；`author:{id,nickname,avatar_url}` 允许未知信息。`published_at` 为明确 `+08:00` 秒精度时间或 null；`text` 为普通文本或 null（缺失），真实空字符串不补内容。`like_count` 和 `source_reply_count` 分别取 `like/rcount`，非负整数或 null，未知不等于零。后续缺失观察不覆盖已有可信计数、时间、文本或作者资料；缺失 pictures 字段不擦除已有图片元信息。
+`id`、`dynamic_id`、`author.id` 均为字符串（未知作者 ID 为 null）；`author:{id,nickname,avatar_url}` 允许未知信息。`published_at` 为明确 `+08:00` 秒精度时间或 null；`text` 为普通文本或 null（缺失），真实空字符串不补内容。`like_count` 和 `source_reply_count` 分别取 `like/rcount`，非负整数或 null，未知不等于零。后续缺失观察不覆盖已有可信计数、时间、文本或作者资料；`content` 缺失或 null 按未知内容处理，非对象仍失败。`content.pictures` 空/缺失时支持参考脚本的 `picture` 单图对象回退；没有有效回退时，缺失/null 仍表示未知、不擦旧媒体，显式空数组才确认无图。非空图片集合仍须合法。
 
-`root_id/parent_id` 对根评论为字符串 `"0"`，`comment_locator` 保留回复查询所需资源；`media_sources:[{url,width,height}]` 按 `content.pictures` 顺序保留来源及可用尺寸，不包含 OSS 上传成功承诺，不用于生产业务图回退。17 补齐回复；21 新增下文评论媒体字段与上传；页面图片接入仍由 #22 负责。
+`is_pinned` 为布尔置顶标记；旧归档及旧快照缺字段时按未置顶展示，不从 UP 身份推断。`root_id/parent_id` 对根评论为字符串 `"0"`，`comment_locator` 保留回复查询所需资源；`media_sources:[{url,width,height}]` 按 `content.pictures` 顺序保留来源及可用尺寸，不包含 OSS 上传成功承诺，不用于生产业务图回退。17 补齐回复；21 新增下文评论媒体字段与上传；页面图片接入仍由 #22 负责。
 
 ### 读取、排序与 cursor 恢复
 
 评论 HTTP 只读 SQLite；父动态不存在返回 `404 NOT_FOUND`。默认 `sort=hot`、`limit=20`，limit 范围 1–20。非法排序、批量、未知／重复 query 返回 `422 INVALID_INPUT`。
 
-完整本地根集合先排序后分页：hot 按点赞降序、发布时间降序、ID BINARY 字符串升序；latest 按发布时间降序、ID BINARY 升序。逐字段 null 后置，不把 ID 转数字，不声称实现 B站热度算法。
+完整本地根集合先排序后分页：hot/latest 都先按 `is_pinned=true` 优先，再对同级评论按 hot 的点赞降序、发布时间降序、ID BINARY 字符串升序，或 latest 的发布时间降序、ID BINARY 升序排列。置顶计入每批大小且不重复；旧缺标记等同未置顶。逐字段 null 后置，不把 ID 转数字，不声称实现 B站热度算法。
 
 首批在同一短事务冻结全部根评论**内容、顺序及批量**，后续批保存到 SQLite；插入、更新只影响新首批。cursor 绑定根资源、动态、排序、limit 和该次快照；重读／数据库重开返回原批及同一 next_cursor。结束返回 null，不产生下一批。普通网络／`503 STORAGE_UNAVAILABLE` 失败不推进 cursor，原 cursor 重试同批。
 
@@ -106,7 +109,7 @@ curl --fail-with-body -X POST http://127.0.0.1:8000/api/sync/initial \
 
 沿用公开 initial 和正文统计口径，在根页成功后遍历本轮根集合；本轮原始根响应明确回复数为零的根无需请求回复页，非零或未知均独立请求（持久旧零不能代替新的未知观察） `/x/v2/reply/reply`（可信 locator 的 oid/type、根 ID、ps=20、递增 pn）。不保存根页内嵌的三条预览，不扫描其他动态或补入历史目标。
 
-响应必须确认根／资源／页码／批量／有效非负 `page.count` 与条目关系；完整读取至明确空页，非首屏空尾页复读确认，短页不提前结束。页间 count 变化、重复页、不前进、结构／业务／HTTP 失败，或本轮唯一回复数与该 count 不符均为失败；已取得页以独立短事务保留。来源页不是事务快照，未引起 count 变化的来源移动仍可能漏检；真实权限和长期全量须另证。`page.count` 仅代表该根来源回复数，不覆盖动态评论观察数。
+响应必须确认根／资源／页码／批量／有效非负 `page.count` 与条目关系；完整读取至明确空页，非首屏空尾页复读确认，短页不提前结束。页间 count 变化、重复页、不前进、结构／业务／HTTP 失败，或唯一回复数**多于**该 count 均为失败；已取得页以独立短事务保留。唯一回复数**少于** count 只记录 `reply_scan_short` 并以已取得内容成功：上游 count 会保留已删除、折叠或对当前账号不可见的回复，不能因此把整根判失败。本轮楼中楼 `page.count` 与根页 `rcount` 允许不同（热帖持续增长、两处口径不同），以本次可分页响应自洽为准；成功时以该 count 覆盖根的 `source_reply_count`。来源页不是事务快照，未引起 count 变化的来源移动仍可能漏检；真实权限和长期全量须另证。`page.count` 仅代表该根来源回复数，不覆盖动态评论观察数。
 
 Archive 新增：
 
@@ -123,7 +126,11 @@ Archive 新增：
 
 `reply_to` 为同根 parent 对应条目的作者对象，或 null。根与跨页回复目标均从完整本地集合解析；目标不存在／无可确认作者 ID 时不拼伪造作者，`content.members` 只是 @ 提及者，不能作为关系证据。目标作者与内容在首读一并冻结。
 
-回复批次独立返回 `source_reply_count`（根来源数，可 null）、`local_reply_count`（完整该根本地数，含保留历史）、`replies_last_attempt`（逐根状态，尚未处理为 pending）、`synced_source_reply_count`（该根最近成功页集合的来源数，可 null）。这些元信息与 items 一并冻结，不以加载条数替代本地数，也不因本地为零宣称已成功空归档。
+楼中楼按根增量推进（与参考脚本一致）：本轮根页 `rcount` 与上次成功快照相同、且距上次成功不足 `FULL_SCAN_SECONDS`（24 小时）的楼层**不重发** `/x/v2/reply/reply`，只沿用已持久状态；`rcount` 变化、从未成功或超过校准周期的楼层才整楼重扫。逐根成功时记录根页 `rcount`、楼中楼来源数与成功时间（`reply_sync.observed_reply_count` / `synced_source_reply_count` / `synced_at`）；跳过不刷新校准计时，因此每根每 24 小时至少完整校准一次，用于补偿增删抵消。`replies_sync_finished` 携带 `skipped=` 便于观察本轮省下的请求。显式初始化（`POST /api/sync/initial`）始终整楼重扫。
+
+根评论列表为每条根附带 `up_reply`：作者在该楼中最早的一条回复（`{id, author, published_at, text, like_count, reply_to}`），作者未参与时为 null；`reply_to` 只在回复其他楼时带目标作者，直接回根为 null。手机端只用它渲染楼中楼预览，不替代 Reply 分页。首批回复另返回 `root`（该楼根评论），后续分页不重复，供楼中楼详情页展示被回复评论。
+
+回复批次独立返回 `source_reply_count`（根来源数，可 null）、`local_reply_count`（完整该根本地数，含保留历史）、`replies_last_attempt`（逐根状态，尚未处理为 pending）、`synced_source_reply_count`（该根最近成功页集合的来源数，可 null）。这些元信息与 items 一并冻结，不以加载条数替代本地数，也不因本地为零宣称已成功空归档。`source_reply_count` 大于 `local_reply_count` 时差额表示上游未返回的回复，读取端按“已归档 N/M”提示，不当作归档失败。
 
 ### HTTP、排序与 cursor
 
@@ -159,7 +166,7 @@ initial 仍只统计正文，媒体下载/上传不使正文成功倒退；可�
 
 仅沿用可信编辑时间变化或正文待重试工作来更新整条正文和媒体来源，不以 URL／图片／字节差异检测编辑；无新信号且正文已成功时忽略新正文／来源差异，只重试已有媒体。实际提交正文后切换当前媒体组；正文失败保留旧成功正文与来源组。初次 detail 来源可在正文失败时独立登记，checkpoint 只绑定实际取得的版本。
 
-新版本即使来源 URL 相同也建立新关联并重新上传，不假设同 URL 字节不可变、不选物理去重。相同版本、相同位置和来源的重复提交复用关联，成功项不重传；单图领取使用 SQLite 持久尝试令牌，提交同时校验当前关联 ID 和令牌。旧版本迟到成功／失败均不能改写新关联或清除新工作；同关联的新重试也会 fencing 旧尝试。每个尝试使用不同对象 key，旧 PUT 不能覆盖已发布的新对象。来源切换时删除旧关联的内部尝试令牌，同版本正文重试保留已有图片失败状态直到媒体重新领取。被取代／进程退出可能留下无关联对象；未选择对象回收策略，也不保证外部 I/O 恰好一次。
+新版本即使来源 URL 相同也建立新关联并重新上传，不假设同 URL 字节不可变、不选物理去重。相同版本、相同位置和来源的重复提交复用关联，成功项不重传；单图领取使用 SQLite 持久尝试令牌，提交同时校验当前关联 ID 和令牌。旧版本迟到成功／失败均不能改写新关联或清除新工作；同关联的新重试也会 fencing 旧尝试。每个尝试使用不同对象 key，旧 PUT 不能覆盖已发布的新对象。新上传动态图使用 `bili-charge/dynamics/{dynamic_id}/{media_id}/{attempt_token}.{ext}`，评论图使用 `bili-charge/comments/{dynamic_id}/{root_id}/{media_id}/{attempt_token}.{ext}`；后缀按下载响应的 `Content-Type` 映射（如 JPEG 为 `.jpg`、PNG 为 `.png`、WebP 为 `.webp`），不依赖来源 URL 后缀，也不转换图片字节。不支持的 MIME 类型按下载失败保留待重试。已有成功对象及已保存 URL 不迁移、不重传，旧无后缀地址继续有效。来源切换时删除旧关联的内部尝试令牌，同版本正文重试保留已有图片失败状态直到媒体重新领取。被取代／进程退出可能留下无关联对象；未选择对象回收策略，也不保证外部 I/O 恰好一次。
 
 媒体逐张短事务领取／提交，下载与 SDK 上传在事务外；关闭重开或进程退出留下的 pending 可由显式媒体入口重新领取。initial 不再自动处理实际版本落后于新观察的旧组；显式重试可完成旧组，但新版本工作仍 pending。下载限制为受信 B站图片域 `hdslb.com`／`biliimg.com`、HTTP(S) 默认端口，无跳转／环境代理，响应须是非空 `image/*`；原字节上传，不压缩、不创建尺寸变体。
 
@@ -175,7 +182,7 @@ initial 在根评论与必要回复提交后独立处理已保存根评论的媒
 
 RootComment 新增 `media`、`previous_media`、`observed_version`、`media_version`、`synced_media_version`、`media_last_attempt` 和 `work:{media:pending|success}`：
 
-- `media` 按来源顺序保存全部关联，每项字段与 19 一致，`owner:{type:"comment",id:根评论ID}`，父动态由根的 `dynamic_id` 给出。评论查找与提交均绑定 `(dynamic_id,root_id)`；即使评论／动态 ID 或来源 URL 相同也不共用图片组。对象 key 使用独立的 `dynamics/{id}/comments/{root_id}/…` 命名空间。
+- `media` 按来源顺序保存全部关联，每项字段与 19 一致，`owner:{type:"comment",id:根评论ID}`，父动态由根的 `dynamic_id` 给出。评论查找与提交均绑定 `(dynamic_id,root_id)`；即使评论／动态 ID 或来源 URL 相同也不共用图片组。新上传对象 key 使用独立的 `bili-charge/comments/{id}/{root_id}/…` 命名空间，并带有按响应 MIME 映射的图片后缀；已成功归档的旧对象 URL 保持不变。
 - 未上传与失败项仍在 `media` 中，`public_url=null`，保留顺序与尺寸；纯图评论的 `text=""` 不表示整条评论无内容。成功项仅返回服务端接受的完整公开 URL，无业务来源 URL 回退、代理、前端拼接或签名续期。
 - `previous_media` 只保留被替换组中的旧成功关联及公开 URL，不冒充当前图成功；没有对象回收或物理去重。
 - `media_last_attempt` 为当前组的 `pending|success|failed`，`work.media` 只说明该评论媒体是否完成当前可信观察；不使用／改写动态的 `work.media`，也不借用根／回复完成状态。
@@ -190,7 +197,7 @@ RootComment 新增 `media`、`previous_media`、`observed_version`、`media_vers
 
 这只是来源计数版本的提交协议，不增加周期检查／计数触发器（#25/#30 接续），不比较图片字节／哈希检测编辑。数量抵消、纯编辑且计数不变、同计数同 URL 下字节变化仍可能漏检；计数未知不能证明精确编辑版本。实际根同步取得不同来源／位置时会协调关联，但不将来源差异另作检查信号。
 
-相同版本／位置／来源的重复同步复用关联、顺序及既有成功／失败状态；计数新版本即使 URL 相同也建立新关联并重新上传。缺失 `pictures` 是未观察到，不擦除当前来源／旧成功媒体，也不确认首次成功空；明确 `pictures:[]` 才提交空组。根分页失败沿用 15 的逐页保留，不删除旧媒体或推进根假成功；已取得页的评论图可独立处理。
+相同版本／位置／来源的重复同步复用关联、顺序及既有成功／失败状态；计数新版本即使 URL 相同也建立新关联并重新上传。缺失 `pictures` 或 `pictures:null` 是未观察到，不擦除当前来源／旧成功媒体，也不确认首次成功空；明确 `pictures:[]` 才提交空组。根分页失败沿用 15 的逐页保留，不删除旧媒体或推进根假成功；已取得页的评论图可独立处理。
 
 领取／完成复用持久尝试令牌，并同时校验动态、根、当前关联及 token。新组或同关联的新尝试拒绝旧成功／旧失败；每次 PUT key 不同，旧请求不能物理覆写已发布的新对象。废弃令牌仅按 owner 清理，动态图来源切换不会删评论的在途令牌。网络下载及 OSS PUT 在短事务外，重开／进程退出后 pending 可重新领取。
 
