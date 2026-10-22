@@ -60,11 +60,14 @@ export type CommentSort = 'hot' | 'latest';
 
 export interface Comment {
   readonly id: string;
+  readonly isPinned?: boolean;
   readonly author: User;
   readonly publishedAt: string | null;
   readonly text: string;
   readonly likeCount: number | null;
   readonly replyCount: number | null;
+  // 作者在该楼中的最早一条回复，用于手机端楼中楼预览；作者未参与时为 null 或缺失。
+  readonly upReply?: Reply | null;
   // 有序当前图片；未提供等价空集合，旧来源存在性由 pendingMediaCount 单独保留。
   readonly images?: readonly DynamicImage[];
   // 兼容旧评论的来源待归档数：只计尚无当前关联的位置，不计 images 中的 pending/failed。
@@ -74,13 +77,19 @@ export interface Comment {
 export const replyPreviewSize = 3;
 export const replyAppendSize = 10;
 
-export interface Reply extends Omit<Comment, 'replyCount' | 'pendingMediaCount' | 'images'> {
+export interface Reply extends Omit<Comment, 'isPinned' | 'replyCount' | 'pendingMediaCount' | 'images' | 'upReply'> {
   readonly replyTo: User | null;
+  // 被回复对象的 ID；等于所属根评论时表示直接回根，不显示“回复 X”。
+  readonly parentId?: string | null;
 }
 
 export interface ReplyBatch {
   readonly items: readonly Reply[];
   readonly nextCursor: string | null;
+  // page 模式当前根的本地回复总数。
+  readonly count?: number;
+  // 楼中楼详情页的根评论：cursor 模式仅首批，page 模式每页返回。
+  readonly root?: Comment | null;
   readonly sourceReplyCount?: number | null;
   readonly localReplyCount?: number | null;
   readonly repliesLastAttempt?: 'pending' | 'success' | 'failed' | 'unconfirmed';
@@ -110,7 +119,7 @@ export interface DynamicReader {
   readonly creator: User;
   readonly discussions?: 'not-archived';
   readonly replies?: 'not-archived';
-  readReplies(input: { readonly dynamicId: string; readonly rootId: string; readonly limit: number; readonly cursor?: string | null; readonly signal: AbortSignal }): Promise<ReadResult<ReplyBatch>>;
+  readReplies(input: { readonly dynamicId: string; readonly rootId: string; readonly limit: number; readonly page?: number; readonly cursor?: string | null; readonly signal: AbortSignal }): Promise<ReadResult<ReplyBatch>>;
   readUps(input: { readonly signal: AbortSignal }): Promise<ReadResult<readonly User[]>>;
   readList(input: { readonly scope: ArchiveScope; readonly limit: number; readonly cursor?: string | null; readonly signal: AbortSignal }): Promise<ReadResult<DynamicBatch>>;
   readDetail(input: { readonly id: string; readonly signal: AbortSignal }): Promise<DetailResult>;

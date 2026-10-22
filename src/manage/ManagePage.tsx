@@ -54,7 +54,7 @@ function ManageVisit({ api }: { api: ManagementApi }) {
   return <main className="manage-page">
     <header className="manage-header">
       <h1>UP 监控管理</h1>
-      <nav aria-label="页面导航"><Link to="/">返回阅读</Link><span aria-current="page">监控管理</span></nav>
+      <nav aria-label="页面导航"><Link to="/">返回阅读</Link><span aria-current="page">监控管理</span><a href="/manage">重新身份验证</a></nav>
     </header>
     <p className="manage-risk" role="note" aria-label="无鉴权部署风险"><strong>首期无鉴权：</strong>公网管理页和 API 可被第三方读取和修改；隐藏入口不构成保护。请自行限制部署暴露范围。</p>
     {readState === 'loading' && <p className="manage-card" role="status">正在读取管理配置…</p>}

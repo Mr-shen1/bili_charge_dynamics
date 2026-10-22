@@ -32,7 +32,6 @@ test('两种排序各读完45条不重复，四宽度评论、展开长词与长
     await expect(rows).toHaveCount(40);
     await area.getByRole('button', { name: '加载更多评论' }).click();
     await expect(rows).toHaveCount(45);
-    await expect(area.getByText('评论已加载完毕')).toBeVisible();
     await expect(area.getByRole('button', { name: '加载更多评论' })).toHaveCount(0);
     expect(new Set(await rows.allTextContents()).size).toBe(45);
     await expect(page.getByRole('region', { name: '评论区', exact: true }).getByRole('button', { name: '评论 70', exact: true })).toBeVisible();

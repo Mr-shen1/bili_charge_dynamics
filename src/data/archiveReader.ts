@@ -105,6 +105,7 @@ function parseArchive(raw: unknown): Dynamic | null {
 
 function parseComment(raw: unknown, dynamicId: string): Comment | null {
   if (!record(raw) || !isValidId(raw.id) || raw.dynamic_id !== dynamicId
+    || !(raw.is_pinned === undefined || typeof raw.is_pinned === 'boolean')
     || raw.root_id !== '0' || raw.parent_id !== '0' || !record(raw.author)
     || !(raw.author.id === null || isValidId(raw.author.id))
     || !version(raw.author.nickname) || !version(raw.author.avatar_url)
@@ -120,7 +121,7 @@ function parseComment(raw: unknown, dynamicId: string): Comment | null {
   const images = parseImages(raw.media, { type: 'comment', id: raw.id });
   return {
     // 未知身份使用非合法来源 ID，永远不匹配合法动态作者 ID。
-    id: raw.id, author: { id: raw.author.id ?? '',
+    id: raw.id, isPinned: raw.is_pinned === true, author: { id: raw.author.id ?? '',
       nickname: typeof raw.author.nickname === 'string' && raw.author.nickname.trim() ? raw.author.nickname : null,
       avatarUrl: url(raw.author.avatar_url) },
     publishedAt: time(raw.published_at), text: raw.text ?? '',
@@ -128,7 +129,22 @@ function parseComment(raw: unknown, dynamicId: string): Comment | null {
     // 旧冻结评论只含来源元信息时仍表达待归档，不回退来源 URL。
     ...(raw.media === undefined ? {} : { images }),
     pendingMediaCount: Math.max(0, raw.media_sources.length - images.length),
+    ...(raw.up_reply === undefined ? {} : { upReply: parseUpReply(raw.up_reply, raw.id) }),
   };
+}
+
+// 楼中楼预览用：结构不完整时宁可不展示，也不猜作者或文本。
+function parseUpReply(raw: unknown, rootId: string): Reply | null {
+  if (raw === null) return null;
+  if (!record(raw) || !isValidId(raw.id) || raw.id === rootId
+    || !version(raw.text) || !version(raw.published_at)
+    || !(raw.like_count === null || count(raw.like_count) !== null)) return null;
+  const author = parseReplyAuthor(raw.author);
+  const replyTo = raw.reply_to === null || raw.reply_to === undefined ? null : parseReplyAuthor(raw.reply_to);
+  if (!author || raw.reply_to !== null && raw.reply_to !== undefined && !replyTo) return null;
+  return { id: raw.id, author, publishedAt: time(raw.published_at), text: raw.text ?? '',
+    likeCount: count(raw.like_count), replyTo: replyTo?.id ? replyTo : null,
+    parentId: typeof raw.parent_id === 'string' && raw.parent_id !== rootId ? raw.parent_id : null };
 }
 
 function parseReplyAuthor(raw: unknown): User | null {
@@ -145,7 +161,9 @@ function parseReply(raw: unknown, dynamicId: string, rootId: string): Reply | nu
   const replyTo = raw.reply_to === null ? null : parseReplyAuthor(raw.reply_to);
   if (!author || raw.reply_to !== null && !replyTo) return null;
   return { id: raw.id, author, publishedAt: time(raw.published_at), text: raw.text ?? '',
-    likeCount: count(raw.like_count), replyTo: replyTo?.id ? replyTo : null };
+    likeCount: count(raw.like_count), replyTo: replyTo?.id ? replyTo : null,
+    // 直接回根评论时没有“回复某人”目标；只有回复其他楼才带父评论 ID。
+    parentId: raw.parent_id === rootId ? null : raw.parent_id };
 }
 
 /** 只读本地归档。传输替身不绕过生产 DTO 映射；错误响应/异常永不回显。 */
@@ -230,20 +248,26 @@ export function createArchiveReader(transport: ArchiveTransport = (url, init) =>
         return { status: 'success', data: { items, nextCursor: body.next_cursor } };
       } catch { return signal.aborted ? { status: 'cancelled' } : failed; }
     },
-    async readReplies({ dynamicId, rootId, limit, cursor, signal }): Promise<ReadResult<ReplyBatch>> {
+    async readReplies({ dynamicId, rootId, limit, page, cursor, signal }): Promise<ReadResult<ReplyBatch>> {
       if (signal.aborted) return { status: 'cancelled' };
-      if (!isValidId(dynamicId) || !isValidId(rootId) || !(cursor == null || typeof cursor === 'string')
-        || limit !== (cursor == null ? replyPreviewSize : replyAppendSize)) return failed;
-      const query = new URLSearchParams({ limit: String(limit) });
+      if (!isValidId(dynamicId) || !isValidId(rootId) || !(cursor == null || typeof cursor === 'string')) return failed;
+      if (page !== undefined) {
+        if (!Number.isSafeInteger(page) || page < 1 || limit !== replyAppendSize || cursor != null) return failed;
+      } else if (limit !== (cursor == null ? replyPreviewSize : replyAppendSize)) return failed;
+      const query = new URLSearchParams(page !== undefined ? { page: String(page), limit: String(limit) } : { limit: String(limit) });
       if (cursor != null) query.set('cursor', cursor);
       try {
-        const response = await transport(`/api/archive/dynamics/${dynamicId}/comments/${rootId}/replies?${query}`, { method: 'GET', signal });
+        const response = await transport(`/api/archive/dynamics/${dynamicId}/comments/${rootId}/replies?${query}`, {
+          method: 'GET', signal, ...(page !== undefined ? { cache: 'no-store' } : {}),
+        });
         const body: unknown = await response.json();
         if (signal.aborted) return { status: 'cancelled' };
         if (response.status === 422 && record(body) && record(body.error) && body.error.code === 'CURSOR_INVALID')
           return { status: 'error', reason: 'invalid-cursor' };
         if (response.status !== 200 || !record(body) || !Array.isArray(body.items)
           || body.items.length > limit || !(body.next_cursor === null || typeof body.next_cursor === 'string')) return failed;
+        const total = count(body.count);
+        if (page !== undefined && (total === null || body.next_cursor !== null)) return failed;
         if (body.replies_last_attempt !== undefined && !commentAttempt(body.replies_last_attempt)) return failed;
         for (const key of ['source_reply_count', 'local_reply_count', 'synced_source_reply_count']) {
           if (body[key] !== undefined && body[key] !== null && count(body[key]) === null) return failed;
@@ -254,7 +278,12 @@ export function createArchiveReader(transport: ArchiveTransport = (url, init) =>
           if (!item || items.some(existing => existing.id === item.id)) return failed;
           items.push(item);
         }
+        const root = body.root === undefined || body.root === null ? null : parseComment(body.root, dynamicId);
+        if (body.root !== undefined && body.root !== null && !root) return failed;
+        if (page !== undefined && (!root || root.id !== rootId)) return failed;
         return { status: 'success', data: { items, nextCursor: body.next_cursor,
+          ...(page !== undefined && total !== null ? { count: total } : {}),
+          ...(root ? { root } : {}),
           ...(body.source_reply_count !== undefined ? { sourceReplyCount: count(body.source_reply_count) } : {}),
           ...(body.local_reply_count !== undefined ? { localReplyCount: count(body.local_reply_count) } : {}),
           ...(commentAttempt(body.replies_last_attempt) ? { repliesLastAttempt: body.replies_last_attempt } : {}),

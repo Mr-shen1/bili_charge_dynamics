@@ -58,6 +58,14 @@ export function useDiscussionRead<Batch extends DiscussionBatch<{ readonly id: s
       request.current = null;
     };
   }, [load]);
+  // 记住目标读取范围；失败/取消时停止，显式重试成功后继续补齐目标页。
+  // 由成功批次驱动后续请求，不轮询；收起/改页可以缩小范围，卸载自然停止。
+  const [requiredCount, setRequiredCount] = useState(0);
+  const ensure = useCallback((count: number) => setRequiredCount(count), []);
+  useEffect(() => {
+    if (state.status === 'success' && state.data && state.data.items.length < requiredCount
+      && state.data.nextCursor !== null) void load();
+  }, [state, requiredCount, load]);
   // 单根重启保留组件身份，只废弃该根请求；根评论排序重挂载还须重置整个回复子树。
   const restart = useCallback(() => {
     if (!active.current) return;
@@ -66,5 +74,5 @@ export function useDiscussionRead<Batch extends DiscussionBatch<{ readonly id: s
     update({ status: 'loading', data: null });
     void load();
   }, [load, update]);
-  return { state, load, restart };
+  return { state, load, restart, ensure };
 }

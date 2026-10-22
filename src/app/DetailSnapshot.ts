@@ -10,6 +10,7 @@ export interface DiscussionReadState<Batch> {
 export interface ReplySnapshot {
   readonly read: DiscussionReadState<ReplyBatch>;
   readonly expanded: boolean;
+  readonly page?: number;
   readonly expandedTexts: Readonly<Record<string, boolean>>;
 }
 export interface CommentSnapshot {

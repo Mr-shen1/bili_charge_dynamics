@@ -20,7 +20,7 @@ export function ContentImage({ image, preview = false, label, onPreview, onDimen
     : image.archiveStatus === 'failed' ? '图片归档失败' : '归档图片地址不可用';
   const content = !source ? <span className={styles.error}>{unavailableMessage}</span>
     : failed ? <span className={styles.error}>图片加载失败</span> : <img key={attempt}
-    src={source} alt={label} loading={preview ? 'eager' : 'lazy'} style={reserveRatio ? { aspectRatio: ratio } : undefined}
+    src={source} referrerPolicy="no-referrer" alt={label} loading={preview ? 'eager' : 'lazy'} style={reserveRatio ? { aspectRatio: ratio } : undefined}
     width={image.width ?? undefined} height={image.height ?? undefined} onError={() => setFailed(true)} onLoad={event => {
       setLoaded(true);
       const { naturalWidth, naturalHeight } = event.currentTarget;

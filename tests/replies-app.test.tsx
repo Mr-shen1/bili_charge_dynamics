@@ -1,4 +1,4 @@
-import { act, fireEvent, getNodeText, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, getNodeText, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useNavigate } from 'react-router';
 import { expect, it } from 'vitest';
@@ -25,7 +25,7 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
-it('首次和追加失败原区原批重试、重复点击不重读，其他根评论请求不受重试影响', async () => {
+it('预览和页码读取失败原区重试目标页，加载中重复点击及其他根请求互不干扰', async () => {
   const user = userEvent.setup();
   const otherPending = deferred();
   const appendPending = deferred();
@@ -47,20 +47,22 @@ it('首次和追加失败原区原批重试、重复点击不重读，其他根�
   await user.click(within(area).getByRole('button', { name: '展开回复' }));
   expect(await within(area).findByRole('alert')).toHaveTextContent('回复追加读取失败');
   expect(within(area).getAllByRole('listitem')).toHaveLength(3);
-  const failedCursor = requests.filter(input => input.rootId === 'root').at(-1)?.cursor;
+  expect(requests.filter(input => input.rootId === 'root').at(-1)).toMatchObject({ page: 1, limit: 10 });
   const retry = within(area).getByRole('button', { name: '重试' });
   fireEvent.click(retry);
   fireEvent.click(retry);
   const rootRequests = requests.filter(input => input.rootId === 'root');
   expect(rootRequests).toHaveLength(4);
-  expect(rootRequests.at(-1)?.cursor).toBe(failedCursor);
-  expect(within(area).getByRole('button', { name: '加载更多回复' })).toBeDisabled();
+  expect(rootRequests.map(input => input.page)).toEqual([undefined, undefined, 1, 1]);
+  expect(rootRequests.slice(2).every(input => input.cursor == null)).toBe(true);
+  expect(within(area).getByRole('button', { name: '下一页' })).toBeDisabled();
   expect(requests.find(input => input.rootId === 'other')?.signal.aborted).toBe(false);
   await act(async () => otherPending.resolve({ status: 'success', data: { items: [{ ...reply, text: '其他回复保持有效' }], nextCursor: null } }));
   expect(within(otherArea).getByText('其他回复保持有效')).toBeVisible();
   expect(within(area).getByRole('status')).toHaveTextContent('回复追加加载中');
-  await act(async () => appendPending.resolve({ status: 'success', data: { items: replies.slice(3, 13), nextCursor: 'next' } }));
-  expect(within(area).getAllByRole('listitem')).toHaveLength(13);
+  await act(async () => appendPending.resolve({ status: 'success', data: { items: replies.slice(0, 10), nextCursor: null, root, count: 25, localReplyCount: 25 } }));
+  // 分页后第 1 页展示 10 条。
+  expect(within(area).getAllByRole('listitem')).toHaveLength(10);
   expect(screen.getByText('上方动态保持完整')).toBeVisible();
   expect(screen.getByText('其他讨论')).toBeVisible();
 });
@@ -126,29 +128,39 @@ it.each(['success', 'error', 'rejection'] as const)('同动态新访问隔离旧
   expect(within(area).getByText('新访问回复')).toBeVisible();
 });
 
-it('回复取消可重新读取不是错误，批次重复ID不重复展示', async () => {
+it('预览批内重复ID不重复展示，页码取消可重读且整页替换旧预览', async () => {
   const user = userEvent.setup();
   show(createControlledReader(baseReader(), { replies: { d: { root: [
-    { result: { status: 'cancelled' } }, {}, { result: { status: 'cancelled' } },
-    { result: { status: 'success', data: { items: [replies[0]!, replies[3]!, replies[3]!], nextCursor: null } } },
+    { result: { status: 'cancelled' } },
+    { result: { status: 'success', data: { items: [replies[0]!, replies[0]!, replies[1]!], nextCursor: 'more' } } },
+    { result: { status: 'cancelled' } },
+    { result: { status: 'success', data: { items: [replies[0]!, replies[3]!], nextCursor: null,
+      root, count: 2, localReplyCount: 2 } } },
   ] } } }));
   const area = await screen.findByRole('region', { name: '回复区 root' });
   await within(area).findByText('读取已取消，可重新读取。');
   expect(within(area).queryByRole('alert')).not.toBeInTheDocument();
   await user.click(within(area).getByRole('button', { name: '重新读取' }));
   await within(area).findByText('回复正文 0');
+  expect(within(area).getAllByRole('listitem')).toHaveLength(2);
   await user.click(within(area).getByRole('button', { name: '展开回复' }));
   await within(area).findByText('读取已取消，可重新读取。');
-  expect(within(area).getAllByRole('listitem')).toHaveLength(3);
+  expect(within(area).queryByRole('alert')).not.toBeInTheDocument();
+  expect(within(area).getAllByRole('listitem')).toHaveLength(2);
   await user.click(within(area).getByRole('button', { name: '重新读取' }));
-  expect(within(area).getAllByRole('listitem')).toHaveLength(4);
-  expect(within(area).getByText('回复已加载完毕')).toBeVisible();
+  await within(area).findByText('回复正文 3');
+  expect(within(area).getAllByRole('listitem')).toHaveLength(2);
+  expect(within(area).queryByText('回复正文 1')).not.toBeInTheDocument();
+  expect(within(area).getByRole('button', { name: '下一页' })).toBeDisabled();
 });
 
-it('追加中收起只改变可见范围，迟到的有效结果保留缓存，再展开不重复请求', async () => {
+it.each(['success', 'error', 'rejection'] as const)('页码读取中收起取消请求，迟到%s不污染预览或再展开的新page1', async outcome => {
   const user = userEvent.setup();
   const pending = deferred();
-  const controlled = createControlledReader(baseReader(), { replies: { d: { root: [{}, { result: pending.promise }] } } });
+  const current = deferred();
+  const controlled = createControlledReader(baseReader(), { replies: { d: { root: [
+    {}, { result: pending.promise, ignoreAbort: true }, { result: current.promise },
+  ] } } });
   const requests: Parameters<DynamicReader['readReplies']>[0][] = [];
   show({ ...controlled, readReplies(input) { requests.push(input); return controlled.readReplies(input); } });
   const area = await screen.findByRole('region', { name: '回复区 root' });
@@ -157,16 +169,33 @@ it('追加中收起只改变可见范围，迟到的有效结果保留缓存，�
   fireEvent.click(expand);
   fireEvent.click(expand);
   expect(requests).toHaveLength(2);
-  await user.click(within(area).getByRole('button', { name: '收起回复' }));
-  expect(within(area).getByRole('button', { name: '展开回复' })).toBeDisabled();
-  await act(async () => pending.resolve({ status: 'success', data: { items: replies.slice(3, 13), nextCursor: 'next' } }));
+  expect(requests[1]?.signal.aborted).toBe(false);
+  await user.click(within(area).getByRole('button', { name: '收起' }));
+  expect(requests[1]?.signal.aborted).toBe(true);
+  expect(within(area).getByRole('button', { name: '展开回复' })).toBeEnabled();
   expect(within(area).getAllByRole('listitem')).toHaveLength(3);
   await user.click(within(area).getByRole('button', { name: '展开回复' }));
-  expect(within(area).getAllByRole('listitem')).toHaveLength(13);
-  expect(requests).toHaveLength(2);
+  expect(requests.map(input => input.page)).toEqual([undefined, 1, 1]);
+  expect(requests[2]?.signal.aborted).toBe(false);
+  await act(async () => {
+    if (outcome === 'rejection') pending.reject(new Error('late failure'));
+    else pending.resolve(outcome === 'error' ? { status: 'error' } : { status: 'success', data: {
+      items: [{ ...reply, text: '已收起的过期页' }], nextCursor: null, root, count: 25,
+    } });
+  });
+  expect(within(area).getByRole('status')).toHaveTextContent('回复追加加载中');
+  expect(within(area).getAllByRole('listitem')).toHaveLength(3);
+  expect(within(area).queryByText('已收起的过期页')).not.toBeInTheDocument();
+  expect(within(area).queryByRole('alert')).not.toBeInTheDocument();
+  await act(async () => current.resolve({ status: 'success', data: {
+    items: replies.slice(0, 10), nextCursor: null, root, count: 25, localReplyCount: 25,
+  } }));
+  expect(within(area).getAllByRole('listitem')).toHaveLength(10);
+  expect(within(area).getByText('回复正文 9')).toBeVisible();
+  expect(requests).toHaveLength(3);
 });
 
-it('25条回复3/13/23/25、收起恢复缓存不重读，结束无下一批且完整计数保持不变', async () => {
+it('25条回复按10/10/5整页读取，收起保留3条预览而每次展开重读page1', async () => {
   const user = userEvent.setup();
   const base = baseReader();
   const requests: Parameters<DynamicReader['readReplies']>[0][] = [];
@@ -176,37 +205,41 @@ it('25条回复3/13/23/25、收起恢复缓存不重读，结束无下一批且�
   expect(within(area).getAllByRole('listitem')).toHaveLength(3);
   expect(screen.getByText('回复 25', { exact: true })).toBeVisible();
   await user.click(within(area).getByRole('button', { name: '展开回复' }));
-  expect(within(area).getAllByRole('listitem')).toHaveLength(13);
-  const nextCursor = requests[requests.length - 1]?.cursor;
-  await user.click(within(area).getByRole('button', { name: '收起回复' }));
+  await within(area).findByText('回复正文 9');
+  expect(within(area).getAllByRole('listitem')).toHaveLength(10);
+  await user.click(within(area).getByRole('button', { name: '收起' }));
   expect(within(area).getAllByRole('listitem')).toHaveLength(3);
   const count = requests.length;
   await user.click(within(area).getByRole('button', { name: '展开回复' }));
-  expect(within(area).getAllByRole('listitem')).toHaveLength(13);
-  expect(requests).toHaveLength(count);
-  await user.click(within(area).getByRole('button', { name: '加载更多回复' }));
-  expect(within(area).getAllByRole('listitem')).toHaveLength(23);
-  expect(requests[requests.length - 1]?.cursor).not.toBe(nextCursor);
-  await user.click(within(area).getByRole('button', { name: '加载更多回复' }));
-  expect(within(area).getAllByRole('listitem')).toHaveLength(25);
+  await waitFor(() => expect(requests).toHaveLength(count + 1));
+  await waitFor(() => expect(within(area).getByRole('button', { name: '下一页' })).toBeEnabled());
+  expect(within(area).getAllByRole('listitem')).toHaveLength(10);
+  await user.click(within(area).getByRole('button', { name: '下一页' }));
+  await within(area).findByText('回复正文 19');
+  expect(within(area).getAllByRole('listitem')).toHaveLength(10);
+  expect(within(area).queryByText('回复正文 0')).not.toBeInTheDocument();
+  await user.click(within(area).getByRole('button', { name: '下一页' }));
+  await within(area).findByText('回复正文 24');
+  expect(within(area).getAllByRole('listitem')).toHaveLength(5);
   expect(within(area).getAllByRole('listitem').map(row => getNodeText(within(row).getByText(/^回复正文/)).trim())).toEqual([
-    '回复正文 0', '回复正文 1', '回复正文 2', '回复正文 3', '回复正文 4', '回复正文 5',
-    '回复正文 6', '回复正文 7', '回复正文 8', '回复正文 9', '回复正文 10', '回复正文 11',
-    '回复正文 12', '回复正文 13', '回复正文 14', '回复正文 15', '回复正文 16', '回复正文 17',
-    '回复正文 18', '回复正文 19', '回复正文 20', '回复正文 21', '回复正文 22', '回复正文 23', '回复正文 24',
+    '回复正文 20', '回复正文 21', '回复正文 22', '回复正文 23', '回复正文 24',
   ]);
-  expect(within(area).getByText('回复已加载完毕')).toBeVisible();
-  expect(within(area).queryByRole('button', { name: '加载更多回复' })).not.toBeInTheDocument();
-  await user.click(within(area).getByRole('button', { name: '收起回复' }));
+  expect(within(area).getByRole('button', { name: '下一页' })).toBeDisabled();
+  expect(within(area).queryByText('回复已加载完毕')).not.toBeInTheDocument();
+  await user.click(within(area).getByRole('button', { name: '收起' }));
+  expect(within(area).getAllByRole('listitem').map(row => getNodeText(within(row).getByText(/^回复正文/)).trim()))
+    .toEqual(['回复正文 0', '回复正文 1', '回复正文 2']);
   await user.click(within(area).getByRole('button', { name: '展开回复' }));
-  expect(within(area).getAllByRole('listitem')).toHaveLength(25);
-  expect(requests).toHaveLength(4);
-  expect(requests.map(input => input.limit)).toEqual([3, 10, 10, 10]);
+  await within(area).findByText('回复正文 9');
+  expect(within(area).getAllByRole('listitem')).toHaveLength(10);
+  expect(requests.map(input => input.page)).toEqual([undefined, 1, 1, 2, 3, 1]);
+  expect(requests.map(input => input.limit)).toEqual([3, 10, 10, 10, 10, 10]);
+  expect(requests.every(input => input.cursor == null)).toBe(true);
   expect(screen.getByText('回复 25', { exact: true })).toBeVisible();
   expect(screen.getByRole('button', { name: '评论 26' })).toBeVisible();
 });
 
-it('一级评论显示来源完整回复数，回复平铺并安全显示目标、身份、北京时间及缺失兜底', async () => {
+it('一级评论显示来源完整回复数，回复平铺并安全显示身份、北京时间及缺失兜底', async () => {
   show(createMockReader({ creator, dynamics: [dynamic], comments: { d: [
     { ...root, replyCount: 3 }, { ...root, id: 'zero', text: '无回复评论', likeCount: 0, replyCount: 0 },
     { ...root, id: 'unknown', text: '未知回复数', likeCount: null, replyCount: null },
@@ -224,7 +257,8 @@ it('一级评论显示来源完整回复数，回复平铺并安全显示目标�
   expect(rows).toHaveLength(3);
   const authorReply = rows.find(row => within(row).queryByText(/第一行/))!;
   expect(within(authorReply).getByText('UP主')).toBeVisible();
-  expect(within(authorReply).getByText('回复 @纸飞机')).toBeVisible();
+  // 直接回复根评论不重复目标；回复其他楼中楼时应单独展示回复对象。
+  expect(within(authorReply).queryByText('回复 纸飞机:')).not.toBeInTheDocument();
   expect(within(authorReply).getByText('2026-02-04 12:04:05')).toBeVisible();
   expect(within(authorReply).getByRole('group', { name: '点赞 0' })).toBeVisible();
   const missing = rows.find(row => within(row).queryByText('暂无评论内容'))!;

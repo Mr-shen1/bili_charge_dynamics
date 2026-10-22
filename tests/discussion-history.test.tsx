@@ -52,32 +52,57 @@ it('历史返回恢复该次评论排序、已读顺序和下一批，而非从�
   expect(within(area).getAllByRole('listitem')).toHaveLength(40);
   await user.click(within(area).getByRole('button', { name: '加载更多评论' }));
   expect(within(area).getAllByRole('list', { name: '一级评论' })[0]?.children).toHaveLength(45);
-  expect(within(area).getByText('评论已加载完毕')).toBeVisible();
+  expect(within(area).queryByRole('button', { name: '加载更多评论' })).not.toBeInTheDocument();
+  expect(Array.from(within(area).getByRole('list', { name: '一级评论' }).children)
+    .map(row => row.getAttribute('data-reading-id')))
+    .toEqual(comments.map(comment => `comment:${comment.id}`));
 });
 
-it('回复展开、已读范围和下一批在历史返回后保留，收起再离开仍可展开缓存', async () => {
+it('历史恢复回复展开和页码但重新读取live页，收起再离开保留预览且展开重读page1', async () => {
   const user = userEvent.setup();
-  show(baseReader());
+  const base = baseReader();
+  let refreshed = false;
+  const requests: Parameters<DynamicReader['readReplies']>[0][] = [];
+  show({ ...base, async readReplies(input) {
+    requests.push(input);
+    const result = await base.readReplies(input);
+    if (!refreshed || input.page !== 2 || result.status !== 'success') return result;
+    return { status: 'success', data: { ...result.data, items: result.data.items.map(item =>
+      item.id === 'r-12' ? { ...item, text: '答复 12（历史重读）' } : item) } };
+  } });
   await open(user);
   let repliesArea = await screen.findByRole('region', { name: '回复区 c-44' });
   await within(repliesArea).findByText('答复 0');
   await user.click(within(repliesArea).getByRole('button', { name: '展开回复' }));
+  await within(repliesArea).findByText('答复 9');
+  expect(within(repliesArea).getAllByRole('listitem')).toHaveLength(10);
+  await user.click(within(repliesArea).getByRole('button', { name: '下一页' }));
   await within(repliesArea).findByText('答复 12');
   await user.click(screen.getByRole('button', { name: '返回列表' }));
   await screen.findByRole('link', { name: '阅读全文 d' });
+  refreshed = true;
   await user.click(screen.getByRole('button', { name: '历史前进' }));
   repliesArea = await screen.findByRole('region', { name: '回复区 c-44' });
-  expect(within(repliesArea).getByText('答复 12')).toBeVisible();
-  await user.click(within(repliesArea).getByRole('button', { name: '加载更多回复' }));
-  expect(within(repliesArea).getAllByRole('listitem')).toHaveLength(23);
-  await user.click(within(repliesArea).getByRole('button', { name: '收起回复' }));
+  await within(repliesArea).findByText('答复 12（历史重读）');
+  expect(within(repliesArea).getAllByRole('listitem')).toHaveLength(10);
+  expect(within(repliesArea).getByRole('button', { name: '2' })).toHaveAttribute('aria-current', 'page');
+  expect(within(repliesArea).queryByText('答复 12', { exact: true })).not.toBeInTheDocument();
+  expect(requests.map(input => input.page)).toEqual([undefined, 1, 2, 2]);
+  await user.click(within(repliesArea).getByRole('button', { name: '下一页' }));
+  await within(repliesArea).findByText('答复 22');
+  expect(within(repliesArea).getAllByRole('listitem')).toHaveLength(5);
+  await user.click(within(repliesArea).getByRole('button', { name: '收起' }));
   await user.click(screen.getByRole('button', { name: '历史后退' }));
   await screen.findByRole('link', { name: '阅读全文 d' });
   await user.click(screen.getByRole('button', { name: '历史前进' }));
   repliesArea = await screen.findByRole('region', { name: '回复区 c-44' });
   expect(within(repliesArea).getAllByRole('listitem')).toHaveLength(3);
+  expect(requests.map(input => input.page)).toEqual([undefined, 1, 2, 2, 3]);
   await user.click(within(repliesArea).getByRole('button', { name: '展开回复' }));
-  expect(within(repliesArea).getAllByRole('listitem')).toHaveLength(23);
+  await within(repliesArea).findByText('答复 9');
+  expect(within(repliesArea).getAllByRole('listitem')).toHaveLength(10);
+  expect(requests.map(input => input.page)).toEqual([undefined, 1, 2, 2, 3, 1]);
+  expect(requests.every(input => input.cursor == null)).toBe(true);
 });
 
 it('同一动态两次访问的排序、评论范围及回复展开互不覆盖，成功详情不重复读取', async () => {
@@ -88,6 +113,8 @@ it('同一动态两次访问的排序、评论范围及回复展开互不覆盖�
   await user.click(within(first).getByRole('button', { name: '加载更多评论' }));
   const replyArea = await screen.findByRole('region', { name: '回复区 c-44' });
   await user.click(within(replyArea).getByRole('button', { name: '展开回复' }));
+  await within(replyArea).findByText('答复 0');
+  await user.click(within(replyArea).getByRole('button', { name: '下一页' }));
   await within(replyArea).findByText('答复 12');
   await user.click(screen.getByRole('button', { name: '新列表访问' }));
   const second = await open(user);
@@ -99,7 +126,11 @@ it('同一动态两次访问的排序、评论范围及回复展开互不覆盖�
   const restored = await screen.findByRole('region', { name: '评论区' });
   expect(within(restored).getByRole('button', { name: '最热' })).toHaveAttribute('aria-pressed', 'true');
   expect(within(restored).getByRole('list', { name: '一级评论' }).children).toHaveLength(40);
-  expect(within(screen.getByRole('region', { name: '回复区 c-44' })).getByText('答复 12')).toBeVisible();
+  const restoredReplies = within(screen.getByRole('region', { name: '回复区 c-44' }));
+  expect(restoredReplies.getByRole('button', { name: '2' })).toHaveAttribute('aria-current', 'page');
+  expect(await restoredReplies.findByText('答复 12')).toBeVisible();
+  await user.click(restoredReplies.getByRole('button', { name: '下一页' }));
+  expect(await restoredReplies.findByText('答复 22')).toBeVisible();
   await user.click(within(restored).getByRole('button', { name: '加载更多评论' }));
   await user.click(screen.getByRole('button', { name: '历史前进' }));
   await screen.findByRole('link', { name: '阅读全文 d' });
@@ -138,10 +169,14 @@ it.each(['comments', 'replies'] as const)('加载中离开恢复%s原批次，�
     expect(within(restored).getByRole('list', { name: '一级评论' }).children).toHaveLength(45);
   } else {
     const restored = await screen.findByRole('region', { name: '回复区 c-44' });
+    await within(restored).findByText('答复 9');
+    expect(within(restored).getAllByRole('listitem')).toHaveLength(10);
+    await user.click(within(restored).getByRole('button', { name: '下一页' }));
     await within(restored).findByText('答复 12');
-    expect(within(restored).getAllByRole('listitem')).toHaveLength(13);
-    await user.click(within(restored).getByRole('button', { name: '加载更多回复' }));
-    expect(within(restored).getAllByRole('listitem')).toHaveLength(23);
+    expect(within(restored).getAllByRole('listitem')).toHaveLength(10);
+    await user.click(within(restored).getByRole('button', { name: '下一页' }));
+    await within(restored).findByText('答复 22');
+    expect(within(restored).getAllByRole('listitem')).toHaveLength(5);
   }
   await act(async () => (areaName === 'comments' ? commentPending : replyPending).reject(new Error('late cancelled request')));
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
@@ -191,6 +226,7 @@ it.each([
     } });
     else newReplies.resolve({ status: 'success', data: {
       items: [{ ...replies[0]!, id: 'resumed', text: '恢复后内容' }], nextCursor: null,
+      ...(phase === 'append' ? { root: comments[44]!, count: 25, localReplyCount: 25 } : {}),
     } });
   });
   expect(within(area).getByText('恢复后内容')).toBeVisible();
@@ -217,12 +253,13 @@ it('评论和回复读取中往返预览沿用底层访问，不取消请求、�
   await screen.findByRole('dialog');
   await act(async () => {
     commentPending.resolve({ status: 'success', data: { items: [{ ...comments[0]!, text: '预览期间有效评论' }], nextCursor: 'next' } });
-    replyPending.resolve({ status: 'success', data: { items: replies.slice(3, 13), nextCursor: 'next' } });
+    replyPending.resolve({ status: 'success', data: { items: replies.slice(0, 10), nextCursor: null,
+      root: comments[44]!, count: 25, localReplyCount: 25 } });
   });
   await user.keyboard('{Escape}');
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   expect(within(area).getByText('预览期间有效评论')).toBeVisible();
-  expect(within(replyArea).getAllByRole('listitem')).toHaveLength(13);
-  expect(within(replyArea).getByRole('button', { name: '加载更多回复' })).toBeEnabled();
+  expect(within(replyArea).getAllByRole('listitem')).toHaveLength(10);
+  expect(within(replyArea).getByRole('button', { name: '下一页' })).toBeEnabled();
   expect(within(area).getByRole('button', { name: '加载更多评论' })).toBeEnabled();
 });

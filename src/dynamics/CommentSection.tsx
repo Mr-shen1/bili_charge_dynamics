@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { emptyCommentSnapshot } from '../app/DetailSnapshot';
 import type { ArchiveMetadata, CommentSort, DynamicReader } from '../data/contracts';
 import { Identity, displayTime } from './DynamicContent';
@@ -7,10 +7,12 @@ import { useDiscussionRead } from './useDiscussionRead';
 import { ReadNotice } from './ReadNotice';
 import { FoldableText } from './FoldableText';
 import { ReplySection } from './ReplySection';
+import { ReplyPreview } from './ReplyPreview';
+import { useCompactViewport } from '../app/useCompactViewport';
+import { useAppNavigation } from '../app/Navigation';
 import styles from './Dynamics.module.css';
 import { useDiscussionVisit } from './DiscussionVisit';
 import { ImageGrid } from '../images/ImageGrid';
-import { CommentArchiveStatus } from './CommentArchiveStatus';
 
 const unarchivedMessage = '评论尚未归档；来源计数不代表本地已有评论。';
 
@@ -47,34 +49,14 @@ function UnarchivedComments({ sourceCommentCount, archive, initialTarget, canLoc
     <p role="status">{unarchivedMessage}</p>
   </section>;
 }
-function ArchivedComments({ reader, dynamicId, authorId, sourceCommentCount: initialCount, archive: initialArchive, initialTarget, canLocateEntry, root }: {
+function ArchivedComments({ reader, dynamicId, authorId, sourceCommentCount: initialCount, archive, initialTarget, canLocateEntry, root }: {
   reader: DynamicReader; dynamicId: string; authorId: string; sourceCommentCount: number | null; archive?: ArchiveMetadata; initialTarget: 'top' | 'comments'; canLocateEntry(): boolean; root: RefObject<HTMLElement | null>;
 }) {
   const visit = useDiscussionVisit();
   const [sort, setSort] = useState<CommentSort>(visit.current.sort);
   const [restartKey, setRestartKey] = useState(0);
-  const [metadata, setMetadata] = useState({ archive: initialArchive, sourceCommentCount: initialCount });
-  const { archive } = metadata;
-  const sourceCommentCount = archive?.commentSync?.sourceCommentCount ?? metadata.sourceCommentCount;
+  const sourceCommentCount = archive?.commentSync?.sourceCommentCount ?? initialCount;
   const emptyUnarchived = Boolean(archive && (archive.rootCommentsLastAttempt ?? archive.work.comments) !== 'success');
-  const [statusRead, setStatusRead] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [statusError, setStatusError] = useState('');
-  const statusRequest = useRef<AbortController | null>(null);
-  useEffect(() => () => { statusRequest.current?.abort(); statusRequest.current = null; }, [reader, dynamicId]);
-  async function refreshStatus() {
-    if (statusRequest.current) return;
-    const request = new AbortController();
-    statusRequest.current = request;
-    setRefreshing(true); setStatusError('');
-    const result = await reader.readDetail({ id: dynamicId, signal: request.signal });
-    if (request.signal.aborted || statusRequest.current !== request) return;
-    statusRequest.current = null; setRefreshing(false);
-    if (result.status === 'success' && result.data.id === dynamicId && result.data.archive) {
-      setMetadata({ archive: result.data.archive, sourceCommentCount: result.data.commentCount });
-      setStatusRead(true);
-    } else if (result.status !== 'cancelled') setStatusError('评论同步状态读取失败；保留已有状态。');
-  }
   const commentEntryPending = useRef(initialTarget === 'comments');
   const locateCommentEntry = useCallback(() => {
     if (!commentEntryPending.current) return;
@@ -90,18 +72,11 @@ function ArchivedComments({ reader, dynamicId, authorId, sourceCommentCount: ini
   };
   return <section ref={root} className={styles.commentSection} aria-label="评论区">
     <CommentHeading sourceCommentCount={sourceCommentCount} archive={archive} root={root} />
-    {archive && <div className={styles.status}>
-      <button type="button" className={styles.button} disabled={refreshing} onClick={() => void refreshStatus()}>
-        {refreshing ? '正在读取评论同步状态…' : statusRead ? '重新读取评论同步状态' : '读取评论同步状态'}
-      </button>
-      <p>仅读取本地状态，不触发采集，也不重新加载评论。</p>
-      {statusError && <p role="alert">{statusError}</p>}
-    </div>}
     <div className={styles.sort} role="group" aria-label="评论排序">
       <button type="button" className={styles.button} aria-pressed={sort === 'hot'} onClick={() => selectSort('hot')}>最热</button>
       <button type="button" className={styles.button} aria-pressed={sort === 'latest'} onClick={() => selectSort('latest')}>最新</button>
     </div>
-    <CommentSortView key={`${sort}:${restartKey}`} reader={reader} dynamicId={dynamicId} authorId={authorId} sort={sort} onSettled={locateCommentEntry} emptyUnarchived={emptyUnarchived} archive={archive} sourceCommentCount={sourceCommentCount}
+    <CommentSortView key={`${sort}:${restartKey}`} reader={reader} dynamicId={dynamicId} authorId={authorId} sort={sort} onSettled={locateCommentEntry} emptyUnarchived={emptyUnarchived}
       restart={() => {
         visit.current = emptyCommentSnapshot(sort);
         setRestartKey(previous => previous + 1);
@@ -109,14 +84,16 @@ function ArchivedComments({ reader, dynamicId, authorId, sourceCommentCount: ini
   </section>;
 }
 
-function CommentSortView({ reader, dynamicId, authorId, sort, onSettled, restart, emptyUnarchived, archive, sourceCommentCount }: {
-  reader: DynamicReader; dynamicId: string; authorId: string; sort: CommentSort; onSettled(): void; restart(): void; emptyUnarchived: boolean; archive?: ArchiveMetadata; sourceCommentCount: number | null;
+function CommentSortView({ reader, dynamicId, authorId, sort, onSettled, restart, emptyUnarchived }: {
+  reader: DynamicReader; dynamicId: string; authorId: string; sort: CommentSort; onSettled(): void; restart(): void; emptyUnarchived: boolean;
 }) {
   const read = useCallback((cursor: string | null | undefined, signal: AbortSignal) =>
     reader.readComments({ dynamicId, sort, cursor, signal }), [reader, dynamicId, sort]);
   const visit = useDiscussionVisit();
   const initial = useRef(visit.current);
   const { state, load } = useDiscussionRead(read, initial.current.read);
+  const compact = useCompactViewport();
+  const { openThread } = useAppNavigation();
   const [expanded, setExpanded] = useState<Readonly<Record<string, boolean>>>(initial.current.expanded);
   useLayoutEffect(() => {
     visit.current = { ...visit.current, sort, read: state, expanded };
@@ -124,7 +101,6 @@ function CommentSortView({ reader, dynamicId, authorId, sort, onSettled, restart
   const area = sort === 'hot' ? '最热评论' : '最新评论';
   useLayoutEffect(() => { if (state.status !== 'loading') onSettled(); }, [state.status, onSettled]);
   return <>
-    {archive && <CommentArchiveStatus archive={archive} sourceCount={sourceCommentCount} loaded={state.data?.items.length ?? 0} />}
     {state.reason === 'invalid-cursor' && <section className={styles.status}>
       <p role="alert">评论读取标记无效，请重新开始读取。</p>
       <button className={styles.button} type="button" onClick={restart}>重新开始读取</button>
@@ -141,6 +117,7 @@ function CommentSortView({ reader, dynamicId, authorId, sort, onSettled, restart
           <div className={styles.discussionHead}>
             <Identity user={comment.author} />
             {comment.author.id === authorId && <span className={styles.upBadge}>UP主</span>}
+            {comment.isPinned && <span className={styles.pinnedBadge}>置顶</span>}
           </div>
           <div className={styles.commentBody}>
           {(hasText || !hasMedia) && <FoldableText text={hasText ? comment.text : '暂无评论内容'} subject="评论"
@@ -155,17 +132,18 @@ function CommentSortView({ reader, dynamicId, authorId, sort, onSettled, restart
           </div>
           {comment.replyCount !== 0 && (reader.replies === 'not-archived'
             ? <p role="status">回复尚未归档。</p>
-            : <ReplySection reader={reader} dynamicId={dynamicId} authorId={authorId} rootId={comment.id} />)}
+            : compact
+              ? <ReplyPreview upReply={comment.upReply} authorId={authorId} replyCount={comment.replyCount}
+                onOpen={() => openThread(dynamicId, comment.id)} />
+              : <ReplySection reader={reader} dynamicId={dynamicId} authorId={authorId} rootId={comment.id} />)}
           </div>
         </li>;
       })}
     </ul>
-    {state.data && state.data.items.length > 0 && (state.data.nextCursor === null
-      ? <p role="status">{archive ? '本地归档评论已读完' : '评论已加载完毕'}</p>
-      : <section aria-label="评论追加">
-        {state.status !== 'success' && state.reason !== 'invalid-cursor' && <ReadNotice status={state.status} area={`${area}追加`} retry={load} />}
-        {(state.status === 'success' || state.status === 'loading') && <button className={styles.button}
-          type="button" disabled={state.status === 'loading'} onClick={() => void load()}>加载更多评论</button>}
-      </section>)}
+    {state.data && state.data.items.length > 0 && state.data.nextCursor !== null && <section aria-label="评论追加">
+      {state.status !== 'success' && state.reason !== 'invalid-cursor' && <ReadNotice status={state.status} area={`${area}追加`} retry={load} />}
+      {(state.status === 'success' || state.status === 'loading') && <button className={styles.button}
+        type="button" disabled={state.status === 'loading'} onClick={() => void load()}>加载更多评论</button>}
+    </section>}
   </>;
 }

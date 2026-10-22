@@ -7,5 +7,5 @@ export function UserAvatar({ user, className, decorative = false }: {
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const source = user.avatarUrl && user.avatarUrl !== failedUrl ? user.avatarUrl : '/default-avatar.svg';
   return <img className={className} src={source} alt={decorative ? '' : `${user.nickname ?? '未知用户'}的头像`}
-    width="44" height="44" onError={() => setFailedUrl(source)} />;
+    width="44" height="44" referrerPolicy="no-referrer" onError={() => setFailedUrl(source)} />;
 }

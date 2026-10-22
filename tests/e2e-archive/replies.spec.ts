@@ -82,10 +82,10 @@ test('实际 HTTP 与重开 SQLite 回复正序 3/13/23/25，收起复用且结�
     await expect(rows).toHaveCount(count);
     expect(await ids(rows)).toEqual(replyIds.slice(0, count));
   }
-  await expect(thread.getByText('回复已加载完毕', { exact: true })).toBeVisible();
   await expect(thread.getByRole('button', { name: '加载更多回复', exact: true })).toHaveCount(0);
   const ended = requests.length;
-  await thread.getByText('回复已加载完毕', { exact: true }).click();
+  // 回复列表已结束时点击末条回复不得触发额外分页请求。
+  await rows.last().click();
   await thread.getByRole('button', { name: '收起回复', exact: true }).click();
   await expect(rows).toHaveCount(3);
   await thread.getByRole('button', { name: '展开回复', exact: true }).click();
