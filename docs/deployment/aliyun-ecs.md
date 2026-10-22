@@ -249,7 +249,7 @@ curl --fail --silent --show-error http://127.0.0.1:8000/api/manage/ups >/dev/nul
 
 前端同步发布见第 4 节。前后端版本不匹配时，前端会按 API 契约拿到错误响应，不会崩溃，但应当同批发布。
 
-`schema` 版本在 API lifespan 自动迁移（当前 v13）。**没有独立迁移 CLI、没有自动降级。** 迁移失败时停下排查，不要改 `user_version`、不要删库、不要用旧版本强开新库。
+`schema` 版本在 API lifespan 自动迁移（目标机实测为 **v14**，见 `backend/bili_monitor/storage.py:217`；本仓库部分既有文档仍写 v13，以代码为准）。**没有独立迁移 CLI、没有自动降级。** 迁移失败时停下排查，不要改 `user_version`、不要删库、不要用旧版本强开新库。
 
 ## 10. 回滚
 
@@ -271,7 +271,7 @@ sudo -u bili env HOME=/home/bili /home/bili/.local/bin/uv sync --locked --no-dev
 sudo systemctl start bili-monitor
 ```
 
-⚠️ **数据库 schema 只前进不后退。** 若新版本已迁移到 v13，回滚到旧代码可能因「未来版本拒绝启动」而失败。回滚前先备份数据库，并接受旧代码读新 schema 的风险。
+⚠️ **数据库 schema 只前进不后退。** 若新版本已迁移到更新的 schema，回滚到旧代码可能因「未来版本拒绝启动」而失败。回滚前先备份数据库，并接受旧代码读新 schema 的风险。
 
 ## 11. 备案与阶段二切换
 
