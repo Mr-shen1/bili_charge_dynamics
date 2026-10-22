@@ -55,3 +55,30 @@
 结论：无端口冲突、无资源竞争，`deploy/nginx-ecs-*.conf` 的监听端口与 `root` 路径可直接沿用模板值。
 
 待观察风险：available 1.1 GiB 对单 API + 单 collector 预计占用 300–400 MiB 而言足够，但余量不大；swap 已启用，仍需在第 7 节验证后观察持续运行的内存曲线，确认无爬升。
+
+### 2026-10-23 统一入口首次实际运行（runbook 第 3 节，手动形态）
+
+上游 `docs/deployment/static-delivery.md:36` 声明 `backend.bili_monitor.service` 「本次按用户要求未运行验证」。本次在目标机实际启动，正常可用：
+
+```
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000
+INFO collector_started cadence_seconds=15 max_checks=4 max_syncs=4
+     max_discoveries=2 recovery=complete
+INFO collector_configuration media_upload=disabled
+```
+
+- `GET /api/manage/ups` → **HTTP 200**
+- 迁移完成，固定节拍每 15 秒输出一次 `collector_tick`，`targets=0`（尚未配置 UP）
+- `media_upload=disabled` 符合预期：OSS 未配置，媒体保持待归档
+
+环境：Debian 13.6，uv 提供的 CPython 3.12.15，命令为 runbook 第 3 节的手动形态（未启用 systemd）。
+
+**尚未验证**：systemd 托管形态，尤其是 `ProtectSystem=strict` + `ReadWritePaths=/srv/bili-monitor` 下能否正常写入 SQLite 与 `.collector.lock`。
+
+### 2026-10-23 修复环境模板可选变量空值
+
+首次配置环境文件前发现模板缺陷：`BILI_OSS_*= ` 与 `BILI_COOKIE_FILE=` 的空值形式会让 systemd 注入空字符串，触发 `oss.py:39-45` 的
+`ValueError: Incomplete OSS configuration` 与 `source_cookies.py:91-103` 的配置错误，服务启动即退出。已在模板中改为全注释并在运行手册记录原因（提交 `cd94860`）。
+
+该缺陷属于「配置未在目标环境验证」的典型代价，已在本票核验标准之外额外记录。
