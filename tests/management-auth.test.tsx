@@ -140,8 +140,8 @@ describe('管理页的原生身份验证入口', () => {
     const listUps = vi.fn<ManagementApi['listUps']>().mockResolvedValue({ status: 'error', message: authenticationRequiredMessage });
     show({ ...unusedApi(), listUps });
     expect(await screen.findByRole('alert')).toHaveTextContent(authenticationRequiredMessage);
-    expect(screen.getByRole('note', { name: '管理访问保护' })).toHaveTextContent('管理访问由部署入口认证保护；后端端口不可直接暴露公网。');
-    expect(screen.queryByText(/首期无鉴权/)).not.toBeInTheDocument();
+    expect(screen.getByRole('note', { name: '无鉴权部署风险' })).toHaveTextContent('首期无鉴权');
+    // 401 映射只是防御性提示，不代表仓库内已有认证网关。
     const link = screen.getByRole('link', { name: '重新身份验证' });
     expect(link.tagName).toBe('A');
     expect(link).toHaveAttribute('href', '/manage');
