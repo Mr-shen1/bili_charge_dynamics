@@ -1,5 +1,7 @@
 # 02 协议静态依据（虚构 fixture 的结构边界）
 
+> 下文按票据保留当时的协议/fixture证据，不代表后续实现仍完全相同。当前 Requests 评论链路对照 `bili_charge_monitor.py:199-215,305-316,330-379`：每轮会话、首页/空间页预热、环境代理与私有Cookie输入；定位增加basic→OPUS→动态ID的带来源/策略版本回退，fallback需资源校验。当前契约以[归档接口](../api/archive-api.md#15-根评论契约)和[后端说明](../../../backend/README.md#来源-client-初始化)为准；对照与未验证范围见[本次变更记录](../../../.scratch/backend-integration/evidence/comment-requests-implementation.md)。本轮未执行参考脚本、测试或额外真实请求，旧“不加凭据/不猜定位”等表述仅说明当时实现，不能当作本次验证结论。
+
 本次只静态读取本机 ignored 参考的无敏感函数局部；未读取 Cookie、密钥或通知配置，未执行/导入原脚本，未访问网络。原参考不作为运行依赖，以下无敏感字段和 tracked fixture 才是可复现依据。既有实际请求证据见 [backend-feasibility](backend-feasibility.md)，不能将 fixture 当作真实上游可用性证明。
 
 ## 指定动态

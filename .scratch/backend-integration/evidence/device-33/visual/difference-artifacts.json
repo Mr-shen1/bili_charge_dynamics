@@ -1,0 +1,59 @@
+{
+  "derivedAt": "2026-10-18T13:01:59.282Z",
+  "sourceRun": "runs/2026-10-18T12-21-26.119Z/conditions.json",
+  "method": "沿用 capture-visual-35.mjs 的白色右/下补齐 + ImageMagick difference；源先按既定0.5归一；左上对齐原始帧差，无配准/遮罩/阈值/通过率；裁区边界不等于同一DOM边界",
+  "files": [
+    {
+      "name": "root-comment",
+      "canvas": {
+        "width": 605,
+        "height": 119
+      },
+      "source": "/tmp/bili-device-33-xMpA6LHL/visual-reference/2026-10-18T12-21-26.119Z/root-comment-source-0.5.png",
+      "sourceSHA256": "b73102b7c06656b71cfb5ddcdfdb52ccbc8d407624fde770d72e5ec4daf98a1c",
+      "implementation": "runs/2026-10-18T12-21-26.119Z/root-comment-region.png",
+      "implementationSHA256": "86af3d3247ed58746856fd27ec879e174f9cc997f58c2f11dc0b7be8169f06c5",
+      "difference": "/tmp/bili-device-33-xMpA6LHL/visual-reference/2026-10-18T12-21-26.119Z/root-comment-difference.png",
+      "differenceSHA256": "0d4cf274efe4e097a11c5c4dbfe491e4029df78fd519f2222cf2e28b2848297c"
+    },
+    {
+      "name": "single-reply",
+      "canvas": {
+        "width": 605,
+        "height": 88
+      },
+      "source": "/tmp/bili-device-33-xMpA6LHL/visual-reference/2026-10-18T12-21-26.119Z/single-reply-source-0.5.png",
+      "sourceSHA256": "b61e5c7a73495a0c0d9425eac1b7390a92e7718e00b045f8cf8b28cbbe8b9f66",
+      "implementation": "runs/2026-10-18T12-21-26.119Z/single-reply-region.png",
+      "implementationSHA256": "39500fb56c1931c2ac842677a46b47e69c1834c097793bc6c57af8b5a422bb59",
+      "difference": "/tmp/bili-device-33-xMpA6LHL/visual-reference/2026-10-18T12-21-26.119Z/single-reply-difference.png",
+      "differenceSHA256": "44d7fc9bb795cf83b42fd93cadd18522f501a1717df3468f7fff48cbf9af154d"
+    },
+    {
+      "name": "reply-entry",
+      "canvas": {
+        "width": 605,
+        "height": 45
+      },
+      "source": "/tmp/bili-device-33-xMpA6LHL/visual-reference/2026-10-18T12-21-26.119Z/reply-entry-source-0.5.png",
+      "sourceSHA256": "c1d49fc2f6e369043b60e9cf774d09be40ad4bd81c770b55cd853317287c0ad3",
+      "implementation": "runs/2026-10-18T12-21-26.119Z/reply-entry-region.png",
+      "implementationSHA256": "d4d890743a8834aabb959b8b8742e384c17e1d82224f3a2766ec4787b85c0db4",
+      "difference": "/tmp/bili-device-33-xMpA6LHL/visual-reference/2026-10-18T12-21-26.119Z/reply-entry-difference.png",
+      "differenceSHA256": "37a8dc50d385d3e57e2fa713ff79a651683e8748524ee0a5bb7bc93be98a2843"
+    },
+    {
+      "name": "reply-preview-group",
+      "canvas": {
+        "width": 605,
+        "height": 308
+      },
+      "source": "/tmp/bili-device-33-xMpA6LHL/visual-reference/2026-10-18T12-21-26.119Z/reply-preview-group-source-0.5.png",
+      "sourceSHA256": "99ef7862e53f8c238ea913e7aaa68af284cf2417495dd3b12075e04dadc85383",
+      "implementation": "runs/2026-10-18T12-21-26.119Z/reply-preview-group-region.png",
+      "implementationSHA256": "778fb446d3267200aa31ca5e8730991c51d8c11aa2685a428e95cf05a9bfc2b1",
+      "difference": "/tmp/bili-device-33-xMpA6LHL/visual-reference/2026-10-18T12-21-26.119Z/reply-preview-group-difference.png",
+      "differenceSHA256": "d7f96f6f672507a5c62f105503aa111a6332a78dd03c965283f496d612d4ed1d"
+    }
+  ]
+}

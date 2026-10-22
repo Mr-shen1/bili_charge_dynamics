@@ -25,7 +25,16 @@ Node.js `24.21.0`（`.nvmrc`）、pnpm `10.34.6`（`package.json`）、Python `3
 
 选择**仓库外、持久卷上的同一个绝对 SQLite 文件路径**；以下 `/srv/bili-monitor/monitor.sqlite` 只是示例，目录需运行用户可写，不放在临时目录或发布目录中。默认 `backend/data/monitor.sqlite` 只适合本地开发。API 与 collector 必须使用同一路径和同一代码版本，勿用硬链接别名；运行一个 API、一个 collector，不设 `--workers`、`--reload` 或 `WEB_CONCURRENCY`，无 Redis/Celery/额外任务服务。
 
-各开一个独立终端，均先进入实际仓库根目录。依赖同步完成后直接执行 uv 创建的解释器，`exec` 将该终端 shell 替换成真正的 Python 进程，避免只终止 `uv run` 父进程却留下 Python：
+推荐使用统一托管入口，避免漏启动 collector。先停止旧 API 和 collector 并等待退出，在仓库根目录、已同步依赖和配置好服务端环境的专用终端运行：
+
+```bash
+export BILI_DATABASE_PATH=/srv/bili-monitor/monitor.sqlite
+exec .venv/bin/python -m backend.bili_monitor.service --host 127.0.0.1 --port 8000
+```
+
+此入口只负责进程托管：等待 API 完成迁移并监听，再启动一个独立 collector；数据库路径规范化为绝对路径，Cookie/OSS 环境由两个子进程共同继承。API 仍不内嵌采集调度器。父进程收到 Ctrl-C/TERM 后先等 collector 清理退出，再停 API；任一子进程异常退出会停止另一进程，并以固定错误退出供外部托管处理。不要与下面的手动双进程方式并用。该新增入口本次按用户要求未运行验证，历史 #31 证据不覆盖本次修改。
+
+如需手动分别托管，各开一个独立终端，均先进入实际仓库根目录。依赖同步完成后直接执行 uv 创建的解释器，`exec` 将该终端 shell 替换成真正的 Python 进程，避免只终止 `uv run` 父进程却留下 Python：
 
 ```bash
 # 终端 A：单 API；先确认未设置 WEB_CONCURRENCY
@@ -43,7 +52,7 @@ printf 'collector PID=%s\n' "$$"
 exec .venv/bin/python -m backend.bili_monitor.collector
 ```
 
-两端的服务端 OSS 环境须一致，配置名与未配置行为见[后端说明](../../backend/README.md#19-oss-服务端配置)；凭据由维护者在仓库外受限环境注入，应用不自动加载 `.env`。勿输出环境、使用命令行传秘密或交给前端构建环境。当前来源客户端无 Cookie 输入，不新增凭据入口。
+两端的服务端 OSS 环境须一致，配置名与未配置行为见[后端说明](../../backend/README.md#19-oss-服务端配置)；凭据由维护者在仓库外受限环境注入，应用不自动加载 `.env`。勿输出环境、使用命令行传秘密或交给前端构建环境。来源默认匿名；可选 `BILI_COOKIE_FILE` 只指向仓库外、属主为运行用户的 0600 文件及 0700 直属目录，启动时读取一次。API/collector 启动环境分别配置路径，秘密不放命令参数；当前不新增前端/API 凭据输入。隐藏输入与限制见[后端 Cookie 配置](../../backend/README.md#可选-b站登录-cookie仅服务端)，未配置不变，无效配置拒绝启动。新增配置与手动验证由维护者执行；不自动续期或绕过限制。API/collector 的普通来源请求头采用同一套[初始化配置](../../backend/README.md#来源-client-初始化)，不改变代理、跳转或重试策略，启动不新增上游请求。
 
 停止可在各前台终端 Ctrl-C；或第三个 Bash 终端按已记录并核实的 Python PID 发 TERM，**先 collector 后 API，分别等待真正退出**：
 

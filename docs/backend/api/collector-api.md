@@ -6,19 +6,32 @@
 
 单独 Python 进程从同一 SQLite 中按 `enabled=true` 的互斥模式选取目标：`specified` 只取关联 ID，`recent` 只取最后成功发布的可信窗口。API 不启动调度器；浏览器阅读、管理读取不触发同步。启动时为第一个节拍，此后按单调时钟固定每 15 秒触发；不是任务完成后再等 15 秒。同目标检查忙时跳过，不叠加、补发或排队。默认最多 4 个同时检查，容量不足的目标跳过当前槽，轮转选择防止长期偏向头部；不承诺每目标在所有负载下都能完成每个节拍。进程停顿错过的槽不追赶。
 
-检查读取普通 opus HTML，复用安全初始化 JSON/AUTHOR 解析登记编辑信号；独立读取 `/x/v2/reply/count` 的 `data.count` 作为评论区来源总数信号。不用网页 STAT、通用 detail、根页 `page.count/acount` 或本地条数代替独立计数。可信 locator 优先复用持久观察／归档，缺失时经已校验作者的通用 detail 获取，不猜 oid。无编辑标记、网页失败／无权或正文受限不阻止独立计数和可读评论初始化；计数缺失、无效、业务／网络失败保留旧可信值与失败状态。两项信号独立合并，不因其中一项失败丢失另一项新观察。计数结构及证据限制见[来源协议](../evidence/source-protocol-evidence.md#25-独立评论计数)。
+检查读取普通 opus HTML，复用安全初始化 JSON/AUTHOR 解析登记编辑信号；独立读取 `/x/v2/reply/count` 的 `data.count` 作为评论区来源总数信号。不用网页 STAT、通用 detail、根页 `page.count/acount` 或本地条数代替独立计数。locator 使用带 `policy_version/source` 的策略：旧版本在后续检查重新从已校验动态 ID/作者的 detail 核对；按参考函数优先 basic，再尝试同目标 OPUS/动态ID回退，候选必须通过合法ID和资源一致性校验，空页不确认 fallback。无编辑标记、网页失败／无权或正文受限不阻止独立计数和可读评论初始化；计数缺失、无效、业务／网络失败保留旧可信值与失败状态。两项信号独立合并，不因其中一项失败丢失另一项新观察。计数结构及证据限制见[来源协议](../evidence/source-protocol-evidence.md#25-独立评论计数)。
 
 同进程有独立且有限的执行阶段（默认最多 4 个同时同步）；每个固定节拍轮转选择持久 pending，逐目标重新核验配置并领取。同目标不叠加，慢目标分页不阻止其他目标检查或领取后续工作；不承诺任意负载下全部目标每节拍完成。公开 `execute_pending` 单次遍历也采用有限工作池。复用 #02/#15/#17/#21 同一正文、根回复与媒体归档链，网络不占长事务。失败留待下一节拍，不即时无限重试。
 
 初始化、失败重试或可信总数变化才执行根＋必要回复完整分页；计数不变、纯正文编辑、评论纯编辑或增删抵消不默认重扫。任一根／回复分项未完成仍走原完整根＋回复重试，不做见旧 ID 截断。评论工作绑定领取计数；正文／detail metadata 不覆盖领取的独立计数。已完成且版本匹配的正文在纯评论工作中不重读；评论成功不等待媒体上传。目标 complete 仍要求实际正文版本与评论 checkpoint 匹配领取观察、全部归档 work 与评论媒体成功；未配置 OSS 或保留根媒体待处理时，评论可成功而目标仍 pending。
 
-目标 revision 在首次登记、可信编辑版本改变或可信评论总数改变时增加；正文版本和评论计数不拼成同一内容版本。同步期间新观察仍持久登记，旧执行只提交自身处理的版本，不能清除较新 revision；重开恢复与令牌 fencing 沿用 #24。显式 `/api/sync/initial` 不是计数检查入口：尚无独立计数检查记录的目标保持原 #02 初始化协议；已有 `comment_count_status` 的目标绑定最近可信检查计数（未知仍未知），不能再用 STAT/detail 覆盖它。没有每日校准、退避、自适应频率、内容比对或无限并发；27 的近期发现另见独立契约。计数抵消、纯评论编辑和不改变计数的来源分页移动可漏检。
+目标 revision 在首次登记、可信编辑版本改变、可信评论总数改变或评论资源 oid/type 改变时增加；正文版本和评论计数不拼成同一内容版本。同步期间新观察仍持久登记，旧执行只提交自身处理的版本，不能清除较新 revision；重开恢复与令牌 fencing 沿用 #24。显式 `/api/sync/initial` 不是计数检查入口：尚无独立计数检查记录的目标保持原 #02 初始化协议；已有 `comment_count_status` 的目标绑定最近可信检查计数（未知仍未知），不能再用 STAT/detail 覆盖它。没有每日校准、退避、自适应频率、内容比对或无限并发；27 的近期发现另见独立契约。计数抵消、纯评论编辑和不改变计数的来源分页移动可漏检。
 
 ## 分页请求节奏（30）
 
-正式 API／采集进程的来源客户端在动态 feed 每次请求前随机异步等待 0.8–1.5 秒，根评论与楼中楼每页请求前等待 0.3–0.4 秒，包含首页和空尾页确认。同客户端的分页等待共享，网络响应不占等待锁；HTML／detail／独立计数请求不排分页队列。参考脚本只提供无敏感等待区间，不导入其主循环或飞书逻辑。
+正式 API／采集进程的 HTTPX feed 与 Requests 评论会话共享同一 `SourcePacer`：feed 每次发送前随机异步等待0.8–1.5秒，根/楼中楼每页0.3–0.4秒，包含首页和空尾页确认；锁只覆盖等待，网络与事务均不占锁。HTML/detail/独立计数不排分页队列。每个正式评论尝试单独创建 Requests Session，线程池执行网络，按参考顺序预热首页和UP空间页（每页返回后异步等1–3秒），结束关闭；不再以nav预热，不导入其主循环或飞书逻辑。Requests采用环境代理和受信B站内的GET重定向；HTTPX信号与媒体路径保持原独立策略。
 
 该节奏不改变固定 15 秒调度或失败重试规则；分页慢不会改成“同步完再等 15 秒”，忙检查仍跳过、不积压。等待和网络均在 SQLite 事务外。两个进程各自限速，不保证跨进程突发或上游不再限流；真实持续运行仍需 #34。测试传输可另行注入外部时间，见 [后端说明](../../../backend/README.md#30-分页请求间隔)。
+
+## 调度与失败日志
+
+collector 使用独立 INFO 级别的 stderr handler，保持 HTTPX/HTTPCore、OSS 和 access 传输日志禁用，不依赖根 logger 的默认级别。统一托管时 API 与 collector 的输出归同一个 systemd unit，可用 `journalctl --user -u bili-charge-live-34.service -f` 跟随。此前只有启动信息或固定失败状态时，日志不变不能证明未重试。
+
+- `collector_initializing`、`collector_configuration`、`collector_started` 表示初始化、评论引擎/代理策略、媒体上传是否启用、固定节拍/并发配置与恢复完成。`comment_session_started/closed` 表示每轮 Requests 生命周期；`comment_session_warmup` 的 homepage/space 只表示对应 HTTP 返回情况，不代表登录成功。
+- 每个固定节拍输出一条 `collector_tick`，记录当前入选 `targets`、`recent_ups`、待处理 `pending`、检查/同步/发现的 `*_in_flight` 和本轮 `*_started` 数量。它是调度快照，不保证任务在该行输出时已完成领取；无目标也输出心跳。
+- `sync_started`、`sync_finished` 和来源阶段事件共享进程内 `attempt` 流水号。流水号不是目标 ID 或持久领取令牌；重启后重置。`sync_finished complete=false` 不表示成功，后续仍按原 pending/入选规则处理；`sync_skipped reason=not_claimed` 表示未取得有效工作。
+- `root_sync_started/root_sync_finished` 和 `replies_sync_started/replies_sync_finished` 记录整轮阶段，不为每个成功页输出 INFO。根/回复失败记录固定事件、`stage`、`page`（回复另含本轮 `root_index`），以区分来源请求、分页校验、存储和尾页复查。
+- 失败仅记录固定 `reason` 与经过范围校验的 `http_status`：如 `timeout`、`http_status`、`network_error`、`json_invalid`、`field_missing`、`type_invalid`、`value_invalid`、`source_rejected`、`pagination_changed`、`pagination_not_advancing`、`storage_error`。应用自身的固定校验错误进一步细分为 `comment_page_mismatch`、`pictures_shape_invalid`、`upper_shape_invalid` 等有限原因。根/回复的缺字段只在命中对应阶段的固定字段白名单时记录 `field`，不回显任意键名；JSON 解码异常不输出其文档片段。不读取或输出响应正文、异常原文/traceback、URL、身份/动态/评论 ID、Cookie、SDK 凭据或领取令牌。
+- `collector_loop_failed/collector_failed` 明确记录调度或启动失败；取消/退出记录 `collector_stopping/collector_stopped`。未改变既有异常处理及失败重试策略，也未在父进程中新增自动重启。
+
+判断方式：`pending>0` 且 `syncs_started>0` 表示本轮安排了待处理执行，随后应看到 `sync_started`；`syncs_in_flight>0` 表示任务仍在跟踪中，不能因本轮没新启动就断言不工作；`targets=0` 表示当前没有入选目标，不能推断为有工作但未重试。需要以实际日志区分，本次按用户要求不做运行验证。
 
 ## 状态 HTTP
 

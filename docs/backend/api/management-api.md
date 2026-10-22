@@ -15,13 +15,43 @@
 - `PATCH /api/manage/ups/{uid}/monitor`，完整配置 `{"mode":"recent","recent_n":10,"enabled":true}` → `200 UP`。mode 仅 `recent` / `specified`；recent_n 为正的 JSON 安全整数（最大 9007199254740991，跨语言精度边界，不是 100 目标产品限额）；enabled 严格布尔。禁止额外字段。没有监控配置时 `404 NOT_FOUND`。
 - `DELETE /api/manage/ups/{uid}/monitor` → `204`，仅删除配置。对已有身份但已删除的配置幂等；未知身份 `404 NOT_FOUND`。
 
-UP 结构：`{"uid":"123","name":"示例","avatar_url":"https://example.invalid/avatar.png","monitor":{"mode":"recent","recent_n":10,"enabled":true,"last_checked_at":null,"last_succeeded_at":null}}`。删除后 monitor 为 null。身份的 name/avatar_url 可空，以兼容旧资料；前端昵称空时显示“未知用户”，头像空或加载失败时使用 `/default-avatar.svg`。01 阶段检查时间始终 null；23 后由持久目标检查/实际成功时间的最大值提供，未检查/未成功仍为 null，不把配置保存时间当成检查时间，详见 [采集与状态契约](collector-api.md)。默认 recent、10、enabled=true，无 UP 数量限额。
+UP 结构：`{"uid":"123","name":"示例","avatar_url":"https://example.invalid/avatar.png","monitor":{"mode":"recent","recent_n":10,"enabled":true,"last_checked_at":null,"last_succeeded_at":null}}`。删除后 monitor 为 null。身份的 name/avatar_url 可空，以兼容旧资料；前端昵称空时显示“未知用户”，头像空或加载失败时使用 `/default-avatar.svg`。01 阶段检查时间始终 null；23 后由持久目标检查/实际成功时间的最大值提供，未检查/未成功仍为 null，不把配置保存时间当成检查时间，详见 [采集与状态契约](collector-api.md)。默认 recent、10、enabled=false：新增 UP 只保存身份与默认配置并停在“监控已停止”，需用户显式启用后才进入发现与检查；无 UP 数量限额。
 
-错误统一为 `{"error":{"code":"INVALID_INPUT","message":"固定安全提示"}}`。校验 `422 INVALID_INPUT`，上游网络异常、拒绝、身份不符或资料不足 `502 PROFILE_UNAVAILABLE`，存储失败 `503 STORAGE_UNAVAILABLE`，非预期异常 `500 INTERNAL_ERROR`。响应及日志不回显请求体、上游原文、URL 查询参数或异常文本；前端只以固定错误码映射提示，不显示来自 HTTP 的任意错误文字。失败不产生身份或配置、不覆盖已有成功资料。
+错误统一为 `{"error":{"code":"INVALID_INPUT","message":"固定安全提示"}}`。校验 `422 INVALID_INPUT`，上游网络异常、拒绝、身份不符或资料不足 `502 PROFILE_UNAVAILABLE`，存储失败 `503 STORAGE_UNAVAILABLE`，非预期异常 `500 INTERNAL_ERROR`。响应及日志不回显请求体、完整上游响应、URL 查询参数或异常文本；服务端消息日志只允许下述审核通过的固定文本；前端只以固定错误码映射提示，不显示来自 HTTP 的任意错误文字。失败不产生身份或配置、不覆盖已有成功资料。
+
+### 服务端资料失败诊断
+
+`PROFILE_UNAVAILABLE` 的 HTTP 状态和响应结构不变；分类只写服务端 WARNING 日志，不增加前端字段或展示上游原文。每次预期的资料失败只产生一条固定格式事件：
+
+```text
+profile_lookup_failed reason=<分类> http_status=<状态>
+```
+
+HTTP 非成功或严格整数业务码非零时，同一条事件追加 `message_state=<分类> upstream_message=<JSON 字符串或 null>`。它会检查错误响应的顶层 `message`，仅在缺失、null 或空白时尝试 `msg`；不递归查个人资料，不把 HTTP 4xx 中的 `code=0` 当作成功。
+
+只解析已缓冲且不超过 8192 字节的响应正文；这不是网络读取总量上限。先检查正文大小，超限 HTML 也记为 `body_too_large`，不再检查其内容。非空候选消息原长最多 200 字符，去首尾空白后必须完全匹配 `profiles.py` 的 `_SAFE_UPSTREAM_MESSAGES` 固定安全目录，才将该文本用 JSON 引号输出。目录仅批准文本可记日志，不代表 B站当前实际返回这些短语。未知消息不能仅靠截断或正则保证不含秘密，因此不记录未知原文或片段。
+
+`message_state` 为 `allowed`、`missing`、`invalid_type`、`too_long`、`not_allowlisted`、`html`、`non_json`、`invalid_payload`、`body_too_large`、`empty_body` 或 `unreadable`。仅 `allowed` 的 `upstream_message` 非 null。HTML（含 XHTML）、非 JSON、未知/过长消息只记录上述原因；没有响应的超时/传输错误等仍用原 `reason`，不追加消息字段。已丢弃的历史响应无法补录；此前实测 HTTP 412 的 body 未保留，不能确认当时是 JSON、HTML 或存在何种 message。
+
+以下仅为格式示例，不是本次真实 B站响应证据：
+
+```text
+profile_lookup_failed reason=http_status http_status=412 message_state=allowed upstream_message="请求被拦截"
+```
+
+`reason` 为 `timeout`（HTTPX 超时）、`network_error`（其他 HTTPX 传输/协议错误）、`http_status`（上游 HTTP 非成功）、`upstream_rejected`（严格整数业务码非零）、`payload_invalid`（JSON、业务码类型或资料结构无效）、`uid_mismatch`（返回身份类型无效或与请求不符）、`profile_invalid`（昵称/头像缺失或不符合公开资料约束）。只有 `http_status` 分类记录严格整数且范围为 100–599 的状态，否则为 `unknown`；其他分类该字段为 `none`，不表示上游未返回响应。
+
+分类边界：`data.card` 缺失/无效或 `mid` 键缺失属于 `payload_invalid`；`mid` 存在但类型或值不符属于 `uid_mismatch`；身份匹配后 `name`/`face` 键缺失或值不符属于 `profile_invalid`，不是前述结构分类。
+
+日志不含请求 UID、URL、查询参数、headers、完整 body、昵称/头像、原始业务码、未经审核的上游 message、异常文本或 traceback。非零业务码只分类为拒绝，不能据此区分具体权限/风控原因；诊断分类本身也不是自动修复或新增重试授权。资料请求/原解析的捕获集合（HTTPX HTTPError、ValueError、KeyError、TypeError）不变；该阶段未落入集合的非预期异常仍遵循原 `500 INTERNAL_ERROR` 与安全处理。错误消息诊断是尽力而为的旁路，其自身异常只降级为 `unreadable`/null，不把已经确定的资料失败 502 改成 500，也不记录异常原文。失败依旧不创建/覆盖身份，不重试、不绕过拒绝。
 
 ## 上游资料边界
 
 服务端通过有超时的 HTTP transport 读取 `https://api.bilibili.com/x/web-interface/card?mid=<uid>` 的公开资料响应：code=0，data.card.mid 与 UID 相符，name 为非空字符串、face 为不带用户信息的 HTTPS URL。缺失或无效时明确失败，不以默认名字头像制造成功资料。只替换 HTTP transport 即可使用虚构上游 JSON fixtures 测试生产解析。浏览器不访问此接口，不接收或编辑凭据；不绕过拒绝，不实现 WBI/付费内容采集。未来上游协议变化需单独核验。
+
+来源默认匿名，普通初始化请求头使用真实应用名 User-Agent、中文语言偏好，并按 API/页面 host 分别协商 JSON/HTML，见[来源 client 初始化](../../../backend/README.md#来源-client-初始化)。不复制浏览器身份、Origin/Referer 或参考脚本的初始化网络请求，也不因此保证消除 HTTP 412。
+
+可选 `BILI_COOKIE_FILE` 仅指向仓库外私有文件，启动时读取一次；内容不经前端/API 输入，不返回身份 DTO，也不写入 SQLite/日志。只附加到 GET、HTTPS、标准 443、精确 `api.bilibili.com` / `www.bilibili.com`、无 URL 用户信息的来源请求；其他请求清除 Cookie。媒体客户端和 OSS 不接入。未配置保持原行为，配置无效拒绝启动，不静默退回匿名。安全文件约束及隐藏输入命令见[后端 Cookie 配置](../../../backend/README.md#可选-b站登录-cookie仅服务端)。不自动续期、不增加 WBI 或权限/风控绕过；启用登录态也不能保证资料查询成功。本次增补按用户要求未执行测试、回归、审查或真实验证。
 
 ## SQLite 与迁移
 

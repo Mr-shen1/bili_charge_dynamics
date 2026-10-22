@@ -1,0 +1,268 @@
+{
+  "checkedAt": "2026-10-18T12:32:49.789Z",
+  "purpose": "Only validate temporary comparison tool, not device or pixel acceptance",
+  "cases": [
+    {
+      "width": 360,
+      "status": 200,
+      "images": [
+        {
+          "src": "/visual-assets/visual-check/root-comment-side-by-side.png",
+          "naturalWidth": 1210,
+          "renderedWidth": 1210,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/single-reply-side-by-side.png",
+          "naturalWidth": 1210,
+          "renderedWidth": 1210,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/reply-entry-side-by-side.png",
+          "naturalWidth": 1210,
+          "renderedWidth": 1210,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/reply-preview-group-side-by-side.png",
+          "naturalWidth": 1210,
+          "renderedWidth": 1210,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/list-360.png",
+          "naturalWidth": 360,
+          "renderedWidth": 360,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/scope-360.png",
+          "naturalWidth": 360,
+          "renderedWidth": 360,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/detail-360.png",
+          "naturalWidth": 360,
+          "renderedWidth": 360,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/manage-360.png",
+          "naturalWidth": 360,
+          "renderedWidth": 360,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/list-390.png",
+          "naturalWidth": 390,
+          "renderedWidth": 390,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/scope-390.png",
+          "naturalWidth": 390,
+          "renderedWidth": 390,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/detail-390.png",
+          "naturalWidth": 390,
+          "renderedWidth": 390,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/manage-390.png",
+          "naturalWidth": 390,
+          "renderedWidth": 390,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/list-768.png",
+          "naturalWidth": 768,
+          "renderedWidth": 768,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/scope-768.png",
+          "naturalWidth": 768,
+          "renderedWidth": 768,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/detail-768.png",
+          "naturalWidth": 768,
+          "renderedWidth": 768,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/manage-768.png",
+          "naturalWidth": 768,
+          "renderedWidth": 768,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/list-1280.png",
+          "naturalWidth": 1280,
+          "renderedWidth": 1280,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/scope-1280.png",
+          "naturalWidth": 1280,
+          "renderedWidth": 1280,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/detail-1280.png",
+          "naturalWidth": 1280,
+          "renderedWidth": 1280,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/manage-1280.png",
+          "naturalWidth": 1280,
+          "renderedWidth": 1280,
+          "complete": true
+        }
+      ],
+      "overflow": false,
+      "external": [],
+      "frameNote": true,
+      "indentNote": true,
+      "errors": []
+    },
+    {
+      "width": 1280,
+      "status": 200,
+      "images": [
+        {
+          "src": "/visual-assets/visual-check/root-comment-side-by-side.png",
+          "naturalWidth": 1210,
+          "renderedWidth": 1210,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/single-reply-side-by-side.png",
+          "naturalWidth": 1210,
+          "renderedWidth": 1210,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/reply-entry-side-by-side.png",
+          "naturalWidth": 1210,
+          "renderedWidth": 1210,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/reply-preview-group-side-by-side.png",
+          "naturalWidth": 1210,
+          "renderedWidth": 1210,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/list-360.png",
+          "naturalWidth": 360,
+          "renderedWidth": 360,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/scope-360.png",
+          "naturalWidth": 360,
+          "renderedWidth": 360,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/detail-360.png",
+          "naturalWidth": 360,
+          "renderedWidth": 360,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/manage-360.png",
+          "naturalWidth": 360,
+          "renderedWidth": 360,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/list-390.png",
+          "naturalWidth": 390,
+          "renderedWidth": 390,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/scope-390.png",
+          "naturalWidth": 390,
+          "renderedWidth": 390,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/detail-390.png",
+          "naturalWidth": 390,
+          "renderedWidth": 390,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/manage-390.png",
+          "naturalWidth": 390,
+          "renderedWidth": 390,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/list-768.png",
+          "naturalWidth": 768,
+          "renderedWidth": 768,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/scope-768.png",
+          "naturalWidth": 768,
+          "renderedWidth": 768,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/detail-768.png",
+          "naturalWidth": 768,
+          "renderedWidth": 768,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/manage-768.png",
+          "naturalWidth": 768,
+          "renderedWidth": 768,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/list-1280.png",
+          "naturalWidth": 1280,
+          "renderedWidth": 1280,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/scope-1280.png",
+          "naturalWidth": 1280,
+          "renderedWidth": 1280,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/detail-1280.png",
+          "naturalWidth": 1280,
+          "renderedWidth": 1280,
+          "complete": true
+        },
+        {
+          "src": "/visual-assets/visual-check/manage-1280.png",
+          "naturalWidth": 1280,
+          "renderedWidth": 1280,
+          "complete": true
+        }
+      ],
+      "overflow": false,
+      "external": [],
+      "frameNote": true,
+      "indentNote": true,
+      "errors": []
+    }
+  ]
+}

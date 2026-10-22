@@ -1,0 +1,23 @@
+{"name":"list","width":360,"file":"list-360.png","overflow":false,"stable":true,"error":null}
+{"name":"scope","width":360,"file":"scope-360.png","overflow":false,"stable":true,"error":null}
+{"name":"detail","width":360,"file":"detail-360.png","overflow":false,"stable":true,"error":null}
+{"name":"manage","width":360,"file":"manage-360.png","overflow":false,"stable":true,"error":null}
+{"name":"list","width":390,"file":"list-390.png","overflow":false,"stable":true,"error":null}
+{"name":"scope","width":390,"file":"scope-390.png","overflow":false,"stable":true,"error":null}
+{"name":"detail","width":390,"file":"detail-390.png","overflow":false,"stable":true,"error":null}
+{"name":"manage","width":390,"file":"manage-390.png","overflow":false,"stable":true,"error":null}
+{"name":"list","width":768,"file":"list-768.png","overflow":false,"stable":true,"error":null}
+{"name":"scope","width":768,"file":"scope-768.png","overflow":false,"stable":true,"error":null}
+{"name":"detail","width":768,"file":"detail-768.png","overflow":false,"stable":true,"error":null}
+{"name":"manage","width":768,"file":"manage-768.png","overflow":false,"stable":true,"error":null}
+{"name":"list","width":1280,"file":"list-1280.png","overflow":false,"stable":true,"error":null}
+{"name":"scope","width":1280,"file":"scope-1280.png","overflow":false,"stable":true,"error":null}
+{"name":"detail","width":1280,"file":"detail-1280.png","overflow":false,"stable":true,"error":null}
+{"name":"manage","width":1280,"file":"manage-1280.png","overflow":false,"stable":true,"error":null}
+{
+  "output": "/home/kevin/Projects/PI/bili_charge_dynamics/.scratch/backend-integration/evidence/device-33/visual/runs/2026-10-18T12-21-26.119Z",
+  "reference": "/tmp/bili-device-33-xMpA6LHL/visual-reference/2026-10-18T12-21-26.119Z",
+  "comparisonPage": "https://192.168.8.20:18443/visual-assets/visual-check/index.html",
+  "screenshots": 16,
+  "errors": []
+}

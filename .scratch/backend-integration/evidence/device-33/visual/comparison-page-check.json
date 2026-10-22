@@ -1,0 +1,238 @@
+{
+  "startedAt": "2026-10-18T12:22:20.777Z",
+  "url": "https://192.168.8.20:18443/visual-assets/visual-check/index.html",
+  "samples": [
+    {
+      "width": 360,
+      "status": 200,
+      "title": "#33 临时视觉对照（待人工核验）",
+      "allImages": 20,
+      "failedImages": [],
+      "allRelativeLinks": true,
+      "allLocalImages": true,
+      "sourceVsImplementationLabel": true,
+      "sourceVsImplementationHeightDisclaimer": true,
+      "documentOverflow": false,
+      "imgScaling": [
+        {
+          "path": "./root-comment-side-by-side.png",
+          "naturalWidth": 1210,
+          "renderedWidth": 1210
+        },
+        {
+          "path": "./single-reply-side-by-side.png",
+          "naturalWidth": 1210,
+          "renderedWidth": 1210
+        },
+        {
+          "path": "./reply-entry-side-by-side.png",
+          "naturalWidth": 1210,
+          "renderedWidth": 1210
+        },
+        {
+          "path": "./reply-preview-group-side-by-side.png",
+          "naturalWidth": 1210,
+          "renderedWidth": 1210
+        },
+        {
+          "path": "./list-360.png",
+          "naturalWidth": 360,
+          "renderedWidth": 360
+        },
+        {
+          "path": "./scope-360.png",
+          "naturalWidth": 360,
+          "renderedWidth": 360
+        },
+        {
+          "path": "./detail-360.png",
+          "naturalWidth": 360,
+          "renderedWidth": 360
+        },
+        {
+          "path": "./manage-360.png",
+          "naturalWidth": 360,
+          "renderedWidth": 360
+        },
+        {
+          "path": "./list-390.png",
+          "naturalWidth": 390,
+          "renderedWidth": 390
+        },
+        {
+          "path": "./scope-390.png",
+          "naturalWidth": 390,
+          "renderedWidth": 390
+        },
+        {
+          "path": "./detail-390.png",
+          "naturalWidth": 390,
+          "renderedWidth": 390
+        },
+        {
+          "path": "./manage-390.png",
+          "naturalWidth": 390,
+          "renderedWidth": 390
+        },
+        {
+          "path": "./list-768.png",
+          "naturalWidth": 768,
+          "renderedWidth": 768
+        },
+        {
+          "path": "./scope-768.png",
+          "naturalWidth": 768,
+          "renderedWidth": 768
+        },
+        {
+          "path": "./detail-768.png",
+          "naturalWidth": 768,
+          "renderedWidth": 768
+        },
+        {
+          "path": "./manage-768.png",
+          "naturalWidth": 768,
+          "renderedWidth": 768
+        },
+        {
+          "path": "./list-1280.png",
+          "naturalWidth": 1280,
+          "renderedWidth": 1280
+        },
+        {
+          "path": "./scope-1280.png",
+          "naturalWidth": 1280,
+          "renderedWidth": 1280
+        },
+        {
+          "path": "./detail-1280.png",
+          "naturalWidth": 1280,
+          "renderedWidth": 1280
+        },
+        {
+          "path": "./manage-1280.png",
+          "naturalWidth": 1280,
+          "renderedWidth": 1280
+        }
+      ]
+    },
+    {
+      "width": 1280,
+      "status": 200,
+      "title": "#33 临时视觉对照（待人工核验）",
+      "allImages": 20,
+      "failedImages": [],
+      "allRelativeLinks": true,
+      "allLocalImages": true,
+      "sourceVsImplementationLabel": true,
+      "sourceVsImplementationHeightDisclaimer": true,
+      "documentOverflow": false,
+      "imgScaling": [
+        {
+          "path": "./root-comment-side-by-side.png",
+          "naturalWidth": 1210,
+          "renderedWidth": 1210
+        },
+        {
+          "path": "./single-reply-side-by-side.png",
+          "naturalWidth": 1210,
+          "renderedWidth": 1210
+        },
+        {
+          "path": "./reply-entry-side-by-side.png",
+          "naturalWidth": 1210,
+          "renderedWidth": 1210
+        },
+        {
+          "path": "./reply-preview-group-side-by-side.png",
+          "naturalWidth": 1210,
+          "renderedWidth": 1210
+        },
+        {
+          "path": "./list-360.png",
+          "naturalWidth": 360,
+          "renderedWidth": 360
+        },
+        {
+          "path": "./scope-360.png",
+          "naturalWidth": 360,
+          "renderedWidth": 360
+        },
+        {
+          "path": "./detail-360.png",
+          "naturalWidth": 360,
+          "renderedWidth": 360
+        },
+        {
+          "path": "./manage-360.png",
+          "naturalWidth": 360,
+          "renderedWidth": 360
+        },
+        {
+          "path": "./list-390.png",
+          "naturalWidth": 390,
+          "renderedWidth": 390
+        },
+        {
+          "path": "./scope-390.png",
+          "naturalWidth": 390,
+          "renderedWidth": 390
+        },
+        {
+          "path": "./detail-390.png",
+          "naturalWidth": 390,
+          "renderedWidth": 390
+        },
+        {
+          "path": "./manage-390.png",
+          "naturalWidth": 390,
+          "renderedWidth": 390
+        },
+        {
+          "path": "./list-768.png",
+          "naturalWidth": 768,
+          "renderedWidth": 768
+        },
+        {
+          "path": "./scope-768.png",
+          "naturalWidth": 768,
+          "renderedWidth": 768
+        },
+        {
+          "path": "./detail-768.png",
+          "naturalWidth": 768,
+          "renderedWidth": 768
+        },
+        {
+          "path": "./manage-768.png",
+          "naturalWidth": 768,
+          "renderedWidth": 768
+        },
+        {
+          "path": "./list-1280.png",
+          "naturalWidth": 1280,
+          "renderedWidth": 1280
+        },
+        {
+          "path": "./scope-1280.png",
+          "naturalWidth": 1280,
+          "renderedWidth": 1280
+        },
+        {
+          "path": "./detail-1280.png",
+          "naturalWidth": 1280,
+          "renderedWidth": 1280
+        },
+        {
+          "path": "./manage-1280.png",
+          "naturalWidth": 1280,
+          "renderedWidth": 1280
+        }
+      ]
+    }
+  ],
+  "blocked": [],
+  "httpErrors": [],
+  "pageErrors": [],
+  "finishedAt": "2026-10-18T12:22:22.001Z"
+}
