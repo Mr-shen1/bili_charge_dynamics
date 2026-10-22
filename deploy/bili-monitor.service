@@ -42,10 +42,15 @@ KillSignal=SIGTERM
 TimeoutStopSec=60s
 
 # 只写数据库目录；保护系统与发布目录。
+#
+# 注意 ProtectHome：**不要设成 yes**。uv 把 CPython 安装到
+# /home/<user>/.local/share/uv/python/，而 .venv/bin/python 只是软链到那里；
+# 屏蔽 /home 会让 ExecStart 无法执行，systemd 报 status=203/EXEC。
+# 改用 read-only：允许执行 Python，仍禁止写家目录。
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
-ProtectHome=yes
+ProtectHome=read-only
 ReadWritePaths=/srv/bili-monitor
 
 [Install]
