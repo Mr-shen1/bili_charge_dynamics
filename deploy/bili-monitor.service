@@ -1,0 +1,52 @@
+# 阿里云 ECS systemd unit：单 API + 单 collector（统一托管入口）
+#
+# 安装：
+#     sudo install -D -m 0644 deploy/bili-monitor.service \
+#         /etc/systemd/system/bili-monitor.service
+#     sudo systemctl daemon-reload
+#     sudo systemctl enable --now bili-monitor
+#
+# 运行用户与目录（首次部署时创建，见 docs/deployment/aliyun-ecs.md）：
+#     bili 用户；/srv/bili-monitor/app 为代码检出；/etc/bili-monitor/env 为环境文件。
+#
+# 关键约束（来自 docs/deployment/static-delivery.md）：
+#   * 单 API、单 collector；不要加 --workers、--reload 或 WEB_CONCURRENCY。
+#   * API 与 collector 必须使用同一个绝对 SQLite 路径和同一代码版本。
+#   * 升级必须先停服务并等待退出，再切换代码与依赖，然后启动。
+#   * 应用不加载 .env；环境由 systemd EnvironmentFile 注入（本文件由
+#     systemd 读取，不违反该约束）。凭据不得出现在命令行参数中。
+
+[Unit]
+Description=Bili charge dynamics monitor (API + collector)
+Documentation=file:/srv/bili-monitor/app/docs/deployment/static-delivery.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bili
+Group=bili
+WorkingDirectory=/srv/bili-monitor/app
+
+EnvironmentFile=/etc/bili-monitor/env
+
+# 统一入口：先等 API 完成迁移并监听，再启动独立 collector；
+# 任一子进程退出则整体退出，由 systemd 重启。
+ExecStart=/srv/bili-monitor/app/.venv/bin/python -m backend.bili_monitor.service --host 127.0.0.1 --port 8000
+
+Restart=always
+RestartSec=5s
+
+# collector 退出时会取消在途任务并等待清理；给足时间再强杀。
+KillSignal=SIGTERM
+TimeoutStopSec=60s
+
+# 只写数据库目录；保护系统与发布目录。
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/srv/bili-monitor
+
+[Install]
+WantedBy=multi-user.target

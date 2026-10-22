@@ -31,6 +31,7 @@
 - [项目 README](../README.md)：前端、API 启动与测试入口。
 - [后端 README](../backend/README.md)：后端运行、配置及初始化说明。
 - [交付运行说明](deployment/static-delivery.md)：当前双进程/SQLite/Nginx 的构建、迁移、启停与隔离验证；历史静态基线单列，部署回归不等于云部署或全项目验收。
+- [阿里云 ECS 运维手册](deployment/aliyun-ecs.md)：目标机的系统准备、SSH 硬化、systemd/Nginx 安装、备份、升级回滚与备案切换；尚未在目标机执行，不代替验收。
 
 ## 任务、计划与验收记录
 

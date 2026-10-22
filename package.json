@@ -16,6 +16,7 @@
     "test:e2e:archive": "playwright test --config playwright.archive.config.ts",
     "test:e2e:preview": "pnpm build:mock && E2E_TARGET=preview playwright test",
     "test:delivery": "node scripts/verify-static-delivery.mjs",
+    "test:nginx-parity": "node scripts/verify-nginx-parity.mjs",
     "test:http": "node scripts/verify-http-navigation.mjs",
     "build": "tsc --noEmit && vite build",
     "build:mock": "tsc --noEmit && vite build --mode mock",
