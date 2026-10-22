@@ -25,7 +25,7 @@
 - [ ] 前端经 `scripts/deploy-frontend.sh` 发布，`current` 为指向 `releases/<时间戳>-<commit>` 的软链；重复执行不报错且旧版本被清理。
 - [ ] `curl` 在服务器本机验证：`/` 与 `/manage` 返回 200；`/api/nope` 返回 404 而非 200 HTML；`/assets/<不存在>.js` 返回 404 且带 `Cache-Control: no-store`。
 - [ ] 哈希资源响应含 `Content-Encoding: gzip`；`/assets/` 带 `immutable` 长缓存。
-- [ ] 本地 `ssh -N <别名>` 后浏览器可打开 `http://127.0.0.1:4173/` 与 `/manage`；添加一个 UP 后 1 分钟内 checks 出现记录。
+- [x] 本地 `ssh -N <别名>` 后浏览器可打开 `http://127.0.0.1:4173/` 与 `/manage`；添加 UP 后采集链路实际生效，维护者确认充电专属内容可在页面读到（见下方 2026-10-23 记录）。
 - [ ] 定时 `sqlite3 .backup` 已配置并验证产出可读的备份文件。
 
 ## 测试与完成证据
@@ -120,6 +120,23 @@ bili-monitor.service: Unable to locate executable
 **顺带发现的文档漂移**：目标库实测 `PRAGMA user_version = 14`，但 `docs/deployment/static-delivery.md:73` 与 `backend/README.md:20` 均写「当前 schema 为 v13」（`backend/README.md:257` 的 schema 列表也只到 v13），代码 `storage.py:217` 已到 v14。本票只修正自己新增的运行手册，既有文档的 v13 说法未动，属另行处理的范围。
 
 仍待验：浏览器内的完整操作流程（添加 UP 后 1 分钟内 checks 出现记录）、持续运行内存曲线、阶段二的 HTTPS 与 Basic Auth。
+
+### 2026-10-23 端到端采集链路与登录态验证通过（阶段一完成）
+
+维护者通过 SSH 隧道在浏览器中完成实际操作：添加 UP、启用监控，**充电专属动态与评论可在页面正常读取**。
+
+这同时验证了两件事：
+
+1. **端到端链路**：Nginx → API → SQLite → 前端阅读页完整可用，不再只验到 API 层。
+2. **登录态有效**：`source.py:284-285` 对 `MAJOR_TYPE_BLOCKED` 才标记 `restricted`，而该判断由 B 站服务端做出。内容能正常读到，说明 cookie 已被上游接受、账号对目标内容有权限。
+
+配置方式：`backend.bili_monitor.source_cookies` 的 `--write` 写入 `/srv/bili-monitor/credentials/cookie.txt`（目录 0700、文件 0600、属主 bili），`/etc/bili-monitor/env` 中启用 `BILI_COOKIE_FILE`，重启后启动成功（配置无效会直接启动失败，不会静默退回匿名）。
+
+**维护点**：cookie 固定写在文件中，服务不会热加载也不提示过期。轮换时必须写入新文件名（工具拒绝覆盖），更新 `BILI_COOKIE_FILE` 后重启。
+
+**安全含义变化**：启用登录态后，能访问该服务的人即可用此账号的来源读取权限读取归档（`backend/README.md:172`）。当前阶段一仅监听回环、无公网入口，阶段二启用 Basic Auth 时需重新评估。
+
+**阶段一核验结果**：除 OSS 媒体上传（本票范围外）与持续运行内存曲线外，runbook 第 0–8 节已全部在目标机执行并验证。
 
 ### 2026-10-23 修复环境模板可选变量空值
 

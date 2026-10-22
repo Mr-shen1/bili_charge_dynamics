@@ -111,15 +111,17 @@
 
 ## 4. 未验证事项
 
-以下全部未在目标机执行，不得作为已通过的结论：
+以下为部署过程中识别的风险点及验证状态；阶段一范围内已实测的项目标为完成，其余不得当作已通过：
 
-- [x] 统一入口 `backend.bili_monitor.service` 的实际运行——2026-10-23 在目标机以手动形态实测通过（HTTP 200、API 迁移完成、collector `cadence_seconds=15`）。上游文档原声明该入口未验证；systemd 托管形态仍待验。
-- [ ] systemd unit 在 `ProtectSystem=strict` + `ReadWritePaths` 下能否正常写 SQLite 与 `.collector.lock`
+- [x] 统一入口 `backend.bili_monitor.service` 的实际运行——2026-10-23 在目标机实测通过（HTTP 200、API 迁移完成、collector `cadence_seconds=15`）。上游文档原声明该入口未验证。
+- [x] systemd unit 在 `ProtectSystem=strict` + `ReadWritePaths` 下能否正常写 SQLite 与 `.collector.lock`——实测通过；期间修正了 `ProtectHome=yes` 导致 `203/EXEC` 的缺陷（改为 `read-only`）。
 - [x] Debian 13 上 `uv sync --locked --no-dev` 与 CPython 3.12 的获取——实测得到 CPython 3.12.15，`fastapi`/`oss2`/`uvicorn` 导入正常。
 - [x] 三份新增 Nginx 配置的 `nginx -t` 与实际 HTTP 行为——`nginx-ecs-tunnel.conf` 已在目标机 nginx/1.26.3 上通过 `nginx -t` 并验通全部 HTTP 行为；`nginx-ecs-https.conf` 因缺域名与证书仍未验。
 - [x] `scripts/deploy-frontend.sh` 的 rsync、`mv -Tf` 原子切换与旧版本清理——已实际发布并验通。
 - [ ] Basic Auth 登录后管理页 fetch 是否自动携带凭据（realm 一致性）
-- [ ] 2 GiB 内存 + 加 swap 后 collector 长时间运行的稳定性（短时运行已验，无 OOM）
+- [ ] 2 GiB 内存 + 加 swap 后 collector 长时间运行的稳定性（短时运行与内存峰值 113 MB 已观察，无 OOM；持续曲线仍待观察）
+- [x] 端到端采集链路与登录态——维护者通过隧道在页面确认充电专属内容可读，说明 cookie 被上游接受且账号有权限。
+- [ ] OSS 媒体上传（本工作未配置，媒体保持待归档）
 - [ ] 备案流程与证书签发
 
 ## 5. 风险边界
