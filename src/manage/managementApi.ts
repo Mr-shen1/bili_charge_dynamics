@@ -27,6 +27,7 @@ export type ManagementResult<T> =
   | { readonly status: 'cancelled' };
 export type ManagementTransport = (url: string, init: RequestInit) => Promise<Response>;
 
+export const authenticationRequiredMessage = '管理访问需要身份验证，请使用页面顶部的“重新身份验证”入口。';
 export const invalidUidMessage = 'UID 须为无前导零的正整数字符串，最多 128 位。';
 export const isValidUid = isValidId;
 function avatar(value: unknown): value is string | null {
@@ -71,14 +72,25 @@ function httpError(body: unknown, status: number): ManagementResult<never> {
 
 /** 只替换 HTTP 传输；JSON 校验和安全文案始终经过生产映射。 */
 export function createManagementApi(transport: ManagementTransport = (url, init) => fetch(url, init)) {
+  async function request(url: string, init: RequestInit & { signal: AbortSignal }): Promise<ManagementResult<Response>> {
+    if (init.signal.aborted) return { status: 'cancelled' };
+    const response = await transport(url, init);
+    // 反代可能返回 HTML challenge；取消优先，且 401 永不解析或回显响应体。
+    if (init.signal.aborted) return { status: 'cancelled' };
+    if (response.status === 401) return { status: 'error', message: authenticationRequiredMessage };
+    return { status: 'success', data: response };
+  }
   async function upRequest(uid: string, signal: AbortSignal, method: 'GET' | 'PATCH', monitor?: MonitorConfig): Promise<ManagementResult<ManagedUp>> {
     if (!isValidUid(uid)) return { status: 'error', message: invalidUidMessage };
     try {
       if (signal.aborted) return { status: 'cancelled' };
-      const response = await transport(`/api/manage/ups/${uid}${method === 'PATCH' ? '/monitor' : ''}`, {
+      const result = await request(`/api/manage/ups/${uid}${method === 'PATCH' ? '/monitor' : ''}`, {
         method, signal, ...(monitor ? { headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ mode: monitor.mode, recent_n: monitor.recentN, enabled: monitor.enabled }) } : {}),
       });
+      if (signal.aborted) return { status: 'cancelled' };
+      if (result.status !== 'success') return result;
+      const response = result.data;
       const body: unknown = await response.json();
       if (signal.aborted) return { status: 'cancelled' };
       if (!response.ok) return httpError(body, response.status);
@@ -94,10 +106,12 @@ export function createManagementApi(transport: ManagementTransport = (url, init)
     if (method !== 'GET' && !isValidId(id)) return { status: 'error', message: invalidTargetMessage };
     try {
       if (signal.aborted) return { status: 'cancelled' };
-      const response = await transport(`/api/manage/ups/${uid}/targets${method === 'DELETE' ? `/${id}` : ''}`, {
+      const result = await request(`/api/manage/ups/${uid}/targets${method === 'DELETE' ? `/${id}` : ''}`, {
         method, signal, ...(method === 'POST' ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) } : {}),
       });
       if (signal.aborted) return { status: 'cancelled' };
+      if (result.status !== 'success') return result;
+      const response = result.data;
       if (method === 'DELETE' && response.status === 204) return { status: 'success', data: undefined };
       const body: unknown = await response.json();
       if (signal.aborted) return { status: 'cancelled' };
@@ -111,7 +125,10 @@ export function createManagementApi(transport: ManagementTransport = (url, init)
       if (!isValidUid(uid)) return { status: 'error', message: invalidUidMessage };
       try {
         if (signal.aborted) return { status: 'cancelled' };
-        const response = await transport(`/api/manage/ups/${uid}/discovery`, { method: 'GET', signal });
+        const result = await request(`/api/manage/ups/${uid}/discovery`, { method: 'GET', signal });
+        if (signal.aborted) return { status: 'cancelled' };
+        if (result.status !== 'success') return result;
+        const response = result.data;
         const body: unknown = await response.json();
         if (signal.aborted) return { status: 'cancelled' };
         if (!response.ok) return httpError(body, response.status);
@@ -124,7 +141,10 @@ export function createManagementApi(transport: ManagementTransport = (url, init)
       if (!isValidUid(uid)) return { status: 'error', message: invalidUidMessage };
       try {
         if (signal.aborted) return { status: 'cancelled' };
-        const response = await transport(`/api/manage/ups/${uid}/checks`, { method: 'GET', signal });
+        const result = await request(`/api/manage/ups/${uid}/checks`, { method: 'GET', signal });
+        if (signal.aborted) return { status: 'cancelled' };
+        if (result.status !== 'success') return result;
+        const response = result.data;
         const body: unknown = await response.json();
         if (signal.aborted) return { status: 'cancelled' };
         if (!response.ok) return httpError(body, response.status);
@@ -173,8 +193,10 @@ export function createManagementApi(transport: ManagementTransport = (url, init)
       if (!isValidUid(uid)) return { status: 'error', message: invalidUidMessage };
       try {
         if (signal.aborted) return { status: 'cancelled' };
-        const response = await transport(`/api/manage/ups/${uid}/monitor`, { method: 'DELETE', signal });
+        const result = await request(`/api/manage/ups/${uid}/monitor`, { method: 'DELETE', signal });
         if (signal.aborted) return { status: 'cancelled' };
+        if (result.status !== 'success') return result;
+        const response = result.data;
         if (response.status === 204) return { status: 'success', data: undefined };
         const body: unknown = await response.json();
         if (signal.aborted) return { status: 'cancelled' };
@@ -187,8 +209,11 @@ export function createManagementApi(transport: ManagementTransport = (url, init)
       if (!isValidUid(uid)) return { status: 'error', message: invalidUidMessage };
       try {
         if (signal.aborted) return { status: 'cancelled' };
-        const response = await transport('/api/manage/ups', { method: 'POST', signal,
+        const result = await request('/api/manage/ups', { method: 'POST', signal,
           headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ uid }) });
+        if (signal.aborted) return { status: 'cancelled' };
+        if (result.status !== 'success') return result;
+        const response = result.data;
         const body: unknown = await response.json();
         if (signal.aborted) return { status: 'cancelled' };
         if (!response.ok) return httpError(body, response.status);
@@ -202,7 +227,10 @@ export function createManagementApi(transport: ManagementTransport = (url, init)
     async listUps({ signal }: { readonly signal: AbortSignal }): Promise<ManagementResult<readonly ManagedUp[]>> {
       try {
         if (signal.aborted) return { status: 'cancelled' };
-        const response = await transport('/api/manage/ups', { method: 'GET', signal });
+        const result = await request('/api/manage/ups', { method: 'GET', signal });
+        if (signal.aborted) return { status: 'cancelled' };
+        if (result.status !== 'success') return result;
+        const response = result.data;
         const body: unknown = await response.json();
         if (signal.aborted) return { status: 'cancelled' };
         if (!response.ok) return httpError(body, response.status);

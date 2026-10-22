@@ -130,8 +130,10 @@ describe('生产 ArchiveReader', () => {
     expect(await reader.readReplies({ dynamicId: archive.id, rootId: rootComment.id, limit: 3, signal })).toEqual({ status: 'success', data: {
       items: [{ id: '900719925474099399999', author: { id: '123', nickname: '归档作者', avatarUrl: 'https://avatar.example.test/user.jpg' },
         publishedAt: '2026-03-01T12:03:04+08:00', text: '<script>not executable</script>\n评论 😀 https://example.test',
-        likeCount: 0, replyTo: { id: '456', nickname: '回复目标', avatarUrl: 'https://avatar.example.test/target.jpg' } },
-      { id: '2', author: { id: '', nickname: null, avatarUrl: null }, publishedAt: null, text: '', likeCount: null, replyTo: null }],
+        likeCount: 0, replyTo: { id: '456', nickname: '回复目标', avatarUrl: 'https://avatar.example.test/target.jpg' },
+        parentId: null },
+      { id: '2', author: { id: '', nickname: null, avatarUrl: null }, publishedAt: null, text: '', likeCount: null, replyTo: null,
+        parentId: null }],
       nextCursor: null,
     } });
   });
@@ -235,7 +237,7 @@ describe('生产 ArchiveReader', () => {
       }], next_cursor: null }));
       expect(await reader.readReplies({ dynamicId: archive.id, rootId: rootComment.id, limit: 3, signal })).toEqual({ status: 'success', data: {
         items: [{ id: '900719925474099399999', author: { id: '123', nickname: null, avatarUrl: null },
-          text: '', publishedAt: null, likeCount: 0, replyTo: null }], nextCursor: null,
+          text: '', publishedAt: null, likeCount: 0, replyTo: null, parentId: null }], nextCursor: null,
       } });
     }
   });
@@ -307,7 +309,8 @@ describe('生产 ArchiveReader', () => {
   it('根评论 DTO 映射保持大 ID、普通文本、来源回复数，不展示来源图片', async () => {
     const reader = createArchiveReader(async () => Response.json({ items: [rootComment], next_cursor: null }));
     expect(await reader.readComments({ dynamicId: archive.id, sort: 'hot', signal })).toEqual({ status: 'success', data: {
-      items: [{ id: '900719925474099398765', author: { id: '123', nickname: '归档作者', avatarUrl: 'https://avatar.example.test/user.jpg' },
+      items: [{ id: '900719925474099398765', isPinned: false,
+        author: { id: '123', nickname: '归档作者', avatarUrl: 'https://avatar.example.test/user.jpg' },
         publishedAt: '2026-03-01T12:03:04+08:00', text: '<script>not executable</script>\n评论 😀 https://example.test',
         likeCount: 0, replyCount: 25, pendingMediaCount: 1 }], nextCursor: null,
     } });
@@ -318,7 +321,8 @@ describe('生产 ArchiveReader', () => {
       like_count: null, source_reply_count: null,
     }], next_cursor: null }));
     expect(await reader.readComments({ dynamicId: archive.id, sort: 'latest', signal })).toEqual({ status: 'success', data: {
-      items: [{ id: '900719925474099398765', author: { id: '', nickname: null, avatarUrl: null },
+      items: [{ id: '900719925474099398765', isPinned: false,
+        author: { id: '', nickname: null, avatarUrl: null },
         text: '', publishedAt: null, likeCount: null, replyCount: null, pendingMediaCount: 1 }], nextCursor: null,
     } });
   });
@@ -426,7 +430,8 @@ describe('生产 ArchiveReader', () => {
           { url: 'https://upstream.example.test/comment.jpg', width: 800, height: 600 }],
       }], next_cursor: null }));
       expect(await reader.readComments({ dynamicId: archive.id, sort: 'hot', signal })).toEqual({ status: 'success', data: {
-        items: [{ id: '900719925474099398765', author: { id: '123', nickname: null, avatarUrl: null },
+        items: [{ id: '900719925474099398765', isPinned: false,
+          author: { id: '123', nickname: null, avatarUrl: null },
           text: '', publishedAt: null, likeCount: 0, replyCount: 25, pendingMediaCount: 2 }], nextCursor: null,
       } });
     }

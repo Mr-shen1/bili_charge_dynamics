@@ -170,7 +170,8 @@ it.each(['success', 'error', 'rejection'] as const)('新排序先成功后，忽
   await user.click(within(area).getByRole('button', { name: '加载更多评论' }));
   expect(await within(area).findByText('新排序第二批')).toBeVisible();
   expect(within(area).getAllByRole('listitem')).toHaveLength(2);
-  expect(within(area).getByText('评论已加载完毕')).toBeVisible();
+  // 列表结束不再单独提示；以没有“加载更多评论”按钮表达已读完。
+  expect(within(area).queryByRole('button', { name: '加载更多评论' })).not.toBeInTheDocument();
   expect(screen.getByText('上方动态保持完整')).toBeVisible();
 });
 
@@ -260,7 +261,8 @@ it('两种排序20、20、5连续读完，切换丢弃旧进度但保留上方�
     expect(within(area).getAllByRole('listitem')).toHaveLength(40);
     await user.click(within(area).getByRole('button', { name: '加载更多评论' }));
     expect(within(area).getAllByRole('listitem')).toHaveLength(45);
-    expect(within(area).getByText('评论已加载完毕')).toBeVisible();
+    // 列表结束不再单独提示；以没有“加载更多评论”按钮表达已读完。
+  expect(within(area).queryByRole('button', { name: '加载更多评论' })).not.toBeInTheDocument();
     expect(within(area).queryByRole('button', { name: '加载更多评论' })).not.toBeInTheDocument();
     expect(screen.getByText('上方动态保持完整')).toBe(upper);
   }
@@ -296,5 +298,6 @@ it('详情默认最热，一级评论安全展示身份、北京时间及只读�
   expect(area.querySelector('script')).toBeNull();
   expect(within(area).queryByRole('link')).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: '评论 100' })).toBeVisible();
-  expect(within(area).getByText('评论已加载完毕')).toBeVisible();
+  // 列表结束不再单独提示；以没有“加载更多评论”按钮表达已读完。
+  expect(within(area).queryByRole('button', { name: '加载更多评论' })).not.toBeInTheDocument();
 });

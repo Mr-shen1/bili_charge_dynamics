@@ -1,4 +1,4 @@
-import { fireEvent, getNodeText, render, screen, within } from '@testing-library/react';
+import { fireEvent, getNodeText, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useNavigate } from 'react-router';
 import { expect, it } from 'vitest';
 import userEvent from '@testing-library/user-event';
@@ -113,26 +113,38 @@ it('确认归档成功的空回复才显示暂无回复，零来源根不请求�
   expect(requests).toEqual([`/api/archive/dynamics/${archive.id}/comments/${rootComment.id}/replies?limit=3`]);
 });
 
-it('生产Adapter保留服务端25条顺序及3/13/23/25范围，失败同批重试，历史保存元数据和cursor', async () => {
+it('生产Adapter按时间整页10/10/5读取，失败原页重试，历史保留预览元数据但展开重读', async () => {
   const user = userEvent.setup();
+  const target = { id: '456', nickname: '上一页的回复者', avatar_url: null };
   const items = Array.from({ length: 25 }, (_, index) => ({ ...reply, id: String(300 + index),
-    text: `服务端回复 ${index}`, like_count: 25 - index }));
+    published_at: new Date(Date.UTC(2026, 2, 1, 0, index)).toISOString(),
+    text: `服务端回复 ${index}`, like_count: 25 - index,
+    ...(index === 10 || index === 20 ? { parent_id: String(299 + index), reply_to: target } : {}),
+  }));
   const requests: string[] = [];
   let failed = false;
-  show(async url => {
+  show(async (url, init) => {
     if (url.endsWith('/ups')) return Response.json({ ups: [] });
     if (url.includes('/replies?')) {
       requests.push(url);
-      const cursor = new URL(url, 'https://archive.example.test').searchParams.get('cursor');
-      if (cursor === 'second+/=' && !failed) { failed = true; throw new Error('SECRET_TOKEN'); }
-      const offset = cursor === 'second+/=' ? 3 : cursor === 'third' ? 13 : cursor === 'last' ? 23 : 0;
-      return Response.json({ items: items.slice(offset, offset === 0 ? 3 : offset + 10),
-        next_cursor: offset === 0 ? 'second+/=' : offset === 3 ? 'third' : offset === 13 ? 'last' : null,
-        // 旧冻结/可选DTO字段可能只在首批出现，追加不得丢掉已知归档状态。
-        ...(offset === 0 ? { source_reply_count: 30, local_reply_count: 25,
-          replies_last_attempt: 'failed', synced_source_reply_count: null }
-          : offset === 23 ? { source_reply_count: null, local_reply_count: 25,
-            replies_last_attempt: 'success', synced_source_reply_count: null } : {}) });
+      expect(init?.method).toBe('GET');
+      const query = new URL(url, 'https://archive.example.test').searchParams;
+      const page = query.get('page');
+      if (page !== null) {
+        expect(query.get('limit')).toBe('10');
+        expect(query.has('cursor')).toBe(false);
+        expect(init?.cache).toBe('no-store');
+        if (!failed) { failed = true; throw new Error('SECRET_TOKEN'); }
+        const offset = (Number(page) - 1) * 10;
+        return Response.json({ items: items.slice(offset, offset + 10), next_cursor: null,
+          count: items.length, root: rootComment, local_reply_count: items.length,
+          source_reply_count: page === '3' ? null : 30,
+          replies_last_attempt: page === '3' ? 'success' : 'failed', synced_source_reply_count: null });
+      }
+      expect(query.get('limit')).toBe('3');
+      expect(query.has('cursor')).toBe(false);
+      return Response.json({ items: items.slice(0, 3), next_cursor: 'second+/=',
+        source_reply_count: 30, local_reply_count: 25, replies_last_attempt: 'failed', synced_source_reply_count: null });
     }
     return Response.json(url.includes('/comments?') ? { items: [rootComment], next_cursor: null }
       : url.includes('?') ? { items: [archive], next_cursor: null } : archive);
@@ -148,9 +160,9 @@ it('生产Adapter保留服务端25条顺序及3/13/23/25范围，失败同批重
   expect(within(area).getAllByRole('listitem')).toHaveLength(3);
   expect(document.body).not.toHaveTextContent('SECRET_TOKEN');
   await user.click(within(area).getByRole('button', { name: '重试' }));
-  await within(area).findByText('服务端回复 12');
-  expect(within(area).getAllByRole('listitem')).toHaveLength(13);
-  await user.click(within(area).getByRole('button', { name: '收起回复' }));
+  await within(area).findByText('服务端回复 9');
+  expect(within(area).getAllByRole('listitem')).toHaveLength(10);
+  await user.click(within(area).getByRole('button', { name: '收起' }));
   expect(within(area).getAllByRole('listitem')).toHaveLength(3);
   await user.click(screen.getByRole('button', { name: '返回列表' }));
   await screen.findByRole('link', { name: `阅读全文 ${archive.id}` });
@@ -159,32 +171,39 @@ it('生产Adapter保留服务端25条顺序及3/13/23/25范围，失败同批重
   expect(within(area).getByText('来源回复：30；本地已归档回复：25')).toBeVisible();
   expect(within(area).getByText('回复最近归档失败；已保存回复仍可阅读。')).toBeVisible();
   expect(within(area).getAllByRole('listitem')).toHaveLength(3);
-  await user.click(within(area).getByRole('button', { name: '展开回复' }));
-  expect(within(area).getAllByRole('listitem')).toHaveLength(13);
   expect(requests).toHaveLength(3);
-  await user.click(within(area).getByRole('button', { name: '加载更多回复' }));
-  await within(area).findByText('服务端回复 22');
-  expect(within(area).getAllByRole('listitem')).toHaveLength(23);
-  await user.click(within(area).getByRole('button', { name: '加载更多回复' }));
+  items[0]!.text = '服务端回复 0（重读）';
+  await user.click(within(area).getByRole('button', { name: '展开回复' }));
+  await within(area).findByText('服务端回复 0（重读）');
+  expect(within(area).getAllByRole('listitem')).toHaveLength(10);
+  expect(requests).toHaveLength(4);
+  await user.click(within(area).getByRole('button', { name: '下一页' }));
+  await within(area).findByText('服务端回复 19');
+  expect(within(area).getAllByRole('listitem')).toHaveLength(10);
+  expect(within(area).queryByText('服务端回复 0（重读）')).not.toBeInTheDocument();
+  expect(within(area).getByText('回复 上一页的回复者:')).toBeVisible();
+  expect(within(area).getAllByRole('listitem').map(row => getNodeText(within(row).getByText(/^服务端回复/)).trim()))
+    .toEqual(Array.from({ length: 10 }, (_, index) => `服务端回复 ${10 + index}`));
+  await user.click(within(area).getByRole('button', { name: '下一页' }));
   await within(area).findByText('服务端回复 24');
-  expect(within(area).getAllByRole('listitem')).toHaveLength(25);
+  expect(within(area).getAllByRole('listitem')).toHaveLength(5);
   expect(within(area).getByText('来源回复：—；本地已归档回复：25')).toBeVisible();
   expect(within(area).queryByText('回复最近归档失败；已保存回复仍可阅读。')).not.toBeInTheDocument();
-  expect(within(area).getByText('回复已加载完毕')).toBeVisible();
+  expect(within(area).getByRole('button', { name: '下一页' })).toBeDisabled();
+  expect(within(area).getByText('回复 上一页的回复者:')).toBeVisible();
   expect(within(area).getAllByRole('listitem').map(row => getNodeText(within(row).getByText(/^服务端回复/)).trim())).toEqual([
-    '服务端回复 0', '服务端回复 1', '服务端回复 2', '服务端回复 3', '服务端回复 4',
-    '服务端回复 5', '服务端回复 6', '服务端回复 7', '服务端回复 8', '服务端回复 9',
-    '服务端回复 10', '服务端回复 11', '服务端回复 12', '服务端回复 13', '服务端回复 14',
-    '服务端回复 15', '服务端回复 16', '服务端回复 17', '服务端回复 18', '服务端回复 19',
     '服务端回复 20', '服务端回复 21', '服务端回复 22', '服务端回复 23', '服务端回复 24',
   ]);
-  expect(within(area).queryByRole('button', { name: '加载更多回复' })).not.toBeInTheDocument();
-  await user.click(within(area).getByRole('button', { name: '收起回复' }));
+  expect(within(area).queryByText('回复已加载完毕')).not.toBeInTheDocument();
+  await user.click(within(area).getByRole('button', { name: '收起' }));
+  expect(within(area).getByText('服务端回复 0')).toBeVisible();
   await user.click(within(area).getByRole('button', { name: '展开回复' }));
-  expect(within(area).getAllByRole('listitem')).toHaveLength(25);
+  await within(area).findByText('服务端回复 0（重读）');
+  await waitFor(() => expect(within(area).getByRole('button', { name: '下一页' })).toBeEnabled());
+  expect(within(area).getAllByRole('listitem')).toHaveLength(10);
   const base = `/api/archive/dynamics/${archive.id}/comments/${rootComment.id}/replies`;
-  expect(requests).toEqual([`${base}?limit=3`, `${base}?limit=10&cursor=second%2B%2F%3D`,
-    `${base}?limit=10&cursor=second%2B%2F%3D`, `${base}?limit=10&cursor=third`, `${base}?limit=10&cursor=last`]);
+  expect(requests).toEqual([`${base}?limit=3`, `${base}?page=1&limit=10`, `${base}?page=1&limit=10`,
+    `${base}?page=1&limit=10`, `${base}?page=2&limit=10`, `${base}?page=3&limit=10`, `${base}?page=1&limit=10`]);
 });
 
 it('部分归档回复仍可读完本地批次，但分页结束不冒充来源归档完成', async () => {
@@ -195,20 +214,21 @@ it('部分归档回复仍可读完本地批次，但分页结束不冒充来源�
   const area = await screen.findByRole('region', { name: `回复区 ${rootComment.id}` });
   expect(await within(area).findByText('已归档回复')).toBeVisible();
   expect(within(area).getByText('来源回复：25；本地已归档回复：1')).toBeVisible();
-  expect(within(area).getByText('本地归档回复已读完')).toBeVisible();
+  expect(within(area).queryByText('本地归档回复已读完')).not.toBeInTheDocument();
+  expect(within(area).queryByRole('navigation', { name: '回复分页' })).not.toBeInTheDocument();
   expect(within(area).getByText('回复最近归档失败；已保存回复仍可阅读。')).toBeVisible();
   expect(within(area).queryByText('回复已加载完毕')).not.toBeInTheDocument();
   expect(within(area).queryByRole('button', { name: /加载更多回复|重试/ })).not.toBeInTheDocument();
 });
 
-it('回复cursor失效仅显式重启对应根，保留其他根内容，不再次发送失效标记', async () => {
+it('兼容CURSOR_INVALID响应仅显式重启对应根，保留其他根内容且UI不发送旧cursor', async () => {
   const user = userEvent.setup();
   const urls: string[] = [];
   const otherId = '222';
   show(async url => {
     if (url.includes('/replies?')) {
       urls.push(url);
-      if (url.includes('cursor=')) return Response.json({ error: { code: 'CURSOR_INVALID', message: 'SECRET_TOKEN' } }, { status: 422 });
+      if (new URL(url, 'https://archive.example.test').searchParams.has('page')) return Response.json({ error: { code: 'CURSOR_INVALID', message: 'SECRET_TOKEN' } }, { status: 422 });
       if (url.includes(`/comments/${otherId}/`)) return Response.json({ items: [{ ...reply, id: '302', root_id: otherId,
         parent_id: otherId, text: '其他根的回复' }], next_cursor: null });
       return Response.json({ items: [reply], next_cursor: 'expired+/=', source_reply_count: 25,
@@ -231,6 +251,6 @@ it('回复cursor失效仅显式重启对应根，保留其他根内容，不再�
   expect(within(other).getByText('其他根的回复')).toBeVisible();
   const base = `/api/archive/dynamics/${archive.id}/comments`;
   expect(urls).toEqual([`${base}/${rootComment.id}/replies?limit=3`, `${base}/${otherId}/replies?limit=3`,
-    `${base}/${rootComment.id}/replies?limit=10&cursor=expired%2B%2F%3D`, `${base}/${rootComment.id}/replies?limit=3`]);
+    `${base}/${rootComment.id}/replies?page=1&limit=10`, `${base}/${rootComment.id}/replies?limit=3`]);
   expect(document.body).not.toHaveTextContent('SECRET_TOKEN');
 });

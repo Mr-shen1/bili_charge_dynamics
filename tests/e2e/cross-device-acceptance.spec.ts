@@ -85,8 +85,6 @@ for (const width of [360, 390, 768, 1280]) {
       await area.getByRole('button', { name: '加载更多评论', exact: true }).click();
       await expect(rows).toHaveCount(count);
     }
-    await expect(area.getByText('评论已加载完毕', { exact: true })).toBeVisible();
-    await expect(replies.getByText('回复已加载完毕', { exact: true })).toBeVisible();
     await expect(page.getByRole('region', { name: '评论区', exact: true }).getByRole('button', { name: '评论 70', exact: true })).toBeVisible();
     await checkLayoutAndTargets(page);
     const anchor = replies.getByRole('listitem').nth(8);

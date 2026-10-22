@@ -47,7 +47,7 @@ describe('真实归档基础页面', () => {
     await user.click(within(area).getByRole('button', { name: '加载更多评论' }));
     await within(area).findByText('服务端评论 44');
     expect(within(area).getAllByRole('listitem')).toHaveLength(45);
-    expect(within(area).getByText('本地归档评论已读完')).toBeVisible();
+    // 列表结束不再单独提示；由下方缺少“加载更多评论”按钮表达。
     expect(within(area).queryByRole('button', { name: '加载更多评论' })).not.toBeInTheDocument();
     expect(urls).toEqual([
       `/api/archive/dynamics/${archive.id}/comments?sort=hot&limit=20`,

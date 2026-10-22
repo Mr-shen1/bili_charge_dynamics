@@ -26,6 +26,8 @@ interface Navigation {
   saveListSnapshot(pageEntryId: string, snapshot: ListSnapshot): void;
   saveDetailSnapshot(pageEntryId: string, snapshot: DetailSnapshot): void;
   openDetail(id: string, target?: 'top' | 'comments'): void;
+  openThread(dynamicId: string, rootId: string): void;
+  returnFromThread(dynamicId: string): void;
   returnToList(): void;
   openImages(owner: ImageOwner, images: readonly DynamicImage[], index: number, trigger: HTMLElement): void;
 }
@@ -185,6 +187,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       };
       dispatch({ type: 'register', entry: next });
       void navigate(next.path, { state: { sessionId: session.sessionId, pageEntryId: next.pageEntryId } });
+    },
+    openThread(dynamicId, rootId) {
+      const path = `/dynamics/${encodeURIComponent(dynamicId)}/comments/${encodeURIComponent(rootId)}`;
+      const next: PageEntry = {
+        pageEntryId: createUuid(), path,
+        // 楼中楼详情只从动态详情进入；来源关系用于“返回评论”定位。
+        sourcePageEntryId: validEntry && validEntry.path.startsWith('/dynamics/') ? validEntry.pageEntryId : null,
+      };
+      dispatch({ type: 'register', entry: next });
+      void navigate(path, { state: { sessionId: session.sessionId, pageEntryId: next.pageEntryId } });
+    },
+    returnFromThread(dynamicId) {
+      const source = validEntry?.sourcePageEntryId ? session.entries[validEntry.sourcePageEntryId] : undefined;
+      const expected = `/dynamics/${encodeURIComponent(dynamicId)}`;
+      if (source?.path === expected) {
+        void navigate(-1);
+      } else {
+        void navigate(expected, { replace: true, state: null });
+      }
     },
     returnToList() {
       const source = validEntry?.sourcePageEntryId ? session.entries[validEntry.sourcePageEntryId] : undefined;

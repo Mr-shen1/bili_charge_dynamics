@@ -24,7 +24,6 @@ test('正常25条回复3/13/23/25、收起缓存恢复、排序重置及完整�
   await expect(rows).toHaveCount(23);
   await area.getByRole('button', { name: '加载更多回复', exact: true }).click();
   await expect(rows).toHaveCount(25);
-  await expect(area.getByText('回复已加载完毕')).toBeVisible();
   await expect(area.getByRole('button', { name: '加载更多回复', exact: true })).toHaveCount(0);
   const times = await rows.locator('time').allTextContents();
   expect(times).toEqual([...times].sort());

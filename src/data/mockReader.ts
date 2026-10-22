@@ -79,8 +79,9 @@ export function createMockReader(dataset: MockDataset): DynamicReader {
       const result = readBatch(scope.kind === 'all' ? items : items.filter(item => item.author.id === scope.upId), prefix, cursor, size);
       return result.status === 'error' ? { status: 'error', reason: 'invalid-cursor' } : result;
     },
-    async readReplies({ dynamicId, rootId, limit, cursor, signal }) {
+    async readReplies({ dynamicId, rootId, limit, page, cursor, signal }) {
       if (signal.aborted) return { status: 'cancelled' };
+      if (page !== undefined && (!Number.isSafeInteger(page) || page < 1 || limit !== replyAppendSize || cursor != null)) return { status: 'error' };
       const prefix = `replies:${encodeURIComponent(dataset.creator.id)}:${encodeURIComponent(dynamicId)}:${encodeURIComponent(rootId)}:time-asc:`;
       const replies = (dataset.replies?.[dynamicId]?.[rootId] ?? []).map(item => ({
         ...item, author: normalizeUser(item.author), publishedAt: normalizeTime(item.publishedAt),
@@ -94,6 +95,19 @@ export function createMockReader(dataset: MockDataset): DynamicReader {
         }
         return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
       });
+      if (page !== undefined) {
+        const comment = dataset.comments?.[dynamicId]?.find(item => item.id === rootId);
+        const root = comment ? {
+          ...comment, author: normalizeUser(comment.author), publishedAt: normalizeTime(comment.publishedAt),
+          likeCount: normalizeCount(comment.likeCount), replyCount: normalizeCount(comment.replyCount),
+          isPinned: comment.isPinned === true,
+        } : null;
+        const offset = (page - 1) * replyAppendSize;
+        return { status: 'success', data: {
+          items: replies.slice(offset, offset + replyAppendSize), nextCursor: null, root,
+          count: replies.length, localReplyCount: replies.length, sourceReplyCount: root?.replyCount ?? replies.length,
+        } };
+      }
       const maximum = cursor == null ? replyPreviewSize : replyAppendSize;
       const size = Number.isFinite(limit) ? Math.max(1, Math.min(maximum, Math.floor(limit))) : maximum;
       return readBatch(replies, prefix, cursor, size);
@@ -105,7 +119,9 @@ export function createMockReader(dataset: MockDataset): DynamicReader {
         ...item, author: normalizeUser(item.author), publishedAt: normalizeTime(item.publishedAt),
         likeCount: normalizeCount(item.likeCount),
         replyCount: normalizeCount(item.replyCount),
+        isPinned: item.isPinned === true,
       })).sort((a, b) => {
+        if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
         if (sort === 'hot' && a.likeCount !== b.likeCount) {
           if (a.likeCount === null) return 1;
           if (b.likeCount === null) return -1;

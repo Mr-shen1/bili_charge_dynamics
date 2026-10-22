@@ -46,26 +46,26 @@
 .sort .button + .button::before { content: ''; position: absolute; left: -8.5px; height: 11px; border-left: 1px solid var(--border); }
 .sort .button[aria-pressed="true"] { color: var(--text); background: transparent; }
 .comments { list-style: none; margin: 0; padding: 0; }
-.comment { position: relative; padding: 22px 0 22px 20px; border-bottom: 1px solid var(--border); }
+/* 评论区尺寸对齐 B站动态详情：48px 头像、68px 文本缩进、15/24 正文、13px 次要信息。 */
+.comment { position: relative; padding: 22px 0; border-bottom: 1px solid var(--border); }
 .comment .text { font-size: 15px; line-height: 24px; }
 .discussionHead { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 28px; }
-.comment > .discussionHead .identity { gap: 0; align-items: flex-start; padding-left: 60px; }
-.comment > .discussionHead .avatar { position: absolute; left: 20px; top: 22px; width: 40px; height: 40px; }
-.comment .nickname { color: #61666d; font-size: 14px; font-weight: 400; line-height: 20px; }
+.comment > .discussionHead .identity { gap: 0; align-items: flex-start; padding-left: 68px; }
+.comment > .discussionHead .avatar { position: absolute; left: 0; top: 22px; width: 48px; height: 48px; }
+.comment .nickname { color: #61666d; font-size: 15px; font-weight: 400; line-height: 24px; }
 .authorComment > .discussionHead .nickname { color: var(--author); }
-.commentBody { margin-left: 60px; min-width: 0; margin-top: 0; }
-.commentBody > .text { margin: 6px 0 3px; }
-.metrics { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; color: var(--muted); font-size: 13px; line-height: 24px; margin: 3px 0; }
+.commentBody { margin-left: 68px; min-width: 0; margin-top: 0; }
+.commentBody > .text { margin: 4px 0 0; }
+.metrics { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; color: var(--muted); font-size: 13px; line-height: 20px; margin: 6px 0 0; }
 .metrics .time, .metrics .count { margin: 0; font-size: inherit; line-height: inherit; }
 .likeCount { display: inline-flex; align-items: center; gap: 5px; }
 .replySection { margin-top: 12px; }
 .reply { position: relative; padding: 0 0 12px 34px; }
 .reply .identity, .reply .identityDetails, .reply .nickname { display: inline; }
 .reply .avatar { position: absolute; left: 0; top: 0; width: 24px; height: 24px; }
-.reply .nickname { font-size: 14px; }
+.reply .nickname { font-size: 14px; line-height: 24px; }
 .authorComment > .replyLine .nickname { color: var(--author); }
-.reply .text { margin: 0; }
-.replyTarget { color: var(--muted); font-size: 14px; line-height: 24px; overflow-wrap: anywhere; }
+.reply .text { margin: 0; font-size: 15px; line-height: 24px; }
 .replyLine .upBadge { vertical-align: middle; }
 .reply .metrics { margin: 4px 0 0; }
 .replySection > .count { font-size: 12px; }
@@ -75,6 +75,7 @@
 .dynamicBody .foldToggle { font-size: 16px; line-height: 25px; }
 .button:hover { color: #00aeec; background: #f6f7f8; }
 .upBadge { color: white; background: var(--author); border-radius: 2px; padding: 0 3px; font-size: 10px; line-height: 14px; flex-shrink: 0; }
+.pinnedBadge { display: inline-block; color: var(--author); border: 1px solid currentColor; border-radius: 2px; padding: 0 3px; font-size: 12px; line-height: 16px; flex-shrink: 0; }
 .button:focus-visible, .commentEntry:focus-visible, .commentTab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .button:disabled { cursor: wait; opacity: .65; }
 .status { padding: 16px; line-height: 25px; overflow-wrap: anywhere; }
@@ -87,6 +88,66 @@
   .detailSurface > .card { padding: 16px var(--detail-inset) 36px; }
   .commentSection { padding-bottom: 16px; }
   .comment { padding: 16px 0; }
-  .comment > .discussionHead .avatar { left: 0; top: 16px; }
+  .comment > .discussionHead .avatar { left: 0; top: 16px; width: 40px; height: 40px; }
+  .comment > .discussionHead .identity { padding-left: 60px; }
+  .commentBody { margin-left: 60px; }
   .metrics { gap: 10px; }
+}
+
+/* 手机端楼中楼：预览块 + 进入评论详情页入口。 */
+.replyPreview { margin-top: 10px; }
+.replyPreviewBox { background: #f6f7f8; border-radius: 8px; padding: 10px 12px; }
+.replyPreviewLine { margin: 0; font-size: 15px; line-height: 24px; color: #18191c; overflow-wrap: anywhere; }
+.replyPreviewLine .identity, .replyPreviewLine .identityDetails, .replyPreviewLine .nickname { display: inline; }
+.replyPreviewLine .avatar { display: inline-block; width: 20px; height: 20px; margin-right: 4px; vertical-align: -4px; }
+.replyPreviewLine .nickname { color: #61666d; font-size: 15px; }
+.replyPreviewTarget { color: #61666d; }
+.replyPreviewText { color: #18191c; }
+.replyPreviewBox .metrics { margin: 4px 0 0 24px; }
+.threadEntry { display: inline-flex; align-items: center; gap: 2px; margin-top: 8px; padding: 0; border: 0;
+  min-height: 36px; background: transparent; color: #00aeec; font: inherit; font-size: 15px; cursor: pointer; }
+.threadEntry:hover { color: #00a1d6; }
+.threadChevron { font-size: 17px; line-height: 1; }
+
+/* 楼中楼详情页：白底进度条、固定根评论、相关回复列表。 */
+.threadPage { max-width: 708px; margin: 0 auto; padding: 0 0 40px; }
+.threadHeader { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; min-height: 48px;
+  padding: 0 8px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.threadBack { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 8px; border: 0;
+  background: transparent; color: #18191c; font: inherit; font-size: 17px; cursor: pointer; }
+.threadBack span { font-size: 17px; }
+.threadSurface { background: var(--surface); padding: 0 16px 24px; }
+.threadRoot, .threadReply { position: relative; padding: 16px 0; border-bottom: 1px solid var(--border); }
+.threadRoot .discussionHead .identity, .threadReply .discussionHead .identity { padding-left: 52px; align-items: flex-start; }
+.threadRoot .discussionHead .avatar, .threadReply .discussionHead .avatar {
+  position: absolute; left: 0; top: 16px; width: 40px; height: 40px; }
+.threadRoot .commentBody, .threadReply .commentBody { margin-left: 52px; }
+.threadRoot .nickname, .threadReply .nickname { color: #61666d; font-size: 15px; line-height: 24px; font-weight: 400; }
+.threadUp .nickname { color: var(--author); }
+.threadUp .discussionHead .upBadge { vertical-align: middle; }
+.threadRootText, .threadReplyText { margin: 4px 0 0; font-size: 15px; line-height: 24px; color: #18191c;
+  overflow-wrap: anywhere; }
+.threadSummary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0 6px; }
+.threadSummary h1 { margin: 0; font-size: 15px; line-height: 22px; font-weight: 400; color: #61666d; }
+.threadSort { font-size: 13px; line-height: 20px; color: #9499a0; }
+.threadReply .metrics, .threadRoot .metrics { margin: 6px 0 0; }
+.threadEnd { padding: 16px 0; text-align: center; }
+
+/* 楼中楼分页条：共N页 / 上一页 / 页码窗口 / 下一页 / 收起（对齐 B站回复分页）。 */
+.replyPager { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin: 10px 0 0;
+  font-size: 14px; line-height: 22px; color: #61666d; }
+.pagerTotal { color: #61666d; }
+.pagerGap { color: #9499a0; }
+.pagerPage, .pagerAction { min-width: 28px; min-height: 28px; padding: 0 4px; border: 0; background: transparent;
+  color: #18191c; font: inherit; font-size: 14px; line-height: 22px; cursor: pointer; }
+.pagerPage[aria-current="page"] { color: #00aeec; font-weight: 600; cursor: default; }
+.pagerPage:hover:not(:disabled), .pagerAction:hover:not(:disabled) { text-decoration: underline; }
+.pagerPage:focus-visible, .pagerAction:focus-visible { outline: 2px solid #00aeec; outline-offset: 2px; }
+.pagerPage:disabled, .pagerAction:disabled { cursor: default; }
+.pagerAction:disabled { color: #c9ccd0; }
+.threadSurface .replyPager { padding-bottom: 16px; }
+@media (max-width: 640px) {
+  /* 窄屏保证分页条单行：共N页 1 2 3 … N 下一页 收起。 */
+  .replyPager { gap: 2px 6px; }
+  .pagerPage, .pagerAction { min-width: 22px; min-height: 26px; padding: 0 2px; }
 }

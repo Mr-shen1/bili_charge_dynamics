@@ -48,7 +48,7 @@ export function DiscoveryStatusPanel({ uid, api }: { uid: string; api: Managemen
     {state === null && !loading && <p>尚未读取发现状态。</p>}
     {error && <p role="alert">{error}</p>}
     {state && <>
-      <p>读取时已保存模式：{state.mode === null ? '无配置' : state.mode === 'recent' ? '近期 N 条' : '指定动态 ID'}；N：{state.recentN ?? '—'}；监控：{state.enabled ? '已启用' : '已停止'}。</p>
+      <p>读取时已保存模式：{state.mode === null ? '无配置' : state.mode === 'recent' ? '近期 N 条' : '指定动态 ID'}{state.mode === 'recent' && <>；N：{state.recentN ?? '—'}</>}；监控：{state.enabled ? '已启用' : '已停止'}。</p>
       <p>{statusLabels[state.status]}</p>
       {!state.active && <p>近期发现当前未启用；历史结果仍可读取。</p>}
       {state.incomplete && <p>发现未完成；保留已有可信结果与已发布窗口。</p>}

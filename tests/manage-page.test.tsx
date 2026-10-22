@@ -276,8 +276,8 @@ describe('/manage 生产映射页面', () => {
       .mockResolvedValueOnce(Response.json({ ups: [] }));
     show();
     expect(screen.getByText('正在读取管理配置…')).toBeInTheDocument();
-    expect(screen.getByText(/首期无鉴权/)).toBeInTheDocument();
-    expect(screen.getByText(/公网管理页和 API/)).toHaveTextContent(/公网.*第三方.*读取.*修改/);
+    expect(screen.getByRole('note', { name: '管理访问保护' })).toHaveTextContent('管理访问由部署入口认证保护');
+    expect(screen.getByRole('note', { name: '管理访问保护' })).toHaveTextContent('后端端口不可直接暴露公网');
     await act(async () => pending.resolve(Response.json({ error: { code: 'STORAGE_UNAVAILABLE', message: 'SECRET_TOKEN' } }, { status: 503 })));
     expect(await screen.findByRole('alert')).toHaveTextContent('配置存储暂不可用，请重试。');
     expect(document.body).not.toHaveTextContent('SECRET_TOKEN');
