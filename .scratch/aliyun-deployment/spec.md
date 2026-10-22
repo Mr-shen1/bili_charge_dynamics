@@ -113,9 +113,9 @@
 
 以下全部未在目标机执行，不得作为已通过的结论：
 
-- [ ] 统一入口 `backend.bili_monitor.service` 的实际运行（上游文档已声明未验证）
+- [x] 统一入口 `backend.bili_monitor.service` 的实际运行——2026-10-23 在目标机以手动形态实测通过（HTTP 200、API 迁移完成、collector `cadence_seconds=15`）。上游文档原声明该入口未验证；systemd 托管形态仍待验。
 - [ ] systemd unit 在 `ProtectSystem=strict` + `ReadWritePaths` 下能否正常写 SQLite 与 `.collector.lock`
-- [ ] Debian 13 上 `uv sync --locked --no-dev` 与 CPython 3.12 的获取
+- [x] Debian 13 上 `uv sync --locked --no-dev` 与 CPython 3.12 的获取——实测得到 CPython 3.12.15，`fastapi`/`oss2`/`uvicorn` 导入正常。
 - [ ] 三份新增 Nginx 配置的 `nginx -t` 与实际 HTTP 行为（本机无 nginx 二进制，仅做了结构与一致性校验）
 - [ ] `scripts/deploy-frontend.sh` 的 rsync、`mv -Tf` 原子切换与旧版本清理
 - [ ] Basic Auth 登录后管理页 fetch 是否自动携带凭据（realm 一致性）
