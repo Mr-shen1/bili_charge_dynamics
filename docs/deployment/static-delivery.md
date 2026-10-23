@@ -1,5 +1,7 @@
 # 静态交付与 Nginx 运行说明
 
+> [Vue 3 + Element Plus 重构方案](../design/frontend-migration.md) 已确认，尚未实施。目标仍是本地/CI 构建 `dist/`、Nginx 静态托管及现有 API 代理，完整验证后统一上线；本页现有命令与证据不表示 Vue 构建已跑通。实施若改变依赖、命令或资源拆包，须更新并重验对应步骤。前端切换不迁移/回退数据库；旧哈希资源保留及原子发布要求不变。
+
 ## 当前范围：后端集成 #31
 
 依据：[SRS](../product/SRS.md) FR-02、NFR-04/05、[HLD](../design/HLD.md#11-构建与部署设计)、[#31](../../.scratch/backend-integration/issues/31-reproducible-deployment.md) 与[执行计划](../../.scratch/backend-integration/implementation-plan.md)。本节是可复用操作说明，不是验收结果；本次执行结果及未验证项另见 [#31 验收记录](../../.scratch/backend-integration/acceptance-31.md)。下方保留历史任务 08 的静态基线；历史 mock、fixture 隔离部署、真实上游/OSS、云部署、真机与持续运行证据不能互相替代。
