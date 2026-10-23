@@ -76,20 +76,23 @@ body:has(.manage-page) { background: #d1e8e7; }
 .manage-section > h2 { margin-bottom: 8px; }
 .manage-control-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .manage-control-row + .manage-muted { margin-top: 6px; }
-/* 每个 UP 默认只占一张紧凑卡：身份、启停与“详细设置”折叠在同一卡内，不再自上而下铺开。 */
-.manage-up { padding: 16px 20px 4px; }
+/* UP 列表参照阅读页动态列表：一条 UP 一张白卡，卡片整体是进入单 UP 管理页的链接。 */
+.manage-ups { list-style: none; margin: 8px 0 0; padding: 0; }
+.manage-ups > li + li { margin-top: 8px; }
+.manage-up-link { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 12px 16px;
+  border-radius: 4px; background: #fff; color: inherit; font: inherit; text-decoration: none; }
+.manage-up-link:hover .manage-author { color: #ff85ad; }
+.manage-up-link:focus-visible { outline: 3px solid var(--manage-accent); outline-offset: 2px; }
+.manage-up-text { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.manage-up-link .manage-author { font-size: 18px; line-height: 26px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 单 UP 管理页：身份、启停、配置、目标与检查状态自上而下分区。 */
+.manage-up { padding: 20px; }
 .manage-up > .manage-identity { padding-bottom: 8px; }
 .manage-summary-row { margin: 0; }
 .manage-summary-row p { color: #61666d; font-size: 14px; line-height: 22px; }
-.manage-details { margin-top: 2px; border-top: 1px solid var(--manage-divider); }
-.manage-details > summary { display: flex; align-items: center; justify-content: space-between; gap: 8px;
   min-height: 44px; color: var(--manage-accent); font-size: 14px; line-height: 22px; cursor: pointer; list-style: none; }
-.manage-details > summary::-webkit-details-marker { display: none; }
-.manage-details > summary::after { content: ''; width: 8px; height: 8px; margin-left: 4px;
   border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); transition: transform .15s ease; }
-.manage-details[open] > summary::after { transform: rotate(-135deg); }
-.manage-details > summary:focus-visible { outline: 3px solid var(--manage-accent); outline-offset: 2px; }
-.manage-details[open] > summary { border-bottom: 1px solid var(--manage-divider); }
 .manage-config-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 12px; align-items: end; }
 .manage-config-fields > button:last-child { grid-column: 3; }
 .manage-config-specified { grid-template-columns: minmax(0, 1fr) auto; }

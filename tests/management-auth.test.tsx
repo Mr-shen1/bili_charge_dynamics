@@ -2,8 +2,8 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SessionProvider } from '../src/app/Navigation';
-import { ManagePage } from '../src/manage/ManagePage';
+import { App } from '../src/app/App';
+import { createMockReader } from '../src/data/mockReader';
 import {
   authenticationRequiredMessage, createManagementApi,
   type ManagementApi, type ManagementResult, type ManagementTransport,
@@ -122,10 +122,9 @@ describe('管理接口的部署入口认证', () => {
   });
 });
 
-function show(api: ManagementApi) {
-  return render(<MemoryRouter initialEntries={['/manage']}><SessionProvider>
-    <ManagePage api={api} />
-  </SessionProvider></MemoryRouter>);
+const reader = createMockReader({ creator: { id: 'reader', nickname: '阅读者', avatarUrl: null }, dynamics: [] });
+function show(api: ManagementApi, path = '/manage/ups/123') {
+  return render(<MemoryRouter initialEntries={[path]}><App reader={reader} manageApi={api} /></MemoryRouter>);
 }
 function unusedApi() {
   return createManagementApi(vi.fn<ManagementTransport>().mockRejectedValue(new Error('Unexpected transport')));
@@ -145,7 +144,7 @@ describe('管理页的认证失败提示', () => {
     const user = userEvent.setup();
     const listUps = vi.fn<ManagementApi['listUps']>().mockResolvedValue({ status: 'success', data: [] });
     const addUp = vi.fn<ManagementApi['addUp']>().mockResolvedValue({ status: 'error', message: authenticationRequiredMessage });
-    show({ ...unusedApi(), listUps, addUp });
+    show({ ...unusedApi(), listUps, addUp }, '/manage');
     const input = await screen.findByRole('textbox', { name: 'UP UID' });
     const reads = listUps.mock.calls.length;
     await user.type(input, uid);

@@ -6,6 +6,7 @@ import { CommentThreadPage } from '../dynamics/CommentThreadPage';
 import { SessionProvider } from './Navigation';
 import { NotFoundPage } from './NotFoundPage';
 import { ManagePage } from '../manage/ManagePage';
+import { UpManagePage } from '../manage/UpManagePage';
 import type { ManagementApi } from '../manage/managementApi';
 
 export function App({ reader, manageApi }: { reader: DynamicReader; manageApi?: ManagementApi }) {
@@ -15,6 +16,7 @@ export function App({ reader, manageApi }: { reader: DynamicReader; manageApi?: 
     <Route path="/dynamics/:dynamicId" element={<DetailPage reader={reader} />} />
     <Route path="/dynamics/:dynamicId/comments/:rootId" element={<CommentThreadPage reader={reader} />} />
     <Route path="/manage" element={<ManagePage api={manageApi} />} />
+    <Route path="/manage/ups/:upId" element={<UpManagePage api={manageApi} />} />
     <Route path="*" element={<NotFoundPage />} />
   </Routes></SessionProvider>;
 }

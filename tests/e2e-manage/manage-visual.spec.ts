@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
 
 // T1：仅替换 HTTP 响应，页面仍使用正常生产装配中的 ManagementApi。
@@ -49,9 +49,20 @@ async function installHttp(page: Page) {
   return calls;
 }
 
-// “详细设置”默认折叠，关闭时内部控件不在无障碍树里；断言前先展开。
-async function expandDetails(card: Locator) {
-  await card.getByText('详细设置', { exact: true }).click();
+// UP 列表只列身份与状态，点卡片进入单 UP 管理页；配置、目标与检查状态都在单 UP 页。
+function upLink(page: Page, uid: string) {
+  return page.getByRole('link', { name: `管理 UP ${uid}`, exact: true });
+}
+function upArticle(page: Page, uid: string) {
+  return page.getByRole('article', { name: `UP ${uid}`, exact: true });
+}
+async function openUp(page: Page, uid: string) {
+  await upLink(page, uid).click();
+  await expect(upArticle(page, uid)).toBeVisible();
+}
+async function backToList(page: Page) {
+  await page.getByRole('link', { name: 'UP 列表', exact: true }).click();
+  await expect(page.getByRole('list', { name: 'UP 列表', exact: true })).toBeVisible();
 }
 
 for (const width of [360, 390, 768, 1280]) {
@@ -59,13 +70,39 @@ for (const width of [360, 390, 768, 1280]) {
     const calls = await installHttp(page);
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/manage');
-    const card = page.getByRole('article', { name: 'UP 123', exact: true });
-    const specified = page.getByRole('article', { name: 'UP 456', exact: true });
-    const deleted = page.getByRole('article', { name: 'UP 789', exact: true });
-    for (const article of [card, specified, deleted]) await expandDetails(article);
-    await expect(specified.getByRole('button', { name: `移除目标 ${targetId}` })).toBeVisible();
+    // 列表页：一条 UP 一张白卡，参照阅读页动态列表的间距与身份层级。
+    const rows = page.getByRole('list', { name: 'UP 列表', exact: true }).getByRole('listitem');
+    await expect(rows).toHaveCount(3);
+    const rowBoxes = await rows.evaluateAll(items => items.map(item => {
+      const box = item.getBoundingClientRect();
+      return { x: box.x, y: box.y, width: box.width, height: box.height };
+    }));
+    const firstLink = upLink(page, '123');
+    const rowStyle = await firstLink.evaluate(element => ({
+      background: getComputedStyle(element).backgroundColor, radius: getComputedStyle(element).borderRadius,
+    }));
+    const listMeasurements = {
+      rowBackground: rowStyle.background, rowRadius: rowStyle.radius,
+      rowGap: rowBoxes[1]!.y - (rowBoxes[0]!.y + rowBoxes[0]!.height),
+      rowWidth: rowBoxes[0]!.width,
+      authorColor: await firstLink.getByText('虚构管理作者 🌸', { exact: true }).evaluate(element => getComputedStyle(element).color),
+      avatarWidth: (await firstLink.locator('img').boundingBox())!.width,
+      badges: await rows.evaluateAll(items => items.map(item => item.querySelector('.manage-badge')?.textContent)),
+      minControlHeight: Math.min(...(await firstLink.evaluate(element => [element.getBoundingClientRect().height]))),
+    };
+    expect(listMeasurements).toMatchObject({
+      rowBackground: 'rgb(255, 255, 255)', rowRadius: '4px', rowGap: 8, rowWidth: Math.min(716, width - 24),
+      authorColor: 'rgb(251, 114, 153)', avatarWidth: 48,
+      badges: ['监控已启用', '监控已启用', '配置已删除'],
+    });
+    expect(listMeasurements.minControlHeight).toBeGreaterThanOrEqual(44);
     // 初始加载没有隐式读取 checks，更没有同步或轮询。
     expect(calls.some(call => call.url.endsWith('/checks'))).toBe(false);
+    await page.evaluate(() => document.fonts.ready);
+    await page.screenshot({ path: testInfo.outputPath(`manage-list-${width}.png`), fullPage: true });
+
+    await openUp(page, '123');
+    const card = upArticle(page, '123');
     await card.getByRole('button', { name: '读取检查状态', exact: true }).click();
     // 详情默认折叠：先确认折叠态，再逐条展开后校验细节行。
     await expect(card.getByRole('button', { name: '展开动态 1 详情', exact: true })).toHaveAttribute('aria-expanded', 'false');
@@ -79,9 +116,6 @@ for (const width of [360, 390, 768, 1280]) {
     await expect(card.getByRole('region', { name: '动态 4 检查状态' })).toContainText('检查失败');
     await expect(card.getByRole('region', { name: '动态 5 检查状态' })).toContainText('分项已完成，整轮待确认');
     await expect(card.getByRole('region', { name: '动态 6 检查状态' })).toContainText('实际整轮成功：2025-06-01 10:01:00');
-    const deletedCard = page.getByRole('article', { name: 'UP 789', exact: true });
-    await expect(deletedCard.getByRole('button', { name: '重新添加监控' })).toBeEnabled();
-    await expect(deletedCard.getByRole('button', { name: '读取检查状态' })).toBeEnabled();
 
     const main = page.getByRole('main');
     const mainMeasurements = await main.evaluate(element => {
@@ -101,20 +135,20 @@ for (const width of [360, 390, 768, 1280]) {
       radius: getComputedStyle(element).borderRadius,
     }));
     const sections = ['监控配置', '指定动态目标', '目标检查与归档状态'];
-    const addBox = (await page.getByRole('form', { name: '添加 UP', exact: true }).boundingBox())!;
     const measurements = {
       ...mainMeasurements, ...cardMeasurements,
       authorColor: await card.getByRole('heading', { name: '虚构管理作者 🌸', exact: true }).evaluate(element => getComputedStyle(element).color),
       avatarWidth: (await card.getByRole('img', { name: '虚构管理作者 🌸的头像', exact: true }).boundingBox())!.width,
       headings: await card.getByRole('heading', { level: 2 }).allTextContents(),
       sectionBorders: await Promise.all(sections.map(name => card.getByRole('region', { name, exact: true }).evaluate(element => getComputedStyle(element).borderTopColor))),
-      cardGap: (await card.boundingBox())!.y - addBox.height - addBox.y,
+      navLabels: await page.getByRole('navigation', { name: '页面导航', exact: true }).getByRole('link').allTextContents(),
     };
     expect(measurements).toMatchObject({
       overflow: false, mainWidth: Math.min(716, width - 24), center: width / 2,
       background: 'rgb(209, 232, 231)', cardBackground: 'rgb(255, 255, 255)', radius: '4px',
       authorColor: 'rgb(251, 114, 153)', avatarWidth: 48, fontSize: '16px', lineHeight: '25px',
-      headings: ['虚构管理作者 🌸', '监控配置', '指定动态目标', '近期发现与当前窗口', '目标检查与归档状态'], cardGap: 8,
+      headings: ['虚构管理作者 🌸', '监控配置', '指定动态目标', '近期发现与当前窗口', '目标检查与归档状态'],
+      navLabels: ['返回阅读', 'UP 列表'],
     });
     expect(measurements.minControlHeight).toBeGreaterThanOrEqual(44);
     expect(measurements.sectionBorders.every(color => color === 'rgb(227, 229, 231)')).toBe(true);
@@ -125,20 +159,27 @@ for (const width of [360, 390, 768, 1280]) {
     await writeFile(mappingPath, JSON.stringify({
       reference: 'docs/assets/ui-reference/*.png（来源 CSS 视口、DPR 与缩放未知）',
       comparison: '仅管理规则映射，未进行阅读图像素差异比较或人工视觉签收',
-      browser: page.context().browser()?.version(), fontDeclaration: mainMeasurements.fontFamily, zoom: '100%', measurements,
+      browser: page.context().browser()?.version(), fontDeclaration: mainMeasurements.fontFamily, zoom: '100%',
+      measurements: { ...measurements, list: listMeasurements },
     }, null, 2));
     await testInfo.attach('管理规则映射与渲染条件', { contentType: 'application/json', path: mappingPath });
     expect(calls.filter(call => call.url.endsWith('/checks'))).toHaveLength(1);
     expect(calls.every(call => call.method === 'GET')).toBe(true);
+
+    await backToList(page);
+    await openUp(page, '456');
+    await expect(upArticle(page, '456').getByRole('button', { name: `移除目标 ${targetId}` })).toBeVisible();
+    await backToList(page);
+    await openUp(page, '789');
+    const deletedCard = upArticle(page, '789');
+    await expect(deletedCard.getByRole('button', { name: '重新添加监控' })).toBeEnabled();
+    await expect(deletedCard.getByRole('button', { name: '读取检查状态' })).toBeEnabled();
   });
 }
 
 test('管理键盘顺序、清晰焦点、独立草稿及 Enter 提交仍经过 HTTP 边界', async ({ page }) => {
   const calls = await installHttp(page);
   await page.goto('/manage');
-  const card = page.getByRole('article', { name: 'UP 123', exact: true });
-  const specified = page.getByRole('article', { name: 'UP 456', exact: true });
-  // “详细设置”折叠时 Tab 会经过摘要，展开后才进入配置字段。
   await page.keyboard.press('Tab');
   await expect(page.getByRole('link', { name: '返回阅读' })).toBeFocused();
   await page.keyboard.press('Tab');
@@ -146,11 +187,18 @@ test('管理键盘顺序、清晰焦点、独立草稿及 Enter 提交仍经过 
   await page.keyboard.press('Tab');
   await expect(page.getByRole('button', { name: '添加监控', exact: true })).toBeFocused();
   await page.keyboard.press('Tab');
-  await expect(card.getByRole('button', { name: '停止监控' })).toBeFocused();
-  await page.keyboard.press('Tab');
-  await expect(card.getByText('详细设置', { exact: true })).toBeFocused();
+  await expect(upLink(page, '123')).toBeFocused();
   await page.keyboard.press('Enter');
-  await expect(card.getByRole('combobox', { name: '监控模式' })).toBeVisible();
+  const card = upArticle(page, '123');
+  await expect(card).toBeVisible();
+  // 路由切换后焦点回到文档，按新页面的顺序重新从导航开始 Tab。
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('link', { name: '返回阅读' })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('link', { name: 'UP 列表', exact: true })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(card.getByRole('button', { name: '停止监控' })).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(card.getByRole('combobox', { name: '监控模式' })).toBeFocused();
   await page.keyboard.press('Tab');
@@ -169,7 +217,9 @@ test('管理键盘顺序、清晰焦点、独立草稿及 Enter 提交仍经过 
   expect(calls.filter(call => call.method === 'PATCH')).toEqual([{
     url: '/api/manage/ups/123/monitor', method: 'PATCH', body: { mode: 'recent', recent_n: 27, enabled: true },
   }]);
-  await expandDetails(specified);
+  await backToList(page);
+  await openUp(page, '456');
+  const specified = upArticle(page, '456');
   await expect(specified.getByRole('combobox', { name: '监控模式' })).toHaveValue('specified');
   const id = specified.getByRole('textbox', { name: '动态 ID', exact: true });
   await id.fill('22');
@@ -181,5 +231,7 @@ test('管理键盘顺序、清晰焦点、独立草稿及 Enter 提交仍经过 
     url: '/api/manage/ups/456/targets', method: 'POST', body: { id: '22' },
   }]);
   await expect(specified.getByRole('button', { name: '移除目标 22' })).toBeEnabled();
-  await expect(n).toHaveValue('27');
+  await backToList(page);
+  await openUp(page, '123');
+  await expect(page.getByRole('textbox', { name: '近期 N 条', exact: true })).toHaveValue('10');
 });
