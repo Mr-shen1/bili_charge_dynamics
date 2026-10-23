@@ -140,7 +140,7 @@ def test_media_version_repair_requires_real_source_confirmation(tmp_path):
     asyncio.run(scenario())
 
 
-def test_missing_comment_picture_list_remains_unknown_not_restricted(tmp_path):
+def test_missing_comment_picture_list_confirms_empty_not_restricted(tmp_path):
     path = tmp_path / "unknown-pictures.sqlite"
     configured(path)
     source = CommentSource()
@@ -155,8 +155,9 @@ def test_missing_comment_picture_list_remains_unknown_not_restricted(tmp_path):
             await collector.execute_pending()
             for root_id in store.media_root_ids("123"):
                 root = store.read_media_owner("123", root_id)
-                assert root["work"]["media"] == "pending"
+                # 缺 pictures 键是来源确认无图：既不是借用正文的 restricted，也不是永久未知。
+                assert root["work"]["media"] == "success"
                 assert root["media"] == []
-            assert snapshot(path)[0]["parts"]["comment_media"] == "pending"
+            assert snapshot(path)[0]["parts"]["comment_media"] == "success"
 
     asyncio.run(scenario())

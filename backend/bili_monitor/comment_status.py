@@ -3,8 +3,9 @@
 from datetime import datetime, timezone
 
 
-# 根评论采集格式版本：v1 置顶，v2 Requests 会话和定位策略；旧归档只补采一次。
-ROOT_METADATA_VERSION = 2
+# 根评论采集格式版本：v1 置顶，v2 Requests 会话和定位策略，v3 缺 pictures 键确认无图。
+# 旧归档只补采一次。
+ROOT_METADATA_VERSION = 3
 
 
 COMMENT_STATUS_FIELDS = (

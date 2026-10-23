@@ -456,6 +456,28 @@ def test_v8_root_sources_migrate_to_pending_without_changing_frozen_pages_or_arc
         assert client.get(COMMENTS, params={"limit": 1, "cursor": token}).json() == frozen
 
 
+def test_absent_pictures_confirm_empty_media_only_when_no_image_was_ever_observed(tmp_path):
+    """上游只在根评论确实带图时下发 pictures（同轮实测 2 条带图、其余缺键）。
+
+    已观察到图片后缺键：保留已知组，不擦除也不冒充空组。
+    从未观察到图片时缺键：确认空组，否则 work.media 永久 pending，整个目标永不完成。
+    """
+    state = comment_state()
+    for root in state["roots"]:
+        root["content"].pop("pictures")
+    with media_client(tmp_path / "absent.sqlite", state, FakeOSS(), source_handler=source_handler(state)) as client:
+        prepare(client)
+        client.post(SYNC, json={"uid": UID})
+        saved = roots_by_id(client)
+        for id, root in saved.items():
+            assert root["media"] == root["media_sources"] == []
+            assert root["work"]["media"] == root["media_last_attempt"] == "success"
+            assert root["media_version"] == root["observed_version"] == root["synced_media_version"]
+        archive = client.get(ARCHIVE).json()
+        assert archive["work"]["comments"] == archive["work"]["replies"] == "success"
+        assert archive["comment_sync"]["parts"]["comment_media"] == "success"
+
+
 def test_unknown_count_and_absent_pictures_are_not_confirmed_empty_media(tmp_path):
     state = comment_state()
     state["unknown_count"] = True
@@ -468,11 +490,8 @@ def test_unknown_count_and_absent_pictures_are_not_confirmed_empty_media(tmp_pat
         assert saved["123"]["media_version"] is None
         assert saved["123"]["work"]["media"] == "success"
         assert saved["124"]["media"] == []
-        assert saved["124"]["work"]["media"] == saved["124"]["media_last_attempt"] == "pending"
+        assert saved["124"]["work"]["media"] == saved["124"]["media_last_attempt"] == "success"
         assert client.get(ARCHIVE).json()["synced_comment_count"] is None
-        state["roots"][1]["content"]["pictures"] = []
-        client.post(SYNC, json={"uid": UID})
-        assert roots_by_id(client)["124"]["work"]["media"] == "success"
 
 
 def test_actual_reply_and_embedded_preview_images_are_not_downloaded_or_archived(tmp_path):
