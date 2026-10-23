@@ -20,10 +20,10 @@ const discovery = {
 function Visits() {
   const navigate = useNavigate();
   return <><button onClick={() => void navigate('/')}>离开管理</button>
-    <button onClick={() => void navigate('/manage', { state: null })}>新管理访问</button></>;
+    <button onClick={() => void navigate('/manage/ups/123', { state: null })}>新管理访问</button></>;
 }
 function show(transport: ManagementTransport) {
-  return render(<MemoryRouter initialEntries={['/manage']}><Visits />
+  return render(<MemoryRouter initialEntries={['/manage/ups/123']}><Visits />
     <App reader={reader} manageApi={createManagementApi(transport)} />
   </MemoryRouter>);
 }

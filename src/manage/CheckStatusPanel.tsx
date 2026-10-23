@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { displayTime } from '../dynamics/DynamicContent';
 import type { ManagementApi, Monitor } from './managementApi';
 import type { CheckError, MediaSyncError, TargetCheck } from '../data/checkStatus';
@@ -19,12 +19,24 @@ const mediaErrors: Record<MediaSyncError, string> = {
   MEDIA_UPLOAD_FAILED: '图片上传失败；保留已有归档，将在固定节拍重试。',
 };
 function CheckStatus({ check }: { check: TargetCheck }) {
+  // 详情默认折叠：头部只留 ID、纳入状态与检查阶段，避免一屏铺开几十行时间与计数。
+  const [expanded, setExpanded] = useState(false);
+  const bodyId = useId();
   const partial = Object.values(check.parts).some(state => state === 'success');
   const partsComplete = Object.values(check.parts).every(state => state === 'success');
   const versionMismatch = check.observedVersion !== check.syncedVersion;
   const commentsProgress = progressLabels[commentProgress(check)];
   return <section className="manage-check" aria-label={`动态 ${check.id} 检查状态`}>
-    <h3>动态 {check.id}</h3>
+    <h3>
+      {/* 参照 Element Collapse：整行 header 可点击，只保留 ID 与右侧箭头，细节全部收进折叠体。 */}
+      <button type="button" className="manage-check-toggle" aria-expanded={expanded} aria-controls={bodyId}
+        aria-label={`${expanded ? '收起' : '展开'}动态 ${check.id} 详情`}
+        onClick={() => setExpanded(value => !value)}>
+        <span className="manage-check-title">动态 {check.id}</span>
+        <span className="manage-check-arrow" aria-hidden="true" />
+      </button>
+    </h3>
+    <div id={bodyId} className="manage-check-body" hidden={!expanded}>
     <p>{check.active ? '已纳入检查' : '已停止或移出；保留已有归档与未完成工作。'}</p>
     <p className={check.checkStatus === 'failed' ? 'manage-state-error' : 'manage-check-label'}>{checkLabels[check.checkStatus]}</p>
     <p>{check.checkStatus === 'unchecked' ? '尚无检查工作' : check.work === 'running' ? '同步中'
@@ -62,6 +74,7 @@ function CheckStatus({ check }: { check: TargetCheck }) {
     {check.commentsError && <p className="manage-state-error" role="status">评论整轮：{commentErrors[check.commentsError]}</p>}
     {check.checkError && <p className="manage-state-error" role="status">检查：{errors[check.checkError]}</p>}
     {check.syncError && <p className="manage-state-error" role="status">同步：{errors[check.syncError]}</p>}
+    </div>
   </section>;
 }
 

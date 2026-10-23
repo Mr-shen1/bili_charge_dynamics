@@ -1,15 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { useAppNavigation } from '../app/Navigation';
+import { UserAvatar } from '../dynamics/UserAvatar';
 import { type ManagedUp, type ManagementApi, invalidUidMessage, isValidUid, managementApi } from './managementApi';
-import { UpCard } from './UpCard';
 import { useManagementRequests } from './useManagementRequests';
 import './manage.css';
+
+/** 列表页只读身份与监控状态；配置、目标与检查状态在单 UP 页。 */
+export function manageStatus(up: ManagedUp): string {
+  return up.monitor ? up.monitor.enabled ? '监控已启用' : '监控已停止' : '配置已删除';
+}
+export function manageUser(up: ManagedUp) {
+  return { id: up.uid, nickname: up.name?.trim() ? up.name : null, avatarUrl: up.avatarUrl };
+}
 
 export function ManagePage({ api = managementApi }: { api?: ManagementApi }) {
   const { pageEntryId } = useAppNavigation();
   return <ManageVisit key={pageEntryId} api={api} />;
 }
+
 function ManageVisit({ api }: { api: ManagementApi }) {
   const [ups, setUps] = useState<readonly ManagedUp[]>([]);
   const [readState, setReadState] = useState<'loading' | 'error' | 'ready'>('loading');
@@ -54,9 +63,8 @@ function ManageVisit({ api }: { api: ManagementApi }) {
   return <main className="manage-page">
     <header className="manage-header">
       <h1>UP 监控管理</h1>
-      <nav aria-label="页面导航"><Link to="/">返回阅读</Link><span aria-current="page">监控管理</span><a href="/manage">重新身份验证</a></nav>
+      <nav aria-label="页面导航"><Link to="/">返回阅读</Link><span aria-current="page">监控管理</span></nav>
     </header>
-    <p className="manage-risk" role="note" aria-label="无鉴权部署风险"><strong>首期无鉴权：</strong>公网管理页和 API 可被第三方读取和修改；隐藏入口不构成保护。请自行限制部署暴露范围。</p>
     {readState === 'loading' && <p className="manage-card" role="status">正在读取管理配置…</p>}
     {readState === 'error' && <div className="manage-card manage-notice"><p role="alert">{readError}</p>
       <button type="button" onClick={() => void load()}>重新读取</button></div>}
@@ -76,7 +84,18 @@ function ManageVisit({ api }: { api: ManagementApi }) {
         {addNotice && <p className="manage-feedback" role={addNotice.error ? 'alert' : 'status'}>{addNotice.text}</p>}
       </form>
       {ups.length === 0 && <p className="manage-card manage-empty">尚未保存 UP，请输入 UID 添加。</p>}
-      {ups.map(up => <UpCard key={`${up.uid}:${up.monitor !== null}`} up={up} api={api} requests={requests} onChange={replaceUp} />)}
+      {ups.length > 0 && <ul className="manage-ups" aria-label="UP 列表">
+        {ups.map(up => <li key={up.uid}>
+          <Link className="manage-up-link" to={`/manage/ups/${encodeURIComponent(up.uid)}`} aria-label={`管理 UP ${up.uid}`}>
+            <UserAvatar user={manageUser(up)} className="manage-avatar" decorative />
+            <span className="manage-up-text">
+              <span className="manage-author">{manageUser(up).nickname ?? '未知用户'}</span>
+              <span className="manage-muted">UID：{up.uid}</span>
+            </span>
+            <span className="manage-badge">{manageStatus(up)}</span>
+          </Link>
+        </li>)}
+      </ul>}
     </>}
   </main>;
 }

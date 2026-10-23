@@ -27,7 +27,7 @@ export type ManagementResult<T> =
   | { readonly status: 'cancelled' };
 export type ManagementTransport = (url: string, init: RequestInit) => Promise<Response>;
 
-export const authenticationRequiredMessage = '管理访问需要身份验证，请使用页面顶部的“重新身份验证”入口。';
+export const authenticationRequiredMessage = '管理访问需要身份验证，请刷新页面重新认证。';
 export const invalidUidMessage = 'UID 须为无前导零的正整数字符串，最多 128 位。';
 export const isValidUid = isValidId;
 function avatar(value: unknown): value is string | null {

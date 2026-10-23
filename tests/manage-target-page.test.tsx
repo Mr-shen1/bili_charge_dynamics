@@ -10,7 +10,7 @@ import { archive } from './fixtures/archive';
 function Visits() {
   const navigate = useNavigate();
   return <><button onClick={() => void navigate('/')}>离开管理</button>
-    <button onClick={() => void navigate('/manage', { state: null })}>新管理访问</button></>;
+    <button onClick={() => void navigate('/manage/ups/123', { state: null })}>新管理访问</button></>;
 }
 const up = { uid: '123', name: '归档作者', avatar_url: null, monitor: { mode: 'specified', recent_n: 10, enabled: true,
   last_checked_at: null, last_succeeded_at: null } };
@@ -26,7 +26,7 @@ describe('管理指定目标', () => {
       if (++reads === 1) { oldSignal = init.signal; return deferred; }
       return Response.json({ targets: [{ id: '456' }] });
     });
-    render(<StrictMode><MemoryRouter initialEntries={['/manage']}><App manageApi={api}
+    render(<StrictMode><MemoryRouter initialEntries={['/manage/ups/123']}><App manageApi={api}
       reader={createArchiveReader(async () => Response.json({ items: [], next_cursor: null }))} /></MemoryRouter></StrictMode>);
     const card = within(await screen.findByRole('article', { name: 'UP 123' }));
     await card.findByRole('button', { name: '移除目标 456' });
@@ -46,7 +46,7 @@ describe('管理指定目标', () => {
       if (init.method === 'GET') return Response.json({ targets: [] });
       posts++; oldSignal = init.signal; return deferred;
     });
-    render(<MemoryRouter initialEntries={['/manage']}><Visits /><App manageApi={api}
+    render(<MemoryRouter initialEntries={['/manage/ups/123']}><Visits /><App manageApi={api}
       reader={createArchiveReader(async () => Response.json({ items: [], next_cursor: null }))} /></MemoryRouter>);
     let card = within(await screen.findByRole('article', { name: 'UP 123' }));
     await card.findByText('尚未添加指定目标。');
@@ -80,7 +80,7 @@ describe('管理指定目标', () => {
       deletes++;
       return deletes === 1 ? Response.json({ error: { code: 'STORAGE_UNAVAILABLE', message: 'SECRET_TOKEN' } }, { status: 503 }) : deferred;
     });
-    render(<MemoryRouter initialEntries={['/manage']}><App manageApi={api}
+    render(<MemoryRouter initialEntries={['/manage/ups/123']}><App manageApi={api}
       reader={createArchiveReader(async () => Response.json({ items: [], next_cursor: null }))} /></MemoryRouter>);
     const card = within(await screen.findByRole('article', { name: 'UP 123' }));
     expect(await card.findByRole('alert')).toHaveTextContent('管理接口响应异常');
@@ -113,7 +113,7 @@ describe('管理指定目标', () => {
       }
       targets = []; return new Response(null, { status: 204 });
     });
-    function show() { return render(<MemoryRouter initialEntries={['/manage']}><App
+    function show() { return render(<MemoryRouter initialEntries={['/manage/ups/123']}><App
       reader={createArchiveReader(async () => Response.json({ items: [archive], next_cursor: null }))} manageApi={api} /></MemoryRouter>); }
     let view = show();
     let card = within(await screen.findByRole('article', { name: 'UP 123' }));

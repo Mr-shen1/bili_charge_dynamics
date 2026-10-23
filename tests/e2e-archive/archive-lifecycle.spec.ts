@@ -49,6 +49,8 @@ async function manageTarget(page: Page) {
   await page.goto('/manage');
   await page.getByRole('textbox', { name: 'UP UID', exact: true }).fill('202');
   await page.getByRole('button', { name: '添加监控', exact: true }).click();
+  // UP 列表只列身份与状态，配置、目标与检查状态在单 UP 管理页。
+  await page.getByRole('link', { name: '管理 UP 202', exact: true }).click();
   const up = page.getByRole('article', { name: 'UP 202', exact: true });
   await expect(up).toContainText('虚构生命周期作者');
   await up.getByRole('combobox', { name: '监控模式', exact: true }).selectOption('specified');
@@ -102,7 +104,7 @@ test('浏览器管理→Collector→真实归档阅读，停用/删目标/删配
   await expect(page).toHaveURL(/\/ups\/202$/);
   await expect(card.getByRole('button', { name: '收起正文', exact: true })).toBeVisible();
 
-  await page.goto('/manage');
+  await page.goto('/manage/ups/202');
   await up.getByRole('button', { name: '移除目标 9101', exact: true }).click();
   await expect(up).toContainText('目标已移除；已有归档保留。');
   await up.getByRole('button', { name: '删除监控配置', exact: true }).click();
@@ -146,6 +148,9 @@ test('管理分项状态贯穿可信编辑/计数变化、媒体失败、重开�
     const before = (await lifecycle.command('calls')).calls;
     await up.getByRole('button', { name: /^(重新)?读取检查状态$/ }).click();
     await expect(state).toBeVisible();
+    // 每条动态默认折叠详情；重新加载或刷新后仍折叠，这里逐次展开以读取分项行。
+    const expand = state.getByRole('button', { name: '展开动态 9101 详情' });
+    if (await expand.count()) await expand.click();
     expect((await lifecycle.command('calls')).calls).toEqual(before);
   };
   await read();
@@ -227,7 +232,7 @@ test('管理分项状态贯穿可信编辑/计数变化、媒体失败、重开�
   expect((await (await page.request.get(checks)).json()).checks[0]).toEqual(partial);
   expect((await lifecycle.command('calls')).calls).toEqual([]);
   await lifecycle.command('check');
-  await page.goto('/manage');
+  await page.goto('/manage/ups/202');
   await read();
   await expect(state).toContainText('检查无变化；不代表同步完成。');
   await expect(state).toContainText('最近检查：2026-10-09 13:12:00');

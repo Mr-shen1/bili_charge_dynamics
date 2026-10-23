@@ -96,12 +96,23 @@ describe('目标检查生产映射', () => {
       if (url.endsWith('/targets')) return Response.json({ targets: [{ id: check.id }] });
       return Response.json({ ups: [up] });
     });
-    render(<MemoryRouter initialEntries={['/manage']}><App reader={reader} manageApi={api} /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={['/manage/ups/123']}><App reader={reader} manageApi={api} /></MemoryRouter>);
     await user.click(await screen.findByRole('button', { name: '读取检查状态' }));
-    const status = within(await screen.findByRole('region', { name: `动态 ${check.id} 检查状态` }));
+    const region = await screen.findByRole('region', { name: `动态 ${check.id} 检查状态` });
+    const status = within(region);
     expect(status.getByText('检查无变化；不代表同步完成。')).toBeInTheDocument();
-    expect(status.getByText('观察与正文成功版本不一致；当前观察仍待同步确认。')).toBeInTheDocument();
     expect(status.getByText('部分完成')).toBeInTheDocument();
+    // 详情默认折叠：头部只留 ID、纳入状态与检查阶段，细节靠 aria-expanded 控制。
+    const toggle = status.getByRole('button', { name: `展开动态 ${check.id} 详情` });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    const body = document.getElementById(toggle.getAttribute('aria-controls')!)!;
+    expect(body).toHaveAttribute('hidden');
+    expect(body).toHaveTextContent('已纳入检查');
+    expect(body).toHaveTextContent('实际整轮成功：尚未成功');
+    await user.click(toggle);
+    expect(status.getByRole('button', { name: `收起动态 ${check.id} 详情` })).toHaveAttribute('aria-expanded', 'true');
+    expect(body).not.toHaveAttribute('hidden');
+    expect(status.getByText('观察与正文成功版本不一致；当前观察仍待同步确认。')).toBeInTheDocument();
     expect(status.getByText('正文待处理；动态图待处理；评论已保存；回复已保存；评论图已保存。')).toBeInTheDocument();
     expect(status.getByText('实际整轮成功：尚未成功')).toBeInTheDocument();
     current = { ...check, work: 'running', sync_error: null,
@@ -126,7 +137,7 @@ describe('目标检查生产映射', () => {
           parts: { ...check.parts, text: 'restricted', comment_media: 'pending' } },
       ] });
     });
-    render(<MemoryRouter initialEntries={['/manage']}><App reader={reader} manageApi={api} /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={['/manage/ups/123']}><App reader={reader} manageApi={api} /></MemoryRouter>);
     await user.click(await screen.findByRole('button', { name: '读取检查状态' }));
     const partial = within(await screen.findByRole('region', { name: `动态 ${check.id} 检查状态` }));
     expect(partial.getByText('来源评论总数：1234567')).toBeInTheDocument();
@@ -161,7 +172,7 @@ describe('目标检查生产映射', () => {
       synced_comment_count: 7, parts: { ...check.parts, comments: 'pending', replies: 'pending', text: 'success' } };
     const api = createManagementApi(async url => url.endsWith('/checks') ? Response.json({ checks: [current] })
       : Response.json({ ups: [{ ...up, monitor: { ...up.monitor, mode: 'recent' } }] }));
-    render(<MemoryRouter initialEntries={['/manage']}><App reader={reader} manageApi={api} /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={['/manage/ups/123']}><App reader={reader} manageApi={api} /></MemoryRouter>);
     await user.click(await screen.findByRole('button', { name: '读取检查状态' }));
     const status = within(await screen.findByRole('region', { name: `动态 ${check.id} 检查状态` }));
     expect(status.getByText('评论同步：待处理')).toBeInTheDocument();
@@ -198,7 +209,7 @@ describe('目标检查生产映射', () => {
     let current: unknown = { ...check, last_succeeded_at: '2025-06-01T02:01:00Z' };
     const api = createManagementApi(async url => url.endsWith('/checks') ? Response.json({ checks: [current] })
       : Response.json({ ups: [{ ...up, monitor: { ...up.monitor, mode: 'recent' } }] }));
-    render(<MemoryRouter initialEntries={['/manage']}><App reader={reader} manageApi={api} /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={['/manage/ups/123']}><App reader={reader} manageApi={api} /></MemoryRouter>);
     await user.click(await screen.findByRole('button', { name: '读取检查状态' }));
     const status = within(await screen.findByRole('region', { name: `动态 ${check.id} 检查状态` }));
     expect(status.getByText('根评论最近成功：—')).toBeInTheDocument();
@@ -236,7 +247,7 @@ describe('目标检查生产映射', () => {
       return url.endsWith('/checks') ? Response.json({ checks: [current] })
         : Response.json({ ups: [{ ...up, monitor: { ...up.monitor, mode: 'recent' } }] });
     });
-    render(<MemoryRouter initialEntries={['/manage']}><App reader={reader} manageApi={api} /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={['/manage/ups/123']}><App reader={reader} manageApi={api} /></MemoryRouter>);
     await user.click(await screen.findByRole('button', { name: '读取检查状态' }));
     const status = within(await screen.findByRole('region', { name: `动态 ${check.id} 检查状态` }));
     expect(status.getByText('正文最近成功：—')).toBeInTheDocument();
@@ -285,7 +296,7 @@ describe('目标检查生产映射', () => {
       { ...check, id: '2', active: false, check_status: 'failed', observed: { ...check.observed, edit_status: 'error', secret: 'SECRET_TOKEN' },
         check_error: 'SIGNAL_INVALID', sync_error: 'SOURCE_UNAVAILABLE' },
     ] }) : Response.json({ ups: [{ ...up, monitor: { ...up.monitor, mode: 'recent', enabled: false } }] }));
-    render(<MemoryRouter initialEntries={['/manage']}><App reader={reader} manageApi={api} /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={['/manage/ups/123']}><App reader={reader} manageApi={api} /></MemoryRouter>);
     await user.click(await screen.findByRole('button', { name: '读取检查状态' }));
     const unchecked = within(await screen.findByRole('region', { name: '动态 1 检查状态' }));
     expect(screen.getByText('最近成功：尚未成功')).toBeInTheDocument();
@@ -310,7 +321,7 @@ describe('目标检查生产映射', () => {
         synced_version: check.observed.observed_version, sync_error: null,
         last_succeeded_at: '2025-06-01T02:01:00Z', parts: { ...check.parts, text: 'success', media: 'success' } }] });
     });
-    render(<MemoryRouter initialEntries={['/manage']}><App reader={reader} manageApi={api} /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={['/manage/ups/123']}><App reader={reader} manageApi={api} /></MemoryRouter>);
     await user.click(await screen.findByRole('button', { name: '读取检查状态' }));
     const status = within(await screen.findByRole('region', { name: `动态 ${check.id} 检查状态` }));
     expect(status.getByText('对应观察已完成')).toBeInTheDocument();
@@ -335,11 +346,11 @@ describe('目标检查生产映射', () => {
       if (url.endsWith('/checks')) { oldSignal = init.signal; return pending; }
       return Response.json({ ups: [{ ...up, monitor: { ...up.monitor, mode: 'recent' } }] });
     });
-    const view = render(<MemoryRouter initialEntries={['/manage']}><App reader={reader} manageApi={api} /></MemoryRouter>);
+    const view = render(<MemoryRouter initialEntries={['/manage/ups/123']}><App reader={reader} manageApi={api} /></MemoryRouter>);
     await user.click(await screen.findByRole('button', { name: '读取检查状态' }));
     view.unmount();
     expect(oldSignal?.aborted).toBe(true);
-    render(<MemoryRouter initialEntries={['/manage']}><App reader={reader} manageApi={api} /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={['/manage/ups/123']}><App reader={reader} manageApi={api} /></MemoryRouter>);
     await screen.findByRole('button', { name: '读取检查状态' });
     await act(async () => resolve(Response.json({ checks: [check] })));
     expect(screen.getByText('尚未读取检查状态。')).toBeInTheDocument();
