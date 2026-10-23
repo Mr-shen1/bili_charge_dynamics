@@ -174,8 +174,12 @@ async def sync_roots(store, client, id, generation, *, now=None, uid=None):
             phase = "page_fetch"
             documents, ids, counts = await fetch_root_page(client, id, locator, number, on_pin=observe_pin, uid=uid)
             phase = "pagination"
+            if baseline is not None and counts[0] < baseline[0]:
+                # 总数减少说明有删除，分页可能整体前移，重试以免漏内容。
+                raise ValueError("Comment counts decreased during scan")
             if baseline is not None and counts != baseline:
-                raise ValueError("Comment counts changed during scan")
+                # 总数增长（多为楼中楼新增）不影响根分页一致性；页偏移由重复 ID 检测负责。
+                collector_event("root_scan_count_grew", baseline=baseline[0], current=counts[0])
             baseline = counts
             if ids and not set(ids) - seen:
                 raise ValueError("Comment pagination did not advance")

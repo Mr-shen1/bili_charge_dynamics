@@ -98,15 +98,15 @@ async def sync_target(store, client, uid, id, generation, downloader=None, uploa
     archive = await to_thread.run_sync(store.read_archive, id)
     current_locator = archive.get("comment_locator") or {}
     locator_changed = any(previous_locator.get(key) != current_locator.get(key) for key in ("oid", "type"))
-    retry_comments = archive.get("comments_last_attempt") in ("failed", "unconfirmed")
     if (not pending_comments_only or locator_changed
             or archive.get("synced_root_metadata_version", 0) < ROOT_METADATA_VERSION
             or any(archive["work"][part] != "success" for part in ("comments", "replies"))):
         async with open_comment_client(client, uid, comment_client_factory) as comments_client:
             roots_result = await sync_roots(store, comments_client, id, generation, now=now, uid=uid)
-            # 显式初始化/重跑一律整楼重扫；周期检查走乐观增量（rcount 变化才展开）。
+            # 增量基准完全由 replies.scan_due 决定（新楼、rcount 变化、上次失败、校准到期）；
+            # 不让重试触发 full=True，否则热帖会陷入「全量重扫 → 期间计数变化 → 再全量重扫」。
             await sync_replies(store, comments_client, id, generation, roots_result, now=now, uid=uid,
-                               full=full_replies or retry_comments)
+                               full=full_replies)
     await sync_media(store, downloader, uploader, id, current_only=True, now=now)
     for root_id in await to_thread.run_sync(store.media_root_ids, id):
         await sync_media(store, downloader, uploader, id, current_only=True, root_id=root_id, now=now)

@@ -27,7 +27,7 @@ collector 使用独立 INFO 级别的 stderr handler，保持 HTTPX/HTTPCore、O
 - `collector_initializing`、`collector_configuration`、`collector_started` 表示初始化、评论引擎/代理策略、媒体上传是否启用、固定节拍/并发配置与恢复完成。`comment_session_started/closed` 表示每轮 Requests 生命周期；`comment_session_warmup` 的 homepage/space 只表示对应 HTTP 返回情况，不代表登录成功。
 - 每个固定节拍输出一条 `collector_tick`，记录当前入选 `targets`、`recent_ups`、待处理 `pending`、检查/同步/发现的 `*_in_flight` 和本轮 `*_started` 数量。它是调度快照，不保证任务在该行输出时已完成领取；无目标也输出心跳。
 - `sync_started`、`sync_finished` 和来源阶段事件共享进程内 `attempt` 流水号。流水号不是目标 ID 或持久领取令牌；重启后重置。`sync_finished complete=false` 不表示成功，后续仍按原 pending/入选规则处理；`sync_skipped reason=not_claimed` 表示未取得有效工作。
-- `root_sync_started/root_sync_finished` 和 `replies_sync_started/replies_sync_finished` 记录整轮阶段，不为每个成功页输出 INFO。根/回复失败记录固定事件、`stage`、`page`（回复另含本轮 `root_index`），以区分来源请求、分页校验、存储和尾页复查。
+- `root_sync_started/root_sync_finished` 和 `replies_sync_started/replies_sync_finished` 记录整轮阶段，不为每个成功页输出 INFO。根/回复失败记录固定事件、`stage`、`page`（回复另含本轮 `root_index`），以区分来源请求、分页校验、存储和尾页复查。并发计数**增长**不判失败，只记 `root_scan_count_grew` / `reply_scan_count_grew`；根扫描失败时楼中楼降级执行记 `replies_sync_degraded roots=`；`replies_sync_finished` 另带 `skipped=` 与 `degraded=`。
 - 失败仅记录固定 `reason` 与经过范围校验的 `http_status`：如 `timeout`、`http_status`、`network_error`、`json_invalid`、`field_missing`、`type_invalid`、`value_invalid`、`source_rejected`、`pagination_changed`、`pagination_not_advancing`、`storage_error`。应用自身的固定校验错误进一步细分为 `comment_page_mismatch`、`pictures_shape_invalid`、`upper_shape_invalid` 等有限原因。根/回复的缺字段只在命中对应阶段的固定字段白名单时记录 `field`，不回显任意键名；JSON 解码异常不输出其文档片段。不读取或输出响应正文、异常原文/traceback、URL、身份/动态/评论 ID、Cookie、SDK 凭据或领取令牌。
 - `collector_loop_failed/collector_failed` 明确记录调度或启动失败；取消/退出记录 `collector_stopping/collector_stopped`。未改变既有异常处理及失败重试策略，也未在父进程中新增自动重启。
 
