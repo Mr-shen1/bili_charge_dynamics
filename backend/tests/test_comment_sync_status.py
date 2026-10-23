@@ -261,7 +261,8 @@ def test_restricted_body_does_not_block_comment_success_unknown_is_not_zero(tmp_
             for field in ("root_comments_last_succeeded_at", "replies_last_succeeded_at", "comments_last_succeeded_at"):
                 assert check[field] == archive[field] == "2030-01-01T00:00:15+00:00"
             assert check["root_comments_error"] is check["replies_error"] is check["comments_error"] is None
-            assert check["last_succeeded_at"] is None
+            # 受限已确认终态，整轮完成，记目标级成功时间。
+            assert check["last_succeeded_at"] == "2030-01-01T00:00:15+00:00"
             assert archive["comment_sync"] == check
             # 受限稳定登记不再重抓正文，也不重扫已成功评论或更新成功时间。
             source.calls.clear()

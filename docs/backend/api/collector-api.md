@@ -49,7 +49,7 @@ collector 使用独立 INFO 级别的 stderr handler，保持 HTTPX/HTTPCore、O
 | `synced_comment_count` | 实际整轮根＋必要回复全部成功处理的来源总数；未知成功仍为 null，须结合 `comments_last_attempt` 判断 |
 | `local_comment_count` / `local_reply_count` | 本地完整保留根／回复数，不是本次加载数或来源总数；尚无归档时为 null |
 | `comments_last_attempt` | 实际归档评论整轮的 `pending\|success\|failed\|unconfirmed`；旧成功可与最新观察待处理并存，须结合 `parts` 和 checkpoint |
-| `last_succeeded_at` | 对应观察的实际整轮归档成功时间；检查、建立已有归档基线均不补此时间 |
+| `last_succeeded_at` | 对应观察的实际整轮归档成功时间；检查、建立已有归档基线均不补此时间。正文受限且该版本已确认终态时也属于整轮完成，会推进此时间；`text_last_succeeded_at`／`media_last_succeeded_at` 仍为 null，不冒充实际提交 |
 | `check_error` | null、`SOURCE_UNAVAILABLE` 或 `SIGNAL_INVALID`；不回显来源原文 |
 | `sync_error` | null 或固定脱敏错误，通常 `SYNC_INCOMPLETE`；成功检查不会清除同步错误 |
 
@@ -83,7 +83,7 @@ checks 同时增量返回 `media_errors`、`comment_media_errors`：分别对动
 
 成功正文确认没有动态图时可完成空媒体组；只有实际成功根分页才能确认无根／全空评论媒体组。检查、只读 GET、跳过已完成正文、跳过已上传图片均不推进时间。任一图失败保留旧成功时间、旧成功媒体和文本 checkpoint；同信号重试的最后一张图实际完成后推进媒体时间，不重扫已完成评论文本。有图但旧记录缺上传时间时，同版本根重扫不会补造上传时间。
 
-自动执行仍沿用同一链路：可信 HTML 编辑变化更新正文和动态图；计数变化更新根、必要回复及一级评论图。评论文本可先完成、图片继续失败重试；较新检查观察不会被旧上传完成吞掉。状态不新增枚举：`check_status` 区分未检查／无变化／检查失败，`work=running` 表示在途，`parts` 的成功与待处理组合及 `sync_error` 区分部分完成、失败和具体未完成项；HTTP 成功不代表采集全项成功。受限正文、无效编辑信号与可读评论独立。
+自动执行仍沿用同一链路：可信 HTML 编辑变化更新正文和动态图；计数变化更新根、必要回复及一级评论图。评论文本可先完成、图片继续失败重试；较新检查观察不会被旧上传完成吞掉。状态不新增枚举：`check_status` 区分未检查／无变化／检查失败，`work=running` 表示在途，`parts` 的成功与待处理组合及 `sync_error` 区分部分完成、失败和具体未完成项；HTTP 成功不代表采集全项成功。受限正文、无效编辑信号与可读评论独立；受限为已确认终态时整轮算完成（`work=complete`、推进 `last_succeeded_at`），但不伪造正文／媒体分项的成功时间。
 
 后端组合自动化及红绿证据见 [30 后端专项证据](../../../.scratch/backend-integration/evidence/backend-lifecycle-30.md)。该证据不代表前端已消费新增时间字段，也不代表真实上游、OSS、部署或持续运行已验收。
 
