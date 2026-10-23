@@ -310,7 +310,11 @@ def test_v12_migration_keeps_archive_observations_and_pending_and_seeds_current_
             assert not await Collector(Store(path), client).check_once(UID, RECENT_ID)
             await restore(path, "window" if mode == "recent" else "stop", collector, source)
             async with httpx.AsyncClient(transport=httpx.MockTransport(source.download)) as media_client:
-                await Collector(Store(path), client, ImageDownloader(media_client), RecordingOSS()).execute_pending()
+                oss = Collector(Store(path), client, ImageDownloader(media_client), RecordingOSS())
+                # 生产同序：先检查再执行。无上传器时算完成的媒体记录，在配好上传后
+                # 会被下一次检查重新登记为待办，不需要手动改库。
+                await oss.check_once(UID, RECENT_ID)
+                await oss.execute_pending()
             assert_complete_content(read_content(path))
             assert checks(path)[RECENT_ID]["work"] == "complete"
 

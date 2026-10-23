@@ -89,7 +89,7 @@ ssh <user>@<公网IP> 'echo still-ok'
 ```bash
 sudo -u bili git clone <仓库地址> /srv/bili-monitor/app
 cd /srv/bili-monitor/app
-sudo -u bili env HOME=/home/bili /home/bili/.local/bin/uv sync --locked --no-dev
+sudo -u bili env HOME=/home/bili /usr/local/bin/uv sync --locked --no-dev
 ```
 
 环境文件：
@@ -250,7 +250,7 @@ sudo systemctl stop bili-monitor
 cd /srv/bili-monitor/app
 sudo -u bili git fetch --all
 sudo -u bili git checkout <目标版本>
-sudo -u bili env HOME=/home/bili /home/bili/.local/bin/uv sync --locked --no-dev
+sudo -u bili env HOME=/home/bili /usr/local/bin/uv sync --locked --no-dev
 
 sudo systemctl start bili-monitor
 # 等 API 完成迁移并监听后，再确认 collector 正常
@@ -279,7 +279,7 @@ ln -sfn releases/<旧版本> current.tmp && mv -Tf current.tmp current
 ```bash
 sudo systemctl stop bili-monitor
 cd /srv/bili-monitor/app && sudo -u bili git checkout <旧版本>
-sudo -u bili env HOME=/home/bili /home/bili/.local/bin/uv sync --locked --no-dev
+sudo -u bili env HOME=/home/bili /usr/local/bin/uv sync --locked --no-dev
 sudo systemctl start bili-monitor
 ```
 

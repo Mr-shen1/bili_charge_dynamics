@@ -494,8 +494,10 @@ def test_comment_checkpoint_advances_while_comment_media_remains_independently_p
             assert archive["comments_last_attempt"] == "success"
             assert state["parts"]["comments"] == state["parts"]["replies"] == "success"
             assert state["parts"]["text"] == state["parts"]["media"] == "success"
+            # 未配置上传器：评论图永远无法完成，因此不作为整轮完成条件；
+            # 但媒体分项仍如实保持 pending，不冒充已上传。
             assert state["parts"]["comment_media"] == "pending"
-            assert state["work"] == "pending"
+            assert state["work"] == "complete"
             with archive_client(path) as api:
                 root = api.get(ARCHIVE + "/comments").json()["items"][0]
                 assert root["observed_version"] == root["media_version"] == "comments:8"
