@@ -269,15 +269,13 @@ describe('/manage 生产映射页面', () => {
     expect(within(input.closest('form')!).getAllByRole('textbox')).toHaveLength(1);
     expect(screen.queryByLabelText(/昵称|头像|凭据/)).not.toBeInTheDocument();
   });
-  it('默认同源 fetch：加载、读取失败固定提示、原位键盘重试和空态，显著说明公网风险', async () => {
+  it('默认同源 fetch：加载、读取失败固定提示、原位键盘重试和空态', async () => {
     const user = userEvent.setup();
     const pending = deferred<Response>();
     const http = vi.spyOn(globalThis, 'fetch').mockReturnValueOnce(pending.promise)
       .mockResolvedValueOnce(Response.json({ ups: [] }));
     show();
     expect(screen.getByText('正在读取管理配置…')).toBeInTheDocument();
-    expect(screen.getByText(/首期无鉴权/)).toBeInTheDocument();
-    expect(screen.getByText(/公网管理页和 API/)).toHaveTextContent(/公网.*第三方.*读取.*修改/);
     await act(async () => pending.resolve(Response.json({ error: { code: 'STORAGE_UNAVAILABLE', message: 'SECRET_TOKEN' } }, { status: 503 })));
     expect(await screen.findByRole('alert')).toHaveTextContent('配置存储暂不可用，请重试。');
     expect(document.body).not.toHaveTextContent('SECRET_TOKEN');

@@ -1,6 +1,6 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, useLocation } from 'react-router';
+import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SessionProvider } from '../src/app/Navigation';
 import { ManagePage } from '../src/manage/ManagePage';
@@ -39,8 +39,8 @@ const operations: readonly Operation[] = [
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe('管理接口的部署入口认证', () => {
-  it('固定安全文案指向原生入口，测试表覆盖全部公开方法', () => {
-    expect(authenticationRequiredMessage).toBe('管理访问需要身份验证，请使用页面顶部的“重新身份验证”入口。');
+  it('固定安全文案不指向已移除的页面入口，测试表覆盖全部公开方法', () => {
+    expect(authenticationRequiredMessage).toBe('管理访问需要身份验证，请刷新页面重新认证。');
     expect(operations.map(operation => operation.name).sort()).toEqual(Object.keys(createManagementApi()).sort());
   });
 
@@ -122,56 +122,36 @@ describe('管理接口的部署入口认证', () => {
   });
 });
 
-function LocationProbe() {
-  const location = useLocation();
-  return <output data-testid="router-location">{JSON.stringify(location)}</output>;
-}
 function show(api: ManagementApi) {
   return render(<MemoryRouter initialEntries={['/manage']}><SessionProvider>
-    <ManagePage api={api} /><LocationProbe />
+    <ManagePage api={api} />
   </SessionProvider></MemoryRouter>);
 }
 function unusedApi() {
   return createManagementApi(vi.fn<ManagementTransport>().mockRejectedValue(new Error('Unexpected transport')));
 }
 
-describe('管理页的原生身份验证入口', () => {
-  it('读取认证失败仅显示安全提示和手动入口；点击不被客户端路由接管', async () => {
+describe('管理页的认证失败提示', () => {
+  it('读取认证失败仅显示安全提示，不自动重试', async () => {
     const listUps = vi.fn<ManagementApi['listUps']>().mockResolvedValue({ status: 'error', message: authenticationRequiredMessage });
     show({ ...unusedApi(), listUps });
     expect(await screen.findByRole('alert')).toHaveTextContent(authenticationRequiredMessage);
-    expect(screen.getByRole('note', { name: '无鉴权部署风险' })).toHaveTextContent('首期无鉴权');
     // 401 映射只是防御性提示，不代表仓库内已有认证网关。
-    const link = screen.getByRole('link', { name: '重新身份验证' });
-    expect(link.tagName).toBe('A');
-    expect(link).toHaveAttribute('href', '/manage');
-    const location = screen.getByTestId('router-location').textContent;
-    const requests = listUps.mock.calls.length;
-    let intercepted = false;
-    // 在 React 冒泡处理之后观察默认行为，再阻止 jsdom 执行真正的文档导航。
-    document.addEventListener('click', event => {
-      intercepted = event.defaultPrevented;
-      event.preventDefault();
-    }, { once: true });
-    fireEvent.click(link);
-    expect(intercepted).toBe(false);
-    expect(screen.getByTestId('router-location')).toHaveTextContent(location!);
-    expect(listUps).toHaveBeenCalledTimes(requests);
+    expect(screen.getByRole('link', { name: '返回阅读' })).toHaveAttribute('href', '/');
+    expect(listUps).toHaveBeenCalledTimes(1);
   });
 
-  it('操作认证失败指向始终存在的原生入口，不自动重新读取或重试操作', async () => {
+  it('操作认证失败不回显响应体、不自动重试操作', async () => {
     const user = userEvent.setup();
     const listUps = vi.fn<ManagementApi['listUps']>().mockResolvedValue({ status: 'success', data: [] });
     const addUp = vi.fn<ManagementApi['addUp']>().mockResolvedValue({ status: 'error', message: authenticationRequiredMessage });
     show({ ...unusedApi(), listUps, addUp });
     const input = await screen.findByRole('textbox', { name: 'UP UID' });
     const reads = listUps.mock.calls.length;
-    expect(screen.getByRole('link', { name: '重新身份验证' })).toHaveAttribute('href', '/manage');
     await user.type(input, uid);
     await user.click(screen.getByRole('button', { name: '添加监控' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(authenticationRequiredMessage);
     expect(input).toHaveValue(uid);
-    expect(screen.getByRole('link', { name: '重新身份验证' })).toHaveAttribute('href', '/manage');
     expect(addUp).toHaveBeenCalledTimes(1);
     expect(listUps).toHaveBeenCalledTimes(reads);
   });

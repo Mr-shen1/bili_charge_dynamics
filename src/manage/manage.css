@@ -21,7 +21,6 @@ body:has(.manage-page) { background: #d1e8e7; }
 .manage-header nav > * { display: inline-flex; align-items: center; min-height: 44px; }
 .manage-header [aria-current] { color: #61666d; border-bottom: 2px solid var(--manage-accent); }
 .manage-page a { color: var(--manage-accent); text-underline-offset: 4px; }
-.manage-risk { padding: 12px 16px; border-left: 4px solid #b54708; border-radius: 4px; background: #fff6e5; color: #86410b; }
 .manage-card { min-width: 0; padding: 20px; margin-top: 8px; background: #fff; border-radius: 4px; }
 .manage-card h2 { font-size: 16px; line-height: 25px; font-weight: 600; }
 .manage-card h3 { font-size: 15px; line-height: 24px; font-weight: 600; }

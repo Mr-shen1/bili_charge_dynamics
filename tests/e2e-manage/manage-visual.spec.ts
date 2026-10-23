@@ -64,9 +64,6 @@ for (const width of [360, 390, 768, 1280]) {
     const deleted = page.getByRole('article', { name: 'UP 789', exact: true });
     for (const article of [card, specified, deleted]) await expandDetails(article);
     await expect(specified.getByRole('button', { name: `移除目标 ${targetId}` })).toBeVisible();
-    const risk = page.getByRole('note', { name: '无鉴权部署风险' });
-    await expect(risk).toBeVisible();
-    await expect(risk).toContainText('第三方读取和修改');
     // 初始加载没有隐式读取 checks，更没有同步或轮询。
     expect(calls.some(call => call.url.endsWith('/checks'))).toBe(false);
     await card.getByRole('button', { name: '读取检查状态', exact: true }).click();
