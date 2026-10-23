@@ -82,10 +82,21 @@ async def fetch_reply_page(client, dynamic_id, root_id, locator, number, *, uid=
 
 
 async def sync_replies(store, client, id, generation, roots_result, *, now=None, uid=None, full=False):
-    if roots_result is None:
-        collector_event("replies_sync_skipped", reason="roots_unconfirmed")
-        await to_thread.run_sync(store.finish_replies, id, generation, "unconfirmed", None)
-        return
+    degraded = roots_result is None
+    if degraded:
+        # 根扫描失败时降级：用已存根评论及其上次基准继续，只重扫到期/失败的楼，不整轮跳过。
+        # 发现新根仍依赖根扫描成功；此处只保证已可读内容不因根失败而被阻塞。
+        progress = await to_thread.run_sync(store.reply_progress, id)
+        if not progress:
+            collector_event("replies_sync_skipped", reason="roots_unconfirmed")
+            await to_thread.run_sync(store.finish_replies, id, generation, "unconfirmed", None)
+            return
+        roots = await to_thread.run_sync(store.roots_for_replies, id, set(progress))
+        # 以已存根评论的 rcount 作为本轮基准：失败的楼因 status != success 重扫，
+        # 已成功且 rcount 未变的楼仍然跳过，不因根失败而全量重扫。
+        observed_replies = {root["id"]: root["source_reply_count"] for root in roots}
+        collector_event("replies_sync_degraded", roots=len(observed_replies))
+        roots_result = (observed_replies, None)
     observed_replies, observed_count = roots_result
     if uid is None:
         archive = await to_thread.run_sync(store.read_archive, id)
@@ -127,8 +138,12 @@ async def sync_replies(store, client, id, generation, roots_result, *, now=None,
                 phase = "pagination"
                 # 根页 rcount 与楼中楼 count 可能来自不同快照或口径（热帖持续增长、折叠/删除仍计数），
                 # 以本次楼中楼分页自洽为准，不要求与根页旧值相等。
+                if baseline is not None and count < baseline:
+                    # 计数减少说明有删除，分页可能前移，重试以免漏回复。
+                    raise ValueError("Reply count decreased during scan")
                 if baseline is not None and count != baseline:
-                    raise ValueError("Reply count changed during scan")
+                    # 热帖扫描期间新增回复属于正常并发，页偏移由重复 ID 检测负责。
+                    collector_event("reply_scan_count_grew", baseline=baseline, current=count)
                 baseline = count
                 if page_ids and not set(page_ids) - seen:
                     raise ValueError("Reply pagination did not advance")
@@ -166,6 +181,11 @@ async def sync_replies(store, client, id, generation, roots_result, *, now=None,
             failed = True
             if not await to_thread.run_sync(store.change_reply_root, id, generation, root["id"], "failed"):
                 return
-    await to_thread.run_sync(store.finish_replies, id, generation, "failed" if failed else "success", observed_count,
-                            now() if now is not None and not failed else None)
-    collector_event("replies_sync_finished", warning=failed, succeeded=not failed, roots=len(roots), skipped=skipped)
+    # 降级轮只保证「已存根的可读回复」不落后，未确认根集合，故不宣称全集一致：
+    # 沿用 unconfirmed 语义，synced_reply_comment_count 与成功时间不推进。
+    await to_thread.run_sync(store.finish_replies, id, generation,
+                             "unconfirmed" if degraded else ("failed" if failed else "success"),
+                             None if degraded else observed_count,
+                             now() if now is not None and not failed and not degraded else None)
+    collector_event("replies_sync_finished", warning=failed, succeeded=not failed and not degraded,
+                    degraded=degraded, roots=len(roots), skipped=skipped)

@@ -79,7 +79,7 @@ curl --fail-with-body -X POST http://127.0.0.1:8000/api/sync/initial \
 - `synced_root_comment_count` 只在所有必要根页归档成功后保存本轮开始的动态来源计数（未知仍 null）；失败不推进旧 checkpoint。未知计数不阻断实际可读根页，但根页成功不代表计数观察、回复或媒体成功。generation 条件提交拒绝较旧执行覆盖新记录／完成状态。
 - `comment_locator` 保留 `oid/type`，新策略增加 `source/policy_version`。在动态 ID 和作者已校验的 detail item 中，按参考函数优先选择合法 basic locator，再回退 OPUS ID/type11、匹配目标动态ID/type11，来源分别为 `basic/opus_fallback/dynamic_id_fallback`。旧 locator 缺策略版本时在后续检查重新核对，失败保留旧观察而不伪造成功；oid/type 变化会推进工作 revision 并重新同步评论，不只比较总数。fallback 条目必须明确带匹配 oid/type；无条目的空页不能作为 fallback 已确认的证据。
 - 正式根评论、楼中楼与独立计数通过每次尝试独立的 Requests Session 执行，普通头/15秒超时/环境代理对照参考脚本；同步 I/O 在线程池运行。每轮先预热 B站首页与本轮 UP 空间 `/dynamic` 页，各10秒，取得响应后等1–3秒，每个 URL 独立忽略异常；不再做 nav 评论预热，不因此确认登录。私有文件启动读一次，每轮重新初始化 jar，本轮 Cookie 更新保留，结束关闭。重定向只允许 api/www/space 三个精确B站主机的默认HTTPS GET，避免凭据外泄；不为评论接口加 WBI。正文/detail/feed 保持原 HTTPX 路径，两种客户端共享分页等待锁。显式传输替身仍可拦截全部来源 I/O，不复制一套业务解析。
-- `/x/v2/reply` 使用 locator、`sort=0`、`ps=20`、递增 `pn`。普通根页、第一页 `upper.top` 及 `hots` 幂等去重保存，不采条目内嵌回复预览。短页仍读下一页直到明确空页，非首屏的空尾页再读取同页确认；复查非空、失败或计数变化均保留已得内容并留待重试，不提前宣布结束。不由有口径争议的 `page.count` 推算页数。第一页 count 非零却无任何根数据、缺失 replies／分页计数、业务／网络／结构错误、连续页计数变化或分页不前进均失败，而不是成功空。
+- `/x/v2/reply` 使用 locator、`sort=0`、`ps=20`、递增 `pn`。普通根页、第一页 `upper.top` 及 `hots` 幂等去重保存，不采条目内嵌回复预览。短页仍读下一页直到明确空页，非首屏的空尾页再读取同页确认；复查非空、失败或计数变化均保留已得内容并留待重试，不提前宣布结束。不由有口径争议的 `page.count` 推算页数。第一页 count 非零却无任何根数据、缺失 replies／分页计数、业务／网络／结构错误、跨页计数**减少**或分页不前进均失败，而不是成功空；计数**增长**（多为楼中楼新增，实测可占总数的 99.4%）不中止根分页，只记 `root_scan_count_grew`，页偏移由重复 ID 检测保证。
 - 置顶状态仅取首页明确的 `upper.top`：合法对象确认对应根 ID 置顶，显式 `null` 确认无置顶，缺失字段为未知。`hots` 不代表置顶，普通列表同 ID 副本不会覆盖置顶观察。只有整轮根分页成功后才同事务更新全部根的 `is_pinned`；明确取消置顶只清标记、不删旧评论，扫描失败或字段未知保留旧可信标记。
 - 归档 JSON 使用内部 `synced_root_metadata_version` 标记根元信息采集格式，v1 为置顶，v2 为 Requests/定位链路。旧归档缺标记或低于当前版本时，启用且入选的目标在后续检查重新登记工作，补采一次根与必要回复；成功后不会因该标记每节拍重扫。停用目标不补采；失败仍按既有 pending 重试。没有 schema 迁移，也不重写已有 cursor。后续普通同步仍沿用首次/未完成/来源计数变化规则，单独改变置顶但计数不变可能延后反映。
 - `module_stat.comment.count`（HTML STAT 可作为独立观察）仍是动态来源总数。`page.count/acount` 仅用于当前接口分页校验，不覆盖动态信号，也不假设跨接口永久相等。只有定位可确认且没有正来源计数冲突时，明确 count=0 的根集合空才可成功；若观察总数为正而整轮没有根，仍视为未确认失败。不会清除历史根记录。来源分页不是事务快照，未引起计数变化的上游挪动可能漏检，真实全量及长期稳定性尚未验证。
@@ -126,7 +126,9 @@ Archive 新增：
 
 `reply_to` 为同根 parent 对应条目的作者对象，或 null。根与跨页回复目标均从完整本地集合解析；目标不存在／无可确认作者 ID 时不拼伪造作者，`content.members` 只是 @ 提及者，不能作为关系证据。目标作者与内容在首读一并冻结。
 
-楼中楼按根增量推进（与参考脚本一致）：本轮根页 `rcount` 与上次成功快照相同、且距上次成功不足 `FULL_SCAN_SECONDS`（24 小时）的楼层**不重发** `/x/v2/reply/reply`，只沿用已持久状态；`rcount` 变化、从未成功或超过校准周期的楼层才整楼重扫。逐根成功时记录根页 `rcount`、楼中楼来源数与成功时间（`reply_sync.observed_reply_count` / `synced_source_reply_count` / `synced_at`）；跳过不刷新校准计时，因此每根每 24 小时至少完整校准一次，用于补偿增删抵消。`replies_sync_finished` 携带 `skipped=` 便于观察本轮省下的请求。显式初始化（`POST /api/sync/initial`）始终整楼重扫。
+楼中楼按根增量推进（与参考脚本一致）：本轮根页 `rcount` 与上次成功快照相同、且距上次成功不足 `FULL_SCAN_SECONDS`（24 小时）的楼层**不重发** `/x/v2/reply/reply`，只沿用已持久状态；`rcount` 变化、从未成功或超过校准周期的楼层才整楼重扫。逐根成功时记录根页 `rcount`、楼中楼来源数与成功时间（`reply_sync.observed_reply_count` / `synced_source_reply_count` / `synced_at`）；跳过不刷新校准计时，因此每根每 24 小时至少完整校准一次，用于补偿增删抵消。`replies_sync_finished` 携带 `skipped=` 与 `degraded=` 便于观察本轮省下的请求和降级轮次。显式初始化（`POST /api/sync/initial`）始终整楼重扫。
+
+根扫描失败不再连坐楼中楼：`sync_roots` 返回空时按已存根评论及其 `source_reply_count` 降级执行（`replies_sync_degraded`），仍按 `scan_due` 只重扫到期/上次失败的楼，失败楼层照常保存已得页。降级轮不改变一致性语义——根集合未确认，故整轮仍记 `replies_last_attempt=unconfirmed`，`synced_reply_comment_count` 与成功时间不推进，`work.replies` 保持 `pending`。因此失败重试只重扫根分页，不会因 `failed/unconfirmed` 强制 `full=True` 全量重扫全部楼层（否则热帖会陷入「全量重扫 → 期间计数变化 → 再全量重扫」的死循环）。楼中楼分页同样只拒绝计数**减少**，增长只记 `reply_scan_count_grew`。
 
 根评论列表为每条根附带 `up_reply`：作者在该楼中最早的一条回复（`{id, author, published_at, text, like_count, reply_to}`），作者未参与时为 null；`reply_to` 只在回复其他楼时带目标作者，直接回根为 null。手机端只用它渲染楼中楼预览，不替代 Reply 分页。首批回复另返回 `root`（该楼根评论），后续分页不重复，供楼中楼详情页展示被回复评论。
 

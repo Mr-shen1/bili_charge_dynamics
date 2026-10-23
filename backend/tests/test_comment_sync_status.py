@@ -33,6 +33,8 @@ class CommentSource:
         self.fail_root_page = self.fail_reply_page = None
         self.calls = []
         self.blocked = False
+        # 模拟扫描期间总计数增长：从该页起 count/acount 比第 1 页多 1。
+        self.count_growth_from_page = None
 
     def __call__(self, request):
         path = request.url.path
@@ -50,9 +52,10 @@ class CommentSource:
                 raise httpx.ReadError("FICTIONAL_SECRET_COOKIE https://secret.invalid/token")
             payload = copy.deepcopy(root_fixture() if is_root else self.reply_payload)
             items = self.roots if is_root else self.replies
-            payload["data"]["page"].update(num=page, count=len(items))
+            growth = 1 if (self.count_growth_from_page and page >= self.count_growth_from_page) else 0
+            payload["data"]["page"].update(num=page, count=len(items) + growth)
             if is_root:
-                payload["data"]["page"]["acount"] = len(self.roots) + len(self.replies)
+                payload["data"]["page"]["acount"] = len(self.roots) + len(self.replies) + growth
             payload["data"]["replies"] = items[(page - 1) * 20:page * 20] or None
             return httpx.Response(200, json=payload)
         if self.blocked and path.endswith("/detail"):
@@ -164,7 +167,10 @@ def test_failed_root_scan_preserves_old_success_and_retries_without_new_signal(t
             assert check["work"] == "complete"
             assert check["comments_last_attempt"] == "success"
             assert check["synced_comment_count"] == 71
-            assert "/x/v2/reply" in source.calls and "/x/v2/reply/reply" in source.calls
+            # 根扫描重试整轮；楼中楼逐根基准未变（rcount 相同）故不再展开，
+            # 这正是增量策略的预期：热帖不因一次根失败而全量重扫全部楼层。
+            assert "/x/v2/reply" in source.calls
+            assert "/x/v2/reply/reply" not in source.calls
             for field in ("root_comments_last_succeeded_at", "replies_last_succeeded_at", "comments_last_succeeded_at"):
                 assert check[field] == "2030-01-01T00:01:00+00:00"
             assert check["comments_error"] is check["root_comments_error"] is check["replies_error"] is None
@@ -487,5 +493,79 @@ def test_new_root_success_does_not_advance_old_reply_or_whole_round_success_time
             assert archive["text"] == saved["text"]
             assert archive["comment_sync"] == check
             assert snapshot(path) == (check, archive)
+
+    asyncio.run(scenario())
+
+
+def test_root_scan_survives_total_count_growth_during_pagination(tmp_path, caplog):
+    """活跃动态：翻页期间总计数增长不应使根评论扫描失败。
+
+    总计数包含楼中楼回复，用它校验根评论分页的稳定性属于指标错配——回复增长与根分页
+    无关，且实测占总数 99.4%。分页偏移的直接症状是重复 ID，由 seen 检测负责。
+    """
+    path = tmp_path / "monitor.sqlite"
+    configured(path)
+    source, clock = CommentSource(), ControlledClock()
+    source.count_growth_from_page = 2  # 第 2 页起总数比第 1 页多 1，模拟扫描期间有人发帖
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(source)) as client:
+            collector = Collector(Store(path), client, clock=clock)
+            await collector.check_once(UID, "123")
+            clock.advance(15)
+            await collector.execute_pending()
+            check, archive = snapshot(path)
+            assert check["parts"]["comments"] == "success"
+            assert check["root_comments_last_attempt"] == "success"
+            assert archive["synced_root_comment_count"] == 70
+            assert "root_sync_failed" not in caplog.text
+
+    asyncio.run(scenario())
+
+
+def test_replies_retry_when_root_scan_fails(tmp_path):
+    """根评论扫描失败时回复同步不应整轮跳过：用已存根评论的基准重试失败的楼。"""
+    path = tmp_path / "monitor.sqlite"
+    configured(path)
+    source, clock = CommentSource(), ControlledClock()
+    source.fail_reply_page = 2  # 首轮：根成功、回复失败，留下可重试的失败记录
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(source)) as client:
+            collector = Collector(Store(path), client, clock=clock)
+            await collector.check_once(UID, "123")
+            clock.advance(15)
+            await collector.execute_pending()
+            check, _ = snapshot(path)
+            assert check["replies_last_attempt"] == "failed"
+
+            # 次轮：根页失败，但回复仍应被重试，不整轮跳过。
+            source.fail_reply_page = None
+            source.fail_root_page = 2
+            source.calls.clear()
+            clock.advance(15)
+            await collector.check_once(UID, "123")
+            clock.advance(15)
+            await collector.execute_pending()
+            check, _ = snapshot(path)
+            assert "/x/v2/reply/reply" in source.calls
+            # 根未确认，整轮不能宣称一致；回复数据已落库、错误仍归属根扫描。
+            assert check["replies_last_attempt"] == "unconfirmed"
+            assert check["parts"]["replies"] == "pending"
+            assert check["root_comments_error"] == check["comments_error"] == "ROOT_COMMENTS_FAILED"
+            assert check["replies_error"] is None
+
+            # 根恢复后整轮闭环，且已成功的楼不再重复展开：证明降级轮确实推进了逐根基准。
+            source.fail_root_page = None
+            source.calls.clear()
+            clock.advance(15)
+            await collector.check_once(UID, "123")
+            clock.advance(15)
+            await collector.execute_pending()
+            check, _ = snapshot(path)
+            assert check["work"] == "complete"
+            assert check["comments_last_attempt"] == "success"
+            assert "/x/v2/reply" in source.calls
+            assert "/x/v2/reply/reply" not in source.calls
 
     asyncio.run(scenario())

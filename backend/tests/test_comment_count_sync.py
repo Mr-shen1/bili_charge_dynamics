@@ -247,6 +247,9 @@ def test_required_page_failure_keeps_partial_archive_and_retries_without_new_cou
                 assert state["parts"]["replies"] == "pending"
             assert state["work"] == "pending" and state["sync_error"] == "SYNC_INCOMPLETE"
             assert "FICTIONAL_SECRET" not in str(state) + str(archive)
+            if failure == "root":
+                # 根页失败不再连坐楼中楼：失败轮已用已存根评论的基准展开到期楼层。
+                assert ("/x/v2/reply/reply", "1") in source.scans()
             source.fail_root_page = source.fail_reply_page = None
             source.calls.clear()
             # 重开、无新检查/计数即可领取同一失败工作。
@@ -256,8 +259,10 @@ def test_required_page_failure_keeps_partial_archive_and_retries_without_new_cou
             assert archive["local_comment_count"] == 45
             assert archive["local_reply_count"] == 25
             assert archive["comments_last_attempt"] == "success"
-            assert source.scans() == [("/x/v2/reply", n) for n in ("1", "2", "3", "4", "4")] + [
+            # 根失败轮的降级回复已推进逐根基准，恢复轮不再重复展开这些楼。
+            expected_replies = [] if failure == "root" else [
                 ("/x/v2/reply/reply", n) for n in ("1", "2", "3", "3")]
+            assert source.scans() == [("/x/v2/reply", n) for n in ("1", "2", "3", "4", "4")] + expected_replies
             assert state["work"] == "complete"
             source.calls.clear()
             await Collector(Store(path), client).execute_pending()
