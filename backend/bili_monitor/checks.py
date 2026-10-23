@@ -84,10 +84,21 @@ def check_parts(row):
     return {**parts, "comment_media": row["comment_media"] if roots_current else "pending"}
 
 
-def archive_complete(connection, uid, id, observed):
+def archive_complete(connection, uid, id, observed, *, media_upload=True):
     # 已保留的可信版本不因最近信号 unknown/error 而失效；正文/根文档不加载到写事务。
     version = observed.get("observed_version")
     locator = observed.get("comment_locator") or {}
+    # 未配置媒体上传时 media.py 直接返回、从不推进媒体状态，有图的归档永远无法完成。
+    # 此时不把媒体作为完成条件，否则目标永久未完成并每 tick 重领工作；
+    # 媒体分项仍如实保持 pending，不冒充已上传。
+    media_clause, media_args = ("""
+        AND ((json_extract(a.document, '$.work.media') = 'success'
+              AND json_extract(a.document, '$.media_version') IS ?)
+             OR (json_extract(a.document, '$.work.media') = 'restricted'
+                 AND json_extract(a.document, '$.work.text') = 'restricted'))
+        AND NOT EXISTS (SELECT 1 FROM root_comments r WHERE r.dynamic_id = a.id
+            AND json_extract(r.document, '$.work.media') IS NOT 'success')""",
+                                   (version,)) if media_upload else ("", ())
     return connection.execute("""SELECT 1 FROM archives a WHERE a.uid = ? AND a.id = ?
         AND json_extract(a.document, '$.observed_version') IS ?
         AND ((json_extract(a.document, '$.work.text') = 'success'
@@ -97,18 +108,12 @@ def archive_complete(connection, uid, id, observed):
         AND json_extract(a.document, '$.synced_comment_count') IS ?
         AND json_extract(a.document, '$.comment_locator.oid') IS ?
         AND json_extract(a.document, '$.comment_locator.type') IS ?
-        AND ((json_extract(a.document, '$.work.media') = 'success'
-              AND json_extract(a.document, '$.media_version') IS ?)
-             OR (json_extract(a.document, '$.work.media') = 'restricted'
-                 AND json_extract(a.document, '$.work.text') = 'restricted'))
         AND json_extract(a.document, '$.work.comments') = 'success'
         AND json_extract(a.document, '$.work.replies') = 'success'
-        AND json_extract(a.document, '$.synced_root_metadata_version') >= ?
-        AND NOT EXISTS (SELECT 1 FROM root_comments r WHERE r.dynamic_id = a.id
-            AND json_extract(r.document, '$.work.media') IS NOT 'success')""",
+        AND json_extract(a.document, '$.synced_root_metadata_version') >= ?""" + media_clause,
         (uid, id, version, version, version, int(observed.get("content_visible") is True),
          observed.get("source_comment_count"), locator.get("oid"), locator.get("type"),
-         version, ROOT_METADATA_VERSION)).fetchone() is not None
+         ROOT_METADATA_VERSION) + media_args).fetchone() is not None
 
 
 class CheckStore:
@@ -126,7 +131,7 @@ class CheckStore:
             return selection_token(connection, uid, id)
 
     def record_check(self, uid, id, metadata, checked_at, error=None, *, comment_observation=None,
-                     selection=None):
+                     selection=None, media_upload=True):
         with transaction(self) as connection:
             current = selection_token(connection, uid, id)
             if not selection_matches(current, selection):
@@ -162,12 +167,13 @@ class CheckStore:
                 error = error or "SOURCE_UNAVAILABLE"
             revision = (row["revision"] + int(changed)) if row else 1
             work = row["work"] if row else "pending"
-            if row is None and not failed and archive_complete(connection, uid, id, observed):
+            if row is None and not failed and archive_complete(connection, uid, id, observed,
+                                                              media_upload=media_upload):
                 work = "complete"
             elif changed and work != "running":
                 work = "pending"
             elif (work == "complete" and comment_observation is not None
-                  and not archive_complete(connection, uid, id, observed)):
+                  and not archive_complete(connection, uid, id, observed, media_upload=media_upload)):
                 # 旧 v11 的整轮完成判断未核对计数；不变信号也要恢复真实未完成工作。
                 work = "pending"
             status = "failed" if failed else ("checked" if changed else "unchanged")

@@ -161,7 +161,8 @@ class Collector:
         if metadata is not None:
             metadata.pop("source_comment_count", None)
         accepted = await to_thread.run_sync(lambda: self.store.record_check(
-            uid, id, metadata, self.clock.now(), error, comment_observation=comments, selection=selection))
+            uid, id, metadata, self.clock.now(), error, comment_observation=comments, selection=selection,
+            media_upload=self.uploader is not None))
         collector_event("check_finished", recorded=accepted,
                         edit_status=metadata.get("edit_status") if metadata else None,
                         comment_count_status=comments["comment_count_status"])
@@ -203,15 +204,23 @@ class Collector:
                         restricted_current = (archive["work"]["text"] == "restricted"
                                               and archive.get("restricted_version") == version
                                               and claim["observed"].get("content_visible") is not True)
+                        # 未配置媒体上传时 media.py 直接返回、从不推进媒体状态，有图的
+                        # 归档永远无法完成；此时不把媒体当完成条件，否则目标永久未完成
+                        # 并每 tick 重领工作。媒体分项仍如实保持 pending。
+                        media_upload = self.uploader is not None
                         succeeded = ((text_succeeded or restricted_current)
-                                     and all(value in ("success", "restricted") for value in archive["work"].values())
+                                     and all(value in ("success", "restricted")
+                                             for part, value in archive["work"].items()
+                                             if media_upload or part != "media")
                                      and archive["work"]["comments"] == archive["work"]["replies"] == "success"
-                                     and (archive["work"]["media"] != "restricted" or restricted_current)
+                                     and (not media_upload or archive["work"]["media"] != "restricted"
+                                          or restricted_current)
                                      and (archive["synced_version"] == version or restricted_current)
                                      and archive["synced_comment_count"] == claim["observed"].get("source_comment_count"))
-                        for root_id in await to_thread.run_sync(self.store.media_root_ids, id):
-                            root = await to_thread.run_sync(self.store.read_media_owner, id, root_id)
-                            succeeded = succeeded and root["work"]["media"] == "success"
+                        if media_upload:
+                            for root_id in await to_thread.run_sync(self.store.media_root_ids, id):
+                                root = await to_thread.run_sync(self.store.read_media_owner, id, root_id)
+                                succeeded = succeeded and root["work"]["media"] == "success"
                 except Exception as error:
                     # 仅固定分类；取消仍保留 running 供持锁重启恢复。
                     collector_failure("sync_execution_failed", error)

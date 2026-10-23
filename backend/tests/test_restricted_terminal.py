@@ -115,11 +115,17 @@ def test_media_version_repair_requires_real_source_confirmation(tmp_path):
     path = tmp_path / "media.sqlite"
     configured(path)
     source, clock = CommentSource(), ControlledClock()
+    source.html = readable_html(pictures=[])
     store = Store(path)
+
+    class NoUploadNeeded:
+        async def upload(self, key, content, content_type):
+            raise AssertionError("无图组不应上传")
 
     async def scenario():
         async with httpx.AsyncClient(transport=httpx.MockTransport(source)) as client:
-            collector = Collector(store, client, clock=clock)
+            # 配置了上传器：媒体版本栅栏属于完成条件，落后时必须回源头重新确认。
+            collector = Collector(store, client, None, NoUploadNeeded(), clock=clock)
             await collector.check_once(UID, "123")
             await collector.execute_pending()
             with store.connection() as connection:

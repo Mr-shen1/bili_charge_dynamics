@@ -585,7 +585,7 @@ def test_committed_archive_survives_interruption_before_target_finish_and_run_re
     asyncio.run(scenario())
 
 
-def test_successful_body_does_not_complete_failed_comments_or_unuploaded_media(tmp_path):
+def test_successful_body_keeps_failed_comments_blocking_and_unuploaded_media_pending(tmp_path):
     path = tmp_path / "monitor.sqlite"
     configured(path)
 
@@ -617,7 +617,10 @@ def test_successful_body_does_not_complete_failed_comments_or_unuploaded_media(t
     asyncio.run(scenario())
     state, archive = snapshot(path)
     assert state["parts"]["comments"] == state["parts"]["replies"] == "success"
-    assert state["parts"]["media"] == state["work"] == "pending"
+    # 未配置上传器：图片永远传不上去，因此不再作为完成条件；但媒体分项
+    # 与 public_url 仍如实为空，不冒充已上传。
+    assert state["parts"]["media"] == "pending"
+    assert state["work"] == "complete"
     assert archive["media"][0]["public_url"] is None
     assert "FICTIONAL_SECRET" not in str(state) + str(archive)
 

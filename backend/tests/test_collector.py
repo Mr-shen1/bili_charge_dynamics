@@ -328,6 +328,8 @@ def test_http_exposes_partial_archive_without_claiming_whole_success(tmp_path):
         def upstream(request):
             if request.url.path.startswith("/opus/"):
                 return httpx.Response(200, text=readable_html().replace('"count":7', '"count":0'))
+            if request.url.path == "/x/v2/reply":
+                raise httpx.ConnectError("FICTIONAL_SECRET", request=request)
             return empty_upstream(request)
         async with httpx.AsyncClient(transport=httpx.MockTransport(upstream)) as client:
             collector = Collector(Store(path), client)
@@ -338,8 +340,11 @@ def test_http_exposes_partial_archive_without_claiming_whole_success(tmp_path):
     asyncio.run(scenario())
     with archive_client(path) as api:
         state = api.get(CHECKS).json()["checks"][0]
+        # 评论实际失败才是真实的未完成；未配置上传器的媒体不冒充完成也不阻碍完成。
         assert state["work"] == "pending" and state["last_succeeded_at"] is None
-        assert state["parts"]["text"] == "success" and state["parts"]["media"] == "pending"
+        assert state["parts"]["text"] == "success"
+        assert state["parts"]["comments"] == state["parts"]["replies"] == "pending"
+        assert state["parts"]["media"] == state["parts"]["comment_media"] == "pending"
         assert state["synced_version"].endswith("13:01+08:00")
         assert state["sync_error"] == "SYNC_INCOMPLETE" and state["check_error"] is None
 

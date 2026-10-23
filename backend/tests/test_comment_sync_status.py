@@ -423,6 +423,44 @@ def test_stale_root_metadata_version_rescans_roots_once_and_heals_absent_picture
     asyncio.run(scenario())
 
 
+def test_missing_media_uploader_does_not_block_target_completion(tmp_path):
+    """未配置 OSS 上传时，图片媒体不能作为完成条件。
+
+    media.py 在没有 uploader 时直接返回，完全不碰媒体状态，有图的跟评论会永久
+    pending；若仍把它当完成条件，目标永远不 complete、每 tick 重领工作空转，
+    last_succeeded_at 也恒为 NULL。未上传的事实仍如实反映在媒体分项上。
+    """
+    path = tmp_path / "no-uploader.sqlite"
+    configured(path)
+    source, clock = CommentSource(), ControlledClock()
+    source.roots[0]["content"]["pictures"] = [
+        {"img_src": "https://i0.hdslb.com/bfs/new_dyn/fictional.png", "img_width": 10, "img_height": 10}]
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(source)) as client:
+            collector = Collector(Store(path), client, clock=clock)  # 不传 uploader。
+            await collector.check_once(UID, "123")
+            clock.advance(15)
+            await collector.execute_pending()
+            check, archive = snapshot(path)
+            assert check["work"] == "complete"
+            assert check["sync_error"] is None
+            assert check["last_succeeded_at"] is not None
+            # 不撒谎：没上传过就是 pending，但不再阻碍整轮完成。
+            assert check["parts"]["comment_media"] == "pending"
+            assert archive["work"]["comments"] == archive["work"]["replies"] == "success"
+            # 无新信号时不再重领工作（不再每 tick 空转）。
+            source.calls.clear()
+            clock.advance(15)
+            await collector.check_once(UID, "123")
+            clock.advance(15)
+            await collector.execute_pending()
+            assert "/x/v2/reply" not in source.calls
+            assert snapshot(path)[0]["work"] == "complete"
+
+    asyncio.run(scenario())
+
+
 def test_detail_projects_new_observation_while_old_execution_finishes(tmp_path):
     path = tmp_path / "monitor.sqlite"
     configured(path)
