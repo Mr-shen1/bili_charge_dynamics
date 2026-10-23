@@ -51,6 +51,8 @@ async function manageTarget(page: Page) {
   await page.getByRole('button', { name: '添加监控', exact: true }).click();
   const up = page.getByRole('article', { name: 'UP 202', exact: true });
   await expect(up).toContainText('虚构生命周期作者');
+  // “详细设置”默认折叠，展开后才进入配置与检查状态区域。
+  await up.getByText('详细设置', { exact: true }).click();
   await up.getByRole('combobox', { name: '监控模式', exact: true }).selectOption('specified');
   await up.getByRole('button', { name: '保存配置', exact: true }).click();
   await expect(up).toContainText('已保存模式：指定动态 ID');
@@ -146,6 +148,9 @@ test('管理分项状态贯穿可信编辑/计数变化、媒体失败、重开�
     const before = (await lifecycle.command('calls')).calls;
     await up.getByRole('button', { name: /^(重新)?读取检查状态$/ }).click();
     await expect(state).toBeVisible();
+    // 每条动态默认折叠详情；重新加载或刷新后仍折叠，这里逐次展开以读取分项行。
+    const expand = state.getByRole('button', { name: '展开动态 9101 详情' });
+    if (await expand.count()) await expand.click();
     expect((await lifecycle.command('calls')).calls).toEqual(before);
   };
   await read();

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
 
 // T1：仅替换 HTTP 响应，页面仍使用正常生产装配中的 ManagementApi。
@@ -49,6 +49,11 @@ async function installHttp(page: Page) {
   return calls;
 }
 
+// “详细设置”默认折叠，关闭时内部控件不在无障碍树里；断言前先展开。
+async function expandDetails(card: Locator) {
+  await card.getByText('详细设置', { exact: true }).click();
+}
+
 for (const width of [360, 390, 768, 1280]) {
   test(`管理规则映射：${width}px 居中分区、触控与真实状态`, async ({ page }, testInfo) => {
     const calls = await installHttp(page);
@@ -56,6 +61,8 @@ for (const width of [360, 390, 768, 1280]) {
     await page.goto('/manage');
     const card = page.getByRole('article', { name: 'UP 123', exact: true });
     const specified = page.getByRole('article', { name: 'UP 456', exact: true });
+    const deleted = page.getByRole('article', { name: 'UP 789', exact: true });
+    for (const article of [card, specified, deleted]) await expandDetails(article);
     await expect(specified.getByRole('button', { name: `移除目标 ${targetId}` })).toBeVisible();
     const risk = page.getByRole('note', { name: '无鉴权部署风险' });
     await expect(risk).toBeVisible();
@@ -63,6 +70,11 @@ for (const width of [360, 390, 768, 1280]) {
     // 初始加载没有隐式读取 checks，更没有同步或轮询。
     expect(calls.some(call => call.url.endsWith('/checks'))).toBe(false);
     await card.getByRole('button', { name: '读取检查状态', exact: true }).click();
+    // 详情默认折叠：先确认折叠态，再逐条展开后校验细节行。
+    await expect(card.getByRole('button', { name: '展开动态 1 详情', exact: true })).toHaveAttribute('aria-expanded', 'false');
+    for (const id of [1, 2, 3, 4, 5, 6]) {
+      await card.getByRole('button', { name: `展开动态 ${id} 详情`, exact: true }).click();
+    }
     await expect(card.getByRole('region', { name: '动态 1 检查状态' })).toContainText('编辑信号未知；不代表确认未编辑。');
     await expect(card.getByRole('region', { name: '动态 2 检查状态' })).toContainText('检查无变化；不代表同步完成。');
     await expect(card.getByRole('region', { name: '动态 2 检查状态' })).toContainText('正文受限；动态图失败');
@@ -70,9 +82,9 @@ for (const width of [360, 390, 768, 1280]) {
     await expect(card.getByRole('region', { name: '动态 4 检查状态' })).toContainText('检查失败');
     await expect(card.getByRole('region', { name: '动态 5 检查状态' })).toContainText('分项已完成，整轮待确认');
     await expect(card.getByRole('region', { name: '动态 6 检查状态' })).toContainText('实际整轮成功：2025-06-01 10:01:00');
-    const deleted = page.getByRole('article', { name: 'UP 789', exact: true });
-    await expect(deleted.getByRole('button', { name: '重新添加监控' })).toBeEnabled();
-    await expect(deleted.getByRole('button', { name: '读取检查状态' })).toBeEnabled();
+    const deletedCard = page.getByRole('article', { name: 'UP 789', exact: true });
+    await expect(deletedCard.getByRole('button', { name: '重新添加监控' })).toBeEnabled();
+    await expect(deletedCard.getByRole('button', { name: '读取检查状态' })).toBeEnabled();
 
     const main = page.getByRole('main');
     const mainMeasurements = await main.evaluate(element => {
@@ -129,7 +141,7 @@ test('管理键盘顺序、清晰焦点、独立草稿及 Enter 提交仍经过 
   await page.goto('/manage');
   const card = page.getByRole('article', { name: 'UP 123', exact: true });
   const specified = page.getByRole('article', { name: 'UP 456', exact: true });
-  await expect(specified.getByRole('textbox', { name: '动态 ID', exact: true })).toBeVisible();
+  // “详细设置”折叠时 Tab 会经过摘要，展开后才进入配置字段。
   await page.keyboard.press('Tab');
   await expect(page.getByRole('link', { name: '返回阅读' })).toBeFocused();
   await page.keyboard.press('Tab');
@@ -138,6 +150,10 @@ test('管理键盘顺序、清晰焦点、独立草稿及 Enter 提交仍经过 
   await expect(page.getByRole('button', { name: '添加监控', exact: true })).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(card.getByRole('button', { name: '停止监控' })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(card.getByText('详细设置', { exact: true })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(card.getByRole('combobox', { name: '监控模式' })).toBeVisible();
   await page.keyboard.press('Tab');
   await expect(card.getByRole('combobox', { name: '监控模式' })).toBeFocused();
   await page.keyboard.press('Tab');
@@ -153,10 +169,11 @@ test('管理键盘顺序、清晰焦点、独立草稿及 Enter 提交仍经过 
   await page.keyboard.press('Enter');
   await expect(card.getByText('保存成功。', { exact: true })).toBeVisible();
   await expect(n).toHaveValue('27');
-  await expect(specified.getByRole('combobox', { name: '监控模式' })).toHaveValue('specified');
   expect(calls.filter(call => call.method === 'PATCH')).toEqual([{
     url: '/api/manage/ups/123/monitor', method: 'PATCH', body: { mode: 'recent', recent_n: 27, enabled: true },
   }]);
+  await expandDetails(specified);
+  await expect(specified.getByRole('combobox', { name: '监控模式' })).toHaveValue('specified');
   const id = specified.getByRole('textbox', { name: '动态 ID', exact: true });
   await id.fill('22');
   await id.press('Tab');
