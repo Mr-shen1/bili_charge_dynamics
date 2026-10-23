@@ -105,6 +105,34 @@ sudo editor /etc/bili-monitor/env
 
 > ⚠️ **可选变量不要留空值。** OSS 七项与 `BILI_COOKIE_FILE` 不用时**保持模板中的注释状态**。写成 `BILI_OSS_ENDPOINT=` 会让 systemd 注入空字符串，而 `oss.py:39-45` 区分「未设置」与「已设置为空」：空字符串会触发 `ValueError: Incomplete OSS configuration` 直接退出；`source_cookies.py:91-103` 同理，空值会去读空路径并报配置错误。
 
+### 配置 OSS 媒体归档（可选）
+
+不配也能跑：未配置上传器时媒体保持「待归档」，且**不作为目标完成条件**（有图也不会让目标永久 pending 空转）。要显示图片才需要配。
+
+配置写在 `/etc/bili-monitor/env`（systemd `EnvironmentFile=` 注入，应用不读 `.env`）。要么**七行全注释**（停用），要么**六项非空 + 一起去注释**，不能只填一半。
+
+取值位置与校验规则（`oss.py:13-25`）：
+
+| 变量 | 来源 | 约束 |
+|---|---|---|
+| `BILI_OSS_ENDPOINT` | 桶「概览」页 | 必须 https、无路径／端口／query／fragment，host 以 `.aliyuncs.com` 结尾 |
+| `BILI_OSS_REGION` | 同上（深圳为 `cn-shenzhen`） | 匹配 `[a-z0-9-]+` |
+| `BILI_OSS_BUCKET` | 桶名 | 3–63 位，首尾 `[a-z0-9]`，中间可含连字符 |
+| `BILI_OSS_ACCESS_KEY_ID` / `_SECRET` | 控制台 → RAM → 用户 → 创建 AccessKey | 建议专用子账号，权限只授该桶 `oss:PutObject` |
+| `BILI_OSS_PUBLIC_BASE_URL` | 桶的公网访问前缀 | 无签名、不带 query；浏览器直取，**加登录也保护不了图片** |
+| `BILI_OSS_SECURITY_TOKEN` | 仅 STS 临时凭据 | 长期 AK 时保持注释 |
+
+**填完先预检再重启。** 脚本只构造 `OSSUploader`、不发网络请求，也不打印任何密钥：
+
+```bash
+sudo install -m 0755 -o root -g root \
+    /srv/bili-monitor/app/scripts/check-oss-env.sh /usr/local/sbin/bili-monitor-check-oss
+sudo /usr/local/sbin/bili-monitor-check-oss      # 有效 / 未启用 / 配置无效
+sudo systemctl restart bili-monitor
+```
+
+预检会区分三种结果：全部未设置（`OSS 未启用`，属正常）、部分设置（`Incomplete OSS configuration`）、值不合规（`Invalid OSS configuration`）。已卡在 `pending` 的评论图不需要手工触发：配置好上传器后，下一次检查会因媒体不满足而重新登记工作，下一轮实际补传。
+
 > ⚠️ **Cookie 文件只允许最多一个行尾换行。** `source_cookies.py:_cookie_value` 只剥掉一个 `\r\n` 或 `\n`，多出来的空行会被当作控制字符拒绝。除内容外还需满足：路径在仓库外、父目录 `0700`、文件 `0600` 且属主为运行用户、`nlink=1`、纯 ASCII、`name=value;` 格式且 name 合规。任何一条不满足都只报同一句 `Invalid source Cookie file configuration`，不区分原因。
 >
 > 典型的踩坑是编辑器或粘贴时多打了一个空行：正在运行的进程用的是启动时读到的旧内容，所以**只有重启才会暴露**。重启失败时用下面命令判断（不输出内容）：
