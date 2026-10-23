@@ -75,7 +75,7 @@ describe('动态图片公开页面行为', () => {
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
-  it('单图隐藏切换按钮，Tab 与 Shift+Tab 不能离开预览', async () => {
+  it('单图隐藏切换按钮，Tab 与 Shift+Tab 在预览内循环', async () => {
     const user = userEvent.setup();
     show();
     await user.click(await screen.findByRole('img', { name: '图片 1' }));
@@ -85,9 +85,41 @@ describe('动态图片公开页面行为', () => {
     const close = within(preview).getByRole('button', { name: '关闭预览' });
     expect(close).toHaveFocus();
     await user.tab();
-    expect(close).toHaveFocus();
+    expect(preview).toContainElement(document.activeElement as HTMLElement);
+    expect(document.activeElement).not.toBe(close);
     await user.tab({ shift: true });
     expect(close).toHaveFocus();
+  });
+  it('大图预览可缩放、旋转与还原，点遮罩关闭，切图后变换复位', async () => {
+    const user = userEvent.setup();
+    show(2);
+    await user.click(await screen.findByRole('img', { name: '图片 1' }));
+    const preview = await screen.findByRole('dialog');
+    // 缩放与旋转作用在承载图片的外框上，不改变 <img> 自身尺寸。
+    const picture = () => within(preview).getByRole('img').parentElement!;
+    expect(picture().style.transform).toBe('');
+    await user.click(within(preview).getByRole('button', { name: '放大' }));
+    expect(picture().style.transform).toBe('scale(1.2) rotate(0deg)');
+    await user.click(within(preview).getByRole('button', { name: '缩小' }));
+    // 回到 1 倍且未旋转时不再保留变换样式。
+    expect(picture().style.transform).toBe('');
+    await user.click(within(preview).getByRole('button', { name: '向右旋转' }));
+    expect(picture().style.transform).toBe('scale(1) rotate(90deg)');
+    await user.click(within(preview).getByRole('button', { name: '还原' }));
+    expect(picture().style.transform).toBe('');
+    await user.click(within(preview).getByRole('button', { name: '放大' }));
+    await user.click(within(preview).getByRole('button', { name: '下一张' }));
+    expect(picture().style.transform).toBe('');
+    // 缩小到下限后按钮禁用，边界不越过。
+    const preview2 = screen.getByRole('dialog');
+    for (let index = 0; index < 8; index += 1) {
+      const zoomOut = within(preview2).getByRole('button', { name: '缩小' });
+      if ((zoomOut as HTMLButtonElement).disabled) break;
+      await user.click(zoomOut);
+    }
+    expect(within(preview2).getByRole('button', { name: '缩小' })).toBeDisabled();
+    await user.click(within(preview2).getByRole('region', { name: '预览图片阅读区域' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
   it('快速连续方向键仍逐次切图，不因批量渲染丢失输入', async () => {
     const user = userEvent.setup();
