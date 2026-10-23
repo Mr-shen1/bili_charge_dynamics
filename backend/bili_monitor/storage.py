@@ -49,8 +49,12 @@ def _reconcile_root_media(document, sources, count, observed_count):
     version = _comment_media_version(count)
     if sources is not None:
         reconcile_media(document, sources, version, owner_type="comment")
-    elif "media" not in document:
-        reconcile_media(document, [], version, empty_confirmed=False, owner_type="comment")
+    elif not document.get("media"):
+        # 该接口只在根评论确实带图时下发 pictures（实测同一轮响应里带图的根有键、无图则缺键），
+        # 因此从未观察到图片的组在缺键时可确认空；否则 work.media 永久 pending，
+        # checks.py 的「无 pending 根」谓词也会让目标永远重领工作。
+        reconcile_media(document, [], version, owner_type="comment")
+    # 已有图片项却缺键时什么都不做：不擦除已知媒体，也不冒充空组。
 
 
 def _freeze_pages(documents, limit):

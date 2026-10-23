@@ -3,6 +3,7 @@
 import asyncio
 import copy
 import json
+import sqlite3
 from pathlib import Path
 
 import httpx
@@ -330,6 +331,93 @@ def test_legacy_success_without_timestamp_is_not_backdated_or_resynchronized(tmp
                 assert item["replies_last_succeeded_at"] is not None
                 assert item["comments_last_succeeded_at"] is not None
             assert snapshot(path) == (check, archive)
+
+    asyncio.run(scenario())
+
+
+def test_text_only_root_comments_confirm_empty_media_and_complete_target(tmp_path):
+    """上游对无图根评论不下发 pictures；缺键要能确认空组，否则目标永不完成。
+
+    实测同轮响应里带图的根有 pictures、无图的缺键；不确认空会让每个纯文字根
+    永久 pending，并因 checks.py 的「无 pending 根」谓词让目标每 tick 重领工作。
+    """
+    path = tmp_path / "monitor.sqlite"
+    configured(path)
+    source, clock = CommentSource(), ControlledClock()
+    for root in source.roots:
+        root["content"].pop("pictures")
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(source)) as client:
+            collector = Collector(Store(path), client, clock=clock)
+            await collector.check_once(UID, "123")
+            clock.advance(15)
+            await collector.execute_pending()
+            check, archive = snapshot(path)
+            assert check["parts"]["comment_media"] == "success"
+            assert check["work"] == "complete"
+            assert check["sync_error"] is None
+            assert check["last_succeeded_at"] is not None
+            # 确认空之后不再重扇根页。
+            source.calls.clear()
+            clock.advance(15)
+            await collector.check_once(UID, "123")
+            clock.advance(15)
+            await collector.execute_pending()
+            assert "/x/v2/reply" not in source.calls
+            assert snapshot(path)[0]["work"] == "complete"
+
+    asyncio.run(scenario())
+
+
+def test_stale_root_metadata_version_rescans_roots_once_and_heals_absent_pictures(tmp_path):
+    """F1 只改变解释，不改已落库的旧结论。
+
+    已卡在 pending 的旧归档靠 synced_root_metadata_version 补采一次根分页自愈；
+    沿用既有「格式变更后补采一次」机制（archive-api.md:84），不另做数据迁移。
+    """
+    path = tmp_path / "stale-version.sqlite"
+    configured(path)
+    source, clock = CommentSource(), ControlledClock()
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(source)) as client:
+            collector = Collector(Store(path), client, clock=clock)
+            await collector.check_once(UID, "123")
+            clock.advance(15)
+            await collector.execute_pending()
+            assert snapshot(path)[0]["work"] == "complete"
+            # 回退成 F1 之前的持久状态：元信息版本 2（确认无图规则变更前）+ 缺键卡住的根媒体。
+            with sqlite3.connect(path) as database:
+                document = json.loads(database.execute("SELECT document FROM archives").fetchone()[0])
+                document["synced_root_metadata_version"] = 2
+                database.execute("UPDATE archives SET document = ?", (json.dumps(document),))
+                for row_id, payload in database.execute("SELECT id, document FROM root_comments").fetchall():
+                    root = json.loads(payload)
+                    root["work"]["media"] = "pending"
+                    root["media"] = root["media_sources"] = []
+                    root["media_version"] = "comments:1"
+                    root["synced_media_version"] = None
+                    database.execute("UPDATE root_comments SET document = ? WHERE id = ?",
+                                     (json.dumps(root), row_id))
+            for root in source.roots:
+                root["content"].pop("pictures")
+            source.calls.clear()
+            clock.advance(15)
+            await collector.check_once(UID, "123")
+            clock.advance(15)
+            await collector.execute_pending()
+            assert "/x/v2/reply" in source.calls  # 版本落后 → 补采根分页。
+            healed = snapshot(path)[0]
+            assert healed["parts"]["comment_media"] == "success"
+            assert healed["work"] == "complete"
+            # 补采只发生一次：无新信号不再重扇根页。
+            source.calls.clear()
+            clock.advance(15)
+            await collector.check_once(UID, "123")
+            clock.advance(15)
+            await collector.execute_pending()
+            assert "/x/v2/reply" not in source.calls
 
     asyncio.run(scenario())
 
