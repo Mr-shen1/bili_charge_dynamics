@@ -108,7 +108,7 @@ assert(
   `nginx-locations.conf 注释中声明的安装路径与 ${FRAGMENT_PATH} 不符`,
 );
 
-// 5. 阶段一不得监听公网地址；阶段二必须锁住三处管理面
+// 5. 阶段一不得监听公网地址；阶段二必须锁住管理面（列表页、单 UP 管理页与两类写接口）
 const tunnelText = await read('nginx-ecs-tunnel.conf');
 assert(
   /listen\s+127\.0\.0\.1:4173;/.test(tunnelText),
@@ -120,7 +120,7 @@ assert(
 );
 
 const httpsText = await read('nginx-ecs-https.conf');
-for (const guarded of ['location = /manage', 'location ^~ /api/manage/', 'location ^~ /api/sync/']) {
+for (const guarded of ['location = /manage', 'location ^~ /manage/', 'location ^~ /api/manage/', 'location ^~ /api/sync/']) {
   assert(httpsText.includes(guarded), `nginx-ecs-https.conf 缺少受保护块: ${guarded}`);
 }
 const realms = new Set((httpsText.match(/auth_basic\s+"([^"]*)"/g) || []).map((s) => s.replace(/\s+/g, ' ')));

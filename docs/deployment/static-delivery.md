@@ -74,7 +74,7 @@ done
 
 ### Nginx、发布和排障
 
-当前 [deploy/nginx.conf](../../deploy/nginx.conf) 放在 `http` 上下文，主配置加载匹配的 `mime.types`；默认 `root /srv/dynamics-viewer/current`、监听 `127.0.0.1:4173`、API 上游 `127.0.0.1:8000`。维护者将 root 改为可读的完整生产发布目录或 `current` 链接；`/`、`/ups/:upId`、`/dynamics/:dynamicId`、`/manage` 直达/刷新回入口。`/api`、`/api/…` 原样转发 API，不拦截其错误；API 200/404/422、API 不可达的 Nginx 502 都不得成为 SPA 入口（代理 502 可是 Nginx 错误 HTML，不能是应用入口）。缺失资源 404 + `no-store`；其余缓存与资源命名空间规则见下方第 2 节。
+当前 [deploy/nginx.conf](../../deploy/nginx.conf) 放在 `http` 上下文，主配置加载匹配的 `mime.types`；默认 `root /srv/dynamics-viewer/current`、监听 `127.0.0.1:4173`、API 上游 `127.0.0.1:8000`。维护者将 root 改为可读的完整生产发布目录或 `current` 链接；`/`、`/ups/:upId`、`/dynamics/:dynamicId`、`/manage`、`/manage/ups/:upId` 直达/刷新回入口。`/api`、`/api/…` 原样转发 API，不拦截其错误；API 200/404/422、API 不可达的 Nginx 502 都不得成为 SPA 入口（代理 502 可是 Nginx 错误 HTML，不能是应用入口）。缺失资源 404 + `no-store`；其余缓存与资源命名空间规则见下方第 2 节。
 
 路径/端口不是自动发现：改 API `--port` 须同步改两处 `proxy_pass`；模板不会展开 `BILI_DATABASE_PATH` 或 shell 环境变量。开发 Vite 的 `/api` 代理另见 `vite.config.ts`，不是生产代理。发布按第 3 节保留旧哈希资源，在同一文件系统原子切换入口；不可就地逐个覆盖 `dist/`，或发布 mock/fault 服务。
 
