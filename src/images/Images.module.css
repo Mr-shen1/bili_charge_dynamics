@@ -15,12 +15,18 @@
 .single .tile { aspect-ratio: auto; }
 .single img { height: auto; max-height: 100%; object-fit: contain; }
 .preview { position: fixed; inset: 0; z-index: 10; background: var(--preview-surface); color: var(--preview-text); display: flex; flex-direction: column; padding: 16px; }
-.toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+/* 参照 Element Image 的大图预览：张数固定在左上角，操作集中在底部居中。 */
+.counter { position: absolute; top: 16px; left: 16px; margin: 0; font-size: 14px; line-height: 20px; }
+.toolbar { position: relative; display: flex; justify-content: center; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding-top: 12px; }
 .action { min-height: 44px; min-width: 44px; padding: 10px 16px; border: 1px solid var(--preview-border); border-radius: 8px; color: var(--preview-text); background: var(--preview-action); font: inherit; cursor: pointer; }
 .action:focus-visible { outline: 3px solid var(--preview-focus); outline-offset: 3px; }
 .action:disabled { opacity: .5; cursor: default; }
 .stage { min-height: 0; flex: 1; display: flex; align-items: center; justify-content: center; padding: 16px 0; overflow: hidden; overscroll-behavior: contain; touch-action: pan-y; }
 .widthStage { display: block; overflow-y: auto; overflow-x: hidden; }
+/* 缩放或旋转后允许在预览内滚动查看超出部分，不把图片裁掉。 */
+.zoomStage { overflow: auto; }
+.zoomStage .media { flex: 0 0 auto; max-width: none; max-height: none; }
 .widthStage .media { height: auto; min-height: 100%; align-items: flex-start; }
 .stage img { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; }
 .widthStage img { width: 100%; max-height: none; height: auto; }

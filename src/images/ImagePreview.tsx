@@ -1,9 +1,14 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type PointerEvent } from 'react';
 import type { DynamicImage, ImageOwner } from '../data/contracts';
 import styles from './Images.module.css';
 import { ContentImage } from './ContentImage';
 
 const gestureDirectionThreshold = 12;
+// 参照 Element Image 的大图预览：每次缩放 1.2 倍，缩放与旋转都在预览内生效，切图后复位。
+const zoomRate = 1.2;
+const minScale = 0.5;
+const maxScale = 5;
+const rotateStep = 90;
 const imageSwipeThreshold = 50;
 const horizontalDominanceRatio = 1.5;
 const longImageHeightRatio = 2;
@@ -28,6 +33,8 @@ export function ImagePreview({ preview, close, moveImage, changeMode }: {
   const trapping = useRef(false);
   const closeButton = useRef<HTMLButtonElement>(null);
   const [loadedDimensions, setLoadedDimensions] = useState<{ imageId: string; width: number; height: number } | null>(null);
+  const [scale, setScale] = useState(1);
+  const [rotation, setRotation] = useState(0);
   const index = preview.currentIndex;
   const move = useCallback((offset: number) => {
     moveImage(preview.previewId, offset);
@@ -98,29 +105,58 @@ export function ImagePreview({ preview, close, moveImage, changeMode }: {
     };
   }, [preview.previewId, preview.triggerId]);
   useLayoutEffect(() => { if (stage.current) stage.current.scrollTop = 0; }, [index, preview.displayMode]);
+  // 切图后缩放和旋转回到初始状态，不把上一张的变换带到下一张。
+  useLayoutEffect(() => { setScale(1); setRotation(0); }, [index, preview.previewId]);
   const image = preview.images[index]!;
   // 高宽比至少 2:1 的图片提供长图阅读模式；默认仍完整显示。
   const dimensions = loadedDimensions?.imageId === image.id ? loadedDimensions : image;
   const isLongImage = !!dimensions.width && !!dimensions.height && dimensions.height / dimensions.width >= longImageHeightRatio;
   const fitWidth = isLongImage && preview.displayMode === 'width';
+  // 缩放或旋转会回到完整显示，避免长图“适应宽度”与变换叠加出难以理解的画面。
+  const leaveWidthMode = () => { if (fitWidth) changeMode(preview.previewId, 'contain'); };
+  const zoomBy = (factor: number) => {
+    leaveWidthMode();
+    setScale(current => {
+      // 保留两位小数，避免连续缩放的浮点漂移让边界判断失真。
+      const next = Math.round(current * factor * 100) / 100;
+      return Math.min(maxScale, Math.max(minScale, next));
+    });
+  };
+  const rotate = (offset: number) => { leaveWidthMode(); setRotation(current => current + offset); };
+  // 点遮罩空白处关闭预览：落在图片或图上控件上的点击不关闭。
+  const maskClick = (event: MouseEvent<HTMLDivElement>) => {
+    const target = event.target;
+    if (!(target instanceof Element) || target.closest('img, button')) return;
+    close();
+  };
+  const zoomed = scale !== 1 || rotation % 360 !== 0;
   return <section ref={root} role="dialog" aria-modal="true" aria-label="图片预览" className={styles.preview}>
+    <p className={styles.counter} aria-live="polite">{index + 1} / {preview.images.length}</p>
+    <div ref={stage} role="region" aria-label="预览图片阅读区域"
+      className={`${styles.stage} ${fitWidth ? styles.widthStage : ''} ${zoomed ? styles.zoomStage : ''}`}
+      onClick={maskClick}
+      onPointerDown={startGesture} onPointerMove={trackGesture} onPointerUp={endGesture}
+      onPointerCancel={() => { gesture.current = null; }} onLostPointerCapture={() => { gesture.current = null; }}>
+      <ContentImage key={image.id} image={image} preview label={`预览图片 ${index + 1}`}
+        transform={zoomed ? `scale(${scale}) rotate(${rotation}deg)` : undefined}
+        onDimensions={(width, height) => setLoadedDimensions({ imageId: image.id, width, height })} />
+    </div>
     <header className={styles.toolbar}>
-      <span aria-live="polite">{index + 1} / {preview.images.length}</span>
       {preview.images.length > 1 && <>
         <button className={styles.action} type="button" disabled={index === 0} onClick={() => move(-1)}>上一张</button>
         <button className={styles.action} type="button" disabled={index === preview.images.length - 1} onClick={() => move(1)}>下一张</button>
       </>}
+      <button className={styles.action} type="button" disabled={scale <= minScale} onClick={() => zoomBy(1 / zoomRate)}>缩小</button>
+      <button className={styles.action} type="button" disabled={scale >= maxScale} onClick={() => zoomBy(zoomRate)}>放大</button>
+      <button className={styles.action} type="button" onClick={() => rotate(-rotateStep)}>向左旋转</button>
+      <button className={styles.action} type="button" onClick={() => rotate(rotateStep)}>向右旋转</button>
+      {(zoomed || fitWidth) && <button className={styles.action} type="button"
+        onClick={() => { setScale(1); setRotation(0); leaveWidthMode(); }}>还原</button>}
       {isLongImage && <button className={styles.action} type="button" aria-pressed={fitWidth}
         onClick={() => changeMode(preview.previewId, fitWidth ? 'contain' : 'width')}>
         {fitWidth ? '完整显示' : '适应宽度'}
       </button>}
       <button ref={closeButton} className={styles.action} type="button" onClick={close}>关闭预览</button>
     </header>
-    <div ref={stage} role="region" aria-label="预览图片阅读区域" className={`${styles.stage} ${fitWidth ? styles.widthStage : ''}`}
-      onPointerDown={startGesture} onPointerMove={trackGesture} onPointerUp={endGesture}
-      onPointerCancel={() => { gesture.current = null; }} onLostPointerCapture={() => { gesture.current = null; }}>
-      <ContentImage key={image.id} image={image} preview label={`预览图片 ${index + 1}`}
-        onDimensions={(width, height) => setLoadedDimensions({ imageId: image.id, width, height })} />
-    </div>
   </section>;
 }
