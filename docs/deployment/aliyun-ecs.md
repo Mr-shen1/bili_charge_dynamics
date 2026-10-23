@@ -105,6 +105,18 @@ sudo editor /etc/bili-monitor/env
 
 > ⚠️ **可选变量不要留空值。** OSS 七项与 `BILI_COOKIE_FILE` 不用时**保持模板中的注释状态**。写成 `BILI_OSS_ENDPOINT=` 会让 systemd 注入空字符串，而 `oss.py:39-45` 区分「未设置」与「已设置为空」：空字符串会触发 `ValueError: Incomplete OSS configuration` 直接退出；`source_cookies.py:91-103` 同理，空值会去读空路径并报配置错误。
 
+> ⚠️ **Cookie 文件只允许最多一个行尾换行。** `source_cookies.py:_cookie_value` 只剥掉一个 `\r\n` 或 `\n`，多出来的空行会被当作控制字符拒绝。除内容外还需满足：路径在仓库外、父目录 `0700`、文件 `0600` 且属主为运行用户、`nlink=1`、纯 ASCII、`name=value;` 格式且 name 合规。任何一条不满足都只报同一句 `Invalid source Cookie file configuration`，不区分原因。
+>
+> 典型的踩坑是编辑器或粘贴时多打了一个空行：正在运行的进程用的是启动时读到的旧内容，所以**只有重启才会暴露**。重启失败时用下面命令判断（不输出内容）：
+>
+> ```bash
+> sudo -u bili env BILI_COOKIE_FILE=/srv/bili-monitor/credentials/cookie.txt \
+>     /srv/bili-monitor/app/.venv/bin/python -c \
+>     'from backend.bili_monitor.source_cookies import load_source_cookie_pairs as f; print(len(f()))'
+> ```
+>
+> 服务启动失败时 `app.py` 的 lifespan 会把所有启动期异常统一包成 `RuntimeError("Application lifecycle failed")`，看不到根因，必须靠上述单项检查定位。
+
 **先手动跑一次，确认能起来再交给 systemd**（统一入口在上游文档里声明未验证）：
 
 ```bash

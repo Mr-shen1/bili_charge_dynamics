@@ -40,7 +40,9 @@ def test_restricted_observation_settles_without_inventing_success_or_rescanning(
             assert archive["title"] == "Restricted title"
             assert archive["synced_version"] is archive["media_version"] is None
             assert check["text_last_succeeded_at"] is check["media_last_succeeded_at"] is None
-            assert check["last_succeeded_at"] is None
+            # 受限是该版本的确认终态：整轮已完成，记目标级成功时间；
+            # 正文/媒体自己的时间仍为 null，不冒充实际提交。
+            assert check["last_succeeded_at"] == "2030-01-01T00:00:00+00:00"
             source.calls.clear()
             clock.advance(15)
             await collector.check_once(UID, "123")
@@ -104,7 +106,7 @@ def test_blocked_detail_is_valid_metadata_when_html_is_unavailable(tmp_path):
             assert check["work"] == "complete"
             assert archive["work"]["text"] == "restricted"
             assert archive["synced_version"] is None
-            assert check["last_succeeded_at"] is None
+            assert check["last_succeeded_at"] == "2030-01-01T00:00:00+00:00"
 
     asyncio.run(scenario())
 

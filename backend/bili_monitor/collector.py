@@ -219,7 +219,8 @@ class Collector:
                     lambda: self.store.finish_check_work(uid, id, claim["revision"], succeeded, self.clock.now(),
                                                        None if succeeded else "SYNC_INCOMPLETE", token=claim["token"],
                                                        selection=claim["selection"], record_success=(
-                                                           archive is not None and archive["work"]["text"] == "success")))
+                                                           archive is not None
+                                                           and archive["work"]["text"] in ("success", "restricted"))))
                 parts = archive["work"] if archive else {}
                 collector_event("sync_finished", warning=not complete, succeeded=succeeded, complete=complete,
                                 elapsed_ms=max(0, int((self.clock.monotonic() - started) * 1000)),

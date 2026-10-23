@@ -264,7 +264,8 @@ def test_restricted_body_and_invalid_edit_do_not_block_comment_recovery_or_inven
             assert partial["parts"]["comments"] == partial["parts"]["replies"] == partial["parts"]["comment_media"] == "success"
             assert partial["synced_comment_count"] == 70
             assert partial["observed"]["source_comment_count"] == 70
-            assert partial["work"] == "complete" and partial["last_succeeded_at"] is None
+            # 受限已确认终态：整轮完成，记目标级成功时间；正文分项不冒充实际提交。
+            assert partial["work"] == "complete" and partial["last_succeeded_at"] == "2030-01-01T00:00:30+00:00"
             assert partial["text_last_succeeded_at"] is partial["media_last_succeeded_at"] is None
             for field in ("root_comments_last_succeeded_at", "replies_last_succeeded_at", "comments_last_succeeded_at",
                           "comment_media_last_succeeded_at"):
