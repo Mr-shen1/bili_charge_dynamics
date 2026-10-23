@@ -16,7 +16,7 @@
 | `GET /api/archive/dynamics` | `scope=all\|up`、条件必需的 `uid`、`limit`、可选 `cursor` | `{items: Archive[], next_cursor: string \| null}` |
 | `GET /api/archive/dynamics/{id}` | 无 | `Archive`；本地不存在时 `404` |
 | `GET /api/archive/dynamics/{id}/comments` | `sort=hot\|latest`、`limit`、可选 `cursor` | `{items: RootComment[], next_cursor: string \| null}` |
-| `GET /api/archive/dynamics/{id}/comments/{root_id}/replies` | 首批 `limit=3`，续批 `limit=10`，可选 `cursor` | `{items: Reply[], next_cursor, source_reply_count, local_reply_count, replies_last_attempt, synced_source_reply_count}`，首批另含 `root`（该楼根评论） |
+| `GET /api/archive/dynamics/{id}/comments/{root_id}/replies` | cursor 模式首读 `limit=3`/续读 `limit=10`；或互斥的正整数 `page`、`limit=10` | 共用 `items` 与独立计数/状态；cursor 模式返回 `next_cursor`，首批另含 `root`；page 模式每页返回 `root`、本地 `count`、`next_cursor:null` |
 
 UID 和动态 ID 必须是十进制字符串，不经 JavaScript Number 转换。不符返回 `409 TARGET_AUTHOR_MISMATCH`，无法确认返回 `502 TARGET_UNVERIFIED`；都不建立关联。上游请求不在数据库事务内，错误只返回固定脱敏提示，不传递上游响应、URL、请求头或异常文本。
 
@@ -124,25 +124,35 @@ Archive 新增：
 
 `id/dynamic_id/root_id` 必为字符串；`parent_id` 为可用目标条目字符串 ID 或 null。`author:{id,nickname,avatar_url}` 允许缺失，时间为明确 `+08:00` 秒精度或 null；`text/like_count` 区分未知与真实空／零。后续未知不擦除旧可信作者、正文、时间、点赞和 parent；不增加回复图片。
 
-`reply_to` 为同根 parent 对应条目的作者对象，或 null。根与跨页回复目标均从完整本地集合解析；目标不存在／无可确认作者 ID 时不拼伪造作者，`content.members` 只是 @ 提及者，不能作为关系证据。目标作者与内容在首读一并冻结。
+`reply_to` 为同根 parent 对应条目的作者对象，或 null。根与跨页回复目标均从完整本地集合解析；目标不存在／无可确认作者 ID 时不拼伪造作者，`content.members` 只是 @ 提及者，不能作为关系证据。目标作者与内容在 cursor 首读一并冻结；page 模式按每次请求的当前完整本地同根集合解析。
 
 楼中楼按根增量推进（与参考脚本一致）：本轮根页 `rcount` 与上次成功快照相同、且距上次成功不足 `FULL_SCAN_SECONDS`（24 小时）的楼层**不重发** `/x/v2/reply/reply`，只沿用已持久状态；`rcount` 变化、从未成功或超过校准周期的楼层才整楼重扫。逐根成功时记录根页 `rcount`、楼中楼来源数与成功时间（`reply_sync.observed_reply_count` / `synced_source_reply_count` / `synced_at`）；跳过不刷新校准计时，因此每根每 24 小时至少完整校准一次，用于补偿增删抵消。`replies_sync_finished` 携带 `skipped=` 与 `degraded=` 便于观察本轮省下的请求和降级轮次。显式初始化（`POST /api/sync/initial`）始终整楼重扫。
 
 根扫描失败不再连坐楼中楼：`sync_roots` 返回空时按已存根评论及其 `source_reply_count` 降级执行（`replies_sync_degraded`），仍按 `scan_due` 只重扫到期/上次失败的楼，失败楼层照常保存已得页。降级轮不改变一致性语义——根集合未确认，故整轮仍记 `replies_last_attempt=unconfirmed`，`synced_reply_comment_count` 与成功时间不推进，`work.replies` 保持 `pending`。因此失败重试只重扫根分页，不会因 `failed/unconfirmed` 强制 `full=True` 全量重扫全部楼层（否则热帖会陷入「全量重扫 → 期间计数变化 → 再全量重扫」的死循环）。楼中楼分页同样只拒绝计数**减少**，增长只记 `reply_scan_count_grew`。
 
-根评论列表为每条根附带 `up_reply`：作者在该楼中最早的一条回复（`{id, author, published_at, text, like_count, reply_to}`），作者未参与时为 null；`reply_to` 只在回复其他楼时带目标作者，直接回根为 null。手机端只用它渲染楼中楼预览，不替代 Reply 分页。首批回复另返回 `root`（该楼根评论），后续分页不重复，供楼中楼详情页展示被回复评论。
+根评论列表为每条根附带 `up_reply`：作者在该楼中最早的一条回复（`{id, author, published_at, text, like_count, reply_to}`），作者未参与时为 null；`reply_to` 只在回复其他楼时带目标作者，直接回根为 null。手机端只用它渲染楼中楼预览，不替代 Reply 分页。cursor 首批回复另返回 `root`（该楼根评论），cursor 续批不重复；实时 page 模式每一页均返回 `root`，供楼中楼页展示被回复评论。
 
-回复批次独立返回 `source_reply_count`（根来源数，可 null）、`local_reply_count`（完整该根本地数，含保留历史）、`replies_last_attempt`（逐根状态，尚未处理为 pending）、`synced_source_reply_count`（该根最近成功页集合的来源数，可 null）。这些元信息与 items 一并冻结，不以加载条数替代本地数，也不因本地为零宣称已成功空归档。`source_reply_count` 大于 `local_reply_count` 时差额表示上游未返回的回复，读取端按“已归档 N/M”提示，不当作归档失败。
+回复批次独立返回 `source_reply_count`（根来源数，可 null）、`local_reply_count`（完整该根本地数，含保留历史）、`replies_last_attempt`（逐根状态，尚未处理为 pending）、`synced_source_reply_count`（该根最近成功页集合的来源数，可 null）。cursor 模式这些元信息与 items 一并冻结，page 模式每次取得最新根/计数/回复；不以当前页条数替代本地总数，也不因本地为零宣称已成功空归档。`source_reply_count` 大于 `local_reply_count` 时差额表示上游未返回的回复，读取端按“已归档 N/M”提示，不当作归档失败。
+
+### 当前 page 模式：实时回复页码
+
+本节按源码基线 `10319d855c55744b603de1fe65433a5b9f73926d` 补齐已存在的读取能力，不是 Vue 迁移新增 API，也不是运行验收证据。当前正常界面宽屏展开回复和独立楼中楼页使用此模式；宽屏最多 3 条预览仍使用后面的 cursor 首读。
+
+- `page` 为不带前导零的正整数字符串，匹配 `^[1-9][0-9]*$`，不是仅允许 1–9。与 `cursor` 查询参数互斥；`limit` 可省略，提供时必须为 10。未知/重复 query、非法 page、混用 cursor、错误批量返回 `422 INVALID_INPUT`。通用 `limit` 校验限制 1–10，超域或非整数也为 INVALID_INPUT。
+- 父动态/根关系不存在返回 `404 NOT_FOUND`。page 越过实际末页不是 404/422：返回空 `items` 及实际本地总数，超长合法页码也安全返回空页，不发生偏移转换溢出。
+- 每次在同一短只读事务读取当前根、回复和逐根状态，不创建或使用持久 cursor 页。先按时间升序、null 后置、ID BINARY 升序排列，再取当页最多 10 条。
+- 返回 `items`、`next_cursor:null`、`count`、`root` 及既有 `source_reply_count/local_reply_count/replies_last_attempt/synced_source_reply_count`。`count` 与 `local_reply_count` 都表示该根完整本地归档回复量；来源数量独立，可能更多、为零或未知。`root` 每页都有，不仅首页有。
+- 每次翻页读当前归档，跨页不构成冻结快照，新增/变化可影响下一次响应。前端发送 `cache:'no-store'`，以本地 count 算总页数；越界时再读有效末页。普通失败只影响当前操作，不改归档、不触发上游采集。
 
 ### HTTP、排序与 cursor
 
-父动态或根不在本地对应关系中为 `404 NOT_FOUND`。首批固定最多 3、续批固定最多 10；`limit` 可省略，分别等价于 3／10，显式值只允许对应批量。首批非法批量、未知／重复 query 返回 `422 INVALID_INPUT`；续批改变批量为 `422 CURSOR_INVALID`（超出 Query 允许域的值仍 INVALID_INPUT）。调用方累计可读 3/13/23/25，结束为 next_cursor=null。
+以下仅描述继续保留的 cursor 冻结模式，不是当前正常 UI 的累计展开方式。父动态或根不在本地对应关系中为 `404 NOT_FOUND`。首批固定最多 3、续批固定最多 10；`limit` 可省略，分别等价于 3／10，显式值只允许对应批量。首批非法批量、未知／重复 query 返回 `422 INVALID_INPUT`；续批改变批量为 `422 CURSOR_INVALID`（超出 Query 允许域的值仍 INVALID_INPUT）。兼容调用方可累计读到 3/13/23/25，结束为 next_cursor=null；当前正常展开/独立页使用 page，不再以此累计量作为 UI 验收条件。
 
 完整同根集合先按时间升序、时间 null 后置、ID BINARY 字符串升序排序，不转数字或使用语言环境比较。首批短事务冻结全部内容／目标／计数／顺序；更新和插入只对新首批可见，旧 cursor 不重不漏。持久 cursor 绑定回复资源、动态、根、时间正序、固定 3→10 批量和该次读取上下文；重读原批与数据库重开返回相同内容及 next_cursor。
 
 回复快照**不设 TTL**，不沿用动态列表 15 分钟；普通传输／503 STORAGE_UNAVAILABLE 失败保留原 cursor 可重试。格式无效、伪造、跨根／动态／资源、读取上下文因数据库恢复而缺失返回 `422 CURSOR_INVALID`，使用既有固定提示“评论读取标记无效，请重新开始读取”。须显式无 cursor 开始新快照并替换旧分页视图，不静默拼接另一范围。无回收／容量承诺，持久快照有增长风险。
 
-v6→v7 新增回复、逐根状态与回复分页表，旧根记录及有效根／动态 cursor 内容不改写；旧 Archive 补齐 pending 和 null 状态，不能从旧根成功推断整轮成功。生产 Adapter 现支持 readReplies 并保留可选计数／状态，页面展开／收起及历史恢复由 #18。
+v6→v7 新增回复、逐根状态与回复分页表，旧根记录及有效根／动态 cursor 内容不改写；旧 Archive 补齐 pending 和 null 状态，不能从旧根成功推断整轮成功。#17/#18 阶段 Adapter 与页面最初使用此冻结批次模型；当前页码、窄屏独立页及对应返回行为以本节新增 page 说明和[客户端当前基线](archive-api-client.md#当前代码基线回复分页与独立楼中楼)为准，不修改旧票验收结论。
 
 自动化证据见 [17 验收记录](../../../.scratch/backend-integration/acceptance-17.md)，固定资料见 [来源协议证据](../evidence/source-protocol-evidence.md#17-楼中楼协议)。
 
