@@ -84,3 +84,90 @@ test.describe('管理页与实际 API', () => {
     await expect(page.getByRole('list', { name: 'UP 列表' })).toBeVisible();
   });
 });
+
+test('指定模式目标校验、停用、移除目标与删除配置都不删除已有归档', async ({ page }) => {
+  // 新增 UP 后保存互斥模式并启用监控：指定模式的入选集合来自关联目标。
+  await page.goto('/manage');
+  const uidInput = page.getByRole('textbox', { name: 'UP UID' });
+  await uidInput.fill('707');
+  await uidInput.press('Enter');
+  await expect(page.getByRole('link', { name: '管理 UP 707', exact: true })).toBeVisible();
+
+  await page.goto('/manage/ups/707');
+  const card = upCard(page, '707');
+  await expect(card).toContainText('虚构晚风');
+  // 默认近期 10：表单直接反映已保存配置。
+  await expect(card.getByRole('textbox', { name: '近期 N 条' })).toHaveValue('10');
+
+  // Element Plus 隐藏原生 radio，点击可见标签才是真实用户路径。
+  await card.getByText('指定动态 ID', { exact: true }).click();
+  await expect(card.getByRole('textbox', { name: '近期 N 条' })).toHaveCount(0);
+  await card.getByRole('button', { name: '保存配置', exact: true }).click();
+  await expect(card).toContainText('已保存模式：指定动态 ID。');
+  await expect(card).toContainText('保存成功。');
+  await card.getByRole('button', { name: '启用监控', exact: true }).click();
+  await expect(card).toContainText('监控：已启用');
+
+  const targetInput = card.getByRole('textbox', { name: '动态 ID' });
+  await expect(card).toContainText('尚未添加指定目标。');
+
+  // 作者不符与无法确认是两种结果，都保留输入且不建立关联。
+  await targetInput.fill('800100');
+  await targetInput.press('Enter');
+  await expect(card.getByRole('alert').filter({ hasText: '动态作者与所选 UP 不符' })).toBeVisible();
+  await expect(targetInput).toHaveValue('800100');
+  await targetInput.fill('800200');
+  await targetInput.press('Enter');
+  await expect(card.getByRole('alert').filter({ hasText: '无法确认动态归属' })).toBeVisible();
+  await expect(targetInput).toHaveValue('800200');
+
+  await targetInput.fill('900707');
+  await targetInput.press('Enter');
+  await expect(card).toContainText('归属校验通过，目标关联已保存。');
+  await expect(card.getByRole('list', { name: '指定动态目标列表' })).toContainText('900707');
+  await expect(targetInput).toHaveValue('');
+
+  // 显式初始化仍由执行者触发；这里只走页面同源 HTTP，上游由虚构 fixture 提供。
+  const sync = await page.request.post('/api/sync/initial', { data: { uid: '707' } });
+  expect(sync.status()).toBe(200);
+  expect(await sync.json()).toEqual({ processed: 1, succeeded: 1, failed: 0 });
+  const archivedText = async () => {
+    const response = await page.request.get('/api/archive/dynamics/900707');
+    expect(response.status()).toBe(200);
+    return (await response.json()) as { text: string; content_state: string };
+  };
+  expect(await archivedText()).toMatchObject({ text: '虚构正文 900707', content_state: 'success' });
+
+  // 停用：归档不随之删除。
+  await card.getByRole('button', { name: '停止监控', exact: true }).click();
+  await expect(card).toContainText('监控：已停止');
+  expect((await archivedText()).text).toBe('虚构正文 900707');
+
+  // 移除目标：只解除关联，归档仍可读。
+  await card.getByRole('button', { name: '移除目标 900707', exact: true }).click();
+  await expect(card).toContainText('目标已移除；已有归档保留。');
+  await expect(card).toContainText('尚未添加指定目标。');
+  expect((await archivedText()).text).toBe('虚构正文 900707');
+
+  // 删除配置：身份和归档都保留，可按基线重新添加。
+  await card.getByRole('button', { name: '删除监控配置', exact: true }).click();
+  await expect(card).toContainText('监控配置已删除；身份和已有归档保留。');
+  await expect(card).toContainText('配置已删除');
+  expect((await archivedText()).text).toBe('虚构正文 900707');
+  const retained = await page.request.get('/api/archive/dynamics?scope=up&uid=707&limit=10');
+  expect(((await retained.json()) as { items: { id: string }[] }).items.map(item => item.id))
+    .toEqual(['900707']);
+
+  await card.getByRole('button', { name: '重新添加监控', exact: true }).click();
+  await expect(card).toContainText('监控：已停止');
+  await expect(card.getByRole('textbox', { name: '近期 N 条' })).toHaveValue('10');
+  expect((await archivedText()).text).toBe('虚构正文 900707');
+
+  // 身份与状态在列表页同样保留，且管理删除不等于内容删除。
+  await page.goto('/manage');
+  const link = page.getByRole('link', { name: '管理 UP 707', exact: true });
+  await expect(link).toContainText('虚构晚风');
+  await expect(link).toContainText('监控已停止');
+  await page.reload();
+  await expect(link).toContainText('监控已停止');
+});

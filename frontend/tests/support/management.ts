@@ -1,13 +1,19 @@
-import type { ManagedUp, ManagementApi, ManagementResult } from '../../src/manage/managementApi';
+import type {
+  ManagedTarget, ManagedUp, ManagementApi, ManagementResult,
+} from '../../src/manage/managementApi';
 
 const failed = { status: 'error', message: '管理接口响应异常，请重试。' } as const;
 
-/** 页面行为接缝的替身：默认三个操作都失败，被测用例只覆盖自己关心的路径。 */
+/** 页面行为接缝的替身：默认所有操作都失败，被测用例只覆盖自己关心的路径。 */
 export function createManagement(overrides: Partial<ManagementApi> = {}): ManagementApi {
   return {
     listUps: async (): Promise<ManagementResult<readonly ManagedUp[]>> => failed,
     addUp: async (): Promise<ManagementResult<ManagedUp>> => failed,
     updateMonitor: async (): Promise<ManagementResult<ManagedUp>> => failed,
+    deleteMonitor: async (): Promise<ManagementResult<void>> => failed,
+    listTargets: async (): Promise<ManagementResult<readonly ManagedTarget[]>> => failed,
+    addTarget: async (): Promise<ManagementResult<ManagedTarget>> => failed,
+    deleteTarget: async (): Promise<ManagementResult<void>> => failed,
     ...overrides,
   };
 }

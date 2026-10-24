@@ -142,14 +142,7 @@ function editUid(value: string): void {
 }
 
 .manage-muted {
-  margin: 8px 0 0;
-  color: var(--muted);
-  font-size: 13px;
-  overflow-wrap: anywhere;
-}
-
-.manage-feedback {
-  margin-top: 12px;
+  margin-top: 8px;
 }
 
 .manage-ups {

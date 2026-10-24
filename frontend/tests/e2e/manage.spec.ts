@@ -32,6 +32,10 @@ async function manageApi(page: Page, handler: (call: Call) => Reply | Promise<Re
     calls.push(call);
     const reply = await handler(call);
     if (reply.delayMs) await new Promise(resolve => setTimeout(resolve, reply.delayMs));
+    if (reply.status === 204) {
+      await route.fulfill({ status: 204 });
+      return;
+    }
     if (reply.json === false) {
       await route.fulfill({ status: reply.status ?? 200, contentType: 'text/html', body: String(reply.body ?? '') });
       return;
@@ -167,14 +171,16 @@ test.describe('UP 监控管理', () => {
     ]);
   });
 
-  test('删除配置的身份仍可管理页直达并说明归档保留，无启停入口', async ({ page }) => {
+  test('删除配置的身份仍可管理页直达并说明归档保留，可重新添加但无启停入口', async ({ page }) => {
     const calls = await manageApi(page, () => ({ body: { ups: [up('789', { name: null, avatar_url: null, monitor: null })] } }));
     await page.goto('/manage/ups/789');
     const card = upCard(page, '789');
     await expect(card).toContainText('未知用户');
     await expect(card).toContainText('监控：无配置');
     await expect(card).toContainText('已有归档保留');
-    await expect(page.getByRole('button', { name: /监控$/ })).toHaveCount(0);
+    await expect(card.getByRole('button', { name: '重新添加监控', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^(停止|启用)监控$/ })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '删除监控配置', exact: true })).toHaveCount(0);
     expect(calls.every(call => call.method === 'GET')).toBe(true);
   });
 
@@ -213,7 +219,9 @@ test.describe('UP 监控管理', () => {
   });
 
   test('UP 不存在时可回到列表；四视口无横溢且控件高度不小于 44px', async ({ page }) => {
-    await manageApi(page, () => ({ body: { ups: [up('123')] } }));
+    await manageApi(page, call => call.path.endsWith('/targets')
+      ? { body: { targets: [{ id: '900' }] } }
+      : { body: { ups: [up('123')] } });
     await page.goto('/manage/ups/456');
     await expect(page.getByText('未找到该 UP，可能已被删除。')).toBeVisible();
     await page.getByRole('link', { name: '返回 UP 列表', exact: true }).click();
@@ -270,6 +278,30 @@ test.describe('UP 监控管理', () => {
       for (const height of single.heights) {
         expect(height, `${width}px 单 UP 页触控区域高度`).toBeGreaterThanOrEqual(44);
       }
+
+      // 指定模式把配置草稿、关联目标与移除按钮也放进同一视口检查。
+      await upCard(page, '123').getByText('指定动态 ID', { exact: true }).click();
+      await expect(page.getByRole('textbox', { name: '动态 ID' })).toBeVisible();
+      const specified = await page.evaluate(() => {
+        const heights = [...document.querySelectorAll<HTMLElement>(
+          '.el-radio, .manage-save, .manage-target-remove, .manage-target-submit',
+        )].map(node => Math.round(node.getBoundingClientRect().height));
+        const card = document.querySelector<HTMLElement>('.manage-up');
+        return {
+          scrollWidth: document.documentElement.scrollWidth,
+          clientWidth: document.documentElement.clientWidth,
+          heights,
+          cardWidth: Math.round(card?.getBoundingClientRect().width ?? 0),
+          cardScrollWidth: card?.scrollWidth ?? 0,
+        };
+      });
+      expect(specified.scrollWidth, `${width}px 指定模式不应横向溢出`).toBeLessThanOrEqual(specified.clientWidth);
+      expect(specified.cardScrollWidth, `${width}px 指定模式卡片内容不应横向溢出`)
+        .toBeLessThanOrEqual(specified.cardWidth);
+      expect(specified.heights.length).toBeGreaterThanOrEqual(4);
+      for (const height of specified.heights) {
+        expect(height, `${width}px 指定模式触控区域高度`).toBeGreaterThanOrEqual(44);
+      }
     }
   });
 
@@ -302,5 +334,118 @@ test.describe('UP 监控管理', () => {
     expect(outline).not.toBe('none');
     await page.keyboard.press('Enter');
     await expect(upCard(page, '123')).toContainText('监控：已停止');
+  });
+});
+
+test.describe('监控模式与指定目标', () => {
+  function monitorOf(body: string | null) {
+    return JSON.parse(body ?? '{}') as { mode: string; recent_n: number; enabled: boolean };
+  }
+
+  test('草稿只由保存提交，指定模式才读取与写入关联目标', async ({ page }) => {
+    // 目标列表保持服务端真实状态：移除后再进入模式应重新读到当前关联。
+    const targets = ['900'];
+    const calls = await manageApi(page, call => {
+      if (call.path === '/api/manage/ups' && call.method === 'GET') return { body: { ups: [up('123')] } };
+      if (call.path === '/api/manage/ups/123/monitor' && call.method === 'PATCH') {
+        return { body: up('123', { monitor: { ...monitorOf(call.body), last_checked_at: null, last_succeeded_at: null } }) };
+      }
+      if (call.path === '/api/manage/ups/123/targets' && call.method === 'GET') {
+        return { body: { targets: targets.map(id => ({ id })) } };
+      }
+      if (call.path === '/api/manage/ups/123/targets' && call.method === 'POST') {
+        const id = (JSON.parse(call.body ?? '{}') as { id: string }).id;
+        if (id === '777') return { status: 409, body: { error: { code: 'TARGET_AUTHOR_MISMATCH', message: 'SECRET_TOKEN' } } };
+        if (id === '888') return { status: 502, body: { error: { code: 'TARGET_UNVERIFIED', message: 'SECRET_TOKEN' } } };
+        targets.push(id);
+        return { status: 201, body: { id } };
+      }
+      if (call.path === '/api/manage/ups/123/targets/900' && call.method === 'DELETE') {
+        targets.splice(targets.indexOf('900'), 1);
+        return { status: 204 };
+      }
+      throw new Error(`unexpected ${call.method} ${call.path}`);
+    });
+
+    await page.goto('/manage/ups/123');
+    const card = upCard(page, '123');
+    const recentN = card.getByRole('textbox', { name: '近期 N 条' });
+    await expect(card).toContainText('已保存模式：近期 N 条；N：10。');
+    await expect(recentN).toHaveValue('10');
+    // 近期模式下不读取目标，只给出切换提示。
+    expect(calls.map(call => `${call.method} ${call.path}`)).toEqual(['GET /api/manage/ups']);
+
+    await recentN.fill('25');
+    await card.getByText('指定动态 ID', { exact: true }).click();
+    await expect(recentN).toHaveCount(0);
+    await expect(card.getByRole('list', { name: '指定动态目标列表' })).toContainText('900');
+    expect(calls.map(call => `${call.method} ${call.path}`)).toEqual([
+      'GET /api/manage/ups', 'GET /api/manage/ups/123/targets',
+    ]);
+
+    await card.getByRole('button', { name: '保存配置', exact: true }).click();
+    await expect(card).toContainText('已保存模式：指定动态 ID。');
+    const [saved] = calls.filter(call => call.method === 'PATCH');
+    expect(monitorOf(saved!.body)).toEqual({ mode: 'specified', recent_n: 25, enabled: true });
+
+    const targetInput = card.getByRole('textbox', { name: '动态 ID' });
+    await targetInput.fill('777');
+    await targetInput.press('Enter');
+    await expect(card.getByRole('alert').filter({ hasText: '动态作者与所选 UP 不符' })).toBeVisible();
+    await expect(targetInput).toHaveValue('777');
+    await expect(page.locator('body')).not.toContainText('SECRET_TOKEN');
+
+    await targetInput.fill('888');
+    await targetInput.press('Enter');
+    await expect(card.getByRole('alert').filter({ hasText: '无法确认动态归属' })).toBeVisible();
+    await expect(targetInput).toHaveValue('888');
+
+    await targetInput.fill('901');
+    await targetInput.press('Enter');
+    await expect(card.getByRole('alert').filter({ hasText: '归属校验通过，目标关联已保存。' })).toBeVisible();
+    await expect(targetInput).toHaveValue('');
+    await expect(card.getByRole('list', { name: '指定动态目标列表' })).toContainText('901');
+
+    await card.getByRole('button', { name: '移除目标 900', exact: true }).click();
+    await expect(card.getByRole('alert').filter({ hasText: '目标已移除；已有归档保留。' })).toBeVisible();
+    await expect(card.getByRole('list', { name: '指定动态目标列表' })).not.toContainText('900');
+
+    // 切回近期模式：默认不显示目标草稿，也不沿用目标区的反馈。
+    await card.getByText('近期 N 条', { exact: true }).click();
+    await expect(card.getByRole('textbox', { name: '动态 ID' })).toHaveCount(0);
+    await expect(recentN).toHaveValue('25');
+    await expect(card.getByRole('alert').filter({ hasText: '目标已移除' })).toHaveCount(0);
+
+    // 再切回指定模式：重新读取目标，输入与旧反馈都不残留。
+    await card.getByText('指定动态 ID', { exact: true }).click();
+    await expect(card.getByRole('textbox', { name: '动态 ID' })).toHaveValue('');
+    await expect(card.getByRole('list', { name: '指定动态目标列表' })).toContainText('901');
+    await expect(card.getByRole('list', { name: '指定动态目标列表' })).not.toContainText('900');
+    expect(calls.filter(call => call.path.endsWith('/targets') && call.method === 'GET')).toHaveLength(2);
+  });
+
+  test('模式控件可用键盘操作，校验失败的 N 不发请求', async ({ page }) => {
+    const calls = await manageApi(page, call => {
+      if (call.path === '/api/manage/ups') return { body: { ups: [up('123')] } };
+      if (call.path.endsWith('/targets')) return { body: { targets: [] } };
+      throw new Error(`unexpected ${call.method} ${call.path}`);
+    });
+    await page.goto('/manage/ups/123');
+    const card = upCard(page, '123');
+    const recentN = card.getByRole('textbox', { name: '近期 N 条' });
+
+    await recentN.fill('0');
+    await card.getByRole('button', { name: '保存配置', exact: true }).click();
+    await expect(card.getByRole('alert').filter({ hasText: '近期 N 须为正的安全整数' })).toBeVisible();
+    await expect(recentN).toHaveValue('0');
+    expect(calls.filter(call => call.method === 'PATCH')).toHaveLength(0);
+
+    // 键盘：聚焦模式单选后可用空格切换，不需要鼠标。
+    const radio = card.getByRole('radio', { name: '指定动态 ID' });
+    await radio.focus();
+    await expect(radio).toBeFocused();
+    await page.keyboard.press(' ');
+    await expect(card.getByRole('textbox', { name: '动态 ID' })).toBeVisible();
+    await expect(recentN).toHaveCount(0);
   });
 });

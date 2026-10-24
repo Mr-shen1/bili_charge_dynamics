@@ -3,6 +3,8 @@
  * 管理两条路由共用的页头与栏宽：层级保持「管理列表 → 单 UP 管理」，
  * 不新增全局汇总页。刷新或直达任一地址都在这里得到同一个返回入口。
  */
+import './manage.css';
+
 defineProps<{ listLink?: boolean }>();
 </script>
 

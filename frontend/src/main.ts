@@ -7,6 +7,8 @@ import 'element-plus/es/components/form-item/style/css';
 import 'element-plus/es/components/image/style/css';
 import 'element-plus/es/components/image-viewer/style/css';
 import 'element-plus/es/components/input/style/css';
+import 'element-plus/es/components/radio/style/css';
+import 'element-plus/es/components/radio-group/style/css';
 import App from './app/App.vue';
 import { createAppRouter } from './app/router';
 import { createSessionReader } from './app/reader';

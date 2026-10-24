@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  authenticationRequiredMessage, createManagementApi, invalidUidMessage,
+  authenticationRequiredMessage, createManagementApi, invalidTargetMessage, invalidUidMessage,
   type ManagementTransport,
 } from '../../src/manage/managementApi';
 
@@ -164,7 +164,104 @@ describe('管理接口的输入与响应守卫', () => {
   });
 });
 
+describe('指定目标与删除监控配置', () => {
+  it('目标列表映射字符串 ID，并校验重复与非法 ID', async () => {
+    const { transport, calls } = transportOf(Response.json({ targets: [{ id: '9007199254740993123' }] }));
+    expect(await createManagementApi(transport).listTargets({ uid, signal: signal() }))
+      .toEqual({ status: 'success', data: [{ id: '9007199254740993123' }] });
+    expect(calls[0]!.url).toBe(`/api/manage/ups/${uid}/targets`);
+    expect(calls[0]!.init.method).toBe('GET');
+
+    for (const body of [[{ id: '0123' }], [{ id: '123' }, { id: '123' }], [{ id: 123 }], [{ id: '' }]]) {
+      const invalid = transportOf(Response.json({ targets: body }));
+      expect(await createManagementApi(invalid.transport).listTargets({ uid, signal: signal() }))
+        .toEqual({ status: 'error', message: invalidResponseMessage });
+    }
+  });
+
+  it('添加目标只提交字符串 ID，作者不符与无法确认分别给固定提示', async () => {
+    const added = transportOf(Response.json({ id: '9007199254740993123' }, { status: 201 }));
+    expect(await createManagementApi(added.transport).addTarget({ uid, id: '9007199254740993123', signal: signal() }))
+      .toEqual({ status: 'success', data: { id: '9007199254740993123' } });
+    expect(added.calls[0]!.url).toBe(`/api/manage/ups/${uid}/targets`);
+    expect(added.calls[0]!.init.method).toBe('POST');
+    expect(added.calls[0]!.init.body).toBe('{"id":"9007199254740993123"}');
+
+    const cases: [number, string, string][] = [
+      [409, 'TARGET_AUTHOR_MISMATCH', '动态作者与所选 UP 不符。'],
+      [502, 'TARGET_UNVERIFIED', '无法确认动态归属。'],
+    ];
+    for (const [status, code, message] of cases) {
+      const { transport } = transportOf(
+        Response.json({ error: { code, message: 'SECRET_TOKEN' } }, { status }));
+      const result = await createManagementApi(transport).addTarget({ uid, id: '123', signal: signal() });
+      expect(result).toEqual({ status: 'error', message });
+      expect(JSON.stringify(result)).not.toContain('SECRET_TOKEN');
+    }
+
+    for (const body of [{ id: '456' }, { id: 123 }, { target: '123' }]) {
+      const invalid = transportOf(Response.json(body, { status: 201 }));
+      expect(await createManagementApi(invalid.transport).addTarget({ uid, id: '123', signal: signal() }))
+        .toEqual({ status: 'error', message: invalidResponseMessage });
+    }
+  });
+
+  it('非 GET 目标请求在本地校验 ID 与 UID，不发送请求', async () => {
+    const { transport, calls } = transportOf();
+    const api = createManagementApi(transport);
+    for (const id of ['', '0123', ' 123', '1e3', '9'.repeat(129)]) {
+      expect(await api.addTarget({ uid, id, signal: signal() }))
+        .toEqual({ status: 'error', message: invalidTargetMessage });
+      expect(await api.deleteTarget({ uid, id, signal: signal() }))
+        .toEqual({ status: 'error', message: invalidTargetMessage });
+    }
+    expect(await api.listTargets({ uid: '0123', signal: signal() }))
+      .toEqual({ status: 'error', message: invalidUidMessage });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('移除目标只解除关联：204 成功，其他状态按固定码映射', async () => {
+    const removed = transportOf(new Response(null, { status: 204 }));
+    expect(await createManagementApi(removed.transport).deleteTarget({ uid, id: '123', signal: signal() }))
+      .toEqual({ status: 'success', data: undefined });
+    expect(removed.calls[0]!.url).toBe(`/api/manage/ups/${uid}/targets/123`);
+    expect(removed.calls[0]!.init.method).toBe('DELETE');
+
+    const { transport } = transportOf(
+      Response.json({ error: { code: 'NOT_FOUND', message: 'SECRET_TOKEN' } }, { status: 404 }));
+    expect(await createManagementApi(transport).deleteTarget({ uid, id: '123', signal: signal() }))
+      .toEqual({ status: 'error', message: '身份或监控配置不存在，请重新读取。' });
+
+    const accepted = transportOf(Response.json({ id: '123' }));
+    expect(await createManagementApi(accepted.transport).deleteTarget({ uid, id: '123', signal: signal() }))
+      .toEqual({ status: 'error', message: invalidResponseMessage });
+  });
+
+  it('删除配置只发 DELETE，返回 204 才算成功', async () => {
+    const removed = transportOf(new Response(null, { status: 204 }));
+    expect(await createManagementApi(removed.transport).deleteMonitor({ uid, signal: signal() }))
+      .toEqual({ status: 'success', data: undefined });
+    expect(removed.calls[0]!.url).toBe(`/api/manage/ups/${uid}/monitor`);
+    expect(removed.calls[0]!.init.method).toBe('DELETE');
+
+    const { transport } = transportOf(
+      Response.json({ error: { code: 'NOT_FOUND', message: 'SECRET_TOKEN' } }, { status: 404 }));
+    expect(await createManagementApi(transport).deleteMonitor({ uid, signal: signal() }))
+      .toEqual({ status: 'error', message: '身份或监控配置不存在，请重新读取。' });
+
+    const noContent = transportOf(Response.json({}, { status: 200 }));
+    expect(await createManagementApi(noContent.transport).deleteMonitor({ uid, signal: signal() }))
+      .toEqual({ status: 'error', message: invalidResponseMessage });
+
+    const { transport: unused, calls } = transportOf();
+    expect(await createManagementApi(unused).deleteMonitor({ uid: '0123', signal: signal() }))
+      .toEqual({ status: 'error', message: invalidUidMessage });
+    expect(calls).toHaveLength(0);
+  });
+});
+
 describe('管理接口的部署入口认证', () => {
+  const targetPath = `/api/manage/ups/${uid}/targets`;
   const operations = [
     { name: 'listUps', path: '/api/manage/ups', method: 'GET',
       run: (api: ReturnType<typeof createManagementApi>, signal: AbortSignal) => api.listUps({ signal }) },
@@ -173,6 +270,18 @@ describe('管理接口的部署入口认证', () => {
     { name: 'updateMonitor', path: `/api/manage/ups/${uid}/monitor`, method: 'PATCH',
       run: (api: ReturnType<typeof createManagementApi>, signal: AbortSignal) =>
         api.updateMonitor({ uid, monitor: { mode: 'recent', recentN: 10, enabled: true }, signal }) },
+    { name: 'deleteMonitor', path: `/api/manage/ups/${uid}/monitor`, method: 'DELETE',
+      run: (api: ReturnType<typeof createManagementApi>, signal: AbortSignal) =>
+        api.deleteMonitor({ uid, signal }) },
+    { name: 'listTargets', path: targetPath, method: 'GET',
+      run: (api: ReturnType<typeof createManagementApi>, signal: AbortSignal) =>
+        api.listTargets({ uid, signal }) },
+    { name: 'addTarget', path: targetPath, method: 'POST',
+      run: (api: ReturnType<typeof createManagementApi>, signal: AbortSignal) =>
+        api.addTarget({ uid, id: '123', signal }) },
+    { name: 'deleteTarget', path: `${targetPath}/123`, method: 'DELETE',
+      run: (api: ReturnType<typeof createManagementApi>, signal: AbortSignal) =>
+        api.deleteTarget({ uid, id: '123', signal }) },
   ];
 
   it('固定安全文案不指向页面入口', () => {

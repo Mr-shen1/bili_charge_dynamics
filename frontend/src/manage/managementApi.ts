@@ -21,6 +21,7 @@ export interface ManagedUp {
   readonly avatarUrl: string | null;
   readonly monitor: Monitor | null;
 }
+export interface ManagedTarget { readonly id: string }
 
 export type ManagementResult<T> =
   | { readonly status: 'success'; readonly data: T }
@@ -32,7 +33,9 @@ export type ManagementTransport = (url: string, init: RequestInit) => Promise<Re
 export const authenticationRequiredMessage = '管理访问需要身份验证，请刷新页面重新认证。';
 export const invalidUidMessage = 'UID 须为无前导零的正整数字符串，最多 128 位。';
 export const invalidMonitorMessage = '近期 N 须为正的安全整数，模式与启停须有效。';
+export const invalidTargetMessage = '动态 ID 须为无前导零的正整数字符串，最多 128 位。';
 export const isValidUid = isValidId;
+export const isValidTargetId = isValidId;
 
 const invalidResponse = { status: 'error', message: '管理接口响应异常，请重试。' } as const;
 
@@ -87,6 +90,10 @@ function httpError(body: unknown, status: number): ManagementResult<never> {
       ? { status: 'error', message: '该 UID 已有监控配置。' } : invalidResponse;
     case 'NOT_FOUND': return status === 404
       ? { status: 'error', message: '身份或监控配置不存在，请重新读取。' } : invalidResponse;
+    case 'TARGET_AUTHOR_MISMATCH': return status === 409
+      ? { status: 'error', message: '动态作者与所选 UP 不符。' } : invalidResponse;
+    case 'TARGET_UNVERIFIED': return status === 502
+      ? { status: 'error', message: '无法确认动态归属。' } : invalidResponse;
     case 'PROFILE_UNAVAILABLE': return status === 502
       ? { status: 'error', message: '未取得 UP 资料，请重试。' } : invalidResponse;
     case 'STORAGE_UNAVAILABLE': return status === 503
@@ -126,6 +133,51 @@ export function createManagementApi(transport: ManagementTransport = (url, init)
       const up = parseUp(body);
       return response.status === 200 && up?.uid === uid && (method === 'GET' || up.monitor !== null)
         ? { status: 'success', data: up } : invalidResponse;
+    } catch {
+      return signal.aborted ? { status: 'cancelled' } : invalidResponse;
+    }
+  }
+
+  /** 只返回 204 的删除请求：其他状态仍解固定错误码，不静默成功。 */
+  async function deleteRequest(url: string, signal: AbortSignal): Promise<ManagementResult<void>> {
+    try {
+      if (signal.aborted) return { status: 'cancelled' };
+      const result = await request(url, { method: 'DELETE', signal });
+      if (signal.aborted) return { status: 'cancelled' };
+      if (result.status !== 'success') return result;
+      const response = result.data;
+      if (response.status === 204) return { status: 'success', data: undefined };
+      const body: unknown = await response.json();
+      if (signal.aborted) return { status: 'cancelled' };
+      return response.ok ? invalidResponse : httpError(body, response.status);
+    } catch {
+      return signal.aborted ? { status: 'cancelled' } : invalidResponse;
+    }
+  }
+
+  /** 目标请求：GET 不带 ID，POST 提交 `{id}`，DELETE 只解除关联。 */
+  async function targetRequest(
+    uid: string, signal: AbortSignal, method: 'GET' | 'POST' | 'DELETE', id?: string,
+  ): Promise<ManagementResult<unknown>> {
+    if (!isValidUid(uid)) return { status: 'error', message: invalidUidMessage };
+    if (method !== 'GET') {
+      if (!isValidTargetId(id)) return { status: 'error', message: invalidTargetMessage };
+      if (method === 'DELETE') return deleteRequest(`/api/manage/ups/${uid}/targets/${id}`, signal);
+    }
+    try {
+      if (signal.aborted) return { status: 'cancelled' };
+      const result = await request(`/api/manage/ups/${uid}/targets`, {
+        method, signal,
+        ...(method === 'POST' ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) } : {}),
+      });
+      if (signal.aborted) return { status: 'cancelled' };
+      if (result.status !== 'success') return result;
+      const response = result.data;
+      const body: unknown = await response.json();
+      if (signal.aborted) return { status: 'cancelled' };
+      if (!response.ok) return httpError(body, response.status);
+      return response.status === (method === 'POST' ? 201 : 200)
+        ? { status: 'success', data: body } : invalidResponse;
     } catch {
       return signal.aborted ? { status: 'cancelled' } : invalidResponse;
     }
@@ -183,6 +235,46 @@ export function createManagementApi(transport: ManagementTransport = (url, init)
     ): Promise<ManagementResult<ManagedUp>> {
       if (!validMonitorConfig(monitor)) return { status: 'error', message: invalidMonitorMessage };
       return upRequest(uid, signal, 'PATCH', monitor);
+    },
+    /** 只删除监控配置：身份与已有归档保留，删除后可重新添加。 */
+    async deleteMonitor(
+      { uid, signal }: { readonly uid: string; readonly signal: AbortSignal },
+    ): Promise<ManagementResult<void>> {
+      if (!isValidUid(uid)) return { status: 'error', message: invalidUidMessage };
+      return deleteRequest(`/api/manage/ups/${uid}/monitor`, signal);
+    },
+    /** 指定模式下的关联目标：只含字符串 ID，归属校验由服务端完成。 */
+    async listTargets(
+      { uid, signal }: { readonly uid: string; readonly signal: AbortSignal },
+    ): Promise<ManagementResult<readonly ManagedTarget[]>> {
+      const result = await targetRequest(uid, signal, 'GET');
+      if (result.status !== 'success') return result;
+      const body = result.data;
+      if (!record(body) || !Array.isArray(body.targets)) return invalidResponse;
+      const targets: ManagedTarget[] = [];
+      for (const item of body.targets) {
+        if (!record(item) || !isValidId(item.id) || targets.some(target => target.id === item.id)) {
+          return invalidResponse;
+        }
+        targets.push({ id: item.id });
+      }
+      return { status: 'success', data: targets };
+    },
+    /** 添加前由服务端复核作者，作者不符与无法确认是不同结果。 */
+    async addTarget(
+      { uid, id, signal }: { readonly uid: string; readonly id: string; readonly signal: AbortSignal },
+    ): Promise<ManagementResult<ManagedTarget>> {
+      const result = await targetRequest(uid, signal, 'POST', id);
+      if (result.status !== 'success') return result;
+      return record(result.data) && result.data.id === id
+        ? { status: 'success', data: { id } } : invalidResponse;
+    },
+    /** 移除只解除关联，不删除已归档内容。 */
+    async deleteTarget(
+      { uid, id, signal }: { readonly uid: string; readonly id: string; readonly signal: AbortSignal },
+    ): Promise<ManagementResult<void>> {
+      const result = await targetRequest(uid, signal, 'DELETE', id);
+      return result.status === 'success' ? { status: 'success', data: undefined } : result;
     },
   };
 }
