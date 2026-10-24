@@ -85,7 +85,7 @@ test.describe('管理页与实际 API', () => {
   });
 });
 
-test('指定模式目标校验、停用、移除目标与删除配置都不删除已有归档', async ({ page }) => {
+test('指定模式目标校验、停用/移除/删除配置后归档与阅读入口都保留', async ({ page }) => {
   // 新增 UP 后保存互斥模式并启用监控：指定模式的入选集合来自关联目标。
   await page.goto('/manage');
   const uidInput = page.getByRole('textbox', { name: 'UP UID' });
@@ -158,6 +158,28 @@ test('指定模式目标校验、停用、移除目标与删除配置都不删�
   expect(((await retained.json()) as { items: { id: string }[] }).items.map(item => item.id))
     .toEqual(['900707']);
 
+  // 删除配置后阅读入口仍可用：单 UP 列表与详情都从真实 API 读到已有归档，刷新同样成立。
+  await page.goto('/ups/707');
+  await expect(page.getByRole('link', { name: '虚构晚风' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('article')).toHaveCount(1);
+  await expect(page.getByText('虚构正文 900707', { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByText('虚构正文 900707', { exact: true })).toBeVisible();
+  await page.getByRole('link', { name: '阅读全文 900707' }).focus();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/\/dynamics\/900707$/);
+  await expect(page.getByRole('article')).toContainText('虚构正文 900707');
+  await page.reload();
+  await expect(page.getByRole('article')).toContainText('虚构正文 900707');
+  // 安全隔离：页面不把任何凭据类信息写进浏览器存储或 Cookie。
+  const stored = await page.evaluate(() => ({
+    local: Object.entries(localStorage),
+    session: Object.entries(sessionStorage),
+    cookie: document.cookie,
+  }));
+  expect(JSON.stringify(stored)).not.toMatch(/token|secret|credential|authorization/i);
+
+  await page.goto('/manage/ups/707');
   await card.getByRole('button', { name: '重新添加监控', exact: true }).click();
   await expect(card).toContainText('监控：已停止');
   await expect(card.getByRole('textbox', { name: '近期 N 条' })).toHaveValue('10');

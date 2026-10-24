@@ -3,7 +3,7 @@
 技术栈：Vue 3 + TypeScript + Vite + Vue Router + Element Plus，继续静态 SPA 交付。票据 12 已把完整阅读与管理流程收敛到本应用，
 并删除废弃 React 栈（含 React Router、RTL 适配、旧组件、旧夹具素材与专用构建配置）；仓库里只剩这一套前端实现。
 **已交付范围以本文件「已交付」一节为单一来源**，其他文档只保留指针与证据链接。
-候选版本仍需票据 13–17 的协议回归、视觉签收、真机验收、静态交付与上线汇总，构建通过不等于这些验收已通过。
+候选版本仍需票据 14–17 的视觉签收、真机验收、静态交付与上线汇总；13 的协议回归只证明自动化与隔离集成。
 
 ## 已交付
 
@@ -20,6 +20,7 @@
 | 10 | 监控模式与指定目标：近期 N／指定动态互斥草稿与保存、删除配置后可重新添加、目标读取/归属校验/移除反馈、按 UP/模式隔离草稿与反馈、停用/移除目标/删除配置后归档仍可读 |
 | 11 | 检查/发现/窗口/同步状态：手动读取已保存记录、观察态与执行态及分项时间分开呈现、分项错误与部分同步、发现失败保留旧窗口、面板读取不覆盖草稿、已保存配置改变后重建面板 |
 | 12 | 仅含 Vue 的候选产物：六条路由与完整阅读/管理流程均由 Vue 承载、删除 React 栈与重复实现、交付工具去掉框架耦合、默认真实 API 与 mock/fault 隔离保持 |
+| 13 | 协议与跨流程回归：mock、生产 Adapter/HTTP 替身、实际 API＋隔离 SQLite 分开取证，六路由/分页排序/恢复/图片/管理/竞态逐项回归，建立 AC-01–AC-34 台账 |
 
 对应规格与票据：[实施规格](../.scratch/frontend-vue-migration/spec.md) · [票据目录](../.scratch/frontend-vue-migration/issues/) ·
 [图片预览验证证据](../.scratch/frontend-vue-migration/evidence/01-native-image-preview.md) ·
@@ -32,7 +33,9 @@
 [08 评论图片阅读证据](../.scratch/frontend-vue-migration/evidence/08-comment-image-reading.md) ·
 [09 管理列表与启停证据](../.scratch/frontend-vue-migration/evidence/09-up-management-basics.md) ·
 [10 监控模式与指定目标证据](../.scratch/frontend-vue-migration/evidence/10-monitoring-modes-targets.md) ·
-[11 检查与发现状态证据](../.scratch/frontend-vue-migration/evidence/11-monitoring-status-reading.md)。
+[11 检查与发现状态证据](../.scratch/frontend-vue-migration/evidence/11-monitoring-status-reading.md) ·
+[12 仅 Vue 候选产物证据](../.scratch/frontend-vue-migration/evidence/12-vue-only-release-candidate.md) ·
+[13 协议与跨流程回归证据](../.scratch/frontend-vue-migration/evidence/13-integrated-protocol-regression.md)。
 仓库根目录不再有第二套前端入口：`frontend/` 是唯一前端应用，`dist/`、`dist-mock/` 都相对本目录。
 
 ## 命令
@@ -122,17 +125,19 @@ pnpm playwright test --project=desktop-chromium-archive tests/e2e/replies.spec.t
   这正是 `pnpm test:e2e` 前置的隔离保证，替代人工 `grep`。
 - 生产装配的六条路由、404 与“没有自检入口”由 `pnpm test:e2e:production` 覆盖；fault 装配在同一次运行里断言 `badge=fault`。
 
-## 验收剩余（票据 13–17）
+## 验收剩余（票据 14–17）
 
 票据 12 已交付仅含 Vue 的候选产物，React 栈、React Router 依赖、RTL 测试适配、旧组件/夹具素材与
-`check:data-parity` 副本守卫一并移除。阅读与管理行为本身没有新增或删减：窄屏（≤640px）仍在详情内用
+`check:data-parity` 副本守卫一并移除。票据 13 已完成候选版本的协议与跨流程回归：mock、生产 Adapter/HTTP 替身、
+实际 API＋隔离 SQLite 三类证据分开，覆盖六路由、分页/排序、阅读恢复、图片归属与历史、管理与竞态，并建立
+AC-01–AC-34 台账。阅读与管理行为本身没有新增或删减：窄屏（≤640px）仍在详情内用
 该动态作者的最早回复做预览入口，回复正文在独立楼中楼页按每页 10 条实时读取；一级评论图片由 08 接入，
 回复图片与独立楼中楼根评论图片按范围不新增；生产装配默认连真实 API，mock/fault 装配的受控归档只在显式
 mode 与自检构建中出现。
 
-仍待执行的是票据 13（真实协议与跨流程回归）、14（新版视觉签收）、15（Linux Chrome / iPhone 真机）、
-16（静态交付、资源更新与前端回退）与 17（上线就绪汇总）。本轮只证明类型检查、行为测试、构建与产物隔离，
-不代表这些验收通过。
+仍待执行的是票据 14（新版视觉签收）、15（Linux Chrome / iPhone 真机）、
+16（静态交付、资源更新与前端回退）与 17（上线就绪汇总）。13 只证明自动化与隔离集成，
+不代表视觉、真机、Nginx 交付、真实上游或持续运行通过。
 
 ## iPhone 真机验证
 

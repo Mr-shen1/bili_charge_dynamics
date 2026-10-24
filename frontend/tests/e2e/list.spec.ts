@@ -205,6 +205,36 @@ test.describe('归档列表读取', () => {
     await expect(page.getByRole('link', { name: '归档作者二' })).toHaveAttribute('aria-current', 'page');
   });
 
+  test('两个列表入口刷新后重新读取当前 scope，不混入其他范围', async ({ page }) => {
+    const all = Array.from({ length: 12 }, (_value, index) => dynamic(index + 1));
+    const requests = await mockApi(page, serveDynamics({ all, '123': all.slice(0, 2) }));
+    const listRequests = () => requests.filter(request => request.path === '/api/archive/dynamics');
+
+    // 全部：直达与刷新都重新读首批 10 条。
+    await page.goto('/');
+    await expect(page.getByText('归档正文 1', { exact: true })).toBeVisible();
+    await expect(page.getByRole('article')).toHaveCount(10);
+    await page.reload();
+    await expect(page.getByText('归档正文 1', { exact: true })).toBeVisible();
+    await expect(page.getByRole('article')).toHaveCount(10);
+    expect(listRequests().map(request => request.search)).toEqual([
+      '?limit=10&scope=all',
+      '?limit=10&scope=all',
+    ]);
+
+    // 单 UP：直达与刷新只读该范围的归档，不残留全部的批次。
+    await page.goto('/ups/123');
+    await expect(page.getByRole('link', { name: '归档作者一' })).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByRole('article')).toHaveCount(2);
+    await expect(page.getByText('归档正文 3', { exact: true })).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByRole('article')).toHaveCount(2);
+    await expect(page.getByRole('link', { name: '归档作者一' })).toHaveAttribute('aria-current', 'page');
+    expect(listRequests().at(-1)).toEqual({
+      method: 'GET', path: '/api/archive/dynamics', search: '?limit=10&scope=up&uid=123',
+    });
+  });
+
   test('卡片与键盘进入详情，普通读取不触发采集或上传', async ({ page }) => {
     const items = [dynamic(1, { text: '可点击归档' })];
     const requests = await mockApi(page, serveDynamics({ all: items }));
@@ -214,6 +244,11 @@ test.describe('归档列表读取', () => {
     });
     await page.goto('/');
     await expect(page.getByText('可点击归档', { exact: true })).toBeVisible();
+    // 卡片没有可点的“查看详情”按钮，也不提供关注、简介占位或真实点赞；进入详情只有整卡与阅读链接两种方式。
+    await expect(page.getByText('查看详情')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /查看详情/ })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /关注|点赞/ })).toHaveCount(0);
+    await expect(page.getByText('简介')).toHaveCount(0);
 
     const link = page.getByRole('link', { name: '阅读全文 1001' });
     await link.focus();
