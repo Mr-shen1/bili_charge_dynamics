@@ -178,6 +178,8 @@ Vue 页面 / Element Plus 组件
 
 开发可以在隔离分支或工作区推进；不要求维护可上线的 React/Vue 双入口，也不把两种框架长期装入同一生产应用。当前 React 的源码版本可用于对照和回退，不代表必须同时维护两套前端功能。
 
+进展：阶段 0（基线核对）与阶段 1（高风险验证，见[票据 01](../../.scratch/frontend-vue-migration/issues/01-native-image-preview-validation.md)与[证据](../../.scratch/frontend-vue-migration/evidence/01-native-image-preview.md)）已完成；**阶段 2 骨架已建于 [`frontend/`](../../frontend/README.md)**——Vue 入口、六条正式路由、Element Plus 主题、production/mock/fault 装配隔离、类型检查与测试基础就位，业务页面为占位骨架，阶段 3 依票据 02–11 迁移。根目录 React 实现仍是当前发布入口。
+
 不承诺未经任务拆分的工期。后续 spec/tickets 引用本文及 SRS 编号，按仓库 issue-tracker 约定生成；本文阶段表不是已创建或已完成的任务清单。
 
 ## 8. 构建、上线与回退边界

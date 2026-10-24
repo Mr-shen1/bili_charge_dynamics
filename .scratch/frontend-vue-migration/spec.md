@@ -251,7 +251,7 @@
 
 Vue/Element Plus 的选择已确认。票据 01 已实跑版本兼容、同 URL 历史处理、滚动/焦点协作、图片网络行为与桌面长图，并记录[证据](evidence/01-native-image-preview.md)；**iPhone Safari 真机未验证**，仍是前置实施验证而不是可以自行变更的业务需求。缺少设备、工具或环境时如实记录阻塞，不伪造结果或用官方演示替代。
 
-原型及关键决策、环境、结果与可复核来源见[01 证据](evidence/01-native-image-preview.md)与[原型说明](../../.scratch/frontend-vue-migration/prototype/README.md)；失败或未取证项已反馈在票据与证据中，未据此降低需求。
+原型及关键决策、环境、结果与可复核来源见[01 证据](evidence/01-native-image-preview.md)与[前端骨架说明](../../frontend/README.md)；失败或未取证项已反馈在票据与证据中，未据此降低需求。
 
 ### 后续流程
 

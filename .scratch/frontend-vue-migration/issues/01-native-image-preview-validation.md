@@ -30,7 +30,7 @@
 
 ## Comments
 
-2026-07-10（实施）：在隔离原型 `.scratch/frontend-vue-migration/prototype/` 完成最小 Vue 3 应用与图片连接层，运行
+2026-07-10（实施）：在隔离原型完成最小 Vue 3 应用与图片连接层（该原型已整理为 `frontend/` 应用骨架，本票据路径保留历史），运行
 `pnpm typecheck`、`pnpm test`（14）、`pnpm build`、`pnpm test:e2e`（dev 与生产构建各 50 用例）全部通过；
 锁定版本与结果见[证据文档](../evidence/01-native-image-preview.md)。
 

@@ -2,7 +2,7 @@
 
 - 对应票据：[01: 验证原生图片预览与浏览器历史的组合行为](../issues/01-native-image-preview-validation.md)
 - 对应规格：[前端重构实施规格](../spec.md) 第 13–14、16–24 条与「必须覆盖的场景」中的图片、预览历史、图片请求、响应式条目
-- 实现位置：`.scratch/frontend-vue-migration/prototype/`（隔离原型，不是应用入口）
+- 实现位置：`frontend/`（验证期是隔离原型，现已整理为 Vue 应用骨架；仍不是发布产物）
 - 证据状态：**Linux Chromium 自动化为已执行通过；iPhone Safari 真机未执行。** 因此本票不构成完成，也不解除下游依赖。
 
 ## 1. 结论摘要
@@ -38,13 +38,13 @@ iPhone 13 Pro（iOS 16.4，Safari 与系统同号 16.4）真机两轮验证完�
 | Playwright | 1.58.2，Chromium 145.0.7632.6（headless） |
 | 仓库基线 | `ba38fc5`（本票工作在其之上，未改动主应用 React 源码） |
 
-版本全部写入 `prototype/package.json` 与 `prototype/pnpm-lock.yaml`；`pnpm list --depth 0` 列出 3 个直接依赖 + 9 个直接开发依赖，
+版本全部写入 `frontend/package.json` 与 `frontend/pnpm-lock.yaml`；`pnpm list --depth 0` 列出 3 个直接依赖 + 9 个直接开发依赖，
 与本表一致。Element Plus 用公开组件按需引入（`base`/`button`/`image`/`image-viewer` 的 style 入口），
 生产构建 CSS 33.46 kB（gzip 5.33 kB）、JS 182.60 kB（gzip 69.61 kB）；未引入 Tailwind、第二套 UI 库、Pinia 或请求缓存框架。
 
 ## 3. 受控夹具与网络观测
 
-`prototype/server/imageServer.mjs` 只提供本原型自己的确定性 SVG 图片，由 Vite dev/preview 代理到同源 `/images`，不访问真实来源或 OSS：
+`frontend/server/imageServer.mjs` 只提供本原型自己的确定性 SVG 图片，由 Vite dev/preview 代理到同源 `/images`，不访问真实来源或 OSS：
 
 | 路径 | 行为 |
 | --- | --- |
@@ -113,11 +113,11 @@ iPhone 13 Pro（iOS 16.4，Safari 与系统同号 16.4）真机两轮验证完�
 | 7 | 预览期间焦点与操作留在预览内、底层不滚动；关闭恢复原位置与触发焦点/合理后备；覆盖触发器消失、重复开关、双重锁定 | 通过（Chromium） | `preview-history.spec.ts`「焦点、滚动与恢复」2 项（含关闭后滚动锁完全释放）与「重复关闭与重复开关…」 |
 | 8 | 四宽度工具栏可达、无页面横溢、触控约 44px；Linux Chrome 与 **实际 iPhone Safari** 分别验证长图可读、切换和关闭并记录版本过程 | 通过：四宽度无横溢、宽屏库控件与窄屏手势、右上角关闭 44×44、Linux Chromium 长图/滑动/双指/双击通过；iPhone 13 Pro / iOS 16.4 真机两轮验证通过（含禁拖与双击） | `preview-layout.spec.ts` 4 宽度；`preview-gestures.spec.ts` 10 项；`preview-images.spec.ts`「长图阅读」；第 9 节真机记录 |
 | 9 | 不暴露下载、自动轮播、自由画布缩放等；只用公开业务图片地址；不回退来源业务图、不触发采集或上传 | 通过 | 第 4 节配置清单；夹具无来源地址；网络记录只有夹具路径 |
-| 10 | 记录公开配置、连接层、结果与可复核证据；设备证据缺失时不得完成本票 | 本文档 + [原型 README](../prototype/README.md)；**设备证据缺失，本票保持未完成** | 本文件；票据 Status |
+| 10 | 记录公开配置、连接层、结果与可复核证据；设备证据缺失时不得完成本票 | 本文档 + [前端 README](../../../frontend/README.md)；Linux Chromium 与 iPhone 13 Pro 真机均已验证 | 本文件；票据 Status |
 
 ## 6. 已执行命令与结果
 
-在 `prototype/` 下按顺序执行：
+在 `frontend/` 下按顺序执行（mock 装配）：
 
 | 命令 | 结果 |
 | --- | --- |
@@ -230,11 +230,11 @@ iOS 未在“关于本机”单独列出 Safari 版本，如需 UA 原文可用 
 ## 11. 复现与真机操作
 
 ```bash
-cd .scratch/frontend-vue-migration/prototype
+cd frontend
 pnpm install
 pnpm typecheck && pnpm test && pnpm test:e2e
 E2E_TARGET=preview pnpm test:e2e
 ```
 
-iPhone Safari 步骤见[原型 README](../prototype/README.md#iphone-safari-手工验证尚未执行)：
-`pnpm images` + `pnpm build && pnpm serve:lan`，用手机访问 `http://<局域网 IP>:4318/`，记录机型、iOS 与 Safari 版本及每步结果。
+iPhone Safari 步骤见[前端 README](../../../frontend/README.md#iphone-safari-手工验证)：
+`pnpm images` + `pnpm build:mock && pnpm serve:lan`，用手机访问 `http://<局域网 IP>:4318/__preview-fixtures`，记录机型、iOS 与 Safari 版本及每步结果。

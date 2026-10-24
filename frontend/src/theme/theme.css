@@ -1,0 +1,256 @@
+/* Element Plus 主题变量 + 少量布局样式；正式页面按规格用 scoped CSS 补充局部布局。 */
+:root {
+  --page-bg: #eefafa;
+  --card-bg: #ffffff;
+  --brand: #12a3ae;
+  --brand-strong: #0b7f88;
+  --author: #e05a94;
+  --text: #2f3238;
+  --muted: #6b7280;
+  --line: #d8eceb;
+  --radius: 12px;
+  --touch: 44px;
+
+  --el-color-primary: #12a3ae;
+  --el-color-primary-light-3: #59bfc6;
+  --el-color-primary-light-5: #8fd4d8;
+  --el-color-primary-light-7: #bce5e7;
+  --el-color-primary-light-8: #d3eeef;
+  --el-color-primary-light-9: #e9f7f7;
+  --el-color-primary-dark-2: #0b7f88;
+  --el-border-radius-base: 10px;
+  --el-text-color-primary: var(--text);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--page-bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, 'Noto Sans SC', sans-serif;
+}
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--line);
+}
+
+.app-brand {
+  font-weight: 700;
+  color: var(--brand-strong);
+  text-decoration: none;
+}
+
+.app-nav {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.app-nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--touch);
+  padding: 0 12px;
+  border-radius: var(--radius);
+  color: var(--brand-strong);
+  text-decoration: none;
+}
+
+.app-nav a.router-link-active {
+  background: var(--el-color-primary-light-9);
+  font-weight: 600;
+}
+
+.app-badge {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--el-color-primary-light-8);
+  color: var(--brand-strong);
+  font-size: 12px;
+}
+
+.app-main {
+  flex: 1;
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 16px;
+  outline: none;
+}
+
+.page__note {
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.page__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--touch);
+  color: var(--brand-strong);
+}
+
+.page code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--el-color-primary-light-9);
+}
+
+.page__filler {
+  min-height: 120vh;
+  padding: 16px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  color: var(--muted);
+  background: var(--card-bg);
+}
+
+.page__group {
+  margin: 24px 0;
+  padding: 16px;
+  background: var(--card-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.page__group h2 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  color: var(--author);
+}
+
+.image-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.image-grid__tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.image-grid__trigger {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: var(--touch);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f1f5f9;
+  cursor: zoom-in;
+  overflow: hidden;
+  aspect-ratio: 1 / 1;
+  font: inherit;
+}
+
+.image-grid__trigger:focus-visible {
+  outline: 3px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.image-grid__thumb {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.image-grid__placeholder {
+  padding: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.image-grid__remaining {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 2px 0;
+  background: rgb(0 0 0 / 55%);
+  color: #fff;
+  font-size: 12px;
+  text-align: center;
+}
+
+.image-grid__retry {
+  min-height: var(--touch);
+  border: 1px solid var(--brand);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--brand-strong);
+  font: inherit;
+  cursor: pointer;
+}
+
+/* 手势层容器只为承接触摸事件，不生成布局盒子。 */
+.preview-surface {
+  display: contents;
+  /* 触摸由应用接管：禁用浏览器双击缩放与页面平移，缩放只作用于图片。 */
+  touch-action: none;
+}
+
+.preview-counter {
+  font-size: 13px;
+  color: #fff;
+}
+
+.preview-error {
+  /* 库的遮罩是绝对定位元素；错误层需定位到遮罩之上才能点击重试。 */
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 24px;
+  color: #fff;
+  text-align: center;
+}
+
+.preview-error p {
+  margin: 0;
+  font-size: 15px;
+}
+
+@media (max-width: 640px) {
+  .image-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .app-main {
+    padding: 12px;
+  }
+
+  /*
+   * 全仓唯一一处库内部类选择器：窄屏改用「左右滑动切图 + 双指/双击缩放」，
+   * 因此隐藏库的切图箭头与图标工具栏。宽屏仍用库原生的图标工具栏。
+   * 该覆盖失效时，preview-gestures.spec.ts 的“窄屏无切图箭头”断言会失败。
+   */
+  .el-image-viewer__prev,
+  .el-image-viewer__next,
+  .el-image-viewer__actions {
+    display: none;
+  }
+}

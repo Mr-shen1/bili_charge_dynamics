@@ -38,6 +38,13 @@ pnpm dev
 
 如果环境没有 Corepack，可先按其官方安装说明准备 Corepack/pnpm；不需要将其作为应用依赖。生产前端只需要构建后的静态文件，不需要 Node.js 服务；管理功能另外运行 Python API。
 
+### Vue 迁移骨架（阶段 2，尚未发布）
+
+`frontend/` 是 Vue 3 + Element Plus 的重构骨架，与上面的 React 实现并存，**不参与当前生产构建与发布**：
+六条正式路由、主题、装配隔离（production/mock/fault）、类型检查与测试基础已就位，业务页面是占位骨架。
+入口、命令、隔离校验方式见 [frontend/README.md](frontend/README.md)；迁移规格与票据见
+[实施规格](.scratch/frontend-vue-migration/spec.md)。统一上线前不切换根目录入口。
+
 ### #35 隔离视觉预览（虚构数据）
 
 ```bash
