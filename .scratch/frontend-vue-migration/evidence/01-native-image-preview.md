@@ -3,7 +3,7 @@
 - 对应票据：[01: 验证原生图片预览与浏览器历史的组合行为](../issues/01-native-image-preview-validation.md)
 - 对应规格：[前端重构实施规格](../spec.md) 第 13–14、16–24 条与「必须覆盖的场景」中的图片、预览历史、图片请求、响应式条目
 - 实现位置：`frontend/`（验证期是隔离原型，现已整理为 Vue 应用骨架；仍不是发布产物）
-- 证据状态：**Linux Chromium 自动化为已执行通过；iPhone Safari 真机未执行。** 因此本票不构成完成，也不解除下游依赖。
+- 证据状态：**Linux Chromium 自动化与 iPhone 13 Pro（iOS 16.4 / Safari 16.4）真机均通过。** 真机记录见第 8 节；三条体验限制已裁决接受（第 9 节）。
 
 ## 1. 结论摘要
 
@@ -236,5 +236,5 @@ pnpm typecheck && pnpm test && pnpm test:e2e
 E2E_TARGET=preview pnpm test:e2e
 ```
 
-iPhone Safari 步骤见[前端 README](../../../frontend/README.md#iphone-safari-手工验证)：
+iPhone Safari 步骤见[前端 README](../../../frontend/README.md#iphone-真机验证)：
 `pnpm images` + `pnpm build:mock && pnpm serve:lan`，用手机访问 `http://<局域网 IP>:4318/__preview-fixtures`，记录机型、iOS 与 Safari 版本及每步结果。

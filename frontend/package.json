@@ -14,11 +14,15 @@
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "test:e2e:production": "playwright test --config playwright.production.config.ts",
+    "check:isolation": "node scripts/check-isolation.mjs",
     "build": "vue-tsc --noEmit && vite build",
-    "build:mock": "vue-tsc --noEmit && vite build --mode mock",
+    "build:mock": "vue-tsc --noEmit && vite build --mode mock --outDir dist-mock",
+    "build:fault": "vue-tsc --noEmit && vite build --mode fault --outDir dist-mock",
     "preview": "vite preview",
+    "preview:mock": "vite preview --outDir dist-mock",
     "images": "node server/imageServer.mjs",
-    "serve:lan": "vite preview --host 0.0.0.0 --port 4318 --strictPort"
+    "serve:lan": "vite preview --outDir dist-mock --host 0.0.0.0 --port 4318 --strictPort"
   },
   "dependencies": {
     "element-plus": "2.14.7",
@@ -28,6 +32,7 @@
   "devDependencies": {
     "@playwright/test": "1.58.2",
     "@testing-library/vue": "8.1.0",
+    "@types/node": "24.10.13",
     "@vitejs/plugin-vue": "6.0.10",
     "@vue/test-utils": "2.5.1",
     "jsdom": "28.1.0",

@@ -12,22 +12,20 @@ function ready(key: string, options: { shared?: boolean } = {}): PreviewImage {
   };
 }
 
-function withStatus(key: string, status: Exclude<ImageStatus, 'ready'>): PreviewImage {
+function withStatus(key: string, status: Exclude<ImageStatus, 'ready'>, override: Partial<PreviewImage> = {}): PreviewImage {
   const thumbnails: Record<Exclude<ImageStatus, 'ready'>, string | null> = {
     pending: null,
     failed: null,
     invalid: `/images/invalid/${key}-thumb.svg`,
     broken: `/images/broken/${key}-thumb.svg`,
-    flaky: `/images/thumb/${key}.svg`,
   };
   const previews: Record<Exclude<ImageStatus, 'ready'>, string> = {
     pending: unavailablePlaceholderUrl,
     failed: unavailablePlaceholderUrl,
     invalid: `/images/invalid/${key}.svg`,
     broken: `/images/broken/${key}.svg`,
-    flaky: `/images/flaky/${key}.svg?failures=1`,
   };
-  return { id: key, status, thumbnailUrl: thumbnails[status], previewUrl: previews[status] };
+  return { id: key, status, thumbnailUrl: thumbnails[status], previewUrl: previews[status], ...override };
 }
 
 export const imageGroups: readonly ImageGroup[] = [
@@ -54,7 +52,11 @@ export const imageGroups: readonly ImageGroup[] = [
       withStatus('mixed-2', 'broken'),
       withStatus('mixed-3', 'pending'),
       withStatus('mixed-4', 'invalid'),
-      withStatus('mixed-5', 'flaky'),
+      // 与 broken 同状态（浏览器加载失败、可重试），但夹具地址前两次返回 503 后成功。
+      withStatus('mixed-5', 'broken', {
+        thumbnailUrl: '/images/thumb/mixed-5.svg',
+        previewUrl: '/images/flaky/mixed-5.svg?failures=1',
+      }),
     ],
   },
   {

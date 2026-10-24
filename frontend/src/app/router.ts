@@ -26,7 +26,8 @@ export function createAppRouter(): Router {
         : []),
       { path: '/:pathMatch(.*)*', name: 'not-found', component: () => import('../pages/NotFoundPage.vue') },
     ],
-    // 关闭 Vue Router 自带滚动处理：预览与阅读位置恢复由唯一协调器负责，避免双重恢复。
+    // 关闭 Vue Router 自带滚动处理：预览关闭后的位置由预览协调器恢复；
+    // 列表/详情的阅读位置恢复在阶段 3 由会话协调器接管，骨架自身不恢复普通路由滚动位置。
     scrollBehavior: () => false,
   });
   return router;

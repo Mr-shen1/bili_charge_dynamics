@@ -1,5 +1,5 @@
 // 预览层的图片组契约：与数据来源无关，演示夹具与后续归档读取都实现它。
-export type ImageStatus = 'ready' | 'pending' | 'failed' | 'invalid' | 'broken' | 'flaky';
+export type ImageStatus = 'ready' | 'pending' | 'failed' | 'invalid' | 'broken';
 
 export interface PreviewImage {
   readonly id: string;

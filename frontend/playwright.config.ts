@@ -24,7 +24,7 @@ export default defineConfig({
     {
       // E2E_TARGET=preview 时跑 mock 装配的构建产物；静态交付细节仍由后续票据验证。
       command: preview
-        ? `pnpm build:mock && pnpm preview --host 127.0.0.1 --port ${port} --strictPort`
+        ? `pnpm build:mock && pnpm preview:mock --host 127.0.0.1 --port ${port} --strictPort`
         : `pnpm dev:mock --host 127.0.0.1 --port ${port} --strictPort`,
       url: `http://127.0.0.1:${port}`,
       reuseExistingServer: false,

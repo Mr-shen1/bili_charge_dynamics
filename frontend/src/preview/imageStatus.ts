@@ -10,7 +10,7 @@ export function statusMessage(status: ImageStatus): string {
 
 /** 只有浏览器加载失败可局部重试；未上传/归档失败/无效地址不伪装成可重新采集。 */
 export function isRetryable(status: ImageStatus): boolean {
-  return status === 'ready' || status === 'broken' || status === 'flaky';
+  return status === 'ready' || status === 'broken';
 }
 
 export function thumbnailPlaceholder(status: ImageStatus): string {

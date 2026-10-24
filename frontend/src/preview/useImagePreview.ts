@@ -47,7 +47,7 @@ export function createImagePreviewCoordinator(): ImagePreviewCoordinator {
   }
   const retryGeneration = ref(0);
   /** 仅内存：触发元素与滚动位置，不写入历史记录。 */
-  const memory = new Map<string, { triggerId: string; scrollY: number }>();
+  const memory = new Map<string, { trigger: HTMLElement; scrollY: number }>();
   let closing = false;
   let clearing = false;
   /** 同步门闩：marker 依赖异步 history 同步，双击/连点必须在 push 前就拦住。 */
@@ -86,10 +86,9 @@ export function createImagePreviewCoordinator(): ImagePreviewCoordinator {
   async function restore(previewId: string): Promise<void> {
     const saved = memory.get(previewId);
     await nextTick();
-    const trigger = saved ? document.getElementById(saved.triggerId) : null;
-    const fallback = document.querySelector<HTMLElement>(fallbackFocusSelector);
     // 触发器已消失时退到页面的后备焦点，不把焦点丢回 body 或浏览器地址栏。
-    (trigger?.isConnected ? trigger : fallback)?.focus({ preventScroll: true });
+    const focusTarget = saved?.trigger.isConnected ? saved.trigger : document.querySelector<HTMLElement>(fallbackFocusSelector);
+    focusTarget?.focus({ preventScroll: true });
     if (saved) window.scrollTo({ top: saved.scrollY, left: 0, behavior: 'instant' });
   }
 
@@ -120,7 +119,7 @@ export function createImagePreviewCoordinator(): ImagePreviewCoordinator {
     const target = groupsById.value.get(groupId);
     if (!target || !target.images[index]) return;
     const previewId = randomId();
-    memory.set(previewId, { triggerId: trigger.id, scrollY: window.scrollY });
+    memory.set(previewId, { trigger, scrollY: window.scrollY });
     opening = true;
     void router.push({
       ...location(), force: true,
