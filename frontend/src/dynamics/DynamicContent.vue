@@ -5,10 +5,12 @@ import { displayCount, displayTime } from './display';
 import FoldableText from './FoldableText.vue';
 import UserAvatar from './UserAvatar.vue';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   dynamic: Dynamic;
   folding?: { expanded: boolean; toggle(): void };
-}>();
+  /** 详情正文不重复评论入口：计数由评论区负责。 */
+  commentEntry?: boolean;
+}>(), { commentEntry: true });
 const emit = defineEmits<{ comments: [] }>();
 
 const archive = computed(() => props.dynamic.archive);
@@ -35,7 +37,13 @@ const commentLabel = computed(() =>
     <h2 v-if="archive?.title" class="dynamic-title">{{ archive.title }}</h2>
     <FoldableText v-if="text && folding" :text="text" :expanded="folding.expanded" @toggle="folding.toggle" />
     <p v-else-if="text" class="text">{{ text }}</p>
-    <button class="comment-entry" type="button" :aria-label="commentLabel" @click="emit('comments')">
+    <button
+      v-if="commentEntry"
+      class="comment-entry"
+      type="button"
+      :aria-label="commentLabel"
+      @click="emit('comments')"
+    >
       <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none"
         stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">
         <path d="M21 11c0 4.4-4 8-9 8H9l-4 3v-5C3.1 15.5 2 13.4 2 11c0-4.4 4.3-8 9.5-8S21 6.6 21 11Z" />

@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import { previewStateKey } from '../../src/preview/state';
+import { previewStateKey } from '../../src/app/historyState';
 
 export { previewStateKey };
 

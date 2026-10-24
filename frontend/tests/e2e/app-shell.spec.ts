@@ -11,7 +11,7 @@ test.describe('应用骨架', () => {
 
     await page.goto('/dynamics/abc');
     await expect(page.getByRole('heading', { name: '动态详情' })).toBeVisible();
-    await expect(page.locator('main')).toContainText('abc');
+    await expect(page.getByText('动态不存在或不可用')).toBeVisible();
 
     await page.goto('/dynamics/abc/comments/root-1');
     await expect(page.getByRole('heading', { name: '楼中楼' })).toBeVisible();

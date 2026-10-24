@@ -4,6 +4,7 @@ import { defineComponent, h } from 'vue';
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router';
 import ListPage from '../../src/pages/ListPage.vue';
 import { createSessionPlugin } from '../../src/app/session';
+import { createArchiveNavigation, provideArchiveNavigation } from '../../src/app/navigation';
 import { createArchiveReader } from '../../src/data/archiveReader';
 import type { AppSession } from '../../src/app/session';
 import type { DynamicBatch, ReadResult } from '../../src/data/contracts';
@@ -14,7 +15,12 @@ afterEach(cleanup);
 
 const appUser = { id: '123', nickname: '归档作者', avatarUrl: null };
 
-const RouterHost = defineComponent({ setup: () => () => h(RouterView) });
+const RouterHost = defineComponent({
+  setup() {
+    provideArchiveNavigation(createArchiveNavigation());
+    return () => h(RouterView);
+  },
+});
 const DetailStub = defineComponent({ setup: () => () => h('h1', '动态详情') });
 
 function archiveRouter() {

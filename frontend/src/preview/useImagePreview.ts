@@ -1,7 +1,8 @@
-import { computed, inject, nextTick, onMounted, onUnmounted, provide, ref, shallowRef, watch, type ComputedRef, type InjectionKey, type Ref } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { computed, inject, nextTick, provide, ref, shallowRef, watch, type ComputedRef, type InjectionKey, type Ref } from 'vue';
+import type { ArchiveNavigation } from '../app/navigation';
+import type { PreviewMarker } from '../app/historyState';
+import { validatePreviewMarker } from './marker';
 import type { ImageGroup, PreviewImage } from './types';
-import { markerState, readMarker, validateMarker, type PreviewMarker } from './state';
 
 export interface PreviewSession {
   readonly previewId: string;
@@ -33,13 +34,11 @@ function randomId(): string {
 }
 
 /**
- * 唯一导航协调器：历史记录、关闭来源、焦点与滚动恢复都在这里决定。
- * 预览、切图与重试不重写库的缩放/旋转/手势引擎，只同步索引与历史元数据。
+ * 图片预览只保留组、索引与手势；历史记录、关闭来源、焦点与滚动恢复仍由
+ * 应用导航协调器决定，预览自己不重复写入或校验历史元数据。
  */
-export function createImagePreviewCoordinator(): ImagePreviewCoordinator {
-  const route = useRoute();
-  const router = useRouter();
-  const sessionId = randomId();
+export function createImagePreviewCoordinator(navigation: ArchiveNavigation): ImagePreviewCoordinator {
+  const sessionId = navigation.sessionId;
   const groupsById = shallowRef(new Map<string, ImageGroup>());
 
   function setGroups(groups: readonly ImageGroup[]): void {
@@ -54,18 +53,9 @@ export function createImagePreviewCoordinator(): ImagePreviewCoordinator {
   let opening = false;
   let writes: Promise<unknown> = Promise.resolve();
 
-  // 直接读取浏览器历史记录的 state：标记由本协调器写入，Vue Router 的自有字段保持原样。
-  const historyState = ref<unknown>(window.history.state);
-  const syncState = (): void => { historyState.value = window.history.state; };
-  const stopAfterEach = router.afterEach(syncState);
-  onMounted(() => window.addEventListener('popstate', syncState));
-  onUnmounted(() => {
-    stopAfterEach();
-    window.removeEventListener('popstate', syncState);
-  });
-
-  const state = computed(() => readMarker(historyState.value));
-  const marker = computed(() => validateMarker(state.value.marker, sessionId, groupId => groupsById.value.get(groupId)?.images.length));
+  const state = navigation.previewState;
+  const marker = computed(() => validatePreviewMarker(
+    state.value.marker, sessionId, groupId => groupsById.value.get(groupId)?.images.length));
   const group = computed(() => (marker.value ? groupsById.value.get(marker.value.groupId) : undefined));
 
   const session = computed<PreviewSession | null>(() => {
@@ -80,8 +70,6 @@ export function createImagePreviewCoordinator(): ImagePreviewCoordinator {
       urls: currentGroup.images.map(image => image.previewUrl),
     };
   });
-
-  const location = () => ({ path: route.path, query: route.query, hash: route.hash }) as const;
 
   async function restore(previewId: string): Promise<void> {
     const saved = memory.get(previewId);
@@ -105,14 +93,16 @@ export function createImagePreviewCoordinator(): ImagePreviewCoordinator {
   });
 
   // 失效或损坏的标记（刷新后会话失效、组或索引不存在）只清理标记，不假装打开预览。
-  watch(state, () => {
+  // 必须等初次导航完成再 replace：否则会与启动导航互斥，留下空 RouterView 或未清理的旧标记。
+  function clearInvalidMarker(): void {
     if (!state.value.present || marker.value || clearing) return;
     clearing = true;
-    void router
-      .replace({ ...location(), force: true, state: markerState(null) })
+    void navigation.replacePreview(null)
       .catch(() => undefined)
       .finally(() => { clearing = false; });
-  }, { immediate: true });
+  }
+
+  watch(state, clearInvalidMarker, { immediate: true });
 
   function open(groupId: string, index: number, trigger: HTMLElement): void {
     if (marker.value || opening) return;
@@ -121,10 +111,7 @@ export function createImagePreviewCoordinator(): ImagePreviewCoordinator {
     const previewId = randomId();
     memory.set(previewId, { trigger, scrollY: window.scrollY });
     opening = true;
-    void router.push({
-      ...location(), force: true,
-      state: markerState({ sessionId, previewId, groupId, index }),
-    }).catch(() => undefined).finally(() => {
+    void navigation.openPreview({ previewId, groupId, index }).catch(() => undefined).finally(() => {
       // marker 已经同步时由 watch 统一放开；这里只兜住被拒绝或被取消的打开。
       if (!marker.value) opening = false;
     });
@@ -134,14 +121,16 @@ export function createImagePreviewCoordinator(): ImagePreviewCoordinator {
     // 同一预览只后退一次；后退到位后标记消失才允许下一次关闭。
     if (!marker.value || closing) return;
     closing = true;
-    void router.go(-1);
+    navigation.back();
   }
 
   function persist(next: PreviewMarker): void {
     writes = writes.then(async () => {
       const current = marker.value;
       if (!current || current.previewId !== next.previewId || current.index === next.index) return;
-      await router.replace({ ...location(), force: true, state: markerState(next) });
+      await navigation.replacePreview({
+        previewId: next.previewId, groupId: next.groupId, index: next.index,
+      });
     }).catch(() => undefined);
   }
 

@@ -2,9 +2,13 @@
 import { createImagePreviewCoordinator, provideImagePreview } from '../preview/useImagePreview';
 import PreviewHost from '../preview/PreviewHost.vue';
 import { assembly, previewFixturesEnabled } from './assembly';
+import { createArchiveNavigation, provideArchiveNavigation } from './navigation';
 
-// 会话实例在应用根部创建并高于路由页面存活；图片组由装配层注入，预览宿主只挂载一次，避免双预览。
-const coordinator = createImagePreviewCoordinator();
+// 会话实例在应用根部创建并高于路由页面存活；导航协调器先装配，
+// 图片预览只接管组与手势，历史记录与位置恢复仍由导航协调器决定。
+const navigation = createArchiveNavigation();
+provideArchiveNavigation(navigation);
+const coordinator = createImagePreviewCoordinator(navigation);
 provideImagePreview(coordinator);
 </script>
 

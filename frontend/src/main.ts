@@ -9,7 +9,7 @@ import { createSessionReader } from './app/reader';
 import { createSessionPlugin } from './app/session';
 import './theme/theme.css';
 
-// 预览关闭后的位置由协调器显式恢复；浏览器异步滚动恢复会与之竞争。
+// 位置恢复统一由应用导航协调器显式执行；浏览器异步滚动恢复会与之竞争。
 history.scrollRestoration = 'manual';
 
 const app = createApp(App);

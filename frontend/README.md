@@ -2,11 +2,13 @@
 
 目标栈：Vue 3 + TypeScript + Vite + Vue Router + Element Plus。阶段 2 应用基础已就位；阶段 3 按票据 02–11 迁移业务页面，
 票据 12/17 才切换统一发布。当前已交付**票据 02 的全部/单 UP 归档列表读取**（scope 切换、cursor 追加、折叠、
-错误/空态与 Element Plus 控件），其余页面仍是占位骨架。
+错误/空态与 Element Plus 控件）与**票据 03 的动态详情/阅读恢复**（主动入口定位、按历史访问恢复批次/展开/位置，
+同一动态多访问互不覆盖），其余页面仍是占位骨架。
 
 对应规格与票据：[实施规格](../.scratch/frontend-vue-migration/spec.md) · [票据目录](../.scratch/frontend-vue-migration/issues/) ·
 [图片预览验证证据](../.scratch/frontend-vue-migration/evidence/01-native-image-preview.md) ·
-[02 归档列表证据](../.scratch/frontend-vue-migration/evidence/02-archive-scope-browsing.md)。
+[02 归档列表证据](../.scratch/frontend-vue-migration/evidence/02-archive-scope-browsing.md) ·
+[03 详情与阅读恢复证据](../.scratch/frontend-vue-migration/evidence/03-detail-reading-restoration.md)。
 仓库根目录的 React 应用仍是当前可运行实现，两者在迁移完成前并存，生产上不并行发布。
 
 ## 命令
@@ -19,8 +21,8 @@ pnpm dev                 # 生产装配（默认真实 API，/api 代理到 127.
 pnpm dev:mock            # mock 装配：额外注册 /__preview-fixtures 与 /__preview-other
 pnpm dev:fault           # 开发故障装配（与 mock 同样注册自检路由）
 pnpm typecheck           # vue-tsc，覆盖 .vue 模板与 TS
-pnpm test                # Vitest：历史元数据、装配选择、归档 Adapter 与列表页面行为
-pnpm test:e2e            # Playwright（mock 预览/壳 + 生产装配列表 + 图片夹具，自动起 4318/4319/4320）
+pnpm test                # Vitest：历史元数据、装配选择、归档 Adapter、列表与详情/恢复页面行为
+pnpm test:e2e            # Playwright（mock 预览/壳/详情恢复 + 生产装配列表 + 图片夹具，自动起 4318/4319/4320）
 E2E_TARGET=preview pnpm test:e2e   # 同一批用例跑 mock 装配的构建产物
 pnpm test:e2e:production # 生产装配（六路由/404/无自检入口）与 fault 装配冒烟
 pnpm build               # 生产构建 → dist/（不含 mock 页面与夹具）
@@ -40,22 +42,25 @@ pnpm serve:lan           # 按局域网暴露 dist-mock（真机自检用）
 | --- | --- |
 | `src/main.ts` | 入口：Element Plus 按需样式、`history.scrollRestoration='manual'`、装配路由与默认真实 API 会话 |
 | `src/app/session.ts` | 应用会话：根部注入 `DynamicReader`；测试可创建独立实例，不使用模块级单例 |
+| `src/app/navigation.ts` | 唯一导航协调器：访问身份、主动入口/历史返回、快照保存、预览与位置恢复的历史写入 |
+| `src/app/historyState.ts` | 应用自有的轻量历史元数据：访问/预览两个命名空间一起写入，不改 Vue Router 自有字段 |
+| `src/app/snapshots.ts` / `readingPosition.ts` / `useVisitPosition.ts` | 列表/详情快照类型、稳定锚点定位与访问级位置保存（两个布局帧内完成，用户操作优先） |
 | `src/data/` | 与框架无关的读取契约、生产 Archive Adapter、ID/时间/检查状态守卫（迁移期从 React 栈复用） |
-| `src/dynamics/` | 归档列表行为：scope 导航条、cursor 读取、卡片/身份/折叠/状态提示与展示格式化 |
+| `src/dynamics/` | 归档读取行为：scope 导航条、cursor/page 读取、卡片/详情、折叠/状态提示与展示格式化 |
 | `src/app/assembly.ts` | 装配隔离：`production` / `mock` / `fault`；自检路由只在后两者注册 |
 | `src/app/reader.ts` | 读取装配：生产用真实 API Adapter；mock/fault 用受控归档读取，普通构建摇掉 |
-| `src/app/router.ts` | 六条正式路由 + 404；`scrollBehavior: () => false`（位置恢复由预览协调器负责） |
+| `src/app/router.ts` | 六条正式路由 + 404；`scrollBehavior: () => false`（位置恢复由导航协调器负责） |
 | `src/app/App.vue` | 应用壳：导航、主栏、唯一 `PreviewHost`、非生产装配标识 |
 | `src/theme/theme.css` | Element Plus 主题变量 + 基础布局/图片栅格/预览层样式 |
-| `src/preview/` | 票据 01 验证过的图片层：导航协调器、`el-image` 缩略图、独立 `el-image-viewer`、手势、状态映射 |
-| `src/pages/` | 六条路由页面；`ListPage.vue` 已接真实读取，其余为阶段 3 占位骨架 |
+| `src/preview/` | 票据 01 验证过的图片层：图片组与手势、`el-image` 缩略图、独立 `el-image-viewer`、状态映射（历史写入委托导航协调器） |
+| `src/pages/` | 六条路由页面；`ListPage.vue`/`DetailPage.vue` 已接真实读取，其余为阶段 3 占位骨架 |
 | `src/mock/` | 受控图片夹具、25 条模拟归档与 fault 读取计划，只在 mock/fault 装配加载 |
 | `server/imageServer.mjs` | 图片夹具服务器：缩略/预览不同地址、坏图、无效地址、可重试失败、请求记录 |
 | `scripts/check-isolation.mjs` | 构建产物隔离检查（生产无 mock/fault/归档数据，自检构建有） |
 | `scripts/check-data-parity.mjs` | 迁移期数据层副本守卫：`frontend/src/data` 与根 `src/data` 必须一致 |
-| `tests/unit` | 历史元数据、装配选择、归档 Adapter 契约与列表页面行为 |
-| `tests/fixtures` / `tests/support` | 生产 DTO 夹具与可注入读取替身 |
-| `tests/e2e` | 骨架冒烟/预览（mock 装配）+ 列表读取（生产装配，HTTP 传输按用例替换） |
+| `tests/unit` | 历史元数据、装配选择、归档 Adapter 契约、列表与详情/阅读恢复页面行为 |
+| `tests/fixtures` / `tests/support` | 生产 DTO 夹具、可注入读取替身与 jsdom 排版/滚动替身 |
+| `tests/e2e` | 骨架冒烟/预览/详情恢复（mock 装配）+ 列表读取（生产装配，HTTP 传输按用例替换） |
 | `tests/e2e-production` | 生产装配六路由/404/无自检入口 + fault 装配冒烟 |
 
 ## 装配隔离（确定性检查）
@@ -69,8 +74,8 @@ pnpm serve:lan           # 按局域网暴露 dist-mock（真机自检用）
 
 ## 尚未迁移（阶段 3 剩余）
 
-票据 02 已交付全部/单 UP 列表读取；详情与列表阅读恢复（03）、列表/详情图片（04）、
-评论与回复（05–08）、管理页面（09–11）仍待迁移。动态图片在本阶段尚未接入真实列表，
+票据 02/03 已交付全部/单 UP 列表读取与动态详情/阅读恢复；列表/详情图片（04）、
+评论与回复（05–08）、管理页面（09–11）仍待迁移。动态图片在本阶段尚未接入真实列表与详情，
 纯图动态不会显示缩略图；不是最终形态，04 才交付图片读取。
 生产装配默认连真实 API，不携带假数据；mock/fault 装配的受控归档只在显式 mode 与自检构建中出现。
 `frontend/src/data` 是根 `src/data` 的临时副本，由 `pnpm check:data-parity` 防止漂移，

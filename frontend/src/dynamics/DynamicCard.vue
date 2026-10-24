@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useRouter } from 'vue-router';
+import { useArchiveNavigation } from '../app/navigation';
 
 const props = defineProps<{ id: string }>();
-const router = useRouter();
+const navigation = useArchiveNavigation();
 const target = computed(() => ({ name: 'detail', params: { dynamicId: props.id } }));
 
 function normalClick(event: MouseEvent): boolean {
@@ -16,7 +16,7 @@ function selectedText(): boolean {
 }
 
 function open(): void {
-  void router.push(target.value);
+  navigation.openDetail(props.id);
 }
 
 function cardClick(event: MouseEvent): void {
@@ -26,12 +26,9 @@ function cardClick(event: MouseEvent): void {
   open();
 }
 
-function linkClick(event: MouseEvent, navigate: (event: MouseEvent) => void): void {
-  // 组合键/中键保留浏览器原生“新标签页”等语义。
-  if (!normalClick(event)) {
-    navigate(event);
-    return;
-  }
+function linkClick(event: MouseEvent): void {
+  // 组合键/中键交给浏览器原生“新标签页”等语义；普通点击统一走导航协调器。
+  if (!normalClick(event)) return;
   event.preventDefault();
   if (!selectedText()) open();
 }
@@ -39,12 +36,12 @@ function linkClick(event: MouseEvent, navigate: (event: MouseEvent) => void): vo
 
 <template>
   <article class="dynamic-card" :data-reading-id="id" @click="cardClick">
-    <RouterLink v-slot="{ href, navigate }" :to="target" custom>
+    <RouterLink v-slot="{ href }" :to="target" custom>
       <a
         class="card-link"
         :href="href"
         :aria-label="`阅读全文 ${id}`"
-        @click="linkClick($event, navigate)"
+        @click="linkClick"
       />
     </RouterLink>
     <slot />
