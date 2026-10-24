@@ -7,16 +7,19 @@ import DetailPage from '../../src/pages/DetailPage.vue';
 import NotFoundPage from '../../src/pages/NotFoundPage.vue';
 import { createSessionPlugin, type AppSession } from '../../src/app/session';
 import { createArchiveNavigation, provideArchiveNavigation } from '../../src/app/navigation';
+import { PreviewProbe, providePreview } from '../support/preview';
 import { createArchiveReader } from '../../src/data/archiveReader';
 import type { DetailResult, DynamicBatch, ReadResult } from '../../src/data/contracts';
-import { archiveDynamic, archiveUser } from '../fixtures/archive';
+import { archiveDynamic, archiveMedia, archiveUser } from '../fixtures/archive';
 import { createReader, deferred } from '../support/reader';
 import { installFakeLayout, type FakeLayout } from '../support/layout';
 
 const RouterHost = defineComponent({
   setup() {
-    provideArchiveNavigation(createArchiveNavigation());
-    return () => h(RouterView);
+    const navigation = createArchiveNavigation();
+    provideArchiveNavigation(navigation);
+    providePreview(navigation);
+    return () => h('div', [h(RouterView), h(PreviewProbe)]);
   },
 });
 
@@ -360,4 +363,32 @@ it('旧访问的迟到详情成功/失败不覆盖新访问', async () => {
   } });
   expect(await screen.findByText('新访问正文')).toBeTruthy();
   expect(screen.queryByText('旧访问正文')).toBeNull();
+});
+
+function detailReader(overrides: Record<string, unknown>) {
+  return createArchiveReader(async url => {
+    if (url === '/api/archive/ups') return Response.json({ ups: [] });
+    if (url.startsWith('/api/archive/dynamics/')) return Response.json(archiveDynamic(1, overrides));
+    return Response.json({ items: [], next_cursor: null });
+  });
+}
+
+it('详情展示完整图片组，点击任意缩略图按所点索引打开预览', async () => {
+  const router = await show(detailReader({ text: '图文动态', media: archiveMedia('1001', 12) }), '/dynamics/1001');
+  const detail = await screen.findByRole('article');
+  const tiles = within(detail).getAllByRole('button', { name: /^预览动态图片 / });
+  // 详情不裁到列表的九张，完整组按数据顺序可达。
+  expect(tiles).toHaveLength(12);
+  expect(tiles.map(tile => tile.getAttribute('aria-label'))[10]).toBe('预览动态图片 11');
+
+  await fireEvent.click(tiles[10]!);
+  await waitFor(() => expect(screen.getByTestId('preview-session').textContent).toBe('dynamic-1001:10/12'));
+  expect(router.currentRoute.value.name).toBe('detail');
+});
+
+it('纯图动态仍展示图片，不显示“暂无内容”伪装空正文', async () => {
+  await show(detailReader({ text: '', media: archiveMedia('1001', 1) }), '/dynamics/1001');
+  const detail = await screen.findByRole('article');
+  expect(within(detail).getAllByRole('button', { name: /^预览动态图片 / })).toHaveLength(1);
+  expect(within(detail).queryByText('暂无内容')).toBeNull();
 });

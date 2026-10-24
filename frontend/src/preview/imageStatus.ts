@@ -14,5 +14,11 @@ export function isRetryable(status: ImageStatus): boolean {
 }
 
 export function thumbnailPlaceholder(status: ImageStatus): string {
-  return status === 'pending' || status === 'failed' ? statusMessage(status) : '无可用图片地址';
+  // 浏览器加载失败（ready/broken 在运行期失败）与无公开地址的归档状态分开表达。
+  return unavailableReason(status) ?? '图片加载失败';
+}
+
+/** 无公开地址的归档状态文案；浏览器加载失败与可用图片返回 null。 */
+export function unavailableReason(status: ImageStatus): string | null {
+  return status === 'pending' || status === 'failed' || status === 'invalid' ? statusMessage(status) : null;
 }

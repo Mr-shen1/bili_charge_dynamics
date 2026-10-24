@@ -153,6 +153,20 @@ body {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+  margin: 8px 0;
+}
+
+/* 数量只影响列宽与首图比例，不裁剪数据：完整组始终可从预览访问。 */
+.image-grid--single {
+  grid-template-columns: minmax(0, 360px);
+}
+
+.image-grid--single .image-grid__trigger {
+  aspect-ratio: 4 / 3;
+}
+
+.image-grid--two-column {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .image-grid__tile {
@@ -229,6 +243,22 @@ body {
   color: #fff;
 }
 
+/* 归档状态提示：占位图本身不区分 pending/failed/invalid，文字补充具体原因。 */
+.preview-note {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  z-index: 3000;
+  margin: 0;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 65%);
+  color: #fff;
+  font-size: 13px;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
 .preview-error {
   /* 库的遮罩是绝对定位元素；错误层需定位到遮罩之上才能点击重试。 */
   position: relative;
@@ -250,6 +280,10 @@ body {
 @media (max-width: 640px) {
   .image-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .image-grid--single {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .app-main {

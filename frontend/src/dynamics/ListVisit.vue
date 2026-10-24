@@ -12,6 +12,8 @@ import DynamicContent from './DynamicContent.vue';
 import ReadNotice from './ReadNotice.vue';
 
 const props = defineProps<{ scope: ArchiveScope }>();
+// 列表卡片最多展示九张缩略图；完整图片组仍通过预览访问。
+const listThumbnailLimit = 9;
 const { reader } = useSession();
 const navigation = useArchiveNavigation();
 // 访问身份在 setup 时固定：卸载时仍按本次访问保存，不受已经切换的路由影响。
@@ -59,6 +61,7 @@ function foldingFor(id: string): { expanded: boolean; toggle(): void } {
         <DynamicContent
           :dynamic="dynamic"
           :folding="foldingFor(dynamic.id)"
+          :image-display-limit="listThumbnailLimit"
           @comments="navigation.openDetail(dynamic.id)"
         />
       </div>

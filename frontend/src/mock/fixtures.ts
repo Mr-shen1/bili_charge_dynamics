@@ -1,7 +1,5 @@
 import type { ImageGroup, ImageStatus, PreviewImage } from '../preview/types';
-
-/** 应用自有占位地址：不是来源业务图，也不请求上游。 */
-export const unavailablePlaceholderUrl = '/images/unavailable/placeholder.svg';
+import { unavailablePlaceholderUrl } from '../preview/assets';
 
 function ready(key: string, options: { shared?: boolean } = {}): PreviewImage {
   return {

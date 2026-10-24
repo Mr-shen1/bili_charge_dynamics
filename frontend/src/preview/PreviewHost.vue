@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
 import { ElButton, ElImageViewer } from 'element-plus';
-import { isRetryable, statusMessage } from './imageStatus';
+import { isRetryable, statusMessage, unavailableReason } from './imageStatus';
 import { useCompactViewport } from './useCompactViewport';
 import { useImagePreview } from './useImagePreview';
 import type { ImageStatus } from './types';
@@ -25,6 +25,9 @@ const viewer = ref<InstanceType<typeof ElImageViewer> | null>(null);
 // 窄屏的缩放完全由应用控制（库的图标工具栏在窄屏隐藏），避免与库内部 transform 抢状态。
 const scale = ref(1);
 const activeIndex = ref(0);
+// 无公开地址的图片使用应用占位；预览层同时标明具体归档状态，避免三种异常被同一个占位图混淆。
+const unavailableNote = computed(() =>
+  session.value ? unavailableReason(statusOf(activeIndex.value)) ?? '' : '');
 
 interface Gesture {
   readonly mode: 'pending' | 'pinch';
@@ -212,5 +215,6 @@ function noop(): void {
         </div>
       </template>
     </el-image-viewer>
+    <p v-if="unavailableNote" class="preview-note" role="status">{{ unavailableNote }}</p>
   </div>
 </template>

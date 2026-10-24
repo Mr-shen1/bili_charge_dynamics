@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted } from 'vue';
 import ThumbnailGrid from '../preview/ThumbnailGrid.vue';
 import { imageGroups } from './fixtures';
 import { useImagePreview } from '../preview/useImagePreview';
@@ -8,8 +7,7 @@ const preview = useImagePreview();
 const groups = imageGroups;
 
 // 夹具只在 mock/fault 装配的这页注入，生产构建不会加载它们。
-onMounted(() => preview.setGroups(groups));
-onBeforeUnmount(() => preview.setGroups([]));
+preview.registerGroups(groups);
 </script>
 
 <template>

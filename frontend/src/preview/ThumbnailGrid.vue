@@ -12,6 +12,21 @@ const failed = reactive<Record<string, boolean>>({});
 
 const visible = computed(() => props.group.images.slice(0, props.displayLimit));
 const hidden = computed(() => Math.max(0, props.group.images.length - visible.value.length));
+// 数量只影响栅格列宽，不是数据裁剪：完整组仍可经预览访问。
+const gridLayout = computed(() => {
+  const total = props.group.images.length;
+  if (total === 1) return 'image-grid--single';
+  if (total === 2 || total === 4) return 'image-grid--two-column';
+  return '';
+});
+
+function tileLabel(index: number): string {
+  // 末张兼作完整组入口：无地址提示与剩余数量都通过可访问名称表达。
+  if (index === visible.value.length - 1 && hidden.value > 0) {
+    return `预览${props.group.label} ${index + 1}，共 ${props.group.images.length} 张`;
+  }
+  return `预览${props.group.label} ${index + 1}`;
+}
 
 function open(index: number): void {
   const trigger = document.getElementById(tileId(props.group, index));
@@ -25,13 +40,19 @@ function retryThumbnail(imageId: string): void {
 </script>
 
 <template>
-  <div class="image-grid" :class="`image-grid--${group.owner}`" role="group" :aria-label="group.label">
+  <div
+    class="image-grid"
+    :class="[`image-grid--${group.owner}`, gridLayout]"
+    role="group"
+    :aria-label="group.label"
+    :data-image-group="group.id"
+  >
     <div v-for="(image, index) in visible" :key="image.id" class="image-grid__tile">
       <button
         :id="tileId(group, index)"
         type="button"
         class="image-grid__trigger"
-        :aria-label="`预览${group.label}图片 ${index + 1}`"
+        :aria-label="tileLabel(index)"
         @click="open(index)"
       >
         <el-image

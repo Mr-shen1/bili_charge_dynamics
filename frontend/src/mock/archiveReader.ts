@@ -1,4 +1,4 @@
-import type { Dynamic, DynamicReader, ReadResult, User } from '../data/contracts';
+import type { Dynamic, DynamicImage, DynamicReader, ReadResult, User } from '../data/contracts';
 
 // 仅供 mock/fault 装配：确定性 25 条动态，不访问真实 API，也不进入生产构建。
 // 数据集在函数内构造，便于 Rollup 在普通构建里整体摇掉。
@@ -16,6 +16,56 @@ export function createMockArchiveReader(): DynamicReader {
     '第七行：列表正文应该按实际行数折叠。',
     '第八行：这是一份虚构身份的本地文字动态演示。',
   ].join('\n');
+  // 图片夹具：生产同址的缩略/预览在这里用不同路径，便于观察真实请求；
+  // 状态覆盖成功、未上传、归档失败、无效公开地址与浏览器加载失败。数量只作夹具。
+  const readyImage = (key: string, index: number, override: Partial<DynamicImage> = {}): DynamicImage => ({
+    id: `${key}-${index + 1}`,
+    archiveStatus: 'success',
+    thumbnailUrl: `/images/thumb/${key}-${index + 1}.svg`,
+    previewUrl: `/images/full/${key}-${index + 1}.svg`,
+    width: 1200,
+    height: 675,
+    ...override,
+  });
+  const group = (key: string, size: number): DynamicImage[] =>
+    Array.from({ length: size }, (_image, index) => readyImage(key, index));
+  const longImage: DynamicImage = readyImage('archive-long', 0, {
+    // 夹具服务器按 long 前缀返回 1200×6000 长图。
+    thumbnailUrl: '/images/thumb/long-archive.svg',
+    previewUrl: '/images/full/long-archive.svg',
+    width: 1200,
+    height: 6000,
+  });
+  const withoutUrl = (id: string, archiveStatus: 'pending' | 'failed' | 'success'): DynamicImage =>
+    ({ id, archiveStatus, thumbnailUrl: null, previewUrl: null, width: null, height: null });
+  const mixedImages: DynamicImage[] = [
+    readyImage('archive-mixed', 0),
+    withoutUrl('archive-mixed-2', 'pending'),
+    withoutUrl('archive-mixed-3', 'failed'),
+    // 成功状态但没有公开地址：连接层按无效公开地址表达，不请求来源。
+    withoutUrl('archive-mixed-4', 'success'),
+    // 浏览器加载失败：地址语法有效但服务端 503，可局部重试。
+    readyImage('archive-mixed', 4, {
+      thumbnailUrl: '/images/broken/archive-mixed-5.svg',
+      previewUrl: '/images/broken/archive-mixed-5.svg',
+    }),
+    // 首次失败后重试成功：验证局部重试只重发既有公开地址。
+    readyImage('archive-mixed', 5, {
+      thumbnailUrl: '/images/thumb/archive-mixed-6.svg',
+      previewUrl: '/images/flaky/archive-mixed-6.svg?failures=1',
+    }),
+  ];
+  // 夹具索引 → 图片组；数量只作夹具，用于覆盖纯图/单图/4/9/12/长图与异常状态。
+  const imageSets: Readonly<Record<number, readonly DynamicImage[]>> = {
+    0: group('archive-quad', 4),
+    1: group('archive-single', 1),
+    2: group('archive-nine', 9),
+    3: group('archive-many', 12),
+    5: mixedImages,
+    6: [longImage],
+    7: group('archive-pair', 2),
+  };
+
   const dynamics: Dynamic[] = Array.from({ length: 25 }, (_value, index) => ({
     id: `900719925474099${String(31 + index).padStart(2, '0')}`,
     author: index % 3 === 2 ? second : first,
@@ -26,7 +76,7 @@ export function createMockArchiveReader(): DynamicReader {
       : index === 5 ? '这条归档没有评论'
       : `文字日记 ${index + 1}\n换行与 emoji 🙂 https://example.test/${'long-'.repeat(8)}`,
     commentCount: index === 0 ? 70 : index === 1 ? null : index === 5 ? 0 : index,
-    images: [],
+    images: imageSets[index] ?? [],
   })).sort((a, b) => {
     if (a.publishedAt !== b.publishedAt) {
       if (a.publishedAt === null) return 1;

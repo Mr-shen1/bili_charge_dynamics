@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { Dynamic } from '../data/contracts';
+import type { Dynamic, ImageOwner } from '../data/contracts';
 import { displayCount, displayTime } from './display';
+import DynamicImages from '../preview/DynamicImages.vue';
 import FoldableText from './FoldableText.vue';
 import UserAvatar from './UserAvatar.vue';
 
@@ -10,10 +11,13 @@ const props = withDefaults(defineProps<{
   folding?: { expanded: boolean; toggle(): void };
   /** 详情正文不重复评论入口：计数由评论区负责。 */
   commentEntry?: boolean;
+  /** 列表只展示前若干张缩略图，完整组仍可从预览访问；详情不传则全部展示。 */
+  imageDisplayLimit?: number;
 }>(), { commentEntry: true });
 const emit = defineEmits<{ comments: [] }>();
 
 const archive = computed(() => props.dynamic.archive);
+const owner = computed<ImageOwner>(() => ({ type: 'dynamic', id: props.dynamic.id }));
 // 纯图动态不伪装“暂无内容”；只有可信成功且确实没有图文时才提示空正文。
 const hasMedia = computed(() => Boolean(props.dynamic.images?.length || archive.value?.mediaSources.length));
 const emptyContent = computed(() =>
@@ -37,6 +41,12 @@ const commentLabel = computed(() =>
     <h2 v-if="archive?.title" class="dynamic-title">{{ archive.title }}</h2>
     <FoldableText v-if="text && folding" :text="text" :expanded="folding.expanded" @toggle="folding.toggle" />
     <p v-else-if="text" class="text">{{ text }}</p>
+    <DynamicImages
+      v-if="dynamic.images?.length"
+      :owner="owner"
+      :images="dynamic.images"
+      :display-limit="imageDisplayLimit"
+    />
     <button
       v-if="commentEntry"
       class="comment-entry"

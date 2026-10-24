@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { closeViewer, counter, viewer, viewerImage } from './support';
 
 // 列表用例跑生产装配：这里只替换 HTTP 传输，仍经过真实 Adapter 的 DTO 映射；
 // mock/fault 装配自带受控归档数据，不参与这些请求断言。
@@ -226,5 +227,58 @@ test.describe('归档列表读取', () => {
     const apiRequests = network.filter(request => request.path.startsWith('/api'));
     expect(apiRequests.every(request => request.method === 'GET' && request.path.startsWith('/api/archive/'))).toBe(true);
     expect(network.some(request => /collect|upload|oss/i.test(request.path))).toBe(false);
+  });
+});
+
+test.describe('归档图片读取', () => {
+  test('生产共用公开地址按图片状态渲染，打开预览只重发所点地址', async ({ page }) => {
+    const shared = [1, 2, 3, 4, 5].map(index => `https://cdn.example.test/archive/shared-${index}.svg`);
+    const imageRequests: string[] = [];
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><rect width="800" height="600" fill="#0f766e"/></svg>';
+    await page.route('https://cdn.example.test/**', route => {
+      imageRequests.push(route.request().url());
+      return route.fulfill({
+        status: 200,
+        contentType: 'image/svg+xml',
+        headers: { 'cache-control': 'no-store' },
+        body: svg,
+      });
+    });
+    const media = [
+      { id: 'm1', owner: { type: 'dynamic', id: '1001' }, status: 'success', public_url: shared[0], width: 800, height: 600 },
+      // 未上传没有公开地址，不请求来源。
+      { id: 'm2', owner: { type: 'dynamic', id: '1001' }, status: 'pending', public_url: null, width: null, height: null },
+      // 共用地址：缩略图与预览使用同一个公开地址。
+      { id: 'm3', owner: { type: 'dynamic', id: '1001' }, status: 'success', public_url: shared[2], width: 800, height: 600 },
+      // 成功状态但公开地址不是可用 https：读取层判为无效，不请求该地址。
+      { id: 'm4', owner: { type: 'dynamic', id: '1001' }, status: 'success', public_url: 'http://insecure.example.test/x.svg', width: null, height: null },
+      // 归档失败没有公开地址。
+      { id: 'm5', owner: { type: 'dynamic', id: '1001' }, status: 'failed', public_url: null, width: null, height: null },
+    ];
+    await mockApi(page, serveDynamics({ all: [dynamic(1, { media })] }));
+    await page.goto('/');
+
+    const card = page.getByRole('article');
+    await expect(card).toHaveCount(1);
+    const tiles = card.getByRole('button', { name: /^预览动态图片 / });
+    await expect(tiles).toHaveCount(5);
+    await expect(card.getByText('图片待归档')).toBeVisible();
+    await expect(card.getByText('图片归档失败')).toBeVisible();
+    await expect(card.getByText('归档图片地址不可用')).toBeVisible();
+
+    // 共用地址：缩略图与预览都使用公开地址；点击第三张只请求该地址。
+    await expect.poll(async () => imageRequests.filter(url => url === shared[0]).length).toBeGreaterThan(0);
+    imageRequests.length = 0;
+    await tiles.nth(2).click();
+    await expect(viewer(page)).toBeVisible();
+    await expect(counter(page)).toHaveText('3 / 5');
+    await expect.poll(async () => viewerImage(page).getAttribute('src')).toBe(shared[2]);
+    await expect.poll(async () => imageRequests.filter(url => url === shared[2]).length).toBeGreaterThanOrEqual(1);
+    // 不预下载同组其他图片，也不请求来源媒体地址。
+    expect(imageRequests.filter(url => url !== shared[2])).toEqual([]);
+    expect(imageRequests.some(url => url.includes('upstream.example.test'))).toBe(false);
+
+    await closeViewer(page);
+    await expect(viewer(page)).toHaveCount(0);
   });
 });

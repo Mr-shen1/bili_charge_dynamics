@@ -30,6 +30,11 @@ export function counter(page: Page) {
   return page.locator('.preview-counter');
 }
 
+/** 库原生图标工具栏的可见性锚点；01 已把该内部类覆盖登记为唯一例外并由自动化守护。 */
+export function viewerToolbar(page: Page) {
+  return page.locator('.el-image-viewer__actions');
+}
+
 export async function openImage(page: Page, group: string, index: number): Promise<void> {
   await page.locator(`#preview-trigger-${group}-${index}`).click();
   await expect(viewer(page)).toBeVisible();

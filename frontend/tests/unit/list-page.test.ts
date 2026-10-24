@@ -1,26 +1,34 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/vue';
-import { afterEach, describe, expect, it } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/vue';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h } from 'vue';
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router';
 import ListPage from '../../src/pages/ListPage.vue';
 import { createSessionPlugin } from '../../src/app/session';
 import { createArchiveNavigation, provideArchiveNavigation } from '../../src/app/navigation';
+import { PreviewProbe, providePreview } from '../support/preview';
+import type { ImagePreviewCoordinator } from '../../src/preview/useImagePreview';
 import { createArchiveReader } from '../../src/data/archiveReader';
+import { readPreviewMarker } from '../../src/app/historyState';
 import type { AppSession } from '../../src/app/session';
 import type { DynamicBatch, ReadResult } from '../../src/data/contracts';
-import { archiveDynamic, archiveUser } from '../fixtures/archive';
+import { archiveDynamic, archiveMedia, archiveUser } from '../fixtures/archive';
 import { createReader, deferred } from '../support/reader';
 
 afterEach(cleanup);
 
 const appUser = { id: '123', nickname: '归档作者', avatarUrl: null };
 
-const RouterHost = defineComponent({
-  setup() {
-    provideArchiveNavigation(createArchiveNavigation());
-    return () => h(RouterView);
-  },
-});
+// 宿主按每次渲染创建独立的导航与预览协调器，不在测试文件间共享可变单例。
+function createRouterHost(onPreview: (preview: ImagePreviewCoordinator) => void) {
+  return defineComponent({
+    setup() {
+      const navigation = createArchiveNavigation();
+      provideArchiveNavigation(navigation);
+      onPreview(providePreview(navigation));
+      return () => h('div', [h(RouterView), h(PreviewProbe)]);
+    },
+  });
+}
 const DetailStub = defineComponent({ setup: () => () => h('h1', '动态详情') });
 
 function archiveRouter() {
@@ -38,8 +46,11 @@ async function show(reader: AppSession['reader'], path = '/') {
   const router = archiveRouter();
   await router.push(path);
   await router.isReady();
-  const view = render(RouterHost, { global: { plugins: [router, createSessionPlugin({ reader })] } });
-  return { router, view };
+  const holder: { coordinator: ImagePreviewCoordinator | null } = { coordinator: null };
+  const view = render(createRouterHost(preview => { holder.coordinator = preview; }), {
+    global: { plugins: [router, createSessionPlugin({ reader })] },
+  });
+  return { router, view, preview: holder.coordinator! };
 }
 
 function listTransport(total: number, urls: string[]) {
@@ -303,4 +314,115 @@ describe('归档列表页面', () => {
     await fireEvent.click(screen.getByRole('article'));
     await waitFor(() => expect(router.currentRoute.value.name).toBe('detail'));
   });
+
+  it('按数据顺序展示缩略图，列表最多九张，点击第九张从完整组进入且不误触卡片导航', async () => {
+    const media = archiveMedia('1001', 12);
+    const reader = createArchiveReader(async url => Response.json(url === '/api/archive/ups'
+      ? { ups: [] }
+      : { items: [archiveDynamic(1, { text: '', media })], next_cursor: null }));
+    const { router } = await show(reader);
+    const card = await screen.findByRole('article');
+
+    const tiles = within(card).getAllByRole('button', { name: /^预览动态图片 / });
+    expect(tiles).toHaveLength(9);
+    expect(tiles.map(tile => tile.getAttribute('aria-label'))).toEqual([
+      '预览动态图片 1', '预览动态图片 2', '预览动态图片 3', '预览动态图片 4', '预览动态图片 5',
+      '预览动态图片 6', '预览动态图片 7', '预览动态图片 8', '预览动态图片 9，共 12 张',
+    ]);
+    // 展示数量不截断数据：末张显示剩余数量，完整组仍为 12 张。
+    expect(within(card).getByText('+3')).toBeTruthy();
+    expect(within(card).getByRole('group', { name: '动态图片' })).toBeTruthy();
+    expect(card.textContent).not.toContain('暂无内容');
+
+    await fireEvent.click(tiles[8]!);
+    await waitFor(() => expect(screen.getByTestId('preview-session').textContent).toBe('dynamic-1001:8/12'));
+    // 图片按钮不冒泡成卡片导航，预览仍停留在列表访问。
+    expect(router.currentRoute.value.name).toBe('list');
+    expect(router.currentRoute.value.path).toBe('/');
+  });
+
+  it('未上传、归档失败与无效公开地址显示状态占位，不渲染来源业务图', async () => {
+    const media = archiveMedia('1001', 3, index => [
+      { status: 'pending', public_url: null },
+      { status: 'failed', public_url: null },
+      { public_url: null },
+    ][index] ?? {});
+    const reader = createArchiveReader(async url => Response.json(url === '/api/archive/ups'
+      ? { ups: [] }
+      : { items: [archiveDynamic(1, { text: '', media })], next_cursor: null }));
+    await show(reader);
+    const card = await screen.findByRole('article');
+    expect(within(card).getByText('图片待归档')).toBeTruthy();
+    expect(within(card).getByText('图片归档失败')).toBeTruthy();
+    expect(within(card).getByText('归档图片地址不可用')).toBeTruthy();
+    expect(card.querySelector('img[src*="upstream.example.test"]')).toBeNull();
+  });
+});
+
+describe('动态图片预览与页面访问', () => {
+  it('打开预览只新增同地址记录，切图不改历史；后退关闭、前进恢复所看图片且不重挂载底层列表', async () => {
+    const media = archiveMedia('1001', 4);
+    let listReads = 0;
+    const reader = createArchiveReader(async url => {
+      if (url === '/api/archive/ups') return Response.json({ ups: [] });
+      listReads += 1;
+      return Response.json({ items: [archiveDynamic(1, { text: '图文动态', media })], next_cursor: null });
+    });
+    const { router, preview } = await show(reader);
+    const card = await screen.findByRole('article');
+    const tiles = within(card).getAllByRole('button', { name: /^预览动态图片 / });
+    const readsBeforePreview = listReads;
+    const session = () => screen.getByTestId('preview-session').textContent;
+    const marker = () => readPreviewMarker(router.options.history.state).marker;
+    const push = vi.spyOn(router, 'push');
+    const replace = vi.spyOn(router, 'replace');
+
+    await fireEvent.click(tiles[1]!);
+    await waitFor(() => expect(session()).toBe('dynamic-1001:1/4'));
+    // 打开预览只 PUSH 一条同地址记录，路由地址不变。
+    expect(push).toHaveBeenCalledTimes(1);
+    expect(router.currentRoute.value.fullPath).toBe('/');
+    const opened = marker();
+    expect(opened?.index).toBe(1);
+
+    replace.mockClear();
+    preview.switchTo(3);
+    await waitFor(() => expect(session()).toBe('dynamic-1001:3/4'));
+    // 切图只替换同一条记录的索引，不新增历史条目，预览标识保持稳定。
+    expect(push).toHaveBeenCalledTimes(1);
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(marker()?.previewId).toBe(opened?.previewId);
+    expect(marker()?.index).toBe(3);
+
+    router.go(-1);
+    await waitFor(() => expect(session()).toBe('closed'));
+    expect(marker()).toBeNull();
+    expect(router.currentRoute.value.fullPath).toBe('/');
+
+    router.go(1);
+    await waitFor(() => expect(session()).toBe('dynamic-1001:3/4'));
+    expect(marker()?.index).toBe(3);
+    // 同 URL 预览记录不重建列表：已读批次、正文与位置仍在，也不重新请求。
+    expect(listReads).toBe(readsBeforePreview);
+    expect(screen.getAllByRole('article')).toHaveLength(1);
+    expect(within(card).getByText('图文动态')).toBeTruthy();
+  });
+});
+
+it('触发缩略图节点被重建时，关闭按稳定 ID 恢复焦点', async () => {
+  const media = archiveMedia('1001', 1);
+  const reader = createArchiveReader(async url => Response.json(url === '/api/archive/ups'
+    ? { ups: [] }
+    : { items: [archiveDynamic(1, { text: '图文动态', media })], next_cursor: null }));
+  const { router } = await show(reader);
+  const tile = await screen.findByRole('button', { name: '预览动态图片 1' });
+  await fireEvent.click(tile);
+  await waitFor(() => expect(screen.getByTestId('preview-session').textContent).toBe('dynamic-1001:0/1'));
+
+  // 历史前进或列表重绘会换掉节点：旧引用断开，但缩略图 ID 稳定。
+  const replaced = tile.cloneNode(true) as HTMLElement;
+  tile.replaceWith(replaced);
+  router.go(-1);
+  await waitFor(() => expect(screen.getByTestId('preview-session').textContent).toBe('closed'));
+  await waitFor(() => expect(document.activeElement).toBe(replaced));
 });

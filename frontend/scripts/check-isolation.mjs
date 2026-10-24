@@ -10,7 +10,8 @@ const mockDir = join(root, 'dist-mock');
 const failures = [];
 
 // 夹具独有的标记：mock 构建必须命中，生产构建必须为 0。
-const fixtureMarkers = ['/images/full/', '/images/unavailable/'];
+// 占位图是生产页面自有的异常图片资源，不再属于夹具独有标记；夹具缩略/预览/异常地址仍必须缺席。
+const fixtureMarkers = ['/images/full/', '/images/thumb/', '/images/broken/', '/images/invalid/', '/images/flaky/'];
 const mockArchiveMarkers = ['mock-archive:'];
 const mockChunkPattern = /Preview(Fixtures|Other)Page/;
 
@@ -48,6 +49,10 @@ function check(dir, expectation) {
     if (mockChunks.length > 0) failures.push(`${label} 含 mock 页面 chunk：${mockChunks.join(', ')}`);
     if (hitMarkers.size > 0) failures.push(`${label} 含夹具地址标记：${[...hitMarkers].join(', ')}`);
     if (hitArchiveMarkers.size > 0) failures.push(`${label} 含 mock 归档读取数据：${[...hitArchiveMarkers].join(', ')}`);
+    // 生产页面展示 pending/failed 时依赖应用自有占位图；缺失会让真实异常图片变成坏链。
+    if (!existsSync(join(dir, 'images', 'unavailable', 'placeholder.svg'))) {
+      failures.push(`${label} 缺少应用自有图片占位资源`);
+    }
     if (!files.some(file => /index-.*\.js$/.test(relative(dir, file)))) failures.push(`${label} 缺少入口 chunk，产物可能不完整`);
   } else {
     if (mockChunks.length === 0) failures.push(`${label} 缺少 mock 自检页面 chunk，mock 装配可能未生效`);

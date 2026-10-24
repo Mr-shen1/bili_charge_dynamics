@@ -31,3 +31,29 @@ export function archiveDynamic(index: number, overrides: Record<string, unknown>
     ...overrides,
   };
 }
+
+/** 生产图片 DTO：默认成功且缩略/预览同址；按索引覆盖状态或地址。 */
+export function archiveMedia(
+  ownerId: string,
+  count: number,
+  override: (index: number) => Record<string, unknown> = () => ({}),
+) {
+  return Array.from({ length: count }, (_value, index) => ({
+    id: `media-${ownerId}-${index + 1}`,
+    owner: { type: 'dynamic', id: ownerId },
+    status: 'success',
+    public_url: `https://cdn.example.test/archive/${ownerId}/${index + 1}.jpg`,
+    width: 800,
+    height: 600,
+    ...override(index),
+  }));
+}
+
+/** 详情 DTO：在公共字段上替换 ID、图片或其它可观察字段。 */
+export function archiveDetail(
+  id: string,
+  media: readonly Record<string, unknown>[] = [],
+  overrides: Record<string, unknown> = {},
+) {
+  return { ...archive, id, media, ...overrides };
+}

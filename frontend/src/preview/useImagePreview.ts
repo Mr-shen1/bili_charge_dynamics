@@ -22,8 +22,11 @@ export interface ImagePreviewCoordinator {
   switchTo(index: number): void;
   retry(): void;
   imageAt(index: number): PreviewImage | undefined;
-  /** 注入/替换图片组注册表：生产由归档读取装配，mock/fault 由自检页注入。 */
-  setGroups(groups: readonly ImageGroup[]): void;
+  /**
+   * 注册页面读取到的图片组（合并，不整表替换）：历史前进使页面重新挂载时，
+   * 已经读到的完整组仍能解析历史记录里的预览标记；会话内组数量由已读内容限定。
+   */
+  registerGroups(groups: readonly ImageGroup[]): void;
 }
 
 const coordinatorKey: InjectionKey<ImagePreviewCoordinator> = Symbol('image-preview-coordinator');
@@ -37,12 +40,15 @@ export function createImagePreviewCoordinator(navigation: ArchiveNavigation): Im
   const sessionId = navigation.sessionId;
   const groupsById = shallowRef(new Map<string, ImageGroup>());
 
-  function setGroups(groups: readonly ImageGroup[]): void {
-    groupsById.value = new Map(groups.map(group => [group.id, group]));
+  function registerGroups(groups: readonly ImageGroup[]): void {
+    if (!groups.length) return;
+    const next = new Map(groupsById.value);
+    for (const group of groups) next.set(group.id, group);
+    groupsById.value = next;
   }
   const retryGeneration = ref(0);
   /** 仅内存：触发元素与滚动位置，不写入历史记录。 */
-  const memory = new Map<string, { trigger: HTMLElement; scrollY: number }>();
+  const memory = new Map<string, { trigger: HTMLElement; triggerId: string; scrollY: number }>();
   let closing = false;
   let clearing = false;
   /** 同步门闩：marker 依赖异步 history 同步，双击/连点必须在 push 前就拦住。 */
@@ -70,8 +76,10 @@ export function createImagePreviewCoordinator(navigation: ArchiveNavigation): Im
   async function restore(previewId: string): Promise<void> {
     const saved = memory.get(previewId);
     await nextTick();
-    // 触发器已消失时退到页面的后备焦点，不把焦点丢回 body 或浏览器地址栏。
-    const focusTarget = saved?.trigger.isConnected ? saved.trigger : document.querySelector<HTMLElement>(fallbackFocusSelector);
+    // 页面重新挂载后旧引用已断开：按稳定缩略图 ID 找回新节点，仍不可用才退到页面后备焦点。
+    const current = saved?.trigger.isConnected ? saved.trigger
+      : saved ? document.getElementById(saved.triggerId) : null;
+    const focusTarget = current ?? document.querySelector<HTMLElement>(fallbackFocusSelector);
     focusTarget?.focus({ preventScroll: true });
     if (saved) window.scrollTo({ top: saved.scrollY, left: 0, behavior: 'instant' });
   }
@@ -105,7 +113,7 @@ export function createImagePreviewCoordinator(navigation: ArchiveNavigation): Im
     const target = groupsById.value.get(groupId);
     if (!target || !target.images[index]) return;
     const previewId = createUuid();
-    memory.set(previewId, { trigger, scrollY: window.scrollY });
+    memory.set(previewId, { trigger, triggerId: trigger.id, scrollY: window.scrollY });
     opening = true;
     void navigation.openPreview({ previewId, groupId, index }).catch(() => undefined).finally(() => {
       // marker 已经同步时由 watch 统一放开；这里只兜住被拒绝或被取消的打开。
@@ -147,7 +155,7 @@ export function createImagePreviewCoordinator(navigation: ArchiveNavigation): Im
     return group.value?.images[index];
   }
 
-  return { session, retryGeneration, open, close, switchTo, retry, imageAt, setGroups };
+  return { session, retryGeneration, open, close, switchTo, retry, imageAt, registerGroups };
 }
 
 export function provideImagePreview(coordinator: ImagePreviewCoordinator): void {
