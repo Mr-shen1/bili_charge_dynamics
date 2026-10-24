@@ -20,23 +20,21 @@ export function captureReadingPosition(root: HTMLElement | null): ReadingPositio
 /**
  * 由应用导航协调器统一定位；最多等待两个布局帧，不轮询读取或图片。
  * 内容范围和展开状态由页面先同步还原，缺失锚点立即走有界像素后备。
- * 用户一旦主动滚动、触摸或按键，立即停止纠正并通知调用方。
+ * 用户一旦主动滚动、触摸或按键，立即停止纠正。
  */
 export function restoreReadingPosition(
   root: HTMLElement | null,
   position: ReadingPosition | null,
-  onUserInteraction?: () => void,
 ): () => void {
   let stopped = false;
   let frame = 0;
   const stop = (): void => { stopped = true; cancelAnimationFrame(frame); };
-  const stopOnInteraction = (): void => { onUserInteraction?.(); stop(); };
   const stopOnKey = (event: KeyboardEvent): void => {
-    if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) stopOnInteraction();
+    if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) stop();
   };
-  window.addEventListener('wheel', stopOnInteraction, { passive: true });
-  window.addEventListener('touchmove', stopOnInteraction, { passive: true });
-  window.addEventListener('pointerdown', stopOnInteraction, { passive: true });
+  window.addEventListener('wheel', stop, { passive: true });
+  window.addEventListener('touchmove', stop, { passive: true });
+  window.addEventListener('pointerdown', stop, { passive: true });
   window.addEventListener('keydown', stopOnKey);
   const locate = (): void => {
     if (stopped) return;
@@ -53,9 +51,9 @@ export function restoreReadingPosition(
   else frame = requestAnimationFrame(() => { frame = requestAnimationFrame(locate); });
   return () => {
     stop();
-    window.removeEventListener('wheel', stopOnInteraction);
-    window.removeEventListener('touchmove', stopOnInteraction);
-    window.removeEventListener('pointerdown', stopOnInteraction);
+    window.removeEventListener('wheel', stop);
+    window.removeEventListener('touchmove', stop);
+    window.removeEventListener('pointerdown', stop);
     window.removeEventListener('keydown', stopOnKey);
   };
 }

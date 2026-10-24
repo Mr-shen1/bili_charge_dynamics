@@ -3,6 +3,7 @@ import { useRoute, useRouter } from 'vue-router';
 import {
   appHistoryState, readEntryMarker, readPreviewMarker, type EntryMarker, type MarkerRead, type PreviewMarker,
 } from './historyState';
+import { createUuid } from './ids';
 import type { DetailSnapshot, ListSnapshot } from './snapshots';
 
 interface PageEntry {
@@ -43,16 +44,6 @@ function isListPath(path: string): boolean {
   return path === '/' || /^\/ups\/[^/]+$/.test(path);
 }
 
-// 这些 UUID 仅标识会话/访问/预览，不是授权凭证；局域网 HTTP 也须可用。
-function createUuid(): string {
-  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
-  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
-  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
-
 /**
  * 唯一导航协调器：主动入口、历史返回、预览记录写入与位置恢复的会话身份都在这里。
  * 内容与快照保存在内存访问表中；历史记录只写轻量标识，不照搬框架内部 key。
@@ -67,11 +58,12 @@ export function createArchiveNavigation(): ArchiveNavigation {
   // 历史记录自有的 back/current/forward/position 保持原样。
   const currentHistoryState = (): unknown => router.options.history.state;
   const historyState = shallowRef<unknown>(currentHistoryState());
-  // 每条历史记录一个代次：同一路径的新记录（如主题入口再回首页）必须得到新访问，
-  // 不能沿用上一次同路径访问的快照与位置。
-  let recordEpoch = 0;
+  // 每次完成的导航推进一个代次：同一路径的新记录（如主题入口再回首页）必须得到新访问，
+  // 不能沿用上一次同路径访问的快照与位置。这是保守的“新导航即新记录”判据，
+  // 被取消的导航不会改变路由与状态，因此不会让已解析的兜底访问重新生成。
+  let navigationEpoch = 0;
   const stopAfterEach = router.afterEach(() => {
-    recordEpoch += 1;
+    navigationEpoch += 1;
     historyState.value = currentHistoryState();
   });
   onUnmounted(() => { stopAfterEach(); });
@@ -84,10 +76,10 @@ export function createArchiveNavigation(): ArchiveNavigation {
     const marker = readEntryMarker(historyState.value).marker;
     const known = marker?.sessionId === sessionId ? entries.value.get(marker.pageEntryId) : undefined;
     if (known && known.path === route.path) return known;
-    if (!fresh || fresh.path !== route.path || fresh.epoch !== recordEpoch) {
+    if (!fresh || fresh.path !== route.path || fresh.epoch !== navigationEpoch) {
       fresh = {
         path: route.path,
-        epoch: recordEpoch,
+        epoch: navigationEpoch,
         entry: { pageEntryId: createUuid(), path: route.path, sourcePageEntryId: null },
       };
     }
@@ -148,8 +140,12 @@ export function createArchiveNavigation(): ArchiveNavigation {
 
   /** 等待可能仍在进行的补写，避免它把紧接着的返回或替换导航取消掉。 */
   function afterPendingPersistence(run: () => Promise<unknown> | void): Promise<void> {
-    const pending = persistence?.done ?? Promise.resolve();
-    return ignoreNavigationFailure(pending.then(run));
+    const entry = current.value;
+    const pending = persistence?.pageEntryId === entry.pageEntryId ? persistence.done : Promise.resolve();
+    return ignoreNavigationFailure(pending.then(() => {
+      if (current.value.pageEntryId !== entry.pageEntryId) return undefined;
+      return run();
+    }));
   }
 
   /** 只有仍在原访问上时才执行主动入口，避免等待补写期间覆盖更新的导航。 */

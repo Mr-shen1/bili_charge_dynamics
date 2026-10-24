@@ -1,5 +1,6 @@
 import { computed, inject, nextTick, provide, ref, shallowRef, watch, type ComputedRef, type InjectionKey, type Ref } from 'vue';
 import type { ArchiveNavigation } from '../app/navigation';
+import { createUuid } from '../app/ids';
 import type { PreviewMarker } from '../app/historyState';
 import { validatePreviewMarker } from './marker';
 import type { ImageGroup, PreviewImage } from './types';
@@ -27,11 +28,6 @@ export interface ImagePreviewCoordinator {
 
 const coordinatorKey: InjectionKey<ImagePreviewCoordinator> = Symbol('image-preview-coordinator');
 const fallbackFocusSelector = '[data-preview-fallback-focus]';
-
-function randomId(): string {
-  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
-  return `preview-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
-}
 
 /**
  * 图片预览只保留组、索引与手势；历史记录、关闭来源、焦点与滚动恢复仍由
@@ -108,7 +104,7 @@ export function createImagePreviewCoordinator(navigation: ArchiveNavigation): Im
     if (marker.value || opening) return;
     const target = groupsById.value.get(groupId);
     if (!target || !target.images[index]) return;
-    const previewId = randomId();
+    const previewId = createUuid();
     memory.set(previewId, { trigger, scrollY: window.scrollY });
     opening = true;
     void navigation.openPreview({ previewId, groupId, index }).catch(() => undefined).finally(() => {

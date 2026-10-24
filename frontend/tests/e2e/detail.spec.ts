@@ -97,6 +97,15 @@ test.describe('动态详情与阅读恢复', () => {
     await page.getByRole('article').nth(7).getByRole('link', { name: /^阅读全文 / }).click({ position: { x: 8, y: 8 } });
     await expect(page.getByRole('heading', { name: '动态详情' })).toBeVisible();
     await expect.poll(() => scrollY(page)).toBe(0);
+
+    // 一路后退：新列表仍只有自己的 10 条，最早那次列表访问仍是 20 条与原偏移。
+    await page.goBack();
+    await expect(page.getByRole('article')).toHaveCount(10);
+    await page.goBack();
+    await expect(page.getByRole('heading', { name: '动态详情' })).toBeVisible();
+    await page.goBack();
+    await expect(page.getByRole('article')).toHaveCount(20);
+    await expect.poll(() => anchor.evaluate(element => Math.round(element.getBoundingClientRect().top))).toBe(offset);
   });
 
   test('同一动态多次访问各自保存位置，后退与前进互不覆盖', async ({ page }) => {
