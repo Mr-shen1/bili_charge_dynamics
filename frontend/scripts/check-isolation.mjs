@@ -11,6 +11,7 @@ const failures = [];
 
 // 夹具独有的标记：mock 构建必须命中，生产构建必须为 0。
 const fixtureMarkers = ['/images/full/', '/images/unavailable/'];
+const mockArchiveMarkers = ['mock-archive:'];
 const mockChunkPattern = /Preview(Fixtures|Other)Page/;
 
 function collectFiles(dir) {
@@ -35,19 +36,23 @@ function check(dir, expectation) {
   const files = collectFiles(dir);
   const mockChunks = files.map(file => relative(dir, file)).filter(file => mockChunkPattern.test(file));
   const hitMarkers = new Set();
+  const hitArchiveMarkers = new Set();
   for (const file of files) {
     if (!/\.(js|css|html)$/.test(file)) continue;
     const content = readFileSync(file, 'utf8');
     for (const marker of fixtureMarkers) if (content.includes(marker)) hitMarkers.add(marker);
+    for (const marker of mockArchiveMarkers) if (content.includes(marker)) hitArchiveMarkers.add(marker);
   }
 
   if (expectation === 'production') {
     if (mockChunks.length > 0) failures.push(`${label} 含 mock 页面 chunk：${mockChunks.join(', ')}`);
     if (hitMarkers.size > 0) failures.push(`${label} 含夹具地址标记：${[...hitMarkers].join(', ')}`);
+    if (hitArchiveMarkers.size > 0) failures.push(`${label} 含 mock 归档读取数据：${[...hitArchiveMarkers].join(', ')}`);
     if (!files.some(file => /index-.*\.js$/.test(relative(dir, file)))) failures.push(`${label} 缺少入口 chunk，产物可能不完整`);
   } else {
     if (mockChunks.length === 0) failures.push(`${label} 缺少 mock 自检页面 chunk，mock 装配可能未生效`);
     if (hitMarkers.size === 0) failures.push(`${label} 未包含夹具地址标记，自检数据可能未打进产物`);
+    if (hitArchiveMarkers.size === 0) failures.push(`${label} 未包含 mock 归档读取数据，mock 装配可能未生效`);
   }
 }
 
@@ -59,4 +64,4 @@ if (failures.length > 0) {
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
-console.log('构建产物隔离检查通过：dist 无 mock 入口与夹具，dist-mock 含自检页面与夹具。');
+console.log('构建产物隔离检查通过：dist 无 mock 入口/夹具/归档数据，dist-mock 含自检页面与夹具。');

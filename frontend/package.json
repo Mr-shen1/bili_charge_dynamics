@@ -16,6 +16,7 @@
     "test:e2e": "playwright test",
     "test:e2e:production": "playwright test --config playwright.production.config.ts",
     "check:isolation": "node scripts/check-isolation.mjs",
+    "check:data-parity": "node scripts/check-data-parity.mjs",
     "build": "vue-tsc --noEmit && vite build",
     "build:mock": "vue-tsc --noEmit && vite build --mode mock --outDir dist-mock",
     "build:fault": "vue-tsc --noEmit && vite build --mode fault --outDir dist-mock",

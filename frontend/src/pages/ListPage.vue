@@ -1,13 +1,28 @@
 <script setup lang="ts">
-defineProps<{ upId?: string }>();
+import { computed } from 'vue';
+import ListVisit from '../dynamics/ListVisit.vue';
+import type { ArchiveScope } from '../data/contracts';
+
+const props = defineProps<{ upId?: string }>();
+const scope = computed<ArchiveScope>(() =>
+  props.upId === undefined ? { kind: 'all' } : { kind: 'up', upId: props.upId });
+const heading = computed(() => props.upId === undefined ? '全部动态' : `UP ${props.upId} 归档`);
+const visitKey = computed(() => props.upId ?? 'all');
 </script>
 
 <template>
-  <section class="page">
-    <h1>{{ upId ? '单 UP 归档' : '全部归档' }}</h1>
-    <p class="page__note">
-      阶段 3 迁移目标：{{ upId ? `/ups/${upId}` : '/' }} 的 scope 切换、cursor 追加（每批 10 条）、阅读位置恢复
-      与卡片/图片/评论入口。当前为骨架占位，数据装配在票据 02 落地。
-    </p>
+  <section class="list-shell">
+    <h1 class="visually-hidden">{{ heading }}</h1>
+    <ListVisit :key="visitKey" :scope="scope" />
   </section>
 </template>
+
+<style scoped>
+.list-shell {
+  width: 100%;
+  max-width: 724px;
+  min-width: 0;
+  margin: 0 auto;
+  padding: 0 0 40px;
+}
+</style>

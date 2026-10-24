@@ -2,7 +2,12 @@ import { defineConfig, devices } from '@playwright/test';
 
 const port = 4318;
 const imagePort = 4319;
+// 列表用例需要生产装配 + HTTP 传输替身；mock/fault 装配自带归档夹具，不能替换其读取。
+const listPort = 4320;
 const preview = process.env.E2E_TARGET === 'preview';
+const mockBase = `http://127.0.0.1:${port}`;
+const listBase = `http://127.0.0.1:${listPort}`;
+const listSpec = '**/list.spec.ts';
 
 // mock 装配 + 图片夹具；默认 Linux Chromium，iPhone Safari 必须人工在真机执行。
 export default defineConfig({
@@ -10,10 +15,28 @@ export default defineConfig({
   fullyParallel: false,
   // 图片夹具服务器记录共享的请求与失败计数，串行执行避免相互污染。
   workers: 1,
-  use: { baseURL: `http://127.0.0.1:${port}`, trace: 'retain-on-failure' },
+  use: { trace: 'retain-on-failure' },
   projects: [
-    { name: 'desktop-chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'mobile-chromium', use: { ...devices['Pixel 7'] } },
+    {
+      name: 'desktop-chromium',
+      use: { ...devices['Desktop Chrome'], baseURL: mockBase },
+      testIgnore: listSpec,
+    },
+    {
+      name: 'mobile-chromium',
+      use: { ...devices['Pixel 7'], baseURL: mockBase },
+      testIgnore: listSpec,
+    },
+    {
+      name: 'desktop-chromium-archive',
+      use: { ...devices['Desktop Chrome'], baseURL: listBase },
+      testMatch: listSpec,
+    },
+    {
+      name: 'mobile-chromium-archive',
+      use: { ...devices['Pixel 7'], baseURL: listBase },
+      testMatch: listSpec,
+    },
   ],
   webServer: [
     {
@@ -26,7 +49,12 @@ export default defineConfig({
       command: preview
         ? `pnpm build:mock && pnpm preview:mock --host 127.0.0.1 --port ${port} --strictPort`
         : `pnpm dev:mock --host 127.0.0.1 --port ${port} --strictPort`,
-      url: `http://127.0.0.1:${port}`,
+      url: mockBase,
+      reuseExistingServer: false,
+    },
+    {
+      command: `pnpm dev --host 127.0.0.1 --port ${listPort} --strictPort`,
+      url: listBase,
       reuseExistingServer: false,
     },
   ],

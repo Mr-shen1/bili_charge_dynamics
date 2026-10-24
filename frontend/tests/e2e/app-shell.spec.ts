@@ -4,10 +4,10 @@ import { expect, test } from '@playwright/test';
 test.describe('应用骨架', () => {
   test('六条正式路由渲染对应骨架页', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: '全部归档' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '全部动态' })).toBeVisible();
 
     await page.goto('/ups/7');
-    await expect(page.getByRole('heading', { name: '单 UP 归档' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'UP 7 归档' })).toBeVisible();
 
     await page.goto('/dynamics/abc');
     await expect(page.getByRole('heading', { name: '动态详情' })).toBeVisible();
@@ -26,6 +26,8 @@ test.describe('应用骨架', () => {
 
   test('主导航可达，mock 装配有明确标识', async ({ page }) => {
     await page.goto('/');
+    // mock 装配自带确定性归档，不依赖后端；列表读取路径同样经过页面组件。
+    await expect(page.getByRole('article')).toHaveCount(10);
     const nav = page.getByRole('navigation', { name: '主导航' });
     await expect(nav.getByRole('link', { name: '归档' })).toBeVisible();
     await expect(nav.getByRole('link', { name: '监控管理' })).toBeVisible();
@@ -42,6 +44,6 @@ test.describe('应用骨架', () => {
     await expect(page.getByRole('heading', { name: '页面不存在' })).toBeVisible();
     await page.getByRole('link', { name: '返回归档列表' }).click();
     await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByRole('heading', { name: '全部归档' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '全部动态' })).toBeVisible();
   });
 });

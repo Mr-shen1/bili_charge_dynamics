@@ -1,6 +1,6 @@
 # 前端重构方案：React → Vue 3 + Element Plus
 
-- 状态：方案已由用户确认；阶段 0/1 完成，阶段 2 骨架已建于 [`frontend/`](../../frontend/README.md)；业务页面待迁移，尚未上线。
+- 状态：方案已由用户确认；阶段 0/1 完成，阶段 2 骨架已建于 [`frontend/`](../../frontend/README.md)，阶段 3 的 02 列表读取已交付；其余业务页面待迁移，尚未上线。
 - 目标：减少自维护 UI、统一交互、降低后续开发成本，不是逐文件翻译 React 语法。
 - 当前**发布入口**仍是 React；`frontend/` 是并行开发的 Vue 骨架（不参与当前构建与部署）。本文描述目标架构与实施门槛，不把选型、官方文档或旧版测试当作新版通过证据。
 - 需求记录：[SRS](../product/SRS.md)；可行性：[FSR](../product/FSR.md)；架构：[HLD](HLD.md)；视觉：[UI 规范](ui-reference.md)。用户进一步确认：既有文档/测试与当前代码逻辑冲突时，一律以代码为迁移基线；正式文档据此同步，而非用旧文字回退功能。明确授权的 Vue、组件库、视觉和图片调整仍是目标变化。
@@ -178,7 +178,7 @@ Vue 页面 / Element Plus 组件
 
 开发可以在隔离分支或工作区推进；不要求维护可上线的 React/Vue 双入口，也不把两种框架长期装入同一生产应用。当前 React 的源码版本可用于对照和回退，不代表必须同时维护两套前端功能。
 
-进展：阶段 0（基线核对）与阶段 1（高风险验证，见[票据 01](../../.scratch/frontend-vue-migration/issues/01-native-image-preview-validation.md)与[证据](../../.scratch/frontend-vue-migration/evidence/01-native-image-preview.md)）已完成；**阶段 2 骨架已建于 [`frontend/`](../../frontend/README.md)**——Vue 入口、六条正式路由、Element Plus 主题、production/mock/fault 装配隔离、类型检查与测试基础就位，业务页面为占位骨架，阶段 3 依票据 02–11 迁移。根目录 React 实现仍是当前发布入口。
+进展：阶段 0（基线核对）与阶段 1（高风险验证，见[票据 01](../../.scratch/frontend-vue-migration/issues/01-native-image-preview-validation.md)与[证据](../../.scratch/frontend-vue-migration/evidence/01-native-image-preview.md)）已完成；**阶段 2 骨架已建于 [`frontend/`](../../frontend/README.md)**——Vue 入口、六条正式路由、Element Plus 主题、production/mock/fault 装配隔离、类型检查与测试基础就位；阶段 3 的[票据 02 列表读取](../../.scratch/frontend-vue-migration/evidence/02-archive-scope-browsing.md)已交付，其余业务页面依票据 03–11 迁移。根目录 React 实现仍是当前发布入口。
 
 不承诺未经任务拆分的工期。后续 spec/tickets 引用本文及 SRS 编号，按仓库 issue-tracker 约定生成；本文阶段表不是已创建或已完成的任务清单。
 

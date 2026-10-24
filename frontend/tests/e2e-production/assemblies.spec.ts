@@ -5,10 +5,10 @@ test('生产装配渲染六条正式路由与不存在页', async ({ page }, tes
   test.skip(testInfo.project.name !== 'production', '只在生产装配执行');
 
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: '全部归档' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '全部动态' })).toBeVisible();
 
   await page.goto('/ups/7');
-  await expect(page.getByRole('heading', { name: '单 UP 归档' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'UP 7 归档' })).toBeVisible();
 
   await page.goto('/dynamics/abc');
   await expect(page.getByRole('heading', { name: '动态详情' })).toBeVisible();
@@ -47,6 +47,11 @@ test('fault 装配与 mock 装配相互独立', async ({ page }, testInfo) => {
   await page.goto('/');
   await expect(page.locator('.app-badge')).toHaveText('fault');
   await expect(page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '图片自检' })).toBeVisible();
+
+  // fault 装配使用同一份受控归档，但列表首次读取失败一次；重试后恢复。
+  await expect(page.getByRole('alert')).toHaveText('动态列表读取失败，请重试。');
+  await page.getByRole('button', { name: '重试' }).click();
+  await expect(page.getByRole('article')).toHaveCount(10);
 
   await page.goto('/__preview-fixtures');
   await expect(page.getByRole('heading', { name: '图片预览与浏览器历史验证' })).toBeVisible();
