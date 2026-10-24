@@ -257,6 +257,7 @@ function remove(): Promise<void> {
 }
 
 .manage-state {
+  /* 卡片内的状态行紧跟上一行，覆盖共享版式的默认上边距。 */
   margin: 0;
 }
 

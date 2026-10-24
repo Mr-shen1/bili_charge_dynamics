@@ -1,6 +1,8 @@
 import type {
   ManagedTarget, ManagedUp, ManagementApi, ManagementResult,
 } from '../../src/manage/managementApi';
+import type { TargetCheck } from '../../src/data/checkStatus';
+import type { DiscoveryState } from '../../src/manage/discoveryState';
 
 const failed = { status: 'error', message: '管理接口响应异常，请重试。' } as const;
 
@@ -14,6 +16,8 @@ export function createManagement(overrides: Partial<ManagementApi> = {}): Manage
     listTargets: async (): Promise<ManagementResult<readonly ManagedTarget[]>> => failed,
     addTarget: async (): Promise<ManagementResult<ManagedTarget>> => failed,
     deleteTarget: async (): Promise<ManagementResult<void>> => failed,
+    readDiscovery: async (): Promise<ManagementResult<DiscoveryState>> => failed,
+    listChecks: async (): Promise<ManagementResult<readonly TargetCheck[]>> => failed,
     ...overrides,
   };
 }

@@ -3,6 +3,8 @@ import { computed } from 'vue';
 import { ElAlert, ElButton } from 'element-plus';
 import { useSession } from '../app/session';
 import type { ManagedUp } from './managementApi';
+import CheckStatusPanel from './CheckStatusPanel.vue';
+import DiscoveryStatusPanel from './DiscoveryStatusPanel.vue';
 import UpCard from './UpCard.vue';
 import { useManagementRead } from './useManagementRead';
 import { useManagementRequests } from './useManagementRequests';
@@ -15,6 +17,11 @@ const { ups, state: readState, error: readError, reload } = useManagementRead(si
 // 防重锁按 UID 共享给启停、配置保存、删除与目标增删：同一 UP 同时只有一个写入。
 const requests = useManagementRequests();
 const up = computed(() => ups.value.find(item => item.uid === props.uid) ?? null);
+// 已保存配置的签名：模式、N 或启停一变，上一份检查/发现状态不再对应当前配置，必须重读。
+const savedConfig = computed(() => {
+  const monitor = up.value?.monitor;
+  return monitor ? `${monitor.mode}:${monitor.recentN}:${monitor.enabled}` : 'none';
+});
 
 function replaceUp(next: ManagedUp): void {
   ups.value = ups.value.map(item => item.uid === next.uid ? next : item);
@@ -32,13 +39,21 @@ function replaceUp(next: ManagedUp): void {
     <RouterLink class="manage-back" to="/manage">返回 UP 列表</RouterLink>
   </div>
   <!-- UP 或配置存在性变化时重建卡片：换 UP 不沿用上一份草稿、目标输入与反馈。 -->
-  <UpCard
-    v-else
-    :key="`${up.uid}:${up.monitor !== null}`"
-    :up="up"
-    :requests="requests"
-    @change="replaceUp"
-  />
+  <div v-else class="manage-status">
+    <UpCard
+      :key="`${up.uid}:${up.monitor !== null}`"
+      :up="up"
+      :requests="requests"
+      @change="replaceUp"
+    />
+    <!-- 状态面板只读取已保存记录；随已保存配置重建，旧状态不会跟着草稿留在页面上。 -->
+    <CheckStatusPanel
+      :key="`${up.uid}:${savedConfig}`"
+      :uid="up.uid"
+      :monitor="up.monitor"
+    />
+    <DiscoveryStatusPanel :key="`${up.uid}:${savedConfig}`" :uid="up.uid" />
+  </div>
 </template>
 
 <style scoped>

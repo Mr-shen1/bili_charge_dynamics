@@ -3,6 +3,7 @@ import {
   authenticationRequiredMessage, createManagementApi, invalidTargetMessage, invalidUidMessage,
   type ManagementTransport,
 } from '../../src/manage/managementApi';
+import { checkDto, discoveryDto } from '../fixtures/management-dto';
 
 // 生产 DTO 夹具：字段与 docs/backend/api/management-api.md 的 UP 结构一致。
 const uid = '900719925474099312345';
@@ -260,6 +261,164 @@ describe('指定目标与删除监控配置', () => {
   });
 });
 
+const discovered = {
+  uid, mode: 'recent', recentN: 2, enabled: true, active: true, status: 'discovered',
+  attempt: {
+    recentN: 2, startedAt: '2026-10-24T19:08:27+00:00', finishedAt: '2026-10-24T19:08:28+00:00',
+    ids: ['9007199254740993123'], error: null,
+  },
+  trustedResult: {
+    recentN: 2, ids: ['9007199254740993123', '900707'], exhausted: false,
+    discoveredAt: '2026-10-24T19:08:28+00:00',
+  },
+  currentIds: ['9007199254740993123', '900707'],
+  retryable: false,
+  incomplete: false,
+} as const;
+
+describe('检查与发现状态读取', () => {
+  it('读取发现状态映射已保存模式、本轮尝试与可信窗口', async () => {
+    const { transport, calls } = transportOf(Response.json(discoveryDto()));
+    expect(await createManagementApi(transport).readDiscovery({ uid, signal: signal() }))
+      .toEqual({ status: 'success', data: discovered });
+    expect(calls[0]!.url).toBe(`/api/manage/ups/${uid}/discovery`);
+    expect(calls[0]!.init.method).toBe('GET');
+  });
+
+  it('非启用近期的发现状态不带窗口，也不声称可重试', async () => {
+    const body = discoveryDto({
+      mode: 'specified', recent_n: 10, active: false, status: 'undiscovered',
+      attempt: null, trusted_result: null, current_ids: [], retryable: false, incomplete: true,
+    });
+    const { transport } = transportOf(Response.json(body));
+    expect(await createManagementApi(transport).readDiscovery({ uid, signal: signal() }))
+      .toEqual({ status: 'success', data: {
+        uid, mode: 'specified', recentN: 10, enabled: true, active: false, status: 'undiscovered',
+        attempt: null, trustedResult: null, currentIds: [], retryable: false, incomplete: true,
+      } });
+  });
+
+  it('发现失败时保留历史可信结果并标记可重试', async () => {
+    const body = discoveryDto({
+      status: 'failed',
+      attempt: {
+        recent_n: 2, started_at: '2026-10-24T19:10:00+00:00', finished_at: '2026-10-24T19:10:01+00:00',
+        ids: ['9007199254740993123'], error: 'SOURCE_UNAVAILABLE',
+      },
+      retryable: true, incomplete: true,
+    });
+    const { transport } = transportOf(Response.json(body));
+    const result = await createManagementApi(transport).readDiscovery({ uid, signal: signal() });
+    expect(result.status).toBe('success');
+    expect(result.status === 'success' && result.data.attempt?.error).toBe('SOURCE_UNAVAILABLE');
+    expect(result.status === 'success' && result.data.trustedResult?.ids).toEqual(['9007199254740993123', '900707']);
+    expect(result.status === 'success' && result.data.retryable).toBe(true);
+  });
+
+  it('自相矛盾的发现状态整体判为无效', async () => {
+    const cases: [string, Record<string, unknown>][] = [
+      ['启用标志与模式不符', discoveryDto({ mode: 'specified', active: false })],
+      ['模式与 N 矛盾', discoveryDto({ mode: 'recent', recent_n: null })],
+      ['已发现却没有可信结果', discoveryDto({ trusted_result: null, incomplete: true })],
+      ['当前窗口与可信结果不一致', discoveryDto({ current_ids: ['900707'] })],
+      ['未开始却有本轮尝试', discoveryDto({ status: 'undiscovered', incomplete: true })],
+      ['进行中却有完成时间', discoveryDto({ status: 'running', retryable: false, incomplete: true })],
+      ['失败却没有错误码', discoveryDto({ status: 'failed', retryable: true, incomplete: true })],
+      ['可重试标志与推导不符', discoveryDto({
+        status: 'failed', retryable: false, incomplete: true,
+        attempt: {
+          recent_n: 2, started_at: '2026-10-24T19:10:00+00:00', finished_at: '2026-10-24T19:10:01+00:00',
+          ids: [], error: 'SOURCE_UNAVAILABLE',
+        },
+      })],
+      ['未完成标志与推导不符', discoveryDto({ incomplete: true })],
+      ['可信结果未达 N 却非耗尽', discoveryDto({
+        trusted_result: {
+          recent_n: 2, ids: ['9007199254740993123'], exhausted: false,
+          discovered_at: '2026-10-24T19:08:28+00:00',
+        },
+        current_ids: ['9007199254740993123'],
+      })],
+      ['未知发现错误码', discoveryDto({ status: 'failed', retryable: true, incomplete: true,
+        attempt: {
+          recent_n: 2, started_at: '2026-10-24T19:10:00+00:00', finished_at: '2026-10-24T19:10:01+00:00',
+          ids: [], error: 'SOMETHING_NEW',
+        } })],
+    ];
+    for (const [label, body] of cases) {
+      const { transport } = transportOf(Response.json(body));
+      expect(await createManagementApi(transport).readDiscovery({ uid, signal: signal() }), label)
+        .toEqual({ status: 'error', message: invalidResponseMessage });
+    }
+  });
+
+  it('发现状态需与请求 UID 一致，并且 UID 本地优先校验', async () => {
+    const { transport } = transportOf(Response.json(discoveryDto({ uid: '456' })));
+    expect(await createManagementApi(transport).readDiscovery({ uid, signal: signal() }))
+      .toEqual({ status: 'error', message: invalidResponseMessage });
+
+    const { transport: unused, calls } = transportOf();
+    expect(await createManagementApi(unused).readDiscovery({ uid: '0123', signal: signal() }))
+      .toEqual({ status: 'error', message: invalidUidMessage });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('读取检查状态映射分项、时间与封闭错误码', async () => {
+    const { transport, calls } = transportOf(Response.json({ checks: [checkDto()] }));
+    expect(await createManagementApi(transport).listChecks({ uid, signal: signal() }))
+      .toEqual({ status: 'success', data: [{
+        id: '900707', active: true, checkStatus: 'unchanged', work: 'pending', revision: 1,
+        lastCheckedAt: '2026-10-24T19:08:27+00:00', lastSucceededAt: null,
+        textLastSucceededAt: '2026-10-24T19:08:30+00:00', mediaLastSucceededAt: null,
+        commentMediaLastSucceededAt: null, mediaErrors: ['MEDIA_UPLOAD_FAILED'], commentMediaErrors: [],
+        observedVersion: 'v1', syncedVersion: null, editStatus: 'observed',
+        sourceCommentCount: 0, localCommentCount: 0, localReplyCount: 0,
+        commentCountStatus: null, commentsLastAttempt: 'failed', syncedCommentCount: null,
+        rootCommentsLastSucceededAt: null, repliesLastSucceededAt: null, commentsLastSucceededAt: null,
+        rootCommentsError: 'ROOT_COMMENTS_FAILED', repliesError: null, commentsError: 'ROOT_COMMENTS_FAILED',
+        checkError: null, syncError: 'SYNC_INCOMPLETE',
+        parts: { text: 'success', media: 'pending', comments: 'failed', replies: 'success', comment_media: 'pending' },
+      }] });
+    expect(calls[0]!.url).toBe(`/api/manage/ups/${uid}/checks`);
+    expect(calls[0]!.init.method).toBe('GET');
+  });
+
+  it('检查列表拒绝重复 ID 与未知分项状态', async () => {
+    const cases: [string, Record<string, unknown>][] = [
+      ['重复 ID', { checks: [checkDto(), checkDto()] }],
+      ['未知检查状态', { checks: [checkDto({ check_status: 'maybe' })] }],
+      ['未知执行状态', { checks: [checkDto({ work: 'archived' })] }],
+      ['未知分项状态', { checks: [checkDto({ parts: { ...checkDto().parts, text: 'done' } })] }],
+      ['未知同步错误码', { checks: [checkDto({ sync_error: 'SYNC_FAILED' })] }],
+      ['未知媒体错误码', { checks: [checkDto({ media_errors: ['MEDIA_LOST'] })] }],
+      ['负数计数', { checks: [checkDto({ local_comment_count: -1 })] }],
+    ];
+    for (const [label, body] of cases) {
+      const { transport } = transportOf(Response.json(body));
+      expect(await createManagementApi(transport).listChecks({ uid, signal: signal() }), label)
+        .toEqual({ status: 'error', message: invalidResponseMessage });
+    }
+  });
+
+  it('检查与发现的错误响应只按固定错误码与状态映射', async () => {
+    const cases: [number, string, string][] = [
+      [404, 'NOT_FOUND', '身份或监控配置不存在，请重新读取。'],
+      [422, 'INVALID_INPUT', '输入不合法，请检查后重试。'],
+    ];
+    for (const [status, code, message] of cases) {
+      for (const run of [
+        (api: ReturnType<typeof createManagementApi>) => api.readDiscovery({ uid, signal: signal() }),
+        (api: ReturnType<typeof createManagementApi>) => api.listChecks({ uid, signal: signal() }),
+      ]) {
+        const { transport } = transportOf(Response.json({ error: { code, message: 'SECRET_TOKEN' } }, { status }));
+        const result = await run(createManagementApi(transport));
+        expect(result).toEqual({ status: 'error', message });
+        expect(JSON.stringify(result)).not.toContain('SECRET_TOKEN');
+      }
+    }
+  });
+});
+
 describe('管理接口的部署入口认证', () => {
   const targetPath = `/api/manage/ups/${uid}/targets`;
   const operations = [
@@ -282,6 +441,12 @@ describe('管理接口的部署入口认证', () => {
     { name: 'deleteTarget', path: `${targetPath}/123`, method: 'DELETE',
       run: (api: ReturnType<typeof createManagementApi>, signal: AbortSignal) =>
         api.deleteTarget({ uid, id: '123', signal }) },
+    { name: 'readDiscovery', path: `/api/manage/ups/${uid}/discovery`, method: 'GET',
+      run: (api: ReturnType<typeof createManagementApi>, signal: AbortSignal) =>
+        api.readDiscovery({ uid, signal }) },
+    { name: 'listChecks', path: `/api/manage/ups/${uid}/checks`, method: 'GET',
+      run: (api: ReturnType<typeof createManagementApi>, signal: AbortSignal) =>
+        api.listChecks({ uid, signal }) },
   ];
 
   it('固定安全文案不指向页面入口', () => {

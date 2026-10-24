@@ -1,5 +1,6 @@
 // @projects desktop-chromium-archive, mobile-chromium-archive
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { checkDto, discoveryDto } from '../fixtures/management-dto';
 
 // 管理用例跑生产装配：只替换 HTTP 传输，仍经过真实 Adapter 的字段映射与错误白名单。
 // mock/fault 装配不伪造管理成功，因此这些用例不在它们上重跑。
@@ -219,9 +220,11 @@ test.describe('UP 监控管理', () => {
   });
 
   test('UP 不存在时可回到列表；四视口无横溢且控件高度不小于 44px', async ({ page }) => {
-    await manageApi(page, call => call.path.endsWith('/targets')
-      ? { body: { targets: [{ id: '900' }] } }
-      : { body: { ups: [up('123')] } });
+    await manageApi(page, call => {
+      if (call.path.endsWith('/checks')) return { body: { checks: [checkDto({ id: '900' })] } };
+      if (call.path.endsWith('/discovery')) return { body: discoveryDto({ uid: '123' }) };
+      return call.path.endsWith('/targets') ? { body: { targets: [{ id: '900' }] } } : { body: { ups: [up('123')] } };
+    });
     await page.goto('/manage/ups/456');
     await expect(page.getByText('未找到该 UP，可能已被删除。')).toBeVisible();
     await page.getByRole('link', { name: '返回 UP 列表', exact: true }).click();
@@ -301,6 +304,35 @@ test.describe('UP 监控管理', () => {
       expect(specified.heights.length).toBeGreaterThanOrEqual(4);
       for (const height of specified.heights) {
         expect(height, `${width}px 指定模式触控区域高度`).toBeGreaterThanOrEqual(44);
+      }
+
+      // 检查与发现状态：读取按钮、折叠头与展开后的详情同样不横溢且可点按。
+      await page.getByRole('button', { name: '读取检查状态' }).click();
+      const checksRegion = page.getByRole('region', { name: '目标检查与归档状态' });
+      await expect(checksRegion.getByRole('button', { name: /动态 900/ })).toBeVisible();
+      await checksRegion.getByRole('button', { name: /动态 900/ }).click();
+      await expect(checksRegion.getByText('检查无变化；不代表同步完成。')).toBeVisible();
+      await page.getByRole('button', { name: '读取发现状态' }).click();
+      await expect(page.getByRole('region', { name: '近期发现与当前窗口' })
+        .getByText('本轮发现成功；不代表归档成功。')).toBeVisible();
+      const status = await page.evaluate(() => {
+        const heights = [...document.querySelectorAll<HTMLElement>(
+          '.manage-read, .el-collapse-item__header',
+        )].map(node => Math.round(node.getBoundingClientRect().height));
+        const detail = document.querySelector<HTMLElement>('.manage-check-detail');
+        return {
+          scrollWidth: document.documentElement.scrollWidth,
+          clientWidth: document.documentElement.clientWidth,
+          heights,
+          detailWidth: Math.round(detail?.getBoundingClientRect().width ?? 0),
+          detailScrollWidth: detail?.scrollWidth ?? 0,
+        };
+      });
+      expect(status.scrollWidth, `${width}px 状态面板不应横向溢出`).toBeLessThanOrEqual(status.clientWidth);
+      expect(status.detailScrollWidth, `${width}px 检查详情不应横向溢出`).toBeLessThanOrEqual(status.detailWidth);
+      expect(status.heights.length).toBeGreaterThanOrEqual(3);
+      for (const height of status.heights) {
+        expect(height, `${width}px 状态控件触控区域高度`).toBeGreaterThanOrEqual(44);
       }
     }
   });
@@ -447,5 +479,72 @@ test.describe('监控模式与指定目标', () => {
     await page.keyboard.press(' ');
     await expect(card.getByRole('textbox', { name: '动态 ID' })).toBeVisible();
     await expect(recentN).toHaveCount(0);
+  });
+});
+
+test.describe('检查与发现状态', () => {
+  test('状态只由按钮读取：键盘可重试与展开，错误不回显代理正文', async ({ page }) => {
+    let checksFail = true;
+    const calls = await manageApi(page, call => {
+      if (call.path === '/api/manage/ups') return { body: { ups: [up('123')] } };
+      if (call.path === '/api/manage/ups/123/checks') {
+        if (checksFail) {
+          checksFail = false;
+          return { status: 503, body: { error: { code: 'STORAGE_UNAVAILABLE', message: 'SECRET_TOKEN' } } };
+        }
+        return { body: { checks: [checkDto({ id: '900' })] } };
+      }
+      if (call.path === '/api/manage/ups/123/discovery') return { body: discoveryDto({ uid: '123' }) };
+      throw new Error(`unexpected ${call.method} ${call.path}`);
+    });
+
+    await page.goto('/manage/ups/123');
+    await expect(upCard(page, '123')).toContainText('监控：已启用');
+    // 打开单 UP 页只读身份与配置：检查/发现面板不自动请求，也不轮询。
+    expect(calls.map(call => `${call.method} ${call.path}`)).toEqual(['GET /api/manage/ups']);
+
+    const checksPanel = page.getByRole('region', { name: '目标检查与归档状态' });
+    const readChecks = checksPanel.getByRole('button', { name: '读取检查状态' });
+    await readChecks.focus();
+    await expect(readChecks).toBeFocused();
+    expect(await readChecks.evaluate(node => getComputedStyle(node).outlineStyle)).not.toBe('none');
+
+    // 读取失败只影响该面板：固定文案、原位重试，焦点不丢。
+    await page.keyboard.press('Enter');
+    await expect(checksPanel.getByRole('alert')).toContainText('配置存储暂不可用');
+    await expect(page.locator('body')).not.toContainText('SECRET_TOKEN');
+    const retryChecks = checksPanel.getByRole('button', { name: '重试读取检查状态' });
+    await expect(retryChecks).toBeFocused();
+    await page.keyboard.press('Enter');
+    // 成功后按钮改为重新读取，未读取提示消失。
+    await expect(checksPanel.getByRole('button', { name: '重新读取检查状态' })).toBeVisible();
+    await expect(checksPanel.getByText('尚未读取检查状态。')).toHaveCount(0);
+
+    // 检查详情默认收起：状态短语先给结论，展开才铺开计数与时间。
+    const detail = checksPanel.getByText('检查无变化；不代表同步完成。');
+    await expect(detail).toBeHidden();
+    const header = checksPanel.getByRole('button', { name: /动态 900/ });
+    await header.focus();
+    await expect(header).toBeFocused();
+    await expect(header).toHaveAttribute('aria-expanded', 'false');
+    await page.keyboard.press('Enter');
+    await expect(header).toHaveAttribute('aria-expanded', 'true');
+    await expect(detail).toBeVisible();
+    await expect(checksPanel.getByText('同步：同步未全部完成，将在固定节拍重试。')).toBeVisible();
+    await expect(checksPanel.getByText('动态图：图片上传失败；保留已有归档，将在固定节拍重试。')).toBeVisible();
+
+    const discoveryPanel = page.getByRole('region', { name: '近期发现与当前窗口' });
+    await discoveryPanel.getByRole('button', { name: '读取发现状态' }).click();
+    await expect(discoveryPanel.getByText('本轮发现成功；不代表归档成功。')).toBeVisible();
+    await expect(discoveryPanel.getByText('读取时已保存模式：近期 N 条；N：2；监控：已启用。')).toBeVisible();
+    await expect(discoveryPanel.getByRole('list', { name: '当前启用近期目标' })).toContainText('900707');
+    // 远程读取不写入未提交草稿，也不产生额外写请求。
+    expect(calls.every(call => call.method === 'GET')).toBe(true);
+    expect(calls.map(call => call.path)).toEqual([
+      '/api/manage/ups',
+      '/api/manage/ups/123/checks',
+      '/api/manage/ups/123/checks',
+      '/api/manage/ups/123/discovery',
+    ]);
   });
 });

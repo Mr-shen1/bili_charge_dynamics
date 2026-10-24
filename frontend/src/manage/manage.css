@@ -28,6 +28,30 @@
   font-size: 14px;
 }
 
+/* 管理区通用的状态行、错误行与读取按钮：面板不再各自重复声明。 */
+.manage-state {
+  margin: 4px 0 0;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.manage-state-error {
+  margin: 4px 0 0;
+  color: var(--el-color-danger);
+  overflow-wrap: anywhere;
+}
+
+.manage-read {
+  margin-top: 12px;
+  min-height: var(--touch);
+}
+
+@media (max-width: 640px) {
+  .manage-read {
+    width: 100%;
+  }
+}
+
 .manage-fields {
   display: flex;
   flex-wrap: wrap;

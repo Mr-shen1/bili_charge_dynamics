@@ -1,6 +1,8 @@
 import { isValidId } from '../data/identifiers';
 import { isRecord as record } from '../data/guards';
 import { timestamp } from '../data/timestamp';
+import { parseCheck, type TargetCheck } from '../data/checkStatus';
+import { parseDiscovery, type DiscoveryState } from './discoveryState';
 
 /**
  * 管理接口的生产 Adapter：只把 HTTP 传输替换成测试替身，JSON 校验与固定安全文案
@@ -155,6 +157,25 @@ export function createManagementApi(transport: ManagementTransport = (url, init)
     }
   }
 
+  /** 只读 GET：统一处理取消优先、JSON 解析与固定错误映射，响应状态码交给调用方判。 */
+  async function getJson(
+    url: string, signal: AbortSignal,
+  ): Promise<ManagementResult<{ readonly status: number; readonly body: unknown }>> {
+    try {
+      if (signal.aborted) return { status: 'cancelled' };
+      const result = await request(url, { method: 'GET', signal });
+      if (signal.aborted) return { status: 'cancelled' };
+      if (result.status !== 'success') return result;
+      const response = result.data;
+      const body: unknown = await response.json();
+      if (signal.aborted) return { status: 'cancelled' };
+      if (!response.ok) return httpError(body, response.status);
+      return { status: 'success', data: { status: response.status, body } };
+    } catch {
+      return signal.aborted ? { status: 'cancelled' } : invalidResponse;
+    }
+  }
+
   /** 目标请求：GET 不带 ID，POST 提交 `{id}`，DELETE 只解除关联。 */
   async function targetRequest(
     uid: string, signal: AbortSignal, method: 'GET' | 'POST' | 'DELETE', id?: string,
@@ -242,6 +263,34 @@ export function createManagementApi(transport: ManagementTransport = (url, init)
     ): Promise<ManagementResult<void>> {
       if (!isValidUid(uid)) return { status: 'error', message: invalidUidMessage };
       return deleteRequest(`/api/manage/ups/${uid}/monitor`, signal);
+    },
+    /** 近期发现与当前窗口：只读已保存状态，不启动发现、归档或轮询。 */
+    async readDiscovery(
+      { uid, signal }: { readonly uid: string; readonly signal: AbortSignal },
+    ): Promise<ManagementResult<DiscoveryState>> {
+      if (!isValidUid(uid)) return { status: 'error', message: invalidUidMessage };
+      const result = await getJson(`/api/manage/ups/${uid}/discovery`, signal);
+      if (result.status !== 'success') return result;
+      const discovery = parseDiscovery(result.data.body);
+      return result.data.status === 200 && discovery?.uid === uid
+        ? { status: 'success', data: discovery } : invalidResponse;
+    },
+    /** 目标检查与归档状态：只读持久状态，不触发检查或同步。 */
+    async listChecks(
+      { uid, signal }: { readonly uid: string; readonly signal: AbortSignal },
+    ): Promise<ManagementResult<readonly TargetCheck[]>> {
+      if (!isValidUid(uid)) return { status: 'error', message: invalidUidMessage };
+      const result = await getJson(`/api/manage/ups/${uid}/checks`, signal);
+      if (result.status !== 'success') return result;
+      const body = result.data.body;
+      if (result.data.status !== 200 || !record(body) || !Array.isArray(body.checks)) return invalidResponse;
+      const checks: TargetCheck[] = [];
+      for (const raw of body.checks) {
+        const check = parseCheck(raw, timestamp);
+        if (!check || checks.some(existing => existing.id === check.id)) return invalidResponse;
+        checks.push(check);
+      }
+      return { status: 'success', data: checks };
     },
     /** 指定模式下的关联目标：只含字符串 ID，归属校验由服务端完成。 */
     async listTargets(

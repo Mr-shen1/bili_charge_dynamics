@@ -4,7 +4,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const names = ['contracts.ts', 'identifiers.ts', 'guards.ts', 'timestamp.ts', 'checkStatus.ts', 'archiveReader.ts'];
+const names = ['contracts.ts', 'identifiers.ts', 'guards.ts', 'timestamp.ts', 'checkStatus.ts', 'commentProgress.ts',
+  'commentSyncErrors.ts', 'archiveReader.ts'];
 const root = process.cwd();
 const copies = names.map(name => ({
   name,
