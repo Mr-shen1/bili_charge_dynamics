@@ -14,7 +14,7 @@ Use the default labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-
 
 ### Frontend commands
 
-前端构建、单文件 e2e、e2e 项目声明约定见 `frontend/README.md`「命令」段；一趟绿灯是 `pnpm check`，交付前是 `pnpm check:dist`。
+前端（`frontend/`，唯一前端应用）的构建、单文件 e2e、e2e 项目声明约定见 `frontend/README.md`「命令」段；在该目录下跑，一趟绿灯是 `pnpm check`，交付前是 `pnpm check:dist`。
 
 ### Domain docs
 

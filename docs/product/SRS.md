@@ -2,10 +2,10 @@
 
 - 状态：本文记录真实采集、归档、多 UP 与 Vue 重构的需求。用户已确认既有文档/测试与当前代码逻辑冲突时一律以代码为迁移基线；本次源码基线为 `10319d855c55744b603de1fe65433a5b9f73926d`，已核实差异见[基线记录](../../.scratch/frontend-vue-migration/baseline-differences.md)。明确授权的 Vue、组件库、视觉及图片调整是目标变化，其余行为不按旧文字恢复或删改。本文尚未全量核对的历史描述不能用于改变现有后端/API，也不表示代码已运行验收。
 - 同步文档：[FSR](FSR.md) 已更新本期可行性、技术取舍与风险，[HLD](../design/HLD.md) 已同步本期总体设计；二者与本文各司其职，不表示实现或验收完成。
-- 前端重构目标已确认：Vue 3 + TypeScript + Vite + Vue Router + Element Plus，完整重构并验证后统一上线；当前代码仍为 React。详见[前端重构方案](../design/frontend-migration.md)。本次修订技术栈、视觉基准与图片展示/预览例外，不改变后端 API、采集归档和其他业务规则；旧版验收不继承为新版通过。
+- 前端重构目标已确认：Vue 3 + TypeScript + Vite + Vue Router + Element Plus，完整重构并验证后统一上线；票据 12 已交付仅含 Vue 的候选产物并删除 React 栈，视觉/真机/交付与统一上线仍待票据 13–17。详见[前端重构方案](../design/frontend-migration.md)与[候选证据](../../.scratch/frontend-vue-migration/evidence/12-vue-only-release-candidate.md)。本次修订技术栈、视觉基准与图片展示/预览例外，不改变后端 API、采集归档和其他业务规则；旧版验收不继承为新版通过。
 - 历史验收基线：[09 验收记录](../../.scratch/dynamics-viewer/acceptance-09.md) 仅记录旧版单 UP、模拟数据前端，不能覆盖本期新增及变更。
 - 本期交付目标：Python + FastAPI + SQLite 真实服务、一个 API 进程与一个独立采集进程、OSS 图片归档，以及保留原阅读能力的多 UP 浏览与管理页面。
-- 当前阶段仅整理文档与 [Vue 实施规格](../../.scratch/frontend-vue-migration/spec.md)，未拆 tickets、修改代码或配置/部署资源。已有后端/React 实现与各阶段证据保留原范围，Vue 目标仍待实施与验收。
+- [Vue 实施规格](../../.scratch/frontend-vue-migration/spec.md) 已拆票执行：票据 01–12 已交付（阅读、图片、管理行为与仅 Vue 候选产物），票据 13–17 的协议回归、视觉签收、真机、静态交付与上线汇总尚未完成。已有后端实现与各阶段历史证据保留原范围，不因前端迁移重写。
 
 ## 1. 文档职责与需求边界
 
@@ -353,7 +353,7 @@ FSR 负责本期可行性、技术取舍、资源与证据限制；本文负责�
 
 ### NFR-05 技术与构建交付
 
-- 前端目标为 Vue 3 + TypeScript + Vite + Vue Router + Element Plus；通用 UI 优先采用该单一组件库，复用合适的纯 TypeScript 契约与逻辑。默认使用 composables 与必要的 provide/inject，主题变量配合局部 CSS，不默认引入 Pinia、请求缓存框架或 Tailwind。当前 React 实现须在完整重构并验证后统一切换，不长期混用两套框架；Node.js 仅使用 nvm 管理，依赖和脚本仅使用 pnpm。
+- 前端目标为 Vue 3 + TypeScript + Vite + Vue Router + Element Plus；通用 UI 优先采用该单一组件库，复用合适的纯 TypeScript 契约与逻辑。默认使用 composables 与必要的 provide/inject，主题变量配合局部 CSS，不默认引入 Pinia、请求缓存框架或 Tailwind。完整重构已在票据 12 收敛到单一 Vue 实现并在验证后统一切换，不长期混用两套框架；Node.js 仅使用 nvm 管理，依赖和脚本仅使用 pnpm。
 - 后端采用 Python + FastAPI + SQLite；Python 环境与依赖仅使用 uv。运行架构为一个 API 进程与一个独立采集进程，不引入 Redis、Celery 或多 API worker；优先评估二者与 SQLite 同机运行，不把必须在 2 核 2GB 同机稳定承载作为已确认能力或交付承诺。
 - 前端构建在本地或 CI 完成，由 Nginx 托管静态产物；不需要常驻 Node.js 应用或 SSR。采集进程承担上游检查与同步，API 进程提供归档读取与管理，不能把耗时采集直接绑定为浏览器请求生命周期。
 - 优先以阿里云 2 核 2GB 为运行目标，不承诺并发、目标数量、响应时间或内存容量；当前未实测该环境的全链路，也未持续验证 15 秒调度。不得用样本规模推导“已可稳定承载”。

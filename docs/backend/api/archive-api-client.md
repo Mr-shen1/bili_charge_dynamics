@@ -1,6 +1,6 @@
 # 前端归档读取与指定目标（02 / 13 / 16 / 17 / 18 / 20 / 22 / 26）
 
-> Vue 前端重构已确认但尚未实施，见[重构方案](../../design/frontend-migration.md)。HTTP/DTO、读取/管理语义、生产/mock/fault 装配边界保持不变；图片展示与预览细节以修订后的 SRS 为准。下列分阶段实现、React/RTL/StrictMode 测试及旧网格/预览记录保留其历史范围，不改写为 Vue 实现或新版通过证据；新增验证须单独记录。
+> Vue 前端重构已由票据 12 形成仅含 Vue 的候选产物，见[重构方案](../../design/frontend-migration.md)。HTTP/DTO、读取/管理语义、生产/mock/fault 装配边界保持不变；图片展示与预览细节以修订后的 SRS 为准。下列分阶段实现、React/RTL/StrictMode 测试及旧网格/预览记录保留其历史范围，不改写为 Vue 实现或新版通过证据；新增验证须单独记录。
 
 下列 02 记录保持原交付边界；13、16、17、18、20、22 增量契约及证据独立列在文末。生产根评论能力以 16 增量为准，02 的全局讨论未归档描述仅为历史交付记录。前端 T1 不能替代后端 SQLite、上游协议、部署或真机验收。
 
@@ -43,9 +43,9 @@
 
 ## 装配与边界
 
-- 默认开发、构建和测试的 `#assembly` 指向 `src/data/productionAssembly.ts`，使用真实 `createArchiveReader()`。
-- `src/data/assembly.ts` 保留独立 mock；显式 `pnpm dev --mode mock` 或 `pnpm build:mock` 才装配它。
-- `pnpm dev:fault` 的开发故障装配保持不变。普通生产构建不包含故障入口或 mock 动态数据。
+- 默认开发、构建和测试的装配指向 `frontend/src/app/reader.ts` 的生产 Archive Adapter，使用真实 `createArchiveReader()`。
+- `frontend/src/mock/` 保留独立 mock；显式 `pnpm dev:mock` 或 `pnpm build:mock` 才装配它。
+- `pnpm dev:fault` 的开发故障装配保持不变。普通生产构建不包含故障入口或 mock 动态数据（`pnpm check:isolation` 断言）。
 - 旧 mock 浏览器回归必须明确使用 mock 模式，不允许为它把默认生产装配改回 mock。本次集成新增独立的生产归档 Playwright 配置，并更新管理回归的 API 进程启动工具。
 - 页面仅读取本地归档，不调用 `/api/sync/initial`，没有新增手动刷新/初始化按钮，也不向上游读取正文、评论或业务图片。
 - 本票不做多 UP 页面改版；列表标题使用保守身份“归档动态”，卡片仍显示每条档案的真实作者，不展示 mock 作者。

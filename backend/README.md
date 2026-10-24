@@ -288,7 +288,7 @@ uv run pytest backend/tests -q
 BILI_DATABASE_PATH=/tmp/bili-management-e2e.sqlite uv run uvicorn backend.tests.live_app:create_app --factory --host 127.0.0.1 --port 8765
 ```
 
-要求显式环境数据库路径，不预填身份。固定虚构 UID 为 `900719925474099312345`（虚构星海）、`202`（虚构晨光）；头像 `example.invalid`。每次新验收使用新临时路径；同一路径验证重启持久化。归档页面穿透装配由主线程维护在 `tests/e2e-archive/`；本票新增该测试入口及 fixtures，与管理 E2E 装配分离。
+要求显式环境数据库路径，不预填身份。固定虚构 UID 为 `900719925474099312345`（虚构星海）、`202`（虚构晨光）；头像 `example.invalid`。每次新验收使用新临时路径；同一路径验证重启持久化。归档页面穿透装配（生产 Store/Collector + 虚构上游 HTML/JSON）在迁移前的 React e2e 中维护于 `tests/e2e-archive/`，该目录已随票据 12 删除；需要归档真实 API 回归时按 `backend.tests.live_app` 的模式另建，不复用已删路径。
 
 ## 限制
 

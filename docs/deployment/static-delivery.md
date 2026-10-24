@@ -1,6 +1,6 @@
 # 静态交付与 Nginx 运行说明
 
-> [Vue 3 + Element Plus 重构方案](../design/frontend-migration.md) 已确认，尚未实施。目标仍是本地/CI 构建 `dist/`、Nginx 静态托管及现有 API 代理，完整验证后统一上线；本页现有命令与证据不表示 Vue 构建已跑通。实施若改变依赖、命令或资源拆包，须更新并重验对应步骤。前端切换不迁移/回退数据库；旧哈希资源保留及原子发布要求不变。
+> [Vue 3 + Element Plus 重构方案](../design/frontend-migration.md) 已确认，票据 12 已交付仅含 Vue 的候选产物：构建在 `frontend/`、产物为 `frontend/dist/`，Nginx 静态托管与 API 代理规则不变。本页命令已按候选产物更新，但**尚未在真实目标环境重新执行**；票据 16 负责静态交付、资源更新与前端回退验收，票据 13–15 负责协议、视觉与真机。前端切换不迁移/回退数据库；旧哈希资源保留及原子发布要求不变。
 
 ## 当前范围：后端集成 #31
 
@@ -16,12 +16,11 @@ nvm install
 nvm use
 corepack enable
 corepack prepare pnpm@10.34.6 --activate
-pnpm install --frozen-lockfile
 uv sync --locked
-pnpm build
+( cd frontend && pnpm install --frozen-lockfile && pnpm build )
 ```
 
-Node.js `24.21.0`（`.nvmrc`）、pnpm `10.34.6`（`package.json`）、Python `3.12`（`.python-version`）；直接依赖和传递依赖分别由清单及 `pnpm-lock.yaml` / `uv.lock` 固定。Python 仅固定到 3.12 系列，记录实跑补丁版本及 uv/Nginx 版本，不声称跨补丁环境字节一致。纯生产 Python 环境可用 `uv sync --locked --no-dev`；测试前须重新 `uv sync --locked` 安装 pytest。前端在本地/CI 构建后仅交付 `dist/`，不用常驻 Node 或 SSR。生产 `pnpm build` 使用归档 Adapter；`build:mock` / `dev --mode mock` 与 `dev:fault` 仅用于独立回归，不得发布。
+Node.js `24.21.0`（`.nvmrc`）、pnpm `10.34.6`（`frontend/package.json`）、Python `3.12`（`.python-version`）；直接依赖和传递依赖分别由清单及 `frontend/pnpm-lock.yaml` / `uv.lock` 固定。Python 仅固定到 3.12 系列，记录实跑补丁版本及 uv/Nginx 版本，不声称跨补丁环境字节一致。纯生产 Python 环境可用 `uv sync --locked --no-dev`；测试前须重新 `uv sync --locked` 安装 pytest。前端在本地/CI 构建后仅交付 `frontend/dist/`，不用常驻 Node 或 SSR。生产 `pnpm build` 使用归档 Adapter；`build:mock` / `dev:mock` 与 `dev:fault` 仅用于独立回归，输出到 `frontend/dist-mock/`，不得发布。
 
 ### 单 API、单 collector：启动、停止、升级
 
@@ -94,20 +93,24 @@ done
 ```bash
 # 仓库根目录；已完成上面的 nvm/pnpm frozen 安装
 uv sync --locked
-pnpm exec playwright install chromium
+( cd frontend && pnpm exec playwright install chromium )
 uv run --no-sync pytest backend/tests/test_deployment_processes.py -q
+cd frontend
 NGINX_BIN=/absolute/path/to/nginx \
 NGINX_MIME_TYPES=/absolute/path/to/mime.types \
 pnpm test:delivery
+cd ..
 ```
 
-需要 uv 的 dev 依赖、可执行 Nginx/mime.types、Chromium 及其系统库，且 Nginx `127.0.0.1:4173` 空闲。脚本选择临时空闲 API 端口并仅在临时配置替换上游，不占用维护者的 8000、不修改系统服务。`scripts/verify-static-delivery.mjs` 保留历史 mock 阅读/缓存/更新与生产重建/fault 隔离，再通过 `verify-production-deployment.mjs`、`verify-production-delivery.mjs` 启动实际 API/独立 collector 共享临时 SQLite，验证生产四类页面直达/刷新、未知页、只读浏览、API 200/404/422/502、资源 404/cache、生产构建真实更新、旧哈希保留及 HTTP/UI/产物/日志的虚构秘密扫描；结束恢复生产 `dist/`。给 `test:delivery` 传 Playwright 文件只筛选历史 mock 部分，不跳过生产阶段。
+需要 uv 的 dev 依赖、可执行 Nginx/mime.types、Chromium 及其系统库，且 Nginx `127.0.0.1:4173` 空闲。脚本选择临时空闲 API 端口并仅在临时配置替换上游，不占用维护者的 8000、不修改系统服务。`frontend/scripts/verify-static-delivery.mjs` 托管显式 mock 构建（`frontend/dist-mock`）做阅读/缓存/更新与构建重现/fault 隔离，再通过 `verify-production-deployment.mjs`、`verify-production-delivery.mjs` 启动实际 API/独立 collector 共享临时 SQLite，验证生产六条路由直达/刷新、未知页、只读浏览、API 200/404/422/502、资源 404/cache、生产构建真实更新、旧哈希保留及 HTTP/UI/产物/日志的虚构秘密扫描。生产 `frontend/dist` 不再被 mock 构建覆盖；fault 构建输出到 `dist-mock`，脚本断言它不影响生产产物。给 `test:delivery` 传 Playwright 文件只筛选历史 mock 部分，不跳过生产阶段。本机未安装 Nginx，本次未执行该步。
 
 隔离 API 是 `backend.tests.deployment_fixture:create_app --factory`，必须指定 `BILI_DATABASE_PATH`；独立采集入口为 `python -m backend.tests.deployment_fixture --database PATH`，PATH 与 API 相同（均用 uv 环境）。它们复用生产实现，只替换外部来源/下载/上传，不访问真实上游/OSS；上传返回 `https://media.example.invalid/deployment.png`，浏览器仅 route 外部图片传输，不替换 API/Adapter/SQLite。`test_deployment_processes.py` 负责两进程持久化、检查/同步和重启/恢复边界。实际结果见 #31 验收记录；本文不替代执行证据，不把 fixture 公开图当真实 OSS 或真机证据。
 
 ## 历史任务 08：静态基线与复现说明
 
-> 下方“本期 / 本票”仅指历史模拟前端阶段，不表示当前后端已部署或验收。该阶段是纯静态 SPA：Vite 本地/CI 构建，Nginx 读取 `dist/`，没有 API 代理需求；当前配置已增加上述 API 隔离。任务 09 对最终历史产物的复跑见 [09 验收记录](../../.scratch/dynamics-viewer/acceptance-09.md)，不能继承为 #31 通过。历史阅读回归须显式 mock，`test:e2e:preview` 也只使用 mock 构建。
+> 下方“本期 / 本票”仅指历史模拟前端阶段，不表示当前后端已部署或验收。该阶段是纯静态 SPA：Vite 本地/CI 构建，Nginx 读取 `dist/`，没有 API 代理需求；当前配置已增加上述 API 隔离。任务 09 对最终历史产物的复跑见 [09 验收记录](../../.scratch/dynamics-viewer/acceptance-09.md)，不能继承为 #31 通过。
+>
+> **本节的命令、路径与素材属于迁移前的 React 实现**：`src/`、`public/demo-images/`、`pnpm test:e2e:preview` 等已随票据 12 删除，命令不再可直接执行，保留原文只为可追溯当时的交付证据。当前可执行命令见上文各节与 [frontend/README.md](../../frontend/README.md)。
 
 ## 1. 可复现构建
 
@@ -128,9 +131,9 @@ pnpm test:e2e:preview
 pnpm build
 ```
 
-发布目录为 `dist/`，不提交仓库；默认无 source map。当前 `pnpm build` 使用生产归档 Adapter；显式 `pnpm build:mock` 才使用虚构数据。即使 `pnpm build --mode fault` 也不会携带开发故障装配。不提供故障控制面板或公开故障 URL 参数；mock 不调用真实上游，生产读取只调用本地归档 API。读取失败与内容不存在由应用分别表达；故障回归使用 `DynamicReader` 可控 Adapter 或独立 `dev:fault`，不得发布故障服务。
+发布目录为 `frontend/dist/`，不提交仓库；默认无 source map。`pnpm build` 使用生产归档 Adapter 并输出到 `dist/`；`pnpm build:mock` 与 `pnpm build:fault` 输出到 `dist-mock/`，因此故障装配不会污染生产产物（交付脚本会断言这一点）。不提供故障控制面板或公开故障 URL 参数；mock 不调用真实上游，生产读取只调用本地归档 API。读取失败与内容不存在由应用分别表达；不得发布故障服务。
 
-`test:e2e:preview` 验证显式 mock 构建，不证明生产归档或 Nginx 的资源错误、缓存规则正确。Nginx 验证入口见第 4 节。
+`E2E_TARGET=preview pnpm test:e2e` 验证显式 mock 构建，不证明生产归档或 Nginx 的资源错误、缓存规则正确。Nginx 验证入口见第 4 节。
 
 ## 2. Nginx 配置与路径契约
 
@@ -147,13 +150,11 @@ nginx -t -c /absolute/path/to/nginx.conf
 | --- | --- | --- |
 | 入口和 SPA 页面 | `/`、`/index.html`、`/dynamics/90071992547409934` | `Cache-Control: no-cache`，使用 ETag/Last-Modified 重新验证；未变可 304 |
 | Vite 内容哈希资源 | `/assets/index-<hash>.js`、`.css` | 存在时 `public, max-age=31536000, immutable`；`/assets/` 仅放内容哈希文件 |
-| 版本化演示图片 | `/demo-images/landscape-1-thumb.v1.png`、`landscape-1-preview.v1.png` | 存在时长期 immutable；改素材内容必须改版本及 URL，不覆盖同版本 |
-| 版本化头像 | `/creator-avatar.v1.svg` | 存在时长期 immutable；新版本须同步增加配置的版本化匹配 |
-| 未版本化资源 | `/default-avatar.svg`、`/demo-images/README.md`、该素材目录其他未版本化文件 | `no-cache`，不是一律永久缓存 |
-| 明确资源命名空间中的缺失文件 | `/assets/missing.js`、`/assets/no-extension`、`/demo-images/missing.v1.png`、头像缺失路径 | HTTP 404、`no-store`，不会回退为应用入口，也不会套用成功资源的长期缓存 |
+| 未版本化应用资源 | `/default-avatar.svg`、`/images/unavailable/placeholder.svg` | `no-cache`，返回前重新验证；不是一律永久缓存 |
+| 明确资源命名空间中的缺失文件 | `/assets/missing.js`、`/assets/no-extension`、`/images/missing.svg`、头像缺失路径 | HTTP 404、`no-store`，不会回退为应用入口，也不会套用成功资源的长期缓存 |
 | 未知页面、含点号的动态 ID | `/unknown.page`、`/dynamics/id.with.dot` | 返回入口 HTML，再由前端分别显示“未找到页面”或“动态不存在” |
 
-资源靠**命名空间**分类：`/assets/`、`/demo-images/`、`/creator-avatar…`、`/default-avatar…` 明确预留给静态资源；图片版本正则也只在素材命名空间内生效。不得增加“所有带扩展名的 URL 都是资源”的全局正则，也不得用 `error_page 404 /index.html` 掩盖资源错误。添加新的 `public/` 资源目录时，须同步补明确资源规则和验证，而不是让缺失文件进入 SPA 回退。
+资源靠**命名空间**分类：`/assets/`、`/images/`、`/default-avatar…` 明确预留给静态资源。不得增加“所有带扩展名的 URL 都是资源”的全局正则，也不得用 `error_page 404 /index.html` 掩盖资源错误。添加新的 `public/` 资源目录时（Vue 应用在 `frontend/public/`），须同步补明确资源规则和验证，而不是让缺失文件进入 SPA 回退。
 
 **SPA 的前端未找到页面不是服务器 HTTP 404。** 未知页面与不存在的动态通常都获得入口 HTTP 200，再由应用区分；读取失败仍有局部错误与重试。这不要求 SSR，也不能用页面显示“未找到”作为资源 404 的证据。
 
@@ -219,10 +220,10 @@ curl -i "$origin/dynamics/90071992547409934"
 curl -i "$origin/unknown.page"
 curl -i "$origin/assets/missing.js"
 curl -i "$origin/assets/missing.css"
-curl -i "$origin/demo-images/missing.v1.png"
+curl -i "$origin/images/missing.svg"
 curl -I "$origin/"
 curl -I "$origin/default-avatar.svg"
-curl -I "$origin/demo-images/landscape-1-thumb.v1.png"
+curl -I "$origin/images/unavailable/placeholder.svg"
 # 先从入口取得实际 JS/CSS 路径，再对它们执行 curl -I；不要固定旧哈希。
 # 用上一次入口的实际 ETag 替换占位值：
 curl -i -H 'If-None-Match: "previous-entry-etag"' "$origin/"
@@ -249,7 +250,7 @@ HTTP_ACCEPTANCE_URL=http://192.168.8.20:4180/ pnpm test:http
 
 ## 5. 素材与范围边界
 
-本期 PNG/SVG 为项目内自绘素材，来源与重建见 [素材说明](../../public/demo-images/README.md)。浏览器按模型给定的 URL 请求，不依赖 B站外链、不改写图片参数。后续 OSS 由浏览器直连给定的 HTTPS URL；域名、CORS、权限、签名有效期和缓存需另行评估，本票不加应用服务器代理，不配置 OSS/CDN/云平台。
+本期 PNG/SVG 为项目内自绘素材（迁移前 React mock 使用，票据 12 已随旧栈删除，重建脚本不再保留），现由 `frontend/server/imageServer.mjs` 的夹具替代。浏览器按模型给定的 URL 请求，不依赖 B站外链、不改写图片参数。后续 OSS 由浏览器直连给定的 HTTPS URL；域名、CORS、权限、签名有效期和缓存需另行评估，本票不加应用服务器代理，不配置 OSS/CDN/云平台。
 
 2 核 2GB 是静态站点的目标配置，**不是容量保证**；未采购、部署或压测真实服务器。后端、数据库、爬虫和总体资源占用仍需独立评估。TLS、生产权限/安全加固、发布自动化属于后续工作；Linux Chrome / iPhone Safari 的实际兼容检查及收口见任务 09，本票不声称这些已经验证。其他设备/浏览器不在当前本期目标内。
 

@@ -27,6 +27,7 @@ export default defineConfig({
     {
       // 测试自有 API 进程：固定虚构资料 + 本次运行独占的 SQLite 文件。
       command: `uv run --no-sync python -m uvicorn backend.tests.live_app:create_app --factory --host 127.0.0.1 --port ${apiPort}`,
+      // 后端夹具与 uv 环境在仓库根，前端配置位于 frontend/。
       cwd: '..',
       env: { BILI_DATABASE_PATH: database },
       url: `http://127.0.0.1:${apiPort}/api/manage/ups`,

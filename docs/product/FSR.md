@@ -1,11 +1,11 @@
 # UP 主动态与评论查看页面：可行性分析报告（FSR）
 
-- 状态：本文保留后端可行性研究脉络；真实后端、多 UP 与 React 页面现已有实现和分阶段证据，具体范围见[文档索引](../README.md)。新增 Vue 重构尚未实施或验收，不把旧样本和文档更新当作新版通过。
+- 状态：本文保留后端可行性研究脉络；真实后端与多 UP 现已有实现和分阶段证据，具体范围见[文档索引](../README.md)。Vue 重构已由票据 12 形成仅含 Vue 的候选产物，但视觉/真机/交付验收尚未完成，不把旧样本和文档更新当作新版通过。
 - 已有基线：模拟数据驱动的阅读前端已完成上一阶段验收，见 [09 验收记录](../../.scratch/dynamics-viewer/acceptance-09.md)。该记录不证明新增后端或改版页面已经通过。
 - 当前前端目标：保留既有多 UP 管理、真实归档/OSS 读取及代码行为，采用 Vue + Element Plus 重构；不重新建设已有后端能力。
 - 部署目标：优先复用阿里云 2 核 2GB；这不是必须同机或容量已验证的承诺。新增付费资源另行确认。
-- 文档边界：本轮同步正式文档与 [Vue 实施规格](../../.scratch/frontend-vue-migration/spec.md)，不拆 tickets、不改实现代码。行为记录见 [SRS](SRS.md)，架构见 [HLD](../design/HLD.md)，既有行为冲突按下述代码基线优先级处理。
-- 前端重构补充：已确认迁移 Vue 3 + Element Plus，目标是减少自维护 UI 和统一交互；当前实现仍为 React，尚未实施或验证新版。完整方案及门槛见[前端重构方案](../design/frontend-migration.md)，后端/API 及本报告的采集可行性边界不变。
+- 文档边界：正式文档与 [Vue 实施规格](../../.scratch/frontend-vue-migration/spec.md) 各司其职，实施票据与执行证据见 `.scratch/frontend-vue-migration/`。行为记录见 [SRS](SRS.md)，架构见 [HLD](../design/HLD.md)，既有行为冲突按下述代码基线优先级处理。
+- 前端重构补充：已确认迁移 Vue 3 + Element Plus，目标是减少自维护 UI 和统一交互；React 栈已随票据 12 删除，`frontend/` 是唯一候选实现，尚未完成统一验收。完整方案及门槛见[前端重构方案](../design/frontend-migration.md)，后端/API 及本报告的采集可行性边界不变。
 - 基线优先级：用户已确认既有文档/测试与当前代码逻辑的差异一律以代码为准；本次固定源码基线为 `10319d855c55744b603de1fe65433a5b9f73926d`。已明确授权的 Vue、组件库、视觉与图片调整是目标变化；除此之外不借旧文档回退现有功能。已核对差异见[基线记录](../../.scratch/frontend-vue-migration/baseline-differences.md)，未重验的历史可行性描述不构成当前完成声明。
 
 ## 1. 结论

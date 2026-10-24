@@ -1,7 +1,9 @@
-# Vue 前端（迁移进行中）
+# Vue 前端
 
-目标栈：Vue 3 + TypeScript + Vite + Vue Router + Element Plus。阶段 2 应用基础已就位；阶段 3 按票据 08–11 迁移剩余业务页面，
-票据 12/17 才切换统一发布。**已交付范围以本文件「已交付」一节为单一来源**，其他文档只保留指针与证据链接。
+技术栈：Vue 3 + TypeScript + Vite + Vue Router + Element Plus，继续静态 SPA 交付。票据 12 已把完整阅读与管理流程收敛到本应用，
+并删除废弃 React 栈（含 React Router、RTL 适配、旧组件、旧夹具素材与专用构建配置）；仓库里只剩这一套前端实现。
+**已交付范围以本文件「已交付」一节为单一来源**，其他文档只保留指针与证据链接。
+候选版本仍需票据 13–17 的协议回归、视觉签收、真机验收、静态交付与上线汇总，构建通过不等于这些验收已通过。
 
 ## 已交付
 
@@ -17,6 +19,7 @@
 | 09 | 管理列表与单 UP 启停：仅 UID 新增（字符串精度与防重）、身份/监控状态卡片、启停失败原位重试、401 与错误脱敏、访问级迟到回调隔离 |
 | 10 | 监控模式与指定目标：近期 N／指定动态互斥草稿与保存、删除配置后可重新添加、目标读取/归属校验/移除反馈、按 UP/模式隔离草稿与反馈、停用/移除目标/删除配置后归档仍可读 |
 | 11 | 检查/发现/窗口/同步状态：手动读取已保存记录、观察态与执行态及分项时间分开呈现、分项错误与部分同步、发现失败保留旧窗口、面板读取不覆盖草稿、已保存配置改变后重建面板 |
+| 12 | 仅含 Vue 的候选产物：六条路由与完整阅读/管理流程均由 Vue 承载、删除 React 栈与重复实现、交付工具去掉框架耦合、默认真实 API 与 mock/fault 隔离保持 |
 
 对应规格与票据：[实施规格](../.scratch/frontend-vue-migration/spec.md) · [票据目录](../.scratch/frontend-vue-migration/issues/) ·
 [图片预览验证证据](../.scratch/frontend-vue-migration/evidence/01-native-image-preview.md) ·
@@ -30,19 +33,19 @@
 [09 管理列表与启停证据](../.scratch/frontend-vue-migration/evidence/09-up-management-basics.md) ·
 [10 监控模式与指定目标证据](../.scratch/frontend-vue-migration/evidence/10-monitoring-modes-targets.md) ·
 [11 检查与发现状态证据](../.scratch/frontend-vue-migration/evidence/11-monitoring-status-reading.md)。
-仓库根目录的 React 应用仍是当前可运行实现，两者在迁移完成前并存，生产上不并行发布。
+仓库根目录不再有第二套前端入口：`frontend/` 是唯一前端应用，`dist/`、`dist-mock/` 都相对本目录。
 
 ## 命令
 
-Node 用 nvm（`.nvmrc` 为 24.21.0），依赖与脚本只用 pnpm。
+Node 用 nvm（仓库根 `.nvmrc` 为 24.21.0，在本目录 `nvm use` 会向上读取），依赖与脚本只用 pnpm。
 
 ```bash
 pnpm install
 pnpm dev                 # 生产装配（默认真实 API，/api 代理到 127.0.0.1:8000）
 pnpm dev:mock            # mock 装配：额外注册 /__preview-fixtures 与 /__preview-other
 pnpm dev:fault           # 开发故障装配（与 mock 同样注册自检路由）
-pnpm check               # 一趟绿灯：typecheck + 单测 + e2e 项目覆盖守卫（约 15s，不含构建）
-pnpm check:dist          # 交付前：两次构建 + 产物隔离 + 数据层副本
+pnpm check               # 一趟绿灯：typecheck + 单测 + e2e 项目覆盖守卫（本机约 25–30s，不含构建）
+pnpm check:dist          # 交付前：两次构建 + 产物隔离
 pnpm typecheck           # vue-tsc，覆盖 .vue 模板与 TS
 pnpm test                # Vitest：历史元数据、装配选择、归档 Adapter/图片组、列表与详情/恢复/图片页面行为
 pnpm test:e2e            # Playwright（mock 预览/壳/详情恢复 + 生产装配列表 + 图片夹具，自动起 4318/4319/4320）
@@ -50,10 +53,13 @@ E2E_TARGET=preview pnpm test:e2e   # 同一批用例跑 mock 装配的构建产�
 pnpm test:e2e:production # 生产装配（六路由/404/无自检入口）与 fault 装配冒烟
 pnpm test:e2e:manage    # 管理页 + 实际 API（backend/tests/live_app 虚构上游）+ 本次运行独占 SQLite
                        # 只用本机回环地址；如设置了 HTTP(S)_PROXY，需用 NO_PROXY=127.0.0.1,localhost 或清空代理变量
+pnpm test:nginx-parity   # 只比对 deploy/nginx*.conf 的 location/server 指令一致性，无需 nginx 二进制
+pnpm test:delivery      # 临时真实 Nginx 交付演练（生产/mock/fault 构建、缓存/404、发布切换、实际 API）需
+                       # NGINX_BIN、NGINX_MIME_TYPES、uv 环境与 Chromium；本机未安装 nginx 时无法执行
+pnpm test:http          # 对已上线的局域网 mock 产物验证真实非 localhost HTTP：HTTP_ACCEPTANCE_URL=... 提供地址
 pnpm build               # 生产构建 → dist/（不含 mock 页面与夹具）
 pnpm build:mock          # 自检构建 → dist-mock/（回归与真机自检用）
 pnpm check:isolation     # 断言 dist 无 mock 入口/夹具/归档数据、dist-mock 有
-pnpm check:data-parity   # 断言 frontend/src/data 与根 src/data 临时副本逐字节一致
 pnpm images              # 单独起图片夹具服务器
 pnpm serve:lan           # 按局域网暴露 dist-mock（真机自检用）
 ```
@@ -67,8 +73,10 @@ pnpm serve:lan           # 按局域网暴露 dist-mock（真机自检用）
 pnpm playwright test --project=desktop-chromium-archive tests/e2e/replies.spec.ts
 ```
 
-每个 `tests/e2e/*.spec.ts` 首行必须声明 `// @projects <逗号分隔的 project 名>`；`pnpm check:e2e-projects`
-用 Playwright 自己的 `--list` 结果对照声明，新增 spec 忘记改 `testMatch`/`testIgnore` 会直接失败并打印实测矩阵。
+每个 `tests/e2e/*.spec.ts` 首行必须声明 `// @projects <逗号分隔的 project 名>`；只在静态交付环境跑的
+`static-delivery.spec.ts` 用 `// @projects nginx: desktop-chromium, mobile-chromium`，由
+`E2E_TARGET=nginx` 的 `--list` 结果核对。`pnpm check:e2e-projects` 用 Playwright 自己的 `--list` 结果
+对照声明，新增 spec 忘记改 `testMatch`/`testIgnore` 会直接失败并打印实测矩阵。
 用例失败时先看 `test-results/<用例目录>/error-context.md` 的页面快照与 locator 日志，再决定是否开 trace。
 
 ## 结构
@@ -81,7 +89,7 @@ pnpm playwright test --project=desktop-chromium-archive tests/e2e/replies.spec.t
 | `src/app/historyState.ts` | 应用自有的轻量历史元数据：访问/预览两个命名空间一起写入，不改 Vue Router 自有字段 |
 | `src/app/snapshots.ts` / `readingPosition.ts` / `useVisitPosition.ts` | 列表/详情（含一级评论排序、cursor 批次与展开，以及按根评论保存的回复预览/展开/页码/文字）快照类型、稳定锚点定位与访问级位置保存（两个布局帧内完成，用户操作优先） |
 | `src/app/useCompactViewport.ts` | 窄屏判定（640px，无法判定按宽屏）：图片预览手势与宽屏内联回复/窄屏回复入口的分支 |
-| `src/data/` | 与框架无关的读取契约：生产 Archive Adapter、ID/时间/检查状态守卫，以及评论进度判定与评论错误文案（迁移期从根 `src/data` 逐字节复用，由 `check:data-parity` 守卫） |
+| `src/data/` | 与框架无关的读取契约：生产 Archive Adapter、ID/时间/检查状态守卫，以及评论进度判定与评论错误文案（唯一的实现，不再有副本） |
 | `src/dynamics/` | 归档读取行为：scope 导航条、cursor/page 读取、卡片/详情、`CommentSection`/`CommentList`/`CommentItem` 与 `useCommentsRead`、`ReplySection`/`ReplyPager` 与 `useReplyPreview`/`useReplyPage`、窄屏 `ReplyPreview` 与 `useThreadAuthor`、折叠/状态提示与展示格式化 |
 | `src/app/assembly.ts` | 装配隔离：`production` / `mock` / `fault`；自检路由只在后两者注册 |
 | `src/app/reader.ts` | 读取装配：生产用真实 API Adapter；mock/fault 用受控归档读取，普通构建摇掉 |
@@ -95,10 +103,11 @@ pnpm playwright test --project=desktop-chromium-archive tests/e2e/replies.spec.t
 | `public/images/unavailable/` | 应用自有的异常图片占位，随生产构建发布；不是来源业务图 |
 | `server/imageServer.mjs` | 图片夹具服务器：缩略/预览不同地址、坏图、无效地址、可重试失败、请求记录 |
 | `scripts/check-isolation.mjs` | 构建产物隔离检查（生产无 mock/fault/归档数据，自检构建有） |
-| `scripts/check-data-parity.mjs` | 迁移期数据层副本守卫：`frontend/src/data` 与根 `src/data` 必须一致 |
+| `scripts/check-e2e-projects.mjs` | e2e 项目覆盖守卫：各 spec 的 `@projects` 声明与 Playwright 实测矩阵一致（含 nginx 交付矩阵） |
+| `scripts/verify-static-delivery.mjs` 等 | 交付工具：临时 Nginx 静态交付演练、生产 API + collector 验收、入口原子更新、nginx 配置一致性、LAN HTTP 历史恢复（仓库根的 `deploy/`、`backend/` 由脚本向上定位） |
 | `tests/unit` | 历史元数据、装配选择、归档 Adapter（列表、一级评论含 UP 摘要、评论图片与回复）/图片组契约、管理 Adapter（映射、错误白名单、401、取消）契约、检查/发现状态 DTO 守卫与自相矛盾响应拒绝、回复分页与目标文案、列表/详情/一级评论（含评论图片）/窄屏入口/楼中楼/回复/图片预览/管理列表、单 UP 启停与模式/目标/检查与发现状态页面行为 |
 | `tests/fixtures` / `tests/support` | 生产 DTO 夹具、可注入读取与管理接口替身、预览探针、窄屏视口桩与 jsdom 排版/滚动替身 |
-| `tests/e2e` | 骨架冒烟/预览/详情恢复/动态图片/评论图片（mock 装配）+ 列表、一级评论（含根评论 `media` 映射）、管理列表/启停/模式与目标、宽屏回复、窄屏楼中楼与图片读取（生产装配，HTTP 传输按用例替换） |
+| `tests/e2e` | 骨架冒烟/预览/详情恢复/动态图片/评论图片（mock 装配）+ 列表、一级评论（含根评论 `media` 映射）、管理列表/启停/模式与目标、宽屏回复、窄屏楼中楼与图片读取（生产装配，HTTP 传输按用例替换）+ `static-delivery`（真实 Nginx 缓存/404/深链接，`E2E_TARGET=nginx` 单独跑） |
 | `tests/e2e-manage` | 管理页 + 实际 API（`backend/tests/live_app` 虚构上游，含动态页/detail/空根评论/独立评论计数/近期发现页 + **仅测试用**的 `POST /api/test/collect`、`/api/test/source-failure` 采集驱动端点）+ 本次运行独占 SQLite；覆盖模式保存、目标归属校验与停用/移除目标/删配置后的归档保留、检查无变化、根评论失败的分项失败与整轮成功、发现失败保留旧窗口、读取不触发采集 |
 | `tests/e2e-production` | 生产装配六路由/404/无自检入口 + fault 装配冒烟 |
 | `playwright.manage.config.ts` | 隔离集成入口：自起 API 与 dev server，数据库在系统临时目录，不触发真实上游或 OSS |
@@ -113,13 +122,17 @@ pnpm playwright test --project=desktop-chromium-archive tests/e2e/replies.spec.t
   这正是 `pnpm test:e2e` 前置的隔离保证，替代人工 `grep`。
 - 生产装配的六条路由、404 与“没有自检入口”由 `pnpm test:e2e:production` 覆盖；fault 装配在同一次运行里断言 `badge=fault`。
 
-## 尚未迁移（阶段 3 剩余）
+## 验收剩余（票据 13–17）
 
-已交付范围见上文「已交付」；检查/发现/窗口与同步状态（11）已随本票迁移，剩余阶段 3 票据为 12–17（统一发布、协议回归、视觉签收、真机验收、静态交付回滚与发布就绪汇总）。窄屏（≤640px）已在详情内用该动态作者的最早回复做预览入口，
-回复正文在独立楼中楼页按每页 10 条实时读取；一级评论图片已由 08 接入，回复图片与独立楼中楼根评论图片按范围不新增。
-生产装配默认连真实 API，不携带假数据；mock/fault 装配的受控归档只在显式 mode 与自检构建中出现。
-`frontend/src/data` 是根 `src/data` 的临时副本，由 `pnpm check:data-parity` 防止漂移，
-票据 12/17 清理 React 栈时一并移除。
+票据 12 已交付仅含 Vue 的候选产物，React 栈、React Router 依赖、RTL 测试适配、旧组件/夹具素材与
+`check:data-parity` 副本守卫一并移除。阅读与管理行为本身没有新增或删减：窄屏（≤640px）仍在详情内用
+该动态作者的最早回复做预览入口，回复正文在独立楼中楼页按每页 10 条实时读取；一级评论图片由 08 接入，
+回复图片与独立楼中楼根评论图片按范围不新增；生产装配默认连真实 API，mock/fault 装配的受控归档只在显式
+mode 与自检构建中出现。
+
+仍待执行的是票据 13（真实协议与跨流程回归）、14（新版视觉签收）、15（Linux Chrome / iPhone 真机）、
+16（静态交付、资源更新与前端回退）与 17（上线就绪汇总）。本轮只证明类型检查、行为测试、构建与产物隔离，
+不代表这些验收通过。
 
 ## iPhone 真机验证
 

@@ -1,7 +1,0 @@
-:root { font-family: "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #18191c; background: #d1e8e7; --text: #18191c; --surface: #fff; --border: #e3e5e7; --muted: #9499a0; --accent: #008ac5; --author: #fb7299; }
-a { color: var(--accent); }
-button, input, select { font: inherit; }
-input, select { min-width: 0; max-width: 100%; }
-* { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; }
-button { touch-action: manipulation; }

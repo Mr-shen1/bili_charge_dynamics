@@ -19,5 +19,7 @@ export default defineConfig({
   // mock/fault 只由显式 mode 启用；普通 build 不含自检路由与夹具。
   server: { proxy },
   preview: { proxy },
-  test: { environment: 'jsdom', include: ['tests/unit/**/*.test.ts'] },
+  // 导航/恢复类用例串起多次路由切换与布局帧，在并行跑满时单例耗时可能超过默认 5s；
+  // 这里只放宽单例上限，不改变任何行为断言。
+  test: { environment: 'jsdom', include: ['tests/unit/**/*.test.ts'], testTimeout: 15_000 },
 });

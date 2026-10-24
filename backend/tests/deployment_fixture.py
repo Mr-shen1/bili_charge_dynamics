@@ -29,7 +29,7 @@ from backend.bili_monitor.media import ImageDownloader
 from backend.bili_monitor.storage import Store
 
 
-FIXTURES = Path(__file__).resolve().parents[2] / "tests/e2e-archive/fixtures"
+FIXTURES = Path(__file__).parent / "fixtures" / "deployment"
 UID = "202"
 DYNAMIC_ID = "91001"
 MEDIA_SOURCE = "https://i0.hdslb.com/deployment-fixture/source.png"

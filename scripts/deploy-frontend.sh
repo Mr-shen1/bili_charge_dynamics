@@ -8,7 +8,7 @@
 #     HOST        ssh 目标，必填，例如 monitor@1.2.3.4
 #     SITE_ROOT   服务器发布根，默认 /srv/dynamics-viewer
 #     KEEP        保留的历史版本数，默认 5
-#     SKIP_BUILD  设为 1 跳过构建（复用现有 dist/）
+#     SKIP_BUILD  设为 1 跳过构建（复用现有 frontend/dist/）
 #
 # 只发布前端静态产物，不重启 Python 进程。后端升级是另一条流程，
 # 必须先停服务再切代码，见 .scratch/aliyun-deployment/runbook.md。
@@ -20,6 +20,8 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Vue 前端应用在 frontend/：构建与产物都在该目录，仓库根只保留部署脚本。
+APP_DIR="$REPO_ROOT/frontend"
 cd "$REPO_ROOT"
 
 HOST="${HOST:-}"
@@ -53,17 +55,17 @@ echo "==> 目标 $HOST:$SITE_ROOT  版本 $RELEASE"
 
 if [[ "$SKIP_BUILD" != "1" ]]; then
     echo "==> 构建生产产物"
-    pnpm build
+    ( cd "$APP_DIR" && pnpm build )
 fi
 
-if [[ ! -f dist/index.html ]]; then
-    echo "error: dist/index.html 不存在，构建可能失败" >&2
+if [[ ! -f "$APP_DIR/dist/index.html" ]]; then
+    echo "error: frontend/dist/index.html 不存在，构建可能失败" >&2
     exit 1
 fi
 
 echo "==> 上传产物"
 ssh "$HOST" "mkdir -p '$REMOTE_RELEASE'"
-rsync -az --delete dist/ "$HOST:$REMOTE_RELEASE/"
+rsync -az --delete "$APP_DIR/dist/" "$HOST:$REMOTE_RELEASE/"
 
 echo "==> 原子切换 current"
 # ln -sfn 在目标已存在时不是原子替换；先建临时链接再 mv -Tf 覆盖。

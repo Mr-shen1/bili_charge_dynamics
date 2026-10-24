@@ -1,8 +1,8 @@
 # 前端重构方案：React → Vue 3 + Element Plus
 
-- 状态：方案已由用户确认；阶段 0/1 完成，阶段 2 骨架与阶段 3 已交付的票据范围以 [`frontend/README.md` 的「已交付」](../../frontend/README.md#已交付) 为单一来源（含各票证据链接），尚未上线。
+- 状态：方案已由用户确认；阶段 0/1 完成，阶段 2 与阶段 3 的已交付票据范围以 [`frontend/README.md` 的「已交付」](../../frontend/README.md#已交付) 为单一来源（含各票证据链接）。票据 12 已把完整阅读/管理流程收敛到 `frontend/` 并删除 React 栈，形成仅含 Vue 的候选产物；视觉、真机、静态交付与统一上线仍需票据 13–17，尚未上线。
 - 目标：减少自维护 UI、统一交互、降低后续开发成本，不是逐文件翻译 React 语法。
-- 当前**发布入口**仍是 React；`frontend/` 是并行开发的 Vue 骨架（不参与当前构建与部署）。本文描述目标架构与实施门槛，不把选型、官方文档或旧版测试当作新版通过证据。
+- 仓库里只有一套前端实现：[`frontend/`](../../frontend/README.md)（Vue 3 + Element Plus）。React 入口、React Router 依赖、RTL 测试适配、旧组件与旧夹具素材已随票据 12 删除，`frontend/dist/` 是唯一候选产物。本文描述目标架构与实施门槛；构建成功不代替视觉/真机/交付验收，也不把选型、官方文档或旧版测试当作新版通过证据。
 - 需求记录：[SRS](../product/SRS.md)；可行性：[FSR](../product/FSR.md)；架构：[HLD](HLD.md)；视觉：[UI 规范](ui-reference.md)。用户进一步确认：既有文档/测试与当前代码逻辑冲突时，一律以代码为迁移基线；正式文档据此同步，而非用旧文字回退功能。明确授权的 Vue、组件库、视觉和图片调整仍是目标变化。
 - 源码基线固定为 `10319d855c55744b603de1fe65433a5b9f73926d`；核对时应用源码无未提交修改，文档工作另行保留。[差异记录](../../.scratch/frontend-vue-migration/baseline-differences.md) 区分代码事实、旧测试和本次目标；这不是全量运行验收。
 - 已拆出票据并完成票据 01（图片预览与历史验证，含真机）；阶段 2 骨架已建立。实施任务与执行证据归 `.scratch/`，不改写历史验收。
@@ -176,9 +176,9 @@ Vue 页面 / Element Plus 组件
 | 4：统一验收与清理 | 新视觉截图确认、完整自动化、四视口/实机、生产构建与 Nginx 交付检查、删除废弃栈 | 第 6.3 节完成，证据与实现版本一致 |
 | 5：统一上线 | 从已验证版本构建并发布一个完整 Vue 产物，保留旧产物用于必要回退 | 新旧入口/资源及 API 边界验证；不以发布成功替代此前验收 |
 
-开发可以在隔离分支或工作区推进；不要求维护可上线的 React/Vue 双入口，也不把两种框架长期装入同一生产应用。当前 React 的源码版本可用于对照和回退，不代表必须同时维护两套前端功能。
+开发可以在隔离分支或工作区推进；不要求维护可上线的 React/Vue 双入口，也不把两种框架长期装入同一生产应用。React 源码版本只保留在 git 历史里用于对照，工作树中不再维护第二套前端功能。
 
-进展：阶段 0（基线核对）与阶段 1（高风险验证，见[票据 01](../../.scratch/frontend-vue-migration/issues/01-native-image-preview-validation.md)与[证据](../../.scratch/frontend-vue-migration/evidence/01-native-image-preview.md)）已完成；**阶段 2 骨架已建于 [`frontend/`](../../frontend/README.md)**——Vue 入口、六条正式路由、Element Plus 主题、production/mock/fault 装配隔离、类型检查与测试基础就位；阶段 3 按票据推进，已交付范围与各票证据链接见[前端 README 的「已交付」](../../frontend/README.md#已交付)，其余业务页面依票据 08–11 迁移。根目录 React 实现仍是当前发布入口。
+进展：阶段 0（基线核对）与阶段 1（高风险验证，见[票据 01](../../.scratch/frontend-vue-migration/issues/01-native-image-preview-validation.md)与[证据](../../.scratch/frontend-vue-migration/evidence/01-native-image-preview.md)）已完成；**[`frontend/`](../../frontend/README.md) 已是唯一前端应用**——Vue 入口、六条正式路由、Element Plus 主题、production/mock/fault 装配隔离、类型检查与测试基础、全部阅读与管理页面就位，票据 12 完成 React 栈清理与交付工具改造，见[12 证据](../../.scratch/frontend-vue-migration/evidence/12-vue-only-release-candidate.md)。阶段 4/5 的验收与上线门槛（票据 13–17）尚未执行。
 
 不承诺未经任务拆分的工期。后续 spec/tickets 引用本文及 SRS 编号，按仓库 issue-tracker 约定生成；本文阶段表不是已创建或已完成的任务清单。
 
