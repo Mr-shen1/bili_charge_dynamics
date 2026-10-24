@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { ElButton } from 'element-plus';
 import type { ArchiveMetadata, CommentSort } from '../data/contracts';
-import type { CommentSnapshot } from '../app/snapshots';
+import type { CommentSnapshot, ReplySnapshot } from '../app/snapshots';
 import { useSession } from '../app/session';
 import { useCommentsRead } from './useCommentsRead';
 import CommentItem from './CommentItem.vue';
@@ -13,6 +13,8 @@ const props = defineProps<{
   authorId: string;
   sort: CommentSort;
   archive?: ArchiveMetadata;
+  /** 宽屏才渲染内联回复区；窄屏回复入口由 07 交付。 */
+  compact: boolean;
   initial: CommentSnapshot;
 }>();
 const emit = defineEmits<{ update: [CommentSnapshot]; settled: []; restart: [] }>();
@@ -21,6 +23,7 @@ const { reader } = useSession();
 const { state, load } = useCommentsRead(
   reader, { dynamicId: props.dynamicId, sort: props.sort }, props.initial.read);
 const expanded = ref<Record<string, boolean>>({ ...props.initial.expanded });
+const replies = ref<Record<string, ReplySnapshot>>({ ...props.initial.replies });
 const area = computed(() => props.sort === 'hot' ? '最热评论' : '最新评论');
 // 成功空只在归档确认本轮根评论同步完成后才是“暂无评论”，否则不冒充来源没有评论。
 const emptyUnarchived = computed(() => Boolean(props.archive
@@ -30,8 +33,14 @@ function toggle(id: string): void {
   expanded.value = { ...expanded.value, [id]: !expanded.value[id] };
 }
 
-watch([state, expanded], () => {
-  emit('update', { sort: props.sort, read: state.value, expanded: { ...expanded.value } });
+function setReply(rootId: string, next: ReplySnapshot): void {
+  replies.value = { ...replies.value, [rootId]: next };
+}
+
+watch([state, expanded, replies], () => {
+  emit('update', {
+    sort: props.sort, read: state.value, expanded: { ...expanded.value }, replies: { ...replies.value },
+  });
 }, { immediate: true, flush: 'sync' });
 // 首批有结果（成功或失败）后通知入口定位：布局已稳定，迟到任务也不会反复拉回。
 watch(() => state.value.status, status => {
@@ -62,8 +71,12 @@ watch(() => state.value.status, status => {
       :key="item.id"
       :comment="item"
       :author-id="authorId"
+      :dynamic-id="dynamicId"
+      :compact="compact"
       :expanded="expanded[item.id] ?? false"
+      :reply="replies[item.id]"
       @toggle="toggle(item.id)"
+      @reply="setReply(item.id, $event)"
     />
   </ul>
   <section

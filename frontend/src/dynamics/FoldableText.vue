@@ -39,7 +39,7 @@ watch(() => props.text, measure, { flush: 'post' });
 </script>
 
 <template>
-  <p :id="id" ref="paragraph" class="text" :class="{ collapsed: !expanded }">{{ text }}</p>
+  <p :id="id" ref="paragraph" class="text" :class="{ collapsed: !expanded }"><slot name="prefix" />{{ text }}</p>
   <el-button
     v-if="overflowing"
     type="primary"

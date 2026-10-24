@@ -1,18 +1,33 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { Comment } from '../data/contracts';
+import type { ReplySnapshot } from '../app/snapshots';
+import { useSession } from '../app/session';
 import { displayCount, displayTime } from './display';
 import FoldableText from './FoldableText.vue';
 import ReadOnlyLike from './ReadOnlyLike.vue';
+import ReplySection from './ReplySection.vue';
 import UserAvatar from './UserAvatar.vue';
 
-const props = defineProps<{ comment: Comment; authorId: string; expanded: boolean }>();
-const emit = defineEmits<{ toggle: [] }>();
+const props = defineProps<{
+  comment: Comment;
+  authorId: string;
+  dynamicId: string;
+  /** 窄屏回复入口由 07 交付；本票只在宽屏渲染内联回复区。 */
+  compact: boolean;
+  expanded: boolean;
+  reply?: ReplySnapshot;
+}>();
+const emit = defineEmits<{ toggle: []; reply: [ReplySnapshot] }>();
 
+const { reader } = useSession();
 const hasText = computed(() => Boolean(props.comment.text.trim()));
 // 纯图评论不写“暂无评论内容”：图片由独立的评论图片区域承载。
 const hasMedia = computed(() => Boolean(props.comment.images?.length || props.comment.pendingMediaCount));
 const isUpAuthor = computed(() => props.comment.author.id === props.authorId);
+// 一级评论明确为 0 条来源回复时不建回复区；未知（null）仍可读取本地归档。
+const hasReplies = computed(() => props.comment.replyCount === null || props.comment.replyCount > 0);
+const repliesUnarchived = computed(() => reader.replies === 'not-archived');
 </script>
 
 <template>
@@ -41,6 +56,17 @@ const isUpAuthor = computed(() => props.comment.author.id === props.authorId);
         <ReadOnlyLike :count="comment.likeCount" />
         <span class="comment__replies">回复 {{ displayCount(comment.replyCount) }}</span>
       </div>
+      <template v-if="hasReplies">
+        <p v-if="repliesUnarchived" class="comment__reply-notice" role="status">回复尚未归档。</p>
+        <ReplySection
+          v-else-if="!compact"
+          :dynamic-id="dynamicId"
+          :root-id="comment.id"
+          :author-id="authorId"
+          :initial="reply"
+          @update="emit('reply', $event)"
+        />
+      </template>
     </div>
   </li>
 </template>
@@ -96,6 +122,13 @@ const isUpAuthor = computed(() => props.comment.author.id === props.authorId);
   line-height: 24px;
 }
 .comment__pending {
+  margin: 4px 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+.comment__reply-notice {
   margin: 4px 0;
   color: var(--muted);
   font-size: 13px;

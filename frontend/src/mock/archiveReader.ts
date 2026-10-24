@@ -1,4 +1,5 @@
-import type { ArchiveMetadata, Comment, Dynamic, DynamicImage, DynamicReader, ReadResult, User } from '../data/contracts';
+import type { ArchiveMetadata, Comment, Dynamic, DynamicImage, DynamicReader, ReadResult, Reply, User } from '../data/contracts';
+import { replyAppendSize, replyPreviewSize } from '../data/contracts';
 
 // 仅供 mock/fault 装配：确定性 25 条动态，不访问真实 API，也不进入生产构建。
 // 数据集在函数内构造，便于 Rollup 在普通构建里整体摇掉。
@@ -55,6 +56,24 @@ export function createMockArchiveReader(): DynamicReader {
     });
   };
   const orderedComments = { hot: commentOrder('hot'), latest: commentOrder('latest') };
+
+  // 回复夹具：首个一级评论 25 条，覆盖页码 10/10/5、嵌套目标、UP 作者、
+  // 缺时间兜底与 7 行折叠边界；其余根评论返回成功空集。
+  const replyRoot = rootComments[0]!;
+  const replyLong = Array.from({ length: 7 }, (_value, line) =>
+    `第七行边界 ${line + 1}：这是一段足够长的回复正文，用于验证实际超过六行才折叠。`).join('\n');
+  const replySecondId = '90071992547401102';
+  const mockReplies: Reply[] = Array.from({ length: 25 }, (_value, index) => ({
+    id: `900719925474011${String(1 + index).padStart(2, '0')}`,
+    author: index % 4 === 0 ? first : third,
+    publishedAt: index === 4 ? null : new Date(Date.UTC(2026, 2, 1, 3, 3, 4) + index * 60_000).toISOString(),
+    text: index === 1 ? replyLong
+      : index === 2 ? '回复 @纸飞机: 来源前缀由界面剥离，不重复。'
+      : `回复内容 ${index + 1}\n第二行：换行与 emoji 🙂`,
+    likeCount: index % 6 === 0 ? null : index,
+    replyTo: index === 2 ? first : null,
+    parentId: index === 2 ? replySecondId : null,
+  }));
 
   const openingText = [
     '今天把小小的想法写在这里。🙂',
@@ -139,7 +158,6 @@ export function createMockArchiveReader(): DynamicReader {
 
   const cancelled = { status: 'cancelled' } as const;
   const failed = { status: 'error' } as const;
-
   return {
     creator: first,
     async readUps({ signal }): Promise<ReadResult<readonly User[]>> {
@@ -186,8 +204,33 @@ export function createMockArchiveReader(): DynamicReader {
         },
       };
     },
-    async readReplies({ signal }) {
-      return signal.aborted ? cancelled : failed;
+    async readReplies({ dynamicId, rootId, limit, page, cursor, signal }) {
+      if (signal.aborted) return cancelled;
+      if (!(cursor == null || typeof cursor === 'string')) return failed;
+      // 只有第一条动态的首个一级评论带回复夹具；其余根评论返回成功空集。
+      const isFirst = dynamicId === dynamics[0]!.id && rootId === replyRoot.id;
+      if (page !== undefined) {
+        if (!Number.isSafeInteger(page) || page < 1 || limit !== replyAppendSize || cursor != null) return failed;
+        if (!isFirst) return { status: 'error' };
+        const offset = (page - 1) * replyAppendSize;
+        return { status: 'success', data: {
+          items: mockReplies.slice(offset, offset + replyAppendSize), nextCursor: null,
+          count: mockReplies.length, root: replyRoot, sourceReplyCount: replyRoot.replyCount,
+          localReplyCount: mockReplies.length, repliesLastAttempt: 'success',
+        } };
+      }
+      if (limit !== (cursor == null ? replyPreviewSize : replyAppendSize)) return failed;
+      if (!isFirst) return { status: 'success', data: { items: [], nextCursor: null } };
+      const prefix = `mock-replies:${dynamicId}:${rootId}:`;
+      const offset = cursor == null ? 0 : cursor.startsWith(prefix) ? Number(cursor.slice(prefix.length)) : Number.NaN;
+      if (!Number.isSafeInteger(offset) || offset < 0 || offset > mockReplies.length) {
+        return { status: 'error', reason: 'invalid-cursor' };
+      }
+      return { status: 'success', data: {
+        items: mockReplies.slice(offset, offset + limit),
+        nextCursor: offset + limit < mockReplies.length ? `${prefix}${offset + limit}` : null,
+        sourceReplyCount: replyRoot.replyCount ?? undefined,
+      } };
     },
   };
 }

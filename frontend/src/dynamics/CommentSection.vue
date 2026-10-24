@@ -6,6 +6,7 @@ import type { CommentSnapshot } from '../app/snapshots';
 import { emptyCommentSnapshot } from '../app/snapshots';
 import { useSession } from '../app/session';
 import { onUserScroll } from '../app/readingPosition';
+import { useCompactViewport } from '../app/useCompactViewport';
 import { displayCount } from './display';
 import CommentList from './CommentList.vue';
 
@@ -21,6 +22,8 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ 'update:snapshot': [CommentSnapshot] }>();
 const { reader } = useSession();
+// 宽屏内联回复区由本票交付；窄屏改用独立楼中楼入口，由 07 交付。
+const compact = useCompactViewport();
 // 读取器声明不具备讨论能力时整块显示未归档，不发评论请求。
 const unarchived = computed(() => reader.discussions === 'not-archived');
 
@@ -115,6 +118,7 @@ function restartReading(): void {
       :author-id="authorId"
       :sort="sort"
       :archive="archive"
+      :compact="compact"
       :initial="currentSnapshot"
       @update="publish"
       @settled="settle"

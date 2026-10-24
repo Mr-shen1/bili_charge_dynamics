@@ -2,7 +2,7 @@
 import { computed, nextTick, ref, watch } from 'vue';
 import { ElButton, ElImageViewer } from 'element-plus';
 import { isRetryable, statusMessage, unavailableReason } from './imageStatus';
-import { useCompactViewport } from './useCompactViewport';
+import { useCompactViewport } from '../app/useCompactViewport';
 import { useImagePreview } from './useImagePreview';
 import type { ImageStatus } from './types';
 
