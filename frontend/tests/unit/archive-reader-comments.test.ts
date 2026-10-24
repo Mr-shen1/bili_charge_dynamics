@@ -129,3 +129,74 @@ it('非法入参不进入 HTTP', async () => {
     .toEqual({ status: 'error' });
   expect(called).toBe(0);
 });
+
+it('楼中楼 UP 摘要映射该动态作者的最早回复：保留目标与身份，直接回根不带目标', async () => {
+  const reader = createArchiveReader(async () => Response.json({
+    items: [
+      archiveComment(1, {
+        source_reply_count: 25,
+        up_reply: {
+          id: '9100',
+          author: { id: '123', nickname: '动态作者', avatar_url: null },
+          parent_id: '9099',
+          reply_to: { id: '7100', nickname: '阿蓝', avatar_url: null },
+          published_at: '2026-03-01T10:03:04+08:00',
+          text: '回复 @阿蓝: UP 的最早回复',
+          like_count: 3,
+        },
+      }),
+      archiveComment(2, {
+        source_reply_count: 4,
+        up_reply: {
+          id: '9101',
+          author: { id: '123', nickname: '动态作者', avatar_url: null },
+          parent_id: '5002',
+          reply_to: null,
+          published_at: null,
+          text: '直接回根',
+          like_count: null,
+        },
+      }),
+      // 作者未参与该楼时来源不给摘要；缺失与显式 null 都按无预览处理。
+      archiveComment(3, { source_reply_count: 2 }),
+      archiveComment(4, { source_reply_count: 2, up_reply: null }),
+    ],
+    next_cursor: null,
+  }));
+
+  const result = await reader.readComments({
+    dynamicId: '1001', sort: 'hot', signal: new AbortController().signal,
+  });
+  if (result.status !== 'success') throw new Error('读取应成功');
+  const [nested, direct, missing, explicitNull] = result.data.items;
+  expect(nested!.upReply).toEqual({
+    id: '9100',
+    author: { id: '123', nickname: '动态作者', avatarUrl: null },
+    publishedAt: '2026-03-01T10:03:04+08:00',
+    text: '回复 @阿蓝: UP 的最早回复',
+    likeCount: 3,
+    replyTo: { id: '7100', nickname: '阿蓝', avatarUrl: null },
+    parentId: '9099',
+  });
+  // 直接回根没有嵌套目标；时间与点赞缺失按未知保留。
+  expect(direct!.upReply).toMatchObject({ parentId: null, replyTo: null, publishedAt: null, likeCount: null });
+  expect(missing!.upReply).toBeUndefined();
+  expect(explicitNull!.upReply).toBeNull();
+});
+
+it('楼中楼摘要结构不完整或指向根评论自身时不展示，也不回退成伪造内容', async () => {
+  const reader = createArchiveReader(async () => Response.json({
+    items: [
+      archiveComment(1, { up_reply: { id: '5001', text: '自指' } }),
+      archiveComment(2, { up_reply: { id: '9100', author: { id: '123' }, text: '缺正文时间' } }),
+      archiveComment(3, { up_reply: { id: '9101', author: { id: '123' }, text: 'x', reply_to: { id: 'oops' } } }),
+    ],
+    next_cursor: null,
+  }));
+  const result = await reader.readComments({
+    dynamicId: '1001', sort: 'hot', signal: new AbortController().signal,
+  });
+  if (result.status !== 'success') throw new Error('读取应成功');
+  // 摘要不完整只影响该预览字段，不把整批评论判为坏 DTO。
+  expect(result.data.items.map(item => item.upReply ?? null)).toEqual([null, null, null]);
+});

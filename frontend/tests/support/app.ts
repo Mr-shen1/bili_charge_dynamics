@@ -3,6 +3,7 @@ import { defineComponent, h } from 'vue';
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router';
 import ListPage from '../../src/pages/ListPage.vue';
 import DetailPage from '../../src/pages/DetailPage.vue';
+import CommentThreadPage from '../../src/pages/CommentThreadPage.vue';
 import NotFoundPage from '../../src/pages/NotFoundPage.vue';
 import { createSessionPlugin, type AppSession } from '../../src/app/session';
 import { createArchiveNavigation, provideArchiveNavigation } from '../../src/app/navigation';
@@ -25,6 +26,10 @@ export function archiveRouter() {
       { path: '/', name: 'list', component: ListPage },
       { path: '/ups/:upId', name: 'up-list', component: ListPage, props: true },
       { path: '/dynamics/:dynamicId', name: 'detail', component: DetailPage, props: true },
+      {
+        path: '/dynamics/:dynamicId/comments/:rootId', name: 'thread',
+        component: CommentThreadPage, props: true,
+      },
       { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundPage },
     ],
   });

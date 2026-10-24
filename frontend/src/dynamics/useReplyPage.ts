@@ -1,6 +1,7 @@
 import { onMounted, onUnmounted, shallowRef } from 'vue';
 import type { ReadResult, ReplyBatch } from '../data/contracts';
 import type { ReplyReadState } from '../app/snapshots';
+import { reportReadError } from '../app/readError';
 import { replyPageCount } from './replyPaging';
 
 export interface ReplyPageState extends ReplyReadState {
@@ -47,8 +48,11 @@ export function useReplyPage(
         state.value = { ...previous, status: result.status,
           ...(result.status === 'error' ? { reason: result.reason } : {}) };
       }
-    } catch {
-      if (valid()) state.value = { ...previous, status: 'error' };
+    } catch (error) {
+      if (valid()) {
+        reportReadError('回复页码', error);
+        state.value = { ...previous, status: 'error' };
+      }
     } finally {
       if (request === controller) request = null;
     }

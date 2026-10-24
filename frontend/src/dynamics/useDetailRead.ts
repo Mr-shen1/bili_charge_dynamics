@@ -1,5 +1,6 @@
 import { onMounted, onUnmounted, shallowRef } from 'vue';
 import type { DetailResult, Dynamic, DynamicReader } from '../data/contracts';
+import { reportReadError } from '../app/readError';
 
 export interface DetailReadState {
   readonly status: 'loading' | 'success' | 'error' | 'cancelled' | 'not-found';
@@ -28,8 +29,9 @@ export function useDetailRead(reader: DynamicReader, dynamicId: string, cached: 
       state.value = result.status === 'success'
         ? { status: 'success', data: result.data }
         : { status: result.status, data: null };
-    } catch {
+    } catch (error) {
       if (active && request === controller && !controller.signal.aborted) {
+        reportReadError('动态详情', error);
         state.value = { status: 'error', data: null };
       }
     } finally {

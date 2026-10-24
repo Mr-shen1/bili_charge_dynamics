@@ -30,6 +30,10 @@ export interface ArchiveNavigation {
   saveListSnapshot(pageEntryId: string, snapshot: ListSnapshot): void;
   saveDetailSnapshot(pageEntryId: string, snapshot: DetailSnapshot): void;
   openDetail(id: string, target?: 'top' | 'comments'): void;
+  /** 从一级评论的 UP 摘要/数量入口进入独立楼中楼页。 */
+  openThread(dynamicId: string, rootId: string): void;
+  /** 退出楼中楼：有有效详情来源时真实后退，否则替换为对应动态详情。 */
+  returnFromThread(dynamicId: string): void;
   returnToList(): void;
   openPreview(marker: Omit<PreviewMarker, 'sessionId'>): Promise<void>;
   replacePreview(marker: Omit<PreviewMarker, 'sessionId'> | null): Promise<void>;
@@ -45,6 +49,14 @@ function ignoreNavigationFailure(navigation: Promise<unknown>): Promise<void> {
 
 function isListPath(path: string): boolean {
   return path === '/' || /^\/ups\/[^/]+$/.test(path);
+}
+
+function isDetailPath(path: string): boolean {
+  return /^\/dynamics\/[^/]+$/.test(path);
+}
+
+function isThreadPath(path: string): boolean {
+  return /^\/dynamics\/[^/]+\/comments\/[^/]+$/.test(path);
 }
 
 /**
@@ -184,12 +196,40 @@ export function createArchiveNavigation(): ArchiveNavigation {
     const entry = current.value;
     const source = entry.sourcePageEntryId ? entries.value.get(entry.sourcePageEntryId) : undefined;
     // 当前元数据已通过会话、登记记录和路径验证；该关系证明由列表直接 PUSH。
-    if (source && isListPath(source.path) && entry.path.startsWith('/dynamics/')) {
+    if (source && isListPath(source.path) && isDetailPath(entry.path)) {
       void afterPendingPersistence(() => router.back());
       return;
     }
     // 无有效内存来源时替换为首页，绝不盲目离站。
     replaceWith('/');
+  }
+
+  /**
+   * 进入独立楼中楼：只有当前记录确实是动态详情时才记来源关系，
+   * 因此直达/刷新进入的楼中楼没有可后退的详情来源。
+   */
+  function openThread(dynamicId: string, rootId: string): void {
+    const source = current.value;
+    const entry: PageEntry = {
+      pageEntryId: createUuid(),
+      path: router.resolve({ name: 'thread', params: { dynamicId, rootId } }).path,
+      sourcePageEntryId: isDetailPath(source.path) ? source.pageEntryId : null,
+    };
+    register(entry);
+    void afterPersist(source, () => router.push({ path: entry.path, state: stateFor(entry, null) }));
+  }
+
+  function returnFromThread(dynamicId: string): void {
+    const entry = current.value;
+    const expected = router.resolve({ name: 'detail', params: { dynamicId } }).path;
+    const source = entry.sourcePageEntryId ? entries.value.get(entry.sourcePageEntryId) : undefined;
+    // 有有效详情来源时真实后退，保留详情自己的快照、滚动与展开状态。
+    if (source && source.path === expected && isThreadPath(entry.path)) {
+      void afterPendingPersistence(() => router.back());
+      return;
+    }
+    // 无来源（直达/刷新）时替换为对应动态详情，不在历史里留下楼中楼记录。
+    replaceWith(expected);
   }
 
   function replaceWith(path: string): void {
@@ -230,7 +270,8 @@ export function createArchiveNavigation(): ArchiveNavigation {
 
   function saveDetailSnapshot(pageEntryId: string, snapshot: DetailSnapshot): void {
     const entry = entries.value.get(pageEntryId);
-    if (!entry || !entry.path.startsWith('/dynamics/')) return;
+    // 楼中楼不保存自己的阅读快照：每次重新挂载都从第 1 页/顶部开始。
+    if (!entry || !isDetailPath(entry.path)) return;
     update(pageEntryId, { detailSnapshot: snapshot });
   }
 
@@ -245,6 +286,8 @@ export function createArchiveNavigation(): ArchiveNavigation {
     saveListSnapshot,
     saveDetailSnapshot,
     openDetail,
+    openThread,
+    returnFromThread,
     returnToList,
     openPreview,
     replacePreview,

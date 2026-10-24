@@ -8,7 +8,7 @@ import { useSession } from '../app/session';
 import { useReplyPage } from './useReplyPage';
 import { useReplyPreview } from './useReplyPreview';
 import { replyPageCount, replyPageSize } from './replyPaging';
-import { replyBodyText } from './replyText';
+import { replyBodyText, replyTargetNickname } from './replyText';
 import { displayTime } from './display';
 import FoldableText from './FoldableText.vue';
 import ReadNotice from './ReadNotice.vue';
@@ -103,8 +103,7 @@ function toggleText(id: string): void {
 
 /** 仅嵌套回复且目标昵称可用时表达目标；直接回根不重复。 */
 function targetNickname(reply: Reply): string | null {
-  if (!reply.parentId || reply.parentId === props.rootId) return null;
-  return reply.replyTo?.nickname ?? null;
+  return replyTargetNickname(reply, props.rootId);
 }
 
 function bodyText(reply: Reply): string {

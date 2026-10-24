@@ -2,6 +2,7 @@ import { onMounted, onUnmounted, shallowRef } from 'vue';
 import { replyPreviewSize } from '../data/contracts';
 import type { DynamicReader } from '../data/contracts';
 import type { ReplyReadState } from '../app/snapshots';
+import { reportReadError } from '../app/readError';
 
 /**
  * 宽屏回复预览：cursor 模式首批最多 3 条，只读这一批，不做累计追加。
@@ -35,8 +36,9 @@ export function useReplyPreview(
         ? { status: 'success', data: result.data }
         : { data: previous, status: result.status,
           ...(result.status === 'error' ? { reason: result.reason } : {}) };
-    } catch {
+    } catch (error) {
       if (active && request === controller && !controller.signal.aborted) {
+        reportReadError('回复预览', error);
         state.value = { data: previous, status: 'error' };
       }
     } finally {

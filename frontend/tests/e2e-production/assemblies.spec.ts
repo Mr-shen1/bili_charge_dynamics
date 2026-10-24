@@ -14,7 +14,9 @@ test('生产装配渲染六条正式路由与不存在页', async ({ page }, tes
   await expect(page.getByRole('heading', { name: '动态详情' })).toBeVisible();
 
   await page.goto('/dynamics/abc/comments/root-1');
-  await expect(page.getByRole('heading', { name: '楼中楼' })).toBeVisible();
+  // 独立楼中楼已是真实页面（不再是骨架占位）：退回入口始终可用，读取失败只影响本区域。
+  await expect(page.getByRole('button', { name: '返回评论' })).toBeVisible();
+  await expect(page.locator('main')).not.toContainText('阶段 3 迁移目标');
 
   await page.goto('/manage');
   await expect(page.getByRole('heading', { name: '监控管理' })).toBeVisible();

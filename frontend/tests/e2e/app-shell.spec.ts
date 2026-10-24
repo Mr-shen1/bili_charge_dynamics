@@ -15,8 +15,9 @@ test.describe('应用骨架', () => {
     await expect(page.getByText('动态不存在或不可用')).toBeVisible();
 
     await page.goto('/dynamics/abc/comments/root-1');
-    await expect(page.getByRole('heading', { name: '楼中楼' })).toBeVisible();
-    await expect(page.locator('main')).toContainText('root-1');
+    // 独立楼中楼已是真实页面：未知动态/根评论按普通可重试读取错误处理，不伪造内容。
+    await expect(page.getByRole('button', { name: '返回评论' })).toBeVisible();
+    await expect(page.getByRole('alert')).toContainText('相关回复读取失败，请重试。');
 
     await page.goto('/manage');
     await expect(page.getByRole('heading', { name: '监控管理' })).toBeVisible();

@@ -1,6 +1,7 @@
 import { onMounted, onUnmounted, shallowRef } from 'vue';
 import type { CommentSort, DynamicReader } from '../data/contracts';
 import type { CommentReadState } from '../app/snapshots';
+import { reportReadError } from '../app/readError';
 
 /**
  * 单个排序视图的一级评论读取：cursor 只前进、同批不并发、失败保留原批（重试同一 cursor）。
@@ -48,8 +49,9 @@ export function useCommentsRead(
           ...(result.status === 'error' ? { reason: result.reason } : {}),
         };
       }
-    } catch {
+    } catch (error) {
       if (active && request === controller && !controller.signal.aborted) {
+        reportReadError('一级评论', error);
         state.value = { data: previous, status: 'error' };
       }
     } finally {

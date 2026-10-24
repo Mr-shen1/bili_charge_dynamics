@@ -1,6 +1,7 @@
 import { onMounted, onUnmounted, shallowRef } from 'vue';
 import type { ArchiveScope, DynamicReader } from '../data/contracts';
 import type { ListReadState } from '../app/snapshots';
+import { reportReadError } from '../app/readError';
 
 /**
  * 单个 scope 访问的列表读取：cursor 只前进、同批不并发、失败保留原批。
@@ -43,8 +44,9 @@ export function useListRead(reader: DynamicReader, scope: ArchiveScope, initial?
           ...(result.status === 'error' ? { reason: result.reason } : {}),
         };
       }
-    } catch {
+    } catch (error) {
       if (active && request === controller && !controller.signal.aborted) {
+        reportReadError('动态列表', error);
         state.value = { data: previous, status: 'error' };
       }
     } finally {

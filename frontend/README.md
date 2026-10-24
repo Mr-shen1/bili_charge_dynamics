@@ -1,11 +1,18 @@
 # Vue 前端（迁移进行中）
 
-目标栈：Vue 3 + TypeScript + Vite + Vue Router + Element Plus。阶段 2 应用基础已就位；阶段 3 按票据 07–11 迁移剩余业务页面，
-票据 12/17 才切换统一发布。当前已交付**票据 02 的全部/单 UP 归档列表读取**（scope 切换、cursor 追加、折叠、
-错误/空态与 Element Plus 控件）、**票据 03 的动态详情/阅读恢复**（主动入口定位、按历史访问恢复批次/展开/位置，
-同一动态多访问互不覆盖）、**票据 04 的动态图片阅读**（列表/详情完整图片组、缩略懒加载、原生预览、异常状态与历史恢复）、
-**票据 05 的一级评论阅读**（默认最热、20/20/5 cursor 追加、排序切换重置与定位、讨论快照恢复、状态区分与折叠）
-与**票据 06 的宽屏回复**（3 条 cursor 预览、10/10/5 实时页码、收起定位与页码/文字快照恢复）。
+目标栈：Vue 3 + TypeScript + Vite + Vue Router + Element Plus。阶段 2 应用基础已就位；阶段 3 按票据 08–11 迁移剩余业务页面，
+票据 12/17 才切换统一发布。**已交付范围以本文件「已交付」一节为单一来源**，其他文档只保留指针与证据链接。
+
+## 已交付
+
+| 票据 | 交付内容 |
+| --- | --- |
+| 02 | 全部/单 UP 归档列表读取：scope 切换、10 条 cursor 追加、折叠、错误/空态与 Element Plus 控件 |
+| 03 | 动态详情与阅读恢复：主动入口定位、按历史访问恢复批次/展开/位置，同一动态多访问互不覆盖 |
+| 04 | 动态图片阅读：完整图片组、缩略懒加载、原生预览、异常状态与历史恢复 |
+| 05 | 一级评论阅读：默认最热、20 条 cursor 追加、排序切换重置与定位、讨论快照恢复、状态区分与折叠 |
+| 06 | 宽屏回复：3 条 cursor 预览、展开后每页 10 条实时页码、收起定位与页码/文字快照恢复 |
+| 07 | 窄屏 UP 回复预览入口与独立楼中楼：正来源数才给入口、每页 10 条实时页码、返回详情/无来源 replace、重挂载回首屏 |
 
 对应规格与票据：[实施规格](../.scratch/frontend-vue-migration/spec.md) · [票据目录](../.scratch/frontend-vue-migration/issues/) ·
 [图片预览验证证据](../.scratch/frontend-vue-migration/evidence/01-native-image-preview.md) ·
@@ -13,7 +20,8 @@
 [03 详情与阅读恢复证据](../.scratch/frontend-vue-migration/evidence/03-detail-reading-restoration.md) ·
 [04 动态图片阅读证据](../.scratch/frontend-vue-migration/evidence/04-dynamic-image-reading.md) ·
 [05 一级评论阅读证据](../.scratch/frontend-vue-migration/evidence/05-root-comment-reading.md) ·
-[06 宽屏回复证据](../.scratch/frontend-vue-migration/evidence/06-wide-screen-live-replies.md)。
+[06 宽屏回复证据](../.scratch/frontend-vue-migration/evidence/06-wide-screen-live-replies.md) ·
+[07 窄屏楼中楼证据](../.scratch/frontend-vue-migration/evidence/07-compact-comment-thread.md)。
 仓库根目录的 React 应用仍是当前可运行实现，两者在迁移完成前并存，生产上不并行发布。
 
 ## 命令
@@ -59,27 +67,27 @@ pnpm playwright test --project=desktop-chromium-archive tests/e2e/replies.spec.t
 | --- | --- |
 | `src/main.ts` | 入口：Element Plus 按需样式、`history.scrollRestoration='manual'`、装配路由与默认真实 API 会话 |
 | `src/app/session.ts` | 应用会话：根部注入 `DynamicReader`；测试可创建独立实例，不使用模块级单例 |
-| `src/app/navigation.ts` | 唯一导航协调器：访问身份、主动入口/历史返回、快照保存、预览与位置恢复的历史写入 |
+| `src/app/navigation.ts` | 唯一导航协调器：访问身份、主动入口/历史返回（含楼中楼进入与退回）、快照保存、预览与位置恢复的历史写入 |
 | `src/app/historyState.ts` | 应用自有的轻量历史元数据：访问/预览两个命名空间一起写入，不改 Vue Router 自有字段 |
 | `src/app/snapshots.ts` / `readingPosition.ts` / `useVisitPosition.ts` | 列表/详情（含一级评论排序、cursor 批次与展开，以及按根评论保存的回复预览/展开/页码/文字）快照类型、稳定锚点定位与访问级位置保存（两个布局帧内完成，用户操作优先） |
 | `src/app/useCompactViewport.ts` | 窄屏判定（640px，无法判定按宽屏）：图片预览手势与宽屏内联回复/窄屏回复入口的分支 |
 | `src/data/` | 与框架无关的读取契约、生产 Archive Adapter、ID/时间/检查状态守卫（迁移期从 React 栈复用） |
-| `src/dynamics/` | 归档读取行为：scope 导航条、cursor/page 读取、卡片/详情、`CommentSection`/`CommentList`/`CommentItem` 与 `useCommentsRead`、`ReplySection`/`ReplyPager` 与 `useReplyPreview`/`useReplyPage`、折叠/状态提示与展示格式化 |
+| `src/dynamics/` | 归档读取行为：scope 导航条、cursor/page 读取、卡片/详情、`CommentSection`/`CommentList`/`CommentItem` 与 `useCommentsRead`、`ReplySection`/`ReplyPager` 与 `useReplyPreview`/`useReplyPage`、窄屏 `ReplyPreview` 与 `useThreadAuthor`、折叠/状态提示与展示格式化 |
 | `src/app/assembly.ts` | 装配隔离：`production` / `mock` / `fault`；自检路由只在后两者注册 |
 | `src/app/reader.ts` | 读取装配：生产用真实 API Adapter；mock/fault 用受控归档读取，普通构建摇掉 |
 | `src/app/router.ts` | 六条正式路由 + 404；`scrollBehavior: () => false`（位置恢复由导航协调器负责） |
 | `src/app/App.vue` | 应用壳：导航、主栏、唯一 `PreviewHost`、非生产装配标识 |
 | `src/theme/theme.css` | Element Plus 主题变量 + 基础布局/图片栅格/预览层样式 |
 | `src/preview/` | 票据 01/04 验证过的图片层：图片组与手势、`el-image` 缩略图、独立 `el-image-viewer`、归档图片组连接（历史写入委托导航协调器） |
-| `src/pages/` | 六条路由页面；`ListPage.vue`/`DetailPage.vue` 已接真实读取，其余为阶段 3 占位骨架 |
+| `src/pages/` | 六条路由页面；`ListPage.vue`/`DetailPage.vue`/`CommentThreadPage.vue` 已接真实读取，其余为阶段 3 占位骨架 |
 | `src/mock/` | 受控图片夹具、25 条模拟归档（含 4/9/12 图、长图与异常状态）与 fault 读取计划，只在 mock/fault 装配加载 |
 | `public/images/unavailable/` | 应用自有的异常图片占位，随生产构建发布；不是来源业务图 |
 | `server/imageServer.mjs` | 图片夹具服务器：缩略/预览不同地址、坏图、无效地址、可重试失败、请求记录 |
 | `scripts/check-isolation.mjs` | 构建产物隔离检查（生产无 mock/fault/归档数据，自检构建有） |
 | `scripts/check-data-parity.mjs` | 迁移期数据层副本守卫：`frontend/src/data` 与根 `src/data` 必须一致 |
-| `tests/unit` | 历史元数据、装配选择、归档 Adapter（列表、一级评论与回复）/图片组契约、回复分页与目标文案、列表/详情/一级评论/回复/图片预览页面行为 |
-| `tests/fixtures` / `tests/support` | 生产 DTO 夹具、可注入读取替身、预览探针与 jsdom 排版/滚动替身 |
-| `tests/e2e` | 骨架冒烟/预览/详情恢复/动态图片（mock 装配）+ 列表、一级评论、宽屏回复与图片读取（生产装配，HTTP 传输按用例替换） |
+| `tests/unit` | 历史元数据、装配选择、归档 Adapter（列表、一级评论含 UP 摘要与回复）/图片组契约、回复分页与目标文案、列表/详情/一级评论/窄屏入口/楼中楼/回复/图片预览页面行为 |
+| `tests/fixtures` / `tests/support` | 生产 DTO 夹具、可注入读取替身、预览探针、窄屏视口桩与 jsdom 排版/滚动替身 |
+| `tests/e2e` | 骨架冒烟/预览/详情恢复/动态图片（mock 装配）+ 列表、一级评论、宽屏回复、窄屏楼中楼与图片读取（生产装配，HTTP 传输按用例替换） |
 | `tests/e2e-production` | 生产装配六路由/404/无自检入口 + fault 装配冒烟 |
 
 ## 装配隔离（确定性检查）
@@ -94,11 +102,8 @@ pnpm playwright test --project=desktop-chromium-archive tests/e2e/replies.spec.t
 
 ## 尚未迁移（阶段 3 剩余）
 
-票据 02/03/04/05/06 已交付全部/单 UP 列表读取、动态详情/阅读恢复、动态图片阅读、一级评论阅读与宽屏回复；
-窄屏回复入口与独立楼中楼（07）、评论图片（08）与管理页面（09–11）仍待迁移。动态图片已接入真实列表与详情：
-列表展示前 9 张并提供完整组预览入口，详情展示完整组；一级评论按 20 条 cursor 追加并随详情访问保存
-排序/批次/文字展开；宽屏回复按 3 条 cursor 预览展开为 10 条实时页码并随详情访问保存展开/页码/文字，
-窄屏当前不渲染内联回复（07 接入 UP 预览与独立页），评论图片仍由 08 交付。
+已交付范围见上文「已交付」；评论图片（08）与管理页面（09–11）仍待迁移。窄屏（≤640px）已在详情内用该动态作者的最早回复做预览入口，
+回复正文在独立楼中楼页按每页 10 条实时读取；评论图片仍由 08 交付。
 生产装配默认连真实 API，不携带假数据；mock/fault 装配的受控归档只在显式 mode 与自检构建中出现。
 `frontend/src/data` 是根 `src/data` 的临时副本，由 `pnpm check:data-parity` 防止漂移，
 票据 12/17 清理 React 栈时一并移除。
