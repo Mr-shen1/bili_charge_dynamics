@@ -25,6 +25,8 @@ pnpm install
 pnpm dev                 # 生产装配（默认真实 API，/api 代理到 127.0.0.1:8000）
 pnpm dev:mock            # mock 装配：额外注册 /__preview-fixtures 与 /__preview-other
 pnpm dev:fault           # 开发故障装配（与 mock 同样注册自检路由）
+pnpm check               # 一趟绿灯：typecheck + 单测 + e2e 项目覆盖守卫（约 15s，不含构建）
+pnpm check:dist          # 交付前：两次构建 + 产物隔离 + 数据层副本
 pnpm typecheck           # vue-tsc，覆盖 .vue 模板与 TS
 pnpm test                # Vitest：历史元数据、装配选择、归档 Adapter/图片组、列表与详情/恢复/图片页面行为
 pnpm test:e2e            # Playwright（mock 预览/壳/详情恢复 + 生产装配列表 + 图片夹具，自动起 4318/4319/4320）
@@ -40,6 +42,16 @@ pnpm serve:lan           # 按局域网暴露 dist-mock（真机自检用）
 
 两个构建目录分开：`dist/` 只由 `pnpm build` 产生（Nginx 托管它），`dist-mock/` 只由 `build:mock`/`build:fault` 产生，
 所以不存在“先跑 mock 构建再跑生产构建”的顺序陷阱。
+
+只跑一个 e2e 文件或一个项目：
+
+```bash
+pnpm playwright test --project=desktop-chromium-archive tests/e2e/replies.spec.ts
+```
+
+每个 `tests/e2e/*.spec.ts` 首行必须声明 `// @projects <逗号分隔的 project 名>`；`pnpm check:e2e-projects`
+用 Playwright 自己的 `--list` 结果对照声明，新增 spec 忘记改 `testMatch`/`testIgnore` 会直接失败并打印实测矩阵。
+用例失败时先看 `test-results/<用例目录>/error-context.md` 的页面快照与 locator 日志，再决定是否开 trace。
 
 ## 结构
 

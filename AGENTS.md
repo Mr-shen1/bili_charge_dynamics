@@ -12,6 +12,10 @@ Use the default labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-
 
 需求、设计、接口、交付或票据规划：先从 `docs/README.md` 定位并阅读相关原文，再开展工作；该索引也说明正式文档与 `.scratch/` 任务证据的归属。
 
+### Frontend commands
+
+前端构建、单文件 e2e、e2e 项目声明约定见 `frontend/README.md`「命令」段；一趟绿灯是 `pnpm check`，交付前是 `pnpm check:dist`。
+
 ### Domain docs
 
 Single-context layout. See `docs/agents/domain.md`.

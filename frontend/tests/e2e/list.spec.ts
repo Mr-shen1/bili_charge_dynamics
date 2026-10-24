@@ -1,3 +1,4 @@
+// @projects desktop-chromium-archive, mobile-chromium-archive
 import { expect, test, type Page } from '@playwright/test';
 import { closeViewer, counter, viewer, viewerImage } from './support';
 

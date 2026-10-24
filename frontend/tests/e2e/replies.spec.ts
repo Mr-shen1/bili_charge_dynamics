@@ -1,3 +1,4 @@
+// @projects desktop-chromium-archive
 import { expect, test, type Page } from '@playwright/test';
 
 // 宽屏回复跑生产装配 + HTTP 传输替身：仍经过真实 Adapter 的页码/游标映射与页面读取。

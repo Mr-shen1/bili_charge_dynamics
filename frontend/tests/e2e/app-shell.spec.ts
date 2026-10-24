@@ -1,3 +1,4 @@
+// @projects desktop-chromium, mobile-chromium
 import { expect, test } from '@playwright/test';
 
 // 骨架冒烟：六条正式路由可达、未知地址落到 not-found、mock 装配标识可见。

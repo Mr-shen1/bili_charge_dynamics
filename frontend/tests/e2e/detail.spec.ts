@@ -1,3 +1,4 @@
+// @projects desktop-chromium, mobile-chromium
 import { expect, test, type Page } from '@playwright/test';
 
 // 详情与阅读恢复跑 mock 装配的真实浏览器行为：确定性 25 条归档，不依赖后端。

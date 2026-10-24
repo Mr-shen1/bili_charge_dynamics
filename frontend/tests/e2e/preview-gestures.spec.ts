@@ -1,3 +1,4 @@
+// @projects desktop-chromium, mobile-chromium
 import { expect, test } from '@playwright/test';
 import {
   canTouch, closeViewer, counter, dragImage, doubleTapImage, imageBox, navArrowVisibility, openImage, pinchImage,

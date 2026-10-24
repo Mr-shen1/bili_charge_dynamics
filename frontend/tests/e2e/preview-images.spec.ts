@@ -1,3 +1,4 @@
+// @projects desktop-chromium, mobile-chromium
 import { expect, test } from '@playwright/test';
 import {
   closeViewer, counter, imageRequests, nextImage, openImage, pathsPrefixed, previousImage, resetImageRequests,
