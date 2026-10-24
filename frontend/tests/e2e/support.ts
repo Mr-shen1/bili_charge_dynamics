@@ -30,6 +30,16 @@ export function counter(page: Page) {
   return page.locator('.preview-counter');
 }
 
+/** 库原生关闭按钮：与 viewer()/viewerToolbar() 同属已登记的库内部类例外。 */
+export function viewerClose(page: Page) {
+  return page.locator('.el-image-viewer__close');
+}
+
+/** 焦点是否留在预览层内：只看活跃元素是否被预览根节点包含。 */
+export async function focusInsideViewer(page: Page): Promise<boolean> {
+  return viewer(page).evaluate(node => node.contains(document.activeElement));
+}
+
 /** 库原生图标工具栏的可见性锚点；01 已把该内部类覆盖登记为唯一例外并由自动化守护。 */
 export function viewerToolbar(page: Page) {
   return page.locator('.el-image-viewer__actions');

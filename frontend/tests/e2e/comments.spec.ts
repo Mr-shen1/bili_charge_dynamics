@@ -1,5 +1,6 @@
 // @projects desktop-chromium-archive, mobile-chromium-archive
 import { expect, test, type Page } from '@playwright/test';
+import { closeViewer, counter, viewer } from './support';
 
 // 一级评论跑生产装配 + HTTP 传输替身：仍经过真实 Adapter 的 DTO 映射与页面读取，
 // 请求次数、排序与 cursor 可直接观察。折叠、锚点、布局变化必须真实浏览器。
@@ -268,6 +269,68 @@ test.describe('一级评论阅读与排序', () => {
     await expect(region.getByRole('radio', { name: '最新' })).toBeChecked();
     await expect(region.getByRole('alert')).toHaveCount(0);
     expect(requests.map(request => request.sort ?? request.cursor?.split(':')[0])).toEqual(['hot', 'latest']);
+  });
+
+  test('根评论 media 经真实 DTO 映射为评论图片组，预览不重读评论也不请求来源业务图', async ({ page }) => {
+    const upstream: string[] = [];
+    page.on('request', request => {
+      if (request.url().includes('upstream.example.test')) upstream.push(request.url());
+    });
+    const views: string[] = [];
+    await page.route('https://cdn.example.test/**', async route => {
+      views.push(new URL(route.request().url()).pathname);
+      await route.fulfill({
+        status: 200,
+        contentType: 'image/svg+xml',
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>',
+      });
+    });
+    // 生产 DTO：media 是当前关联，media_sources 只是来源；后者不得回退成页面图片。
+    const withMedia = comment(4, {
+      is_pinned: true,
+      text: '这条评论带图',
+      media: Array.from({ length: 5 }, (_value, index) => ({
+        id: `cm-${index + 1}`,
+        owner: { type: 'comment', id: '7004' },
+        position: index,
+        status: 'success',
+        public_url: `https://cdn.example.test/comment/7004/${index + 1}.jpg`,
+        width: 800,
+        height: 600,
+      })),
+      media_sources: [{ url: 'https://upstream.example.test/comment/7004/1.jpg', width: 800, height: 600 }],
+    });
+    const requests = await mockApi(page, { commentItems: [withMedia, comment(5)] });
+    await page.goto('/');
+    await page.getByRole('button', { name: '来源评论 45' }).click();
+
+    const item = page.locator('[data-reading-id="comment:7004"]');
+    await expect(item.getByRole('group', { name: '评论图片' }))
+      .toHaveAttribute('data-image-group', 'comment-7004');
+    const tiles = item.getByRole('button', { name: /^预览评论图片 / });
+    await expect(tiles).toHaveCount(5);
+    await expect(item.getByText('评论图片待归档')).toHaveCount(0);
+
+    const readsBeforePreview = requests.length;
+    await tiles.nth(2).scrollIntoViewIfNeeded();
+    const loadedBeforePreview = new Set(views);
+    await tiles.nth(2).click();
+    await expect(viewer(page)).toBeVisible();
+    await expect(counter(page)).toHaveText('3 / 5');
+    expect(views).toContain('/comment/7004/3.jpg');
+    // 生产缩略与预览共用同一公开地址：缩略图已加载时打开预览不会请求组内其他图片
+    // （若浏览器重新请求，也只能是所点的这一张）。可区分地址下的按需请求由 comment-images.spec.ts 断言。
+    expect(views.filter(path => !loadedBeforePreview.has(path)).every(path => path === '/comment/7004/3.jpg'))
+      .toBe(true);
+    // 预览期间不重读评论，也不请求来源业务图。
+    expect(requests).toHaveLength(readsBeforePreview);
+    expect(upstream).toEqual([]);
+
+    await closeViewer(page);
+    await expect(viewer(page)).toHaveCount(0);
+    // 关闭预览不重置当前排序与已加载批次。
+    await expect(page.getByRole('region', { name: '评论区' }).getByRole('radio', { name: '最热' })).toBeChecked();
+    await expect(page.locator('[data-reading-id="comment:7004"]')).toHaveCount(1);
   });
 
   test('评论区在 360/390/768/1280 宽度下无页面横溢', async ({ page }) => {

@@ -1,4 +1,4 @@
-import type { ArchiveMetadata, Comment, Dynamic, User } from '../../src/data/contracts';
+import type { ArchiveMetadata, Comment, Dynamic, DynamicImage, User } from '../../src/data/contracts';
 import type { TargetCheck } from '../../src/data/checkStatus';
 
 export const commentAuthor: User = { id: '7001', nickname: '评论作者', avatarUrl: null };
@@ -15,6 +15,18 @@ export function comment(index: number, overrides: Partial<Comment> = {}): Commen
     replyCount: 0,
     ...overrides,
   };
+}
+
+/** 评论图片领域夹具：顺序即组内顺序，默认成功且缩略/预览地址可区分。 */
+export function commentImages(commentId: string, count: number): DynamicImage[] {
+  return Array.from({ length: count }, (_value, index) => ({
+    id: `comment-${commentId}-${index + 1}`,
+    archiveStatus: 'success',
+    thumbnailUrl: `https://cdn.example.test/comment/${commentId}/${index + 1}-thumb.jpg`,
+    previewUrl: `https://cdn.example.test/comment/${commentId}/${index + 1}.jpg`,
+    width: 800,
+    height: 600,
+  }));
 }
 
 /** 45 条一级评论，按 id 顺序返回；调用方自行切片模拟 20/20/5。 */

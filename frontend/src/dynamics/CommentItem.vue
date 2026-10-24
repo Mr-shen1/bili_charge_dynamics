@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { Comment } from '../data/contracts';
+import type { Comment, ImageOwner } from '../data/contracts';
 import type { ReplySnapshot } from '../app/snapshots';
+import DynamicImages from '../preview/DynamicImages.vue';
 import { useArchiveNavigation } from '../app/navigation';
 import { useSession } from '../app/session';
 import { displayCount, displayTime } from './display';
@@ -10,6 +11,9 @@ import ReadOnlyLike from './ReadOnlyLike.vue';
 import ReplyPreview from './ReplyPreview.vue';
 import ReplySection from './ReplySection.vue';
 import UserAvatar from './UserAvatar.vue';
+
+/** 缩略图最多展示的张数：只裁剪展示数量，完整组仍可从末张进入预览。 */
+const imageDisplayLimit = 9;
 
 const props = defineProps<{
   comment: Comment;
@@ -27,6 +31,8 @@ const navigation = useArchiveNavigation();
 const hasText = computed(() => Boolean(props.comment.text.trim()));
 // 纯图评论不写“暂无评论内容”：图片由独立的评论图片区域承载。
 const hasMedia = computed(() => Boolean(props.comment.images?.length || props.comment.pendingMediaCount));
+// 每条根评论自成一组：组 ID 由评论 ID 组成，动态图与其他评论的图不会串位。
+const imageOwner = computed<ImageOwner>(() => ({ type: 'comment', id: props.comment.id }));
 const isUpAuthor = computed(() => props.comment.author.id === props.authorId);
 // 一级评论明确为 0 条来源回复时不建回复区；未知（null）仍可读取本地归档。
 const hasReplies = computed(() => props.comment.replyCount === null || props.comment.replyCount > 0);
@@ -52,6 +58,12 @@ function openThread(): void {
         subject="评论"
         :expanded="expanded"
         @toggle="emit('toggle')"
+      />
+      <DynamicImages
+        v-if="comment.images?.length"
+        :owner="imageOwner"
+        :images="comment.images"
+        :display-limit="imageDisplayLimit"
       />
       <p v-if="comment.pendingMediaCount" class="comment__pending" role="status">
         评论图片待归档（{{ comment.pendingMediaCount }} 张）。

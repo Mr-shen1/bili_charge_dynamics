@@ -40,11 +40,18 @@ export function createImagePreviewCoordinator(navigation: ArchiveNavigation): Im
   const sessionId = navigation.sessionId;
   const groupsById = shallowRef(new Map<string, ImageGroup>());
 
+  // 组注册同时被组件 watcher 调用：内部表用普通 Map，避免“读同一 ref 再写它”形成自依赖循环。
+  const registeredGroups = new Map<string, ImageGroup>();
+
   function registerGroups(groups: readonly ImageGroup[]): void {
     if (!groups.length) return;
-    const next = new Map(groupsById.value);
-    for (const group of groups) next.set(group.id, group);
-    groupsById.value = next;
+    let changed = false;
+    for (const group of groups) {
+      if (registeredGroups.get(group.id) === group) continue;
+      registeredGroups.set(group.id, group);
+      changed = true;
+    }
+    if (changed) groupsById.value = new Map(registeredGroups);
   }
   const retryGeneration = ref(0);
   /** 仅内存：触发元素与滚动位置，不写入历史记录。 */

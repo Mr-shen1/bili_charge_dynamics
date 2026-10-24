@@ -9,12 +9,62 @@ export function createMockArchiveReader(): DynamicReader {
   const identities: readonly User[] = [first, second];
   const third: User = { id: '789', nickname: null, avatarUrl: null };
 
+  // 图片夹具：生产同址的缩略/预览在这里用不同路径，便于观察真实请求；
+  // 状态覆盖成功、未上传、归档失败、无效公开地址与浏览器加载失败。数量只作夹具。
+  const readyImage = (key: string, index: number, override: Partial<DynamicImage> = {}): DynamicImage => ({
+    id: `${key}-${index + 1}`,
+    archiveStatus: 'success',
+    thumbnailUrl: `/images/thumb/${key}-${index + 1}.svg`,
+    previewUrl: `/images/full/${key}-${index + 1}.svg`,
+    width: 1200,
+    height: 675,
+    ...override,
+  });
+  const group = (key: string, size: number): DynamicImage[] =>
+    Array.from({ length: size }, (_image, index) => readyImage(key, index));
+  // 夹具服务器按 long 前缀返回 1200×6000 长图。
+  const longImage = (key: string): DynamicImage => readyImage(key, 0, {
+    thumbnailUrl: `/images/thumb/long-${key}.svg`,
+    previewUrl: `/images/full/long-${key}.svg`,
+    width: 1200,
+    height: 6000,
+  });
+  const withoutUrl = (id: string, archiveStatus: 'pending' | 'failed' | 'success'): DynamicImage =>
+    ({ id, archiveStatus, thumbnailUrl: null, previewUrl: null, width: null, height: null });
+  // 动态与评论共用同一种混合状态组，只换 key：两者的 owner 隔离不由夹具地址决定。
+  const mixedGroup = (key: string): DynamicImage[] => [
+    readyImage(key, 0),
+    withoutUrl(`${key}-2`, 'pending'),
+    withoutUrl(`${key}-3`, 'failed'),
+    // 成功状态但没有公开地址：连接层按无效公开地址表达，不请求来源。
+    withoutUrl(`${key}-4`, 'success'),
+    // 浏览器加载失败：地址语法有效但服务端 503，可局部重试。
+    readyImage(key, 4, {
+      thumbnailUrl: `/images/broken/${key}-5.svg`,
+      previewUrl: `/images/broken/${key}-5.svg`,
+    }),
+    // 首次失败后重试成功：验证局部重试只重发既有公开地址。
+    readyImage(key, 5, {
+      thumbnailUrl: `/images/thumb/${key}-6.svg`,
+      previewUrl: `/images/flaky/${key}-6.svg?failures=1`,
+    }),
+  ];
+
   // 一级评论夹具：45 条，覆盖最热/最新排序、来源置顶、6/7 行折叠边界、
   // 缺字段兜底、纯图/无正文与安全文本；只挂在第一条动态上。
+  // 评论图片按根评论各自成组：混合状态、单张长图、纯图四张与超过九张分别落在 0/1/2/5 号。
   const commentLong = Array.from({ length: 7 }, (_value, line) =>
     `第七行边界 ${line + 1}：这是一段足够长的评论正文，用于验证实际超过六行才折叠。`).join('\n');
   const commentSix = Array.from({ length: 6 }, (_value, line) =>
     `第六行边界 ${line + 1}：同样长度的正文，但恰好六行不应出现展开入口。`).join('\n');
+  const commentFacets: Readonly<Record<number, { images?: readonly DynamicImage[]; pendingMediaCount?: number }>> = {
+    0: { images: mixedGroup('comment-mixed') },
+    1: { images: [longImage('comment')] },
+    2: { images: group('comment-quad', 4) },
+    // 来源存在但没有当前关联的旧评论仍单独表达待归档数量，不伪造成图片项。
+    4: { pendingMediaCount: 1 },
+    5: { images: group('comment-many', 12) },
+  };
   const rootComments: Comment[] = Array.from({ length: 45 }, (_value, index) => ({
     id: `900719925474010${String(1 + index).padStart(2, '0')}`,
     isPinned: index === 0 || index === 2,
@@ -27,8 +77,8 @@ export function createMockArchiveReader(): DynamicReader {
       : `一级评论 ${index + 1}\n第二行：换行与 emoji 🙂`,
     likeCount: index % 13 === 0 ? null : (index * 37) % 23,
     replyCount: index === 0 ? 25 : index % 5,
-    images: [],
-    pendingMediaCount: index === 2 ? 1 : 0,
+    images: commentFacets[index]?.images ?? [],
+    pendingMediaCount: commentFacets[index]?.pendingMediaCount ?? 0,
   }));
 
   // 视觉与状态夹具：确认空、未完成同步、受限正文；其余动态使用确认成功的空评论集。
@@ -87,51 +137,14 @@ export function createMockArchiveReader(): DynamicReader {
   ].join('\n');
   // 图片夹具：生产同址的缩略/预览在这里用不同路径，便于观察真实请求；
   // 状态覆盖成功、未上传、归档失败、无效公开地址与浏览器加载失败。数量只作夹具。
-  const readyImage = (key: string, index: number, override: Partial<DynamicImage> = {}): DynamicImage => ({
-    id: `${key}-${index + 1}`,
-    archiveStatus: 'success',
-    thumbnailUrl: `/images/thumb/${key}-${index + 1}.svg`,
-    previewUrl: `/images/full/${key}-${index + 1}.svg`,
-    width: 1200,
-    height: 675,
-    ...override,
-  });
-  const group = (key: string, size: number): DynamicImage[] =>
-    Array.from({ length: size }, (_image, index) => readyImage(key, index));
-  const longImage: DynamicImage = readyImage('archive-long', 0, {
-    // 夹具服务器按 long 前缀返回 1200×6000 长图。
-    thumbnailUrl: '/images/thumb/long-archive.svg',
-    previewUrl: '/images/full/long-archive.svg',
-    width: 1200,
-    height: 6000,
-  });
-  const withoutUrl = (id: string, archiveStatus: 'pending' | 'failed' | 'success'): DynamicImage =>
-    ({ id, archiveStatus, thumbnailUrl: null, previewUrl: null, width: null, height: null });
-  const mixedImages: DynamicImage[] = [
-    readyImage('archive-mixed', 0),
-    withoutUrl('archive-mixed-2', 'pending'),
-    withoutUrl('archive-mixed-3', 'failed'),
-    // 成功状态但没有公开地址：连接层按无效公开地址表达，不请求来源。
-    withoutUrl('archive-mixed-4', 'success'),
-    // 浏览器加载失败：地址语法有效但服务端 503，可局部重试。
-    readyImage('archive-mixed', 4, {
-      thumbnailUrl: '/images/broken/archive-mixed-5.svg',
-      previewUrl: '/images/broken/archive-mixed-5.svg',
-    }),
-    // 首次失败后重试成功：验证局部重试只重发既有公开地址。
-    readyImage('archive-mixed', 5, {
-      thumbnailUrl: '/images/thumb/archive-mixed-6.svg',
-      previewUrl: '/images/flaky/archive-mixed-6.svg?failures=1',
-    }),
-  ];
   // 夹具索引 → 图片组；数量只作夹具，用于覆盖纯图/单图/4/9/12/长图与异常状态。
   const imageSets: Readonly<Record<number, readonly DynamicImage[]>> = {
     0: group('archive-quad', 4),
     1: group('archive-single', 1),
     2: group('archive-nine', 9),
     3: group('archive-many', 12),
-    5: mixedImages,
-    6: [longImage],
+    5: mixedGroup('archive-mixed'),
+    6: [longImage('archive')],
     7: group('archive-pair', 2),
   };
 

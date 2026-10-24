@@ -200,3 +200,51 @@ it('楼中楼摘要结构不完整或指向根评论自身时不展示，也不�
   // 摘要不完整只影响该预览字段，不把整批评论判为坏 DTO。
   expect(result.data.items.map(item => item.upReply ?? null)).toEqual([null, null, null]);
 });
+
+it('根评论 media 按来源顺序映射为当前图片，owner 绑定该评论且无效地址不冒充成功', async () => {
+  const urls: string[] = [];
+  const media = [
+    { id: 'm1', owner: { type: 'comment', id: '5001' }, status: 'success', public_url: 'https://cdn.example.test/c/1.jpg', width: 800, height: 600 },
+    { id: 'm2', owner: { type: 'comment', id: '5001' }, status: 'pending', public_url: null, width: null, height: null },
+    { id: 'm3', owner: { type: 'comment', id: '5001' }, status: 'failed', public_url: null, width: null, height: null },
+    // 成功状态但地址非 https：读取层判为无可用公开地址，不回退 media_sources。
+    { id: 'm4', owner: { type: 'comment', id: '5001' }, status: 'success', public_url: 'http://upstream.example.test/c/4.jpg', width: null, height: null },
+    // 其他 owner 或重复 ID 的项不混入本评论组。
+    { id: 'm5', owner: { type: 'dynamic', id: '5001' }, status: 'success', public_url: 'https://cdn.example.test/c/5.jpg', width: null, height: null },
+    { id: 'm1', owner: { type: 'comment', id: '5001' }, status: 'success', public_url: 'https://cdn.example.test/c/dup.jpg', width: null, height: null },
+  ];
+  const reader = createArchiveReader(async url => {
+    urls.push(url);
+    return Response.json({
+      items: [archiveComment(1, {
+        media,
+        media_sources: [
+          { url: 'https://upstream.example.test/c/1.jpg', width: 800, height: 600 },
+          { url: 'https://upstream.example.test/c/2.jpg', width: null, height: null },
+          { url: 'https://upstream.example.test/c/3.jpg', width: null, height: null },
+          { url: 'https://upstream.example.test/c/4.jpg', width: null, height: null },
+          { url: 'https://upstream.example.test/c/5.jpg', width: null, height: null },
+        ],
+      })],
+      next_cursor: null,
+    });
+  });
+
+  const result = await reader.readComments({
+    dynamicId: '1001', sort: 'hot', signal: new AbortController().signal,
+  });
+  if (result.status !== 'success') throw new Error('读取应成功');
+  const item = result.data.items[0] as Comment;
+  expect(item.images?.map(image => ({
+    id: image.id, status: image.archiveStatus, thumbnailUrl: image.thumbnailUrl, previewUrl: image.previewUrl,
+  }))).toEqual([
+    { id: 'm1', status: 'success', thumbnailUrl: 'https://cdn.example.test/c/1.jpg', previewUrl: 'https://cdn.example.test/c/1.jpg' },
+    { id: 'm2', status: 'pending', thumbnailUrl: null, previewUrl: null },
+    { id: 'm3', status: 'failed', thumbnailUrl: null, previewUrl: null },
+    { id: 'm4', status: 'success', thumbnailUrl: null, previewUrl: null },
+  ]);
+  // 来源里尚无当前关联的位置单独保留为待归档数，不计入已关联的 pending/failed。
+  expect(item.pendingMediaCount).toBe(1);
+  // 只请求评论接口本身，不请求任何来源地址或第三方图片。
+  expect(urls).toEqual(['/api/archive/dynamics/1001/comments?sort=hot&limit=20']);
+});
