@@ -10,11 +10,12 @@ export function useVisitPosition(
   root: Ref<HTMLElement | null>,
   position: ReadingPosition | null,
   save: (position: ReadingPosition) => void,
+  onUserInteraction?: () => void,
 ): void {
   let stopRestoring: () => void = () => undefined;
 
   onMounted(() => {
-    stopRestoring = restoreReadingPosition(root.value, position);
+    stopRestoring = restoreReadingPosition(root.value, position, onUserInteraction);
   });
   onBeforeUnmount(() => {
     stopRestoring();

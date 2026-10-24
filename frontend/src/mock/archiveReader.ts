@@ -1,4 +1,4 @@
-import type { Dynamic, DynamicImage, DynamicReader, ReadResult, User } from '../data/contracts';
+import type { ArchiveMetadata, Comment, Dynamic, DynamicImage, DynamicReader, ReadResult, User } from '../data/contracts';
 
 // 仅供 mock/fault 装配：确定性 25 条动态，不访问真实 API，也不进入生产构建。
 // 数据集在函数内构造，便于 Rollup 在普通构建里整体摇掉。
@@ -6,6 +6,56 @@ export function createMockArchiveReader(): DynamicReader {
   const first: User = { id: '123', nickname: '纸飞机', avatarUrl: null };
   const second: User = { id: '456', nickname: '另一位 UP', avatarUrl: null };
   const identities: readonly User[] = [first, second];
+  const third: User = { id: '789', nickname: null, avatarUrl: null };
+
+  // 一级评论夹具：45 条，覆盖最热/最新排序、来源置顶、6/7 行折叠边界、
+  // 缺字段兜底、纯图/无正文与安全文本；只挂在第一条动态上。
+  const commentLong = Array.from({ length: 7 }, (_value, line) =>
+    `第七行边界 ${line + 1}：这是一段足够长的评论正文，用于验证实际超过六行才折叠。`).join('\n');
+  const commentSix = Array.from({ length: 6 }, (_value, line) =>
+    `第六行边界 ${line + 1}：同样长度的正文，但恰好六行不应出现展开入口。`).join('\n');
+  const rootComments: Comment[] = Array.from({ length: 45 }, (_value, index) => ({
+    id: `900719925474010${String(1 + index).padStart(2, '0')}`,
+    isPinned: index === 0 || index === 2,
+    author: index % 7 === 0 ? first : index % 11 === 0 ? { id: '', nickname: null, avatarUrl: null } : third,
+    publishedAt: index === 3 ? null : new Date(Date.UTC(2026, 2, 1, 2, 3, 4) - index * 3600_000).toISOString(),
+    text: index === 0 ? commentLong
+      : index === 1 ? commentSix
+      : index === 2 ? ''
+      : index === 4 ? '<script>window.__commentUnsafe = true</script> https://example.test/comment'
+      : `一级评论 ${index + 1}\n第二行：换行与 emoji 🙂`,
+    likeCount: index % 13 === 0 ? null : (index * 37) % 23,
+    replyCount: index === 0 ? 25 : index % 5,
+    images: [],
+    pendingMediaCount: index === 2 ? 1 : 0,
+  }));
+
+  // 视觉与状态夹具：确认空、未完成同步、受限正文；其余动态使用确认成功的空评论集。
+  const commentArchive = (overrides: Partial<ArchiveMetadata> = {}): ArchiveMetadata => ({
+    title: null, editedAt: null, editStatus: 'unknown', contentState: 'success', lastAttempt: 'success',
+    localCommentCount: 0, rootCommentsLastAttempt: 'success', commentsLastAttempt: 'success',
+    mediaSources: [], commentLocator: null, observedVersion: null, syncedVersion: null,
+    work: { text: 'success', media: 'success', comments: 'success' }, ...overrides,
+  });
+  const commentArchiveFacets: Record<number, ArchiveMetadata> = {
+    0: commentArchive({ localCommentCount: 45 }),
+    5: commentArchive({ rootCommentsLastAttempt: 'success' }),
+    6: commentArchive({ rootCommentsLastAttempt: 'pending', work: { text: 'success', media: 'success', comments: 'pending' } }),
+    7: commentArchive({ contentState: 'restricted', lastAttempt: 'restricted', work: { text: 'restricted', media: 'success', comments: 'success' } }),
+  };
+
+  const commentOrder = (sort: 'hot' | 'latest'): Comment[] => {
+    const time = (item: Comment): number => item.publishedAt === null ? Number.NEGATIVE_INFINITY : Date.parse(item.publishedAt);
+    const likes = (item: Comment): number => item.likeCount === null ? Number.NEGATIVE_INFINITY : item.likeCount;
+    return [...rootComments].sort((a, b) => {
+      if (Boolean(a.isPinned) !== Boolean(b.isPinned)) return a.isPinned ? -1 : 1;
+      if (sort === 'hot' && likes(a) !== likes(b)) return likes(b) - likes(a);
+      if (time(a) !== time(b)) return time(b) - time(a);
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    });
+  };
+  const orderedComments = { hot: commentOrder('hot'), latest: commentOrder('latest') };
+
   const openingText = [
     '今天把小小的想法写在这里。🙂',
     '换一行，继续记录那些值得记住的瞬间。',
@@ -75,8 +125,9 @@ export function createMockArchiveReader(): DynamicReader {
       : index === 2 ? `长词 ${'a'.repeat(220)} 🙂`
       : index === 5 ? '这条归档没有评论'
       : `文字日记 ${index + 1}\n换行与 emoji 🙂 https://example.test/${'long-'.repeat(8)}`,
-    commentCount: index === 0 ? 70 : index === 1 ? null : index === 5 ? 0 : index,
+    commentCount: index === 0 ? 45 : index === 1 ? null : index === 5 ? 0 : index,
     images: imageSets[index] ?? [],
+    archive: commentArchiveFacets[index],
   })).sort((a, b) => {
     if (a.publishedAt !== b.publishedAt) {
       if (a.publishedAt === null) return 1;
@@ -119,8 +170,21 @@ export function createMockArchiveReader(): DynamicReader {
       const item = dynamics.find(dynamic => dynamic.id === id);
       return item ? { status: 'success', data: item } : { status: 'not-found' };
     },
-    async readComments({ signal }) {
-      return signal.aborted ? cancelled : failed;
+    async readComments({ dynamicId, sort, cursor, signal }) {
+      if (signal.aborted) return cancelled;
+      const ordered = dynamicId === dynamics[0]!.id ? orderedComments[sort] : [];
+      const prefix = `mock-comments:${dynamicId}:${sort}:`;
+      const offset = cursor == null ? 0 : cursor.startsWith(prefix) ? Number(cursor.slice(prefix.length)) : Number.NaN;
+      if (!Number.isSafeInteger(offset) || offset < 0 || offset > ordered.length) {
+        return { status: 'error', reason: 'invalid-cursor' };
+      }
+      return {
+        status: 'success',
+        data: {
+          items: ordered.slice(offset, offset + 20),
+          nextCursor: offset + 20 < ordered.length ? `${prefix}${offset + 20}` : null,
+        },
+      };
     },
     async readReplies({ signal }) {
       return signal.aborted ? cancelled : failed;

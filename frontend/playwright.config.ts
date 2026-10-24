@@ -7,7 +7,8 @@ const listPort = 4320;
 const preview = process.env.E2E_TARGET === 'preview';
 const mockBase = `http://127.0.0.1:${port}`;
 const listBase = `http://127.0.0.1:${listPort}`;
-const listSpec = '**/list.spec.ts';
+// 列表与一级评论用例需要生产装配 + HTTP 传输替身；mock/fault 装配自带归档夹具。
+const archiveSpecs = ['**/list.spec.ts', '**/comments.spec.ts'];
 
 // mock 装配 + 图片夹具；默认 Linux Chromium，iPhone Safari 必须人工在真机执行。
 export default defineConfig({
@@ -20,22 +21,22 @@ export default defineConfig({
     {
       name: 'desktop-chromium',
       use: { ...devices['Desktop Chrome'], baseURL: mockBase },
-      testIgnore: listSpec,
+      testIgnore: archiveSpecs,
     },
     {
       name: 'mobile-chromium',
       use: { ...devices['Pixel 7'], baseURL: mockBase },
-      testIgnore: listSpec,
+      testIgnore: archiveSpecs,
     },
     {
       name: 'desktop-chromium-archive',
       use: { ...devices['Desktop Chrome'], baseURL: listBase },
-      testMatch: listSpec,
+      testMatch: archiveSpecs,
     },
     {
       name: 'mobile-chromium-archive',
       use: { ...devices['Pixel 7'], baseURL: listBase },
-      testMatch: listSpec,
+      testMatch: archiveSpecs,
     },
   ],
   webServer: [

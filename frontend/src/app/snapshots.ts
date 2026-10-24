@@ -1,9 +1,16 @@
-import type { Dynamic, DynamicBatch, ReadResult } from '../data/contracts';
+import type { CommentBatch, CommentSort, Dynamic, DynamicBatch, ReadResult } from '../data/contracts';
 
 /** 读取运行态只属于页面实例；进入访问快照的是上一次可见结果，不是进行中的请求。 */
 export interface ListReadState {
   readonly data: DynamicBatch | null;
   readonly reason?: Extract<ReadResult<DynamicBatch>, { status: 'error' }>['reason'];
+  readonly status: 'loading' | 'success' | 'error' | 'cancelled';
+}
+
+/** 一级评论的已读批次与 cursor 进度；切换排序时整份重置。 */
+export interface CommentReadState {
+  readonly data: CommentBatch | null;
+  readonly reason?: Extract<ReadResult<CommentBatch>, { status: 'error' }>['reason'];
   readonly status: 'loading' | 'success' | 'error' | 'cancelled';
 }
 
@@ -22,5 +29,18 @@ export interface ListSnapshot {
 
 export interface DetailSnapshot {
   readonly dynamic: Dynamic | null;
+  readonly comments: CommentSnapshot;
   readonly position: ReadingPosition;
+}
+
+export interface CommentSnapshot {
+  readonly sort: CommentSort;
+  readonly read: CommentReadState;
+  /** 一级评论正文展开状态；切换排序与重新开始读取时清空。 */
+  readonly expanded: Readonly<Record<string, boolean>>;
+}
+
+/** 无会话新访问默认最热，与后端默认排序一致。 */
+export function emptyCommentSnapshot(sort: CommentSort = 'hot'): CommentSnapshot {
+  return { sort, read: { status: 'loading', data: null }, expanded: {} };
 }

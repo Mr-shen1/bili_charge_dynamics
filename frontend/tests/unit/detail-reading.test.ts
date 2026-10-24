@@ -1,47 +1,13 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/vue';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/vue';
 import { afterEach, expect, it } from 'vitest';
-import { defineComponent, h } from 'vue';
-import { createMemoryHistory, createRouter, RouterView } from 'vue-router';
-import ListPage from '../../src/pages/ListPage.vue';
-import DetailPage from '../../src/pages/DetailPage.vue';
-import NotFoundPage from '../../src/pages/NotFoundPage.vue';
-import { createSessionPlugin, type AppSession } from '../../src/app/session';
-import { createArchiveNavigation, provideArchiveNavigation } from '../../src/app/navigation';
-import { PreviewProbe, providePreview } from '../support/preview';
 import { createArchiveReader } from '../../src/data/archiveReader';
 import type { DetailResult, DynamicBatch, ReadResult } from '../../src/data/contracts';
 import { archiveDynamic, archiveMedia, archiveUser } from '../fixtures/archive';
 import { createReader, deferred } from '../support/reader';
 import { installFakeLayout, type FakeLayout } from '../support/layout';
+import { showApp } from '../support/app';
 
-const RouterHost = defineComponent({
-  setup() {
-    const navigation = createArchiveNavigation();
-    provideArchiveNavigation(navigation);
-    providePreview(navigation);
-    return () => h('div', [h(RouterView), h(PreviewProbe)]);
-  },
-});
-
-function archiveRouter() {
-  return createRouter({
-    history: createMemoryHistory(),
-    routes: [
-      { path: '/', name: 'list', component: ListPage },
-      { path: '/ups/:upId', name: 'up-list', component: ListPage, props: true },
-      { path: '/dynamics/:dynamicId', name: 'detail', component: DetailPage, props: true },
-      { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundPage },
-    ],
-  });
-}
-
-async function show(reader: AppSession['reader'], path = '/') {
-  const router = archiveRouter();
-  await router.push(path);
-  await router.isReady();
-  render(RouterHost, { global: { plugins: [router, createSessionPlugin({ reader })] } });
-  return router;
-}
+const show = showApp;
 
 let layout: FakeLayout | null = null;
 afterEach(() => {

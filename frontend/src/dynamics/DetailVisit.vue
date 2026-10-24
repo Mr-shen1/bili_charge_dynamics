@@ -2,10 +2,13 @@
 import { computed, ref, shallowRef, watch } from 'vue';
 import { ElButton } from 'element-plus';
 import type { Dynamic } from '../data/contracts';
+import type { CommentSnapshot } from '../app/snapshots';
+import { emptyCommentSnapshot } from '../app/snapshots';
 import { useSession } from '../app/session';
 import { useArchiveNavigation } from '../app/navigation';
 import { useVisitPosition } from '../app/useVisitPosition';
 import { useDetailRead } from './useDetailRead';
+import CommentSection from './CommentSection.vue';
 import DynamicContent from './DynamicContent.vue';
 import ReadNotice from './ReadNotice.vue';
 
@@ -16,17 +19,24 @@ const navigation = useArchiveNavigation();
 const pageEntryId = navigation.pageEntryId;
 const initial = navigation.detailSnapshot;
 const content = shallowRef<Dynamic | null>(initial?.dynamic ?? null);
+const comments = shallowRef<CommentSnapshot>(initial?.comments ?? emptyCommentSnapshot());
+// 只有新访问才消费评论入口意图；历史恢复按快照位置还原，不再抢到评论区。
+const target = initial ? 'top' : navigation.detailTarget;
+const entryAllowed = ref(true);
 const { state, retry } = useDetailRead(reader, props.dynamicId, initial?.dynamic ?? null);
 const noticeStatus = computed(() => state.value.status === 'not-found' ? null : state.value.status);
 const root = ref<HTMLElement | null>(null);
 // 主动入口没有快照，定位到顶部；历史恢复才按稳定锚点返回原位置。
 useVisitPosition(root, initial?.position ?? null, position => {
-  navigation.saveDetailSnapshot(pageEntryId, { dynamic: content.value, position });
-});
+  navigation.saveDetailSnapshot(pageEntryId, { dynamic: content.value, comments: comments.value, position });
+}, () => { entryAllowed.value = false; });
 
 watch(state, value => {
   if (value.status === 'success' && value.data) content.value = value.data;
 });
+
+/** 用户主动滚动/触摸/按键后，入口与排序的迟到定位不再抢回。 */
+const canLocate = computed(() => entryAllowed.value);
 </script>
 
 <template>
@@ -42,6 +52,17 @@ watch(state, value => {
     >
       <DynamicContent :dynamic="state.data" :comment-entry="false" />
     </article>
+    <CommentSection
+      v-if="state.status === 'success' && state.data"
+      :dynamic-id="dynamicId"
+      :author-id="state.data.author.id"
+      :source-comment-count="state.data.commentCount"
+      :archive="state.data.archive"
+      :snapshot="comments"
+      :target="target"
+      :can-locate="canLocate"
+      @update:snapshot="comments = $event"
+    />
   </div>
 </template>
 

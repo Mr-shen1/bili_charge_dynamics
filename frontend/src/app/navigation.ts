@@ -10,6 +10,7 @@ interface PageEntry {
   readonly pageEntryId: string;
   readonly path: string;
   readonly sourcePageEntryId: string | null;
+  readonly detailTarget?: 'top' | 'comments';
   readonly listSnapshot?: ListSnapshot;
   readonly detailSnapshot?: DetailSnapshot;
 }
@@ -19,6 +20,8 @@ export interface ArchiveNavigation {
   readonly pageEntryId: string;
   readonly listSnapshot: ListSnapshot | undefined;
   readonly detailSnapshot: DetailSnapshot | undefined;
+  /** 本次访问的主动入口目标；历史恢复（有快照）不使用它。 */
+  readonly detailTarget: 'top' | 'comments';
   readonly sessionId: string;
   /** 历史记录中的预览标记（形状有效即可，会话/组大小由预览协调器校验）。 */
   readonly previewMarker: PreviewMarker | null;
@@ -26,7 +29,7 @@ export interface ArchiveNavigation {
   readonly previewState: ComputedRef<MarkerRead<PreviewMarker>>;
   saveListSnapshot(pageEntryId: string, snapshot: ListSnapshot): void;
   saveDetailSnapshot(pageEntryId: string, snapshot: DetailSnapshot): void;
-  openDetail(id: string): void;
+  openDetail(id: string, target?: 'top' | 'comments'): void;
   returnToList(): void;
   openPreview(marker: Omit<PreviewMarker, 'sessionId'>): Promise<void>;
   replacePreview(marker: Omit<PreviewMarker, 'sessionId'> | null): Promise<void>;
@@ -163,7 +166,7 @@ export function createArchiveNavigation(): ArchiveNavigation {
 
   const previewState = computed(() => readPreviewMarker(historyState.value));
 
-  function openDetail(id: string): void {
+  function openDetail(id: string, target: 'top' | 'comments' = 'top'): void {
     const source = current.value;
     // 用路由自己解析的真实地址，含特殊字符的 ID 也不会与 route.path 失配。
     const entry: PageEntry = {
@@ -171,6 +174,7 @@ export function createArchiveNavigation(): ArchiveNavigation {
       path: router.resolve({ name: 'detail', params: { dynamicId: id } }).path,
       // 来源关系仅在本模块从有效列表直接 PUSH 时建立；按地址初始化不会创建。
       sourcePageEntryId: isListPath(source.path) ? source.pageEntryId : null,
+      detailTarget: target,
     };
     register(entry);
     void afterPersist(source, () => router.push({ path: entry.path, state: stateFor(entry, null) }));
@@ -234,6 +238,7 @@ export function createArchiveNavigation(): ArchiveNavigation {
     get pageEntryId() { return current.value.pageEntryId; },
     get listSnapshot() { return current.value.listSnapshot; },
     get detailSnapshot() { return current.value.detailSnapshot; },
+    get detailTarget() { return current.value.detailTarget ?? 'top'; },
     get previewMarker() { return previewState.value.marker; },
     previewState,
     sessionId,

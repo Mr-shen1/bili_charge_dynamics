@@ -62,7 +62,7 @@ function foldingFor(id: string): { expanded: boolean; toggle(): void } {
           :dynamic="dynamic"
           :folding="foldingFor(dynamic.id)"
           :image-display-limit="listThumbnailLimit"
-          @comments="navigation.openDetail(dynamic.id)"
+          @comments="navigation.openDetail(dynamic.id, 'comments')"
         />
       </div>
     </DynamicCard>
