@@ -18,11 +18,15 @@ test('生产装配渲染六条正式路由与不存在页', async ({ page }, tes
   await expect(page.getByRole('button', { name: '返回评论' })).toBeVisible();
   await expect(page.locator('main')).not.toContainText('阶段 3 迁移目标');
 
+  // 管理两条路由已是真实页面：生产装配不带骨架占位文案。
   await page.goto('/manage');
-  await expect(page.getByRole('heading', { name: '监控管理' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'UP 监控管理' })).toBeVisible();
+  await expect(page.locator('main')).not.toContainText('阶段 3 迁移目标');
 
   await page.goto('/manage/ups/9');
-  await expect(page.getByRole('heading', { name: '单 UP 管理' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'UP 监控管理' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'UP 列表' })).toBeVisible();
+  await expect(page.locator('main')).not.toContainText('阶段 3 迁移目标');
 
   await page.goto('/no-such-page');
   await expect(page.getByRole('heading', { name: '页面不存在' })).toBeVisible();

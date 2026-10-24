@@ -13,6 +13,7 @@ import type { AppSession } from '../../src/app/session';
 import type { DynamicBatch, ReadResult } from '../../src/data/contracts';
 import { archiveDynamic, archiveMedia, archiveUser } from '../fixtures/archive';
 import { createReader, deferred } from '../support/reader';
+import { createManagement } from '../support/management';
 
 afterEach(cleanup);
 
@@ -48,7 +49,7 @@ async function show(reader: AppSession['reader'], path = '/') {
   await router.isReady();
   const holder: { coordinator: ImagePreviewCoordinator | null } = { coordinator: null };
   const view = render(createRouterHost(preview => { holder.coordinator = preview; }), {
-    global: { plugins: [router, createSessionPlugin({ reader })] },
+    global: { plugins: [router, createSessionPlugin({ reader, management: createManagement() })] },
   });
   return { router, view, preview: holder.coordinator! };
 }

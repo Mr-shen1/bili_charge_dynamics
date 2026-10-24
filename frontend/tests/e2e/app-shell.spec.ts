@@ -19,11 +19,15 @@ test.describe('应用骨架', () => {
     await expect(page.getByRole('button', { name: '返回评论' })).toBeVisible();
     await expect(page.getByRole('alert')).toContainText('相关回复读取失败，请重试。');
 
+    // 管理两条路由已是真实页面：层级标题一致，不再有阶段 3 骨架占位文案。
     await page.goto('/manage');
-    await expect(page.getByRole('heading', { name: '监控管理' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'UP 监控管理' })).toBeVisible();
+    await expect(page.locator('main')).not.toContainText('阶段 3 迁移目标');
 
     await page.goto('/manage/ups/9');
-    await expect(page.getByRole('heading', { name: '单 UP 管理' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'UP 监控管理' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'UP 列表' })).toBeVisible();
+    await expect(page.locator('main')).not.toContainText('阶段 3 迁移目标');
   });
 
   test('主导航可达，mock 装配有明确标识', async ({ page }) => {

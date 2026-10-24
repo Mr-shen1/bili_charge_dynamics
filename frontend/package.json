@@ -15,6 +15,7 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:production": "playwright test --config playwright.production.config.ts",
+    "test:e2e:manage": "playwright test --config playwright.manage.config.ts",
     "check": "pnpm typecheck && pnpm test && pnpm check:e2e-projects",
     "check:dist": "pnpm build && pnpm build:mock && pnpm check:isolation && pnpm check:data-parity",
     "check:e2e-projects": "node scripts/check-e2e-projects.mjs",

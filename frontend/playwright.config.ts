@@ -8,7 +8,7 @@ const preview = process.env.E2E_TARGET === 'preview';
 const mockBase = `http://127.0.0.1:${port}`;
 const listBase = `http://127.0.0.1:${listPort}`;
 // 列表与一级评论用例需要生产装配 + HTTP 传输替身；mock/fault 装配自带归档夹具。
-const archiveSpecs = ['**/list.spec.ts', '**/comments.spec.ts'];
+const archiveSpecs = ['**/list.spec.ts', '**/comments.spec.ts', '**/manage.spec.ts'];
 // 宽屏回复只在桌面项目跑；窄屏楼中楼只在移动项目跑（入口按 640px 分支）。
 const desktopArchiveSpecs = [...archiveSpecs, '**/replies.spec.ts'];
 const mobileArchiveSpecs = [...archiveSpecs, '**/thread.spec.ts'];
