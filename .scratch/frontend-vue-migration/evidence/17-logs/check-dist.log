@@ -40,7 +40,7 @@ dist/assets/DetailPage-De0sBGKb.js                  18.06 kB │ gzip:  6.06 kB
 dist/assets/ManageUpPage-BopNWUqT.js                34.82 kB │ gzip: 11.45 kB
 dist/assets/ManageShell-BJvydHRh.js                 46.72 kB │ gzip: 16.52 kB
 dist/assets/index-C-E5912O.js                      229.99 kB │ gzip: 84.60 kB
-✓ built in 3.78s
+✓ built in 3.83s
 
 > bili-charge-dynamics-frontend@0.0.0 build:mock /home/kevin/Projects/PI/bili_charge_dynamics/frontend
 > vue-tsc --noEmit && vite build --mode mock --outDir dist-mock
@@ -82,7 +82,7 @@ dist-mock/assets/DetailPage-C_bDhQdf.js                                         
 dist-mock/assets/ManageUpPage-DK3Lt-_a.js                                        34.81 kB │ gzip: 11.44 kB
 dist-mock/assets/ManageShell-DSRaH6Hh.js                                         46.72 kB │ gzip: 16.52 kB
 dist-mock/assets/index-CeKSQI_l.js                                              226.10 kB │ gzip: 84.87 kB
-✓ built in 3.71s
+✓ built in 3.91s
 
 > bili-charge-dynamics-frontend@0.0.0 check:isolation /home/kevin/Projects/PI/bili_charge_dynamics/frontend
 > node scripts/check-isolation.mjs

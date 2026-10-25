@@ -23,9 +23,9 @@
 | 12 | 仅含 Vue 的候选产物：六条路由与完整阅读/管理流程均由 Vue 承载、删除 React 栈与重复实现、交付工具去掉框架耦合、默认真实 API 与 mock/fault 隔离保持 |
 | 13 | 协议与跨流程回归：mock、生产 Adapter/HTTP 替身、实际 API＋隔离 SQLite 分开取证，六路由/分页排序/恢复/图片/管理/竞态逐项回归，建立 AC-01–AC-34 台账 |
 | 14 | 新版视觉签收：63 张四宽度受控截图（含空态/错误态）、布局/触控/焦点审计、用户两轮反馈修正、黄金图与 `visual:compare` 基准 |
-| 15 | 实际设备验收：Linux Chrome `155.0.8059.39`（1280 宽）与 iPhone 13 Pro / iOS 16.4 / Safari 16.4 人工实测；真机暴露并修复 F-15-01（写锁卡死）与 F-15-02（输入框自动放大），最终候选 `32c9510`；无逐项截图/录屏、UA 未采集、B7–B10 未跑均如实记录 |
+| 15 | 实际设备验收：Linux Chrome `155.0.8059.39`（1280 宽）与 iPhone 13 Pro / iOS 16.4 / Safari 16.4 人工实测；真机暴露 F-15-01（写锁卡死，已修复）与 F-15-02（输入框自动放大，**按票据 17 裁决回退为已知限制**）；被测候选 `32c9510`；无逐项截图/录屏、UA 未采集、B7–B10 未跑均如实记录 |
 | 16 | 隔离 Nginx 静态交付：本机临时编译 Nginx 1.28.0 下六路由直达/刷新、入口与全部哈希资源可达、管理 401 提示、生产/mock 原子切换与前端回退、SQLite 与 collector 不受影响 |
-| 17 | 统一上线就绪汇总：结论**可申请统一上线**——候选产物唯一（视觉重拍 63/63 逐像素相同）、自动化/交付/回退在新候选上重跑通过、AC-01–AC-34 台账完整；设备复验与可审计性缺口按用户裁决记录，已知限制见证据 §7，不授权部署 |
+| 17 | 统一上线就绪汇总：结论**可申请统一上线**——候选产物唯一（视觉重拍 63/63 判定口径（AE + 1% fuzz）零差异像素，50 张与签收图字节相同、13 张仅抗锯齿级差异）、自动化/交付/回退在新候选上重跑通过、AC-01–AC-34 台账完整；设备复验与可审计性缺口按用户裁决记录，已知限制见证据 §7，不授权部署 |
 
 对应规格与票据：[实施规格](../.scratch/frontend-vue-migration/spec.md) · [票据目录](../.scratch/frontend-vue-migration/issues/) ·
 [图片预览验证证据](../.scratch/frontend-vue-migration/evidence/01-native-image-preview.md) ·
@@ -68,6 +68,9 @@ pnpm visual:baseline     # 票据 14：pnpm build + 四宽度受控截图 + 布�
                        # 配置自动补 NO_PROXY=127.0.0.1,localhost，无需手工设置
 pnpm visual:compare      # 与 tests/visual-baseline/ 的用户签收黄金图逐张比较（AE，fuzz 1%，阈值 0.02%）
                        # 比较指定目录：pnpm visual:compare --current <截图目录>（本命令只比较现成 PNG，不重新截图）
+pnpm visual:diff-report --current <截图目录>
+                       # 逐张写出 sha256 是否相同、AE@fuzz 与不含容差的 AE 权重和 → diff-report.json
+                       # 与 visual:compare 共用比较口径和条件校验，用于证据文档引用
 pnpm visual:golden -- --reason "为什么是预期变化"
                        # 仅在确认视觉变化是预期的之后更新黄金图；必须写原因并进提交
 pnpm test:nginx-parity   # 只比对 deploy/nginx*.conf 的 location/server 指令一致性，无需 nginx 二进制
@@ -159,7 +162,7 @@ mode 与自检构建中出现。
 后续视觉变更先跑 `pnpm visual:compare`；只有确认变化符合预期，才用 `pnpm visual:golden -- --reason "..."`
 更新黄金图并提交原因，不能用重跑截图掩盖退化。
 
-17 的上线就绪汇总已完成，结论为**可申请统一上线**：视觉重拍与签收黄金图逐像素相同，自动化、隔离 Nginx 交付与回退都在最终候选上重跑；
+17 的上线就绪汇总已完成，结论为**可申请统一上线**：视觉重拍与签收黄金图在判定口径下没有差异像素（63/63 判定口径（AE + 1% fuzz）零差异像素，50 张与签收图字节相同、13 张仅抗锯齿级差异），自动化、隔离 Nginx 交付与回退都在最终候选上重跑；
 设备复验与可审计性缺口、以及输入框字号与 iOS 聚焦放大等已知限制见
 [17 上线就绪汇总证据 §7](../.scratch/frontend-vue-migration/evidence/17-release-readiness.md)。13 只证明自动化与隔离集成；
 14 只证明 Linux Chromium 下的视觉基准；15 只证明两类真机目标；16 只在本机隔离 Nginx 下验证静态交付、资源更新与前端回退，
@@ -168,8 +171,10 @@ mode 与自检构建中出现。
 票据 15 已完成真机验收（Linux Chrome 155.0.8059.39 与 iPhone 13 Pro / iOS 16.4），记录见
 [15 实际设备验收证据](../.scratch/frontend-vue-migration/evidence/15-real-device-acceptance.md)：候选登记与产物校验
 （`evidence/device-15/candidate.json`）、局域网启动脚本、环境 A/B 两份逐条清单与结论。真机暴露并已修复两处 iOS 缺陷：
-`AbortSignal.any` 在 iOS 16.4 缺失导致管理写锁卡死（F-15-01），以及输入框 13px 触发整页放大（F-15-02）；
-`tests/unit/browser-baseline.test.ts` 现在会挡住 iOS 16.4 缺失的 Web API 重新混进源码。
+`AbortSignal.any` 在 iOS 16.4 缺失导致管理写锁卡死（F-15-01，已修复，`tests/unit/browser-baseline.test.ts` 会挡住 iOS 16.4 缺失的 Web API 重新混进源码），
+以及输入框字号小于 16px 时聚焦整页放大（F-15-02）。F-15-02 的 16px 修复会改动用户签收过的视觉，
+票据 17 按裁决**回退为已知限制**（`manage.spec.ts` 断言输入框字号等于库默认字号），详见
+[17 上线就绪汇总证据 §7](../.scratch/frontend-vue-migration/evidence/17-release-readiness.md)。
 
 票据 16 已完成（见[交付与回退证据](../.scratch/frontend-vue-migration/evidence/16-static-delivery-rollback.md)）：
 本机无系统 Nginx，按文档在临时目录编译 Nginx 1.28.0，用 `DELIVERY_PORT=4273` 避开已占用的 4173（现有实例未受影响）。

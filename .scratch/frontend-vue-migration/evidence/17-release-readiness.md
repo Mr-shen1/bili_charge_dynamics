@@ -5,7 +5,7 @@
 - 上游证据：[13 协议与跨流程回归](13-integrated-protocol-regression.md)、[14 视觉基准准备与签收](14-visual-baseline-preparation.md)、
   [15 实际设备验收](15-real-device-acceptance.md)、[16 静态交付与回退](16-static-delivery-rollback.md)、[01 原生预览验证](01-native-image-preview.md)
 - 需求真值：[SRS §9](../../../docs/product/SRS.md)；文档/代码差异：[行为基线差异](../baseline-differences.md)
-- 证据状态：**结论＝可申请统一上线**（附 §7 已裁决的已知限制）。视觉与签收基准**逐像素一致**，自动化、交付与回退都在同一份候选产物上重跑；
+- 证据状态：**结论＝可申请统一上线**（附 §7 已裁决的已知限制）。视觉与签收基准在判定口径下**零差异像素**（63/63 判定口径（AE + 1% fuzz）零差异像素，50 张与签收图字节相同、13 张仅抗锯齿级差异），自动化、交付与回退都在同一份候选产物上重跑；
   设备复验与可审计性缺口按用户裁决处理。本文件**不授权部署**，实际上线须另行授权。
 
 ## 1. 结论
@@ -17,7 +17,7 @@
 | 候选产物是否唯一、可追溯 | **成立**：本票的产品树（含输入框字号回退）就是最终候选，其余改动只有文档、测试与仓库脚本；产物标识见 §2 |
 | 自动化（类型检查/行为/契约/实际 API/构建/交付）是否可复现 | **成立**：本票全量重跑通过，产物可逐字节复现（§5） |
 | AC-01–AC-34 台账是否逐项完整 | **成立**：见 §6，逐项区分本次重跑、真机、视觉、隔离交付、未变更后端历史依据与未验证 |
-| 新版视觉是否已由用户确认且对应最终候选 | **成立**：回退输入框字号后，最终候选的 63 张受控截图与用户签收的黄金图**逐像素完全相同（0 差异）**，签收直接结转（§4） |
+| 新版视觉是否已由用户确认且对应最终候选 | **成立**：回退输入框字号后，最终候选的 63 张受控截图在判定口径（AE + 1% fuzz，阈值 0.02%）下 **0 差异像素**，其中 50 张与签收图字节完全相同、13 张仅抗锯齿级差异（最大 0.00004%），签收直接结转（§4） |
 | Linux Chrome 与 iPhone Safari 结果是否齐备且对应最终候选 | **成立（按裁决）**：实测记录见票据 15；最终候选相对被测候选 `32c9510` 的唯一产品差异就是本次回退的输入框字号，复验按用户裁决免做（R2，§7） |
 | 是否存在已知阻断回归 | **没有**：前端无回归；后端两例异步时序用例偶发超时在第三次全量跑中 `809 passed`（§5，既有测试稳定性问题） |
 | 免责边界 | 未在目标机/云/TLS/公网执行，未访问真实上游或 OSS，未做持续运行与容量验证；部署须另行授权（R5） |
@@ -29,7 +29,7 @@
 最终候选＝本票提交的产品树。相对票据 15/16 实测的 `32c9510`，**唯一的产品改动**是
 `frontend/src/theme/theme.css`：删掉把 `.el-input__inner`/`.el-textarea__inner` 强制成 16px 的规则，恢复 Element Plus 默认字号（实测 14px）。
 其余改动是文档、测试（`frontend/tests/**`）、仓库脚本（`frontend/scripts/**`）与 `frontend/playwright.config.ts`，都不进产物。
-连带证据：`manage.spec.ts` 的四视口字号断言从「≥16px」改为「锁在 14px」，防止再次漂移；
+连带证据：`manage.spec.ts` 的四视口字号断言从「≥16px」改为「等于库默认字号，且默认字号仍是 14px」，防止再次漂移；
 [设计文档](../../../docs/design/frontend-migration.md)把「库内部类覆盖」从两类收回一类并记录该裁决。
 
 ### 2.2 最终候选的产物标识（本票实测）
@@ -41,13 +41,14 @@
 | 资源数 | 28 个内容哈希资源（17 JS + 11 CSS，含 6 个路由 chunk），无 SSR、无常驻 Node |
 | 产物体积 | `dist` 31 文件 / 467253 B；`dist-mock` 34 文件 / 466899 B（入口 `index-CeKSQI_l.js` + `index-DDIJRK8V.css`，`index.html` sha256 `f127748b…`） |
 | 依赖与运行时 | 锁文件 `frontend/pnpm-lock.yaml` sha256 `8b7b0990…` 未变；vue 3.5.44、vue-router 4.6.4、element-plus 2.14.7、vite 7.3.1、Node 24.21.0、pnpm 10.34.6 |
-| 值得一提的旁证 | 回退后入口 CSS 哈希回到 `index-DDIJRK8V.css`，与用户签收视觉时的构建（`89d0b49`）同哈希——样式内容已回到签收版本 |
+| 值得一提的旁证 | 回退后入口 CSS 文件 `index-DDIJRK8V.css` 与用户签收视觉时的构建（`89d0b49`）同哈希——样式内容已回到签收版本 |
+| 复核方式 | `index.html` 的 sha256 与入口引用可用 §10 的 `sha256sum`/`grep` 直接核对；证据提交（`c5a403a` 之后）只改文档与测试，产品面未变 |
 
 ### 2.3 各票证据与候选的对应
 
 | 记录 | 绑定候选 | 与本票最终候选的关系 |
 | --- | --- | --- |
-| 15 设备 `evidence/device-15/candidate.json` | `32c9510`（`index-B7KnNIzH.js` + `index-BT3uA9bJ.css`） | 唯一差异是输入框字号回退；受影响项即 F-15-02，复验按用户裁决免做（§7） |
+| 15 设备 `evidence/device-15/candidate.json` | `32c9510`（`index-B7KnNIzH.js` + `index-BT3uA9bJ.css`）；A 节全量实测在更早的 `946ed66`，`32c9510` 只补验 A9/A13/B6 与输入框 | 最终候选相对 `32c9510` 的唯一产品差异是输入框字号回退；受影响项即 F-15-02，复验按用户裁决免做（§7） |
 | 16 交付 `evidence/16-delivery-manifest.json` | 同 `32c9510` 产物（`entry_sha256` 与 15 一致） | 交付结论由本票在新候选上重跑（§5），入口演变为 `index-C-E5912O.js` |
 | 13 自动化（`7f15cac`）、14 视觉签收（`89d0b49`） | 更早的构建 | 本票在新候选上重跑全部自动化（§5）；视觉由重拍证明 0 差异（§4） |
 
@@ -70,12 +71,14 @@
 | 命令 | `VISUAL_OUT_DIR=…/evidence/visual-17 pnpm visual:baseline` 然后 `pnpm visual:compare --current …/evidence/visual-17` |
 | 截图条件 | 与签收基准完全一致：Chromium 145.0.7632.6、DPR 1、100% 缩放、视口 360/390/768/1280×900、`Asia/Shanghai`、`zh-CN`、系统字体栈 |
 | 产物标识 | `conditions.json`：`sourceStatus` 为空（工作树干净），构建清单 28 项 = 最终候选（`index-C-E5912O.js` / `index-DDIJRK8V.css`） |
-| 结果 | **63/63 全部逐像素相同（0 差异）**；`layout.spec.ts` 的 6 条四宽度布局/触控/焦点审计同时通过 |
-| 入库内容 | `visual-17/conditions.json`、`visual-17/diff-report.json`（63 张逐张 AE 数值，全部为 0）；截图本体按同一命令可复现，未入库 |
-| 元数据口径 | `conditions.json` 的 `ticket: "14"` 与 `scope: "…（未签收…）"` 是截图工具的模板值；本文件的判定只依据 `sourceCommit`/`sourceStatus`/`build` 与 `diff-report.json` |
+| 结果 | **63/63 通过**，判定口径（AE + 1% fuzz）下 **0 差异像素**；`layout.spec.ts` 的 6 条四宽度布局/触控/焦点审计同时通过 |
+| 差异明细 | 50 张与签收图 **sha256 完全相同**；13 张为抗锯齿级差异：判定口径下差异像素为 0，不含容差的 AE 权重和最大 **0.14**
+（HDRI 构建下可为小数，表示差异远小于 1 个像素；最大占比 0.00004%，远小于 0.02% 阈值）。这与票据 14 记录的非字节级确定性一致，不是布局或样式变化 |
+| 入库内容 | `visual-17/` 下的 `conditions.json`、**63 张截图本体**（可逐张校验 sha256）与 `diff-report.json`（逐张记录 `identicalBytes` / `diffPixelsFuzz` / `diffWeightNoFuzz` / `ratioNoFuzz`） |
+| 元数据口径 | `conditions.json` 由截图工具生成：`sourceCommit` `c5a403a`（截图时的 HEAD，干净工作树，`sourceStatus` 为空；其后只有本票的证据提交），`build` 的 28 项即 §2.2 的产物；`ticket: "14"`、`scope`/`caveats` 的「未签收」措辞是票据 14 的模板值，本文件的判定与签收依据以本节与 `diff-report.json` 为准 |
 
 过程记录：第一次重拍（16px 版本）有 4 张单 UP 管理截图各差 43 像素，差异都落在「近期 N 条」输入框里的数字，改变区域仅 17×12 像素。
-用户裁决该变化不可接受、字号应保持原样（R1），于是回退 16px 覆盖并再次重拍，得到上面的 0 差异结果。
+用户裁决该变化不可接受、字号应保持原样（R1），于是回退 16px 覆盖并再次重拍，得到上面的结果。
 回退前的对照图与差异记录留在提交历史（`4d2e045` 及其父提交），不在工作树里堆积。
 
 ## 5. 本票复跑结果（可复现性）
@@ -149,7 +152,7 @@ Playwright Chromium 145.0.7632.6；因本机设置 `HTTP(S)_PROXY`，前端命�
 | AC-28 | **未验证（真实来源）** | 正文受限下的评论同步属采集侧；**H**；前端状态呈现通过（F/G） |
 | AC-29 | **部分** | 停用/移除目标/删除配置后归档与阅读入口保留：G + 交付阶段只读浏览通过；「不再监控」与上游消失保留属 **H**；D B10 未跑 |
 | AC-30 | **通过（隔离范围）** | 动态图与根评论图 owner/顺序/状态/重试分离，回复页不新增图片；真实 OSS 未验证 |
-| AC-31 | **通过** | 用户签收 63 张四宽度受控截图（`89d0b49`）；本票在最终候选重拍 **63/63 逐像素相同**，签收直接结转；信息裁剪（无转发/视频/榜单/发布/真实点赞、可有充电标识）由 F/S/截图覆盖 |
+| AC-31 | **通过** | 用户签收 63 张四宽度受控截图（`89d0b49`）；本票在最终候选重拍，判定口径下 **63/63 零差异像素**（50 张字节相同、13 张仅抗锯齿差异），签收直接结转；信息裁剪（无转发/视频/榜单/发布/真实点赞、可有充电标识）由 F/S/截图覆盖 |
 | AC-32 | **部分** | 401 固定提示、错误脱敏、秘密不在产物/响应/日志：F/G/P/**N** 通过；公网无鉴权暴露与公开 OSS 直取的风险说明在部署与产品文档；真实部署与真实凭据未验证 |
 | AC-33 | **部分** | 架构（单 API + 独立 collector + SQLite，无 Redis/Celery）、工具链（Node nvm+pnpm、Python uv）、Vue 重构验收成立；2 核 2GB 同机资源未实测 |
 | AC-34 | **通过（记录类别）** | 本文件与 13 §1/§2/§6 分列历史证据、本期回归、未验证项；未验证项按 R3（已裁决）/R4/R5 如实登记 |
@@ -163,12 +166,12 @@ Playwright Chromium 145.0.7632.6；因本机设置 `HTTP(S)_PROXY`，前端命�
 
 | 项 | 内容 | 来源 |
 | --- | --- | --- |
-| R1 视觉与输入框字号 | 输入框保持库默认 14px；16px 虽能规避 iOS 聚焦放大，但会改变签收过的视觉，用户裁决以视觉一致为先 | 用户 2026-10-25（本票） |
+| R1 视觉与输入框字号 | 输入框保持库默认字号（`--el-font-size-base`，实测 14px）；16px 虽能规避 iOS 聚焦放大，但会改变签收过的视觉，用户裁决以视觉一致为先 | 用户 2026-10-25（本票） |
 | R2 设备复验 | 最终候选相对被测候选 `32c9510` 只有这条字号回退，用户裁决不重跑真机 A 节 | 用户 2026-10-25（本票） |
 | R3 可审计性 | 两台设备的 UA 原文与逐项截图/录屏不补采，按「口头确认 + 现有记录」接受 | 用户 2026-10-25（本票） |
 | F-15-02 iOS 聚焦放大 | iOS Safari 对 font-size 小于 16px 的输入框聚焦时放大整页且失焦不还原；本轮**不修**。要恢复修复需把输入框字号改成 16px 并重新签收视觉（会重新产生 43 像素差异） | 本条与 R1 同源 |
 | 图片预览库能力限制 | 放大后拖动不限制边界、未达边界仍可拖动、切图无跟手过渡、双击以图片中心为准 | 规格第 36 条 |
-| R4 后端测试稳定性 | 两例异步时序用例在全量跑下偶发 3 秒超时（第三次全量 809 passed）；既有缺陷，需另立票据 | 本票 §5 |
+| R4 后端测试稳定性 | 两例异步时序用例在全量跑下偶发 3 秒超时（第三次全量 809 passed）；既有缺陷，已立票 [36](../../backend-integration/issues/36-backend-timing-test-flake.md) | 本票 §5 |
 | R5 部署与真实来源 | 目标机/云/TLS/公网、真实上游采集、真实 OSS 上传、持续运行与 2 核 2GB 容量均未验证；实际部署须另行授权 | 票据 16 §8、本票 |
 
 ## 8. 交付、回退与维护收益（与最终产物一致）
@@ -214,14 +217,15 @@ Element Plus 未整包引入（`src/main.ts` 按组件路径引样式、SFC 具�
 | 文件 | 改动 | 受影响验证 |
 | --- | --- | --- |
 | `frontend/src/theme/theme.css` | 删掉输入框 16px 覆盖，恢复库默认 14px（R1 裁决）；同步更新「库内部类例外」注释 | **产品变更 → 全部重跑**（§5：check、e2e、production、manage、dist、nginx-parity、delivery、视觉重拍） |
-| `frontend/tests/e2e/manage.spec.ts` | 四视口字号断言由「≥16px」改为「= 14px」，锁住签收视觉 | `pnpm test:e2e` 重跑通过 |
+| `frontend/tests/e2e/manage.spec.ts` | 四视口字号断言由「≥16px」改为「等于库默认字号 `--el-font-size-base`」，锁住签收视觉又不在库升级时误报 | `pnpm test:e2e` 重跑通过 |
+| `frontend/scripts/visual-diff-report.mjs`、`frontend/scripts/lib/visual-baseline.mjs` | 新增：逐张比较候选截图与签收黄金图，记录 sha256 是否相同、AE@判定 fuzz、不含容差的 AE 权重和，生成 `diff-report.json`；路径、容差、magick 调用与条件校验抽到共享 lib，与 `visual:compare` 同源 | 本票用 `pnpm visual:diff-report` 生成 §4 的报告 |
 | `frontend/tests/e2e-visual/support.ts` | 新增 `VISUAL_OUT_DIR` 覆盖截图输出目录（默认仍是 `evidence/visual-14`）。加这一处开关是因为 `visual:baseline` 原本只能写签收目录，重跑会覆盖 14 的记录 | `pnpm check`、`visual:baseline` 重跑通过 |
 | `frontend/tests/e2e-visual/capture.spec.ts` | `sourceStatus` 过滤改为按实际输出目录名排除；`sourceNote` 不再写死票据 14 的路径 | 同上 |
 | `docs/design/frontend-migration.md` | 库内部类覆盖由两类收回一类，记录输入框字号裁决 | — |
 | `.scratch/frontend-vue-migration/evidence/visual-17/` | 新增：`conditions.json`、`diff-report.json`（63 张全 0 差异） | — |
 | `.scratch/frontend-vue-migration/evidence/17-logs/` | 新增：本票全部命令输出 | — |
 | `.scratch/frontend-vue-migration/evidence/15-real-device-acceptance.md` | 追加 §13 更正记录（自比更正 + F-15-02 回退 + 候选差异） | — |
-| `frontend/README.md`、`docs/README.md` | 「已交付」表补 15、17；索引补 17 证据与结论 | — |
+| `frontend/README.md`、`docs/README.md` | 「已交付」表补 17 行（15 行上一轮已补）、修正 15 行里 F-15-02 的表述；索引补 17 证据与结论 | — |
 
 边界：未改后端、部署脚本与数据库；未执行部署、未操作当前运行实例、未重启 collector；未访问真实 B 站上游或 OSS；
 未修改父规格状态，也未把任何历史验收改写成新版通过。R1/R2/R3 是用户裁决，本文件按裁决记录，不代为放宽其他要求。
@@ -250,6 +254,7 @@ DELIVERY_PORT=4273 \
 # 视觉：在最终候选上重拍并与签收黄金图比较（不覆盖 14 的签收目录）
 VISUAL_OUT_DIR=$PWD/../.scratch/frontend-vue-migration/evidence/visual-17 pnpm visual:baseline
 pnpm visual:compare --current $PWD/../.scratch/frontend-vue-migration/evidence/visual-17
+pnpm visual:diff-report --current $PWD/../.scratch/frontend-vue-migration/evidence/visual-17
 
 # 产物身份核对（应输出 6b520cd7…、index-C-E5912O.js 与 index-DDIJRK8V.css）
 sha256sum dist/index.html && grep -o '/assets/[^"]*' dist/index.html

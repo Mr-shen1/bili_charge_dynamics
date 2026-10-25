@@ -41,7 +41,7 @@ dist/assets/DetailPage-De0sBGKb.js                  18.06 kB │ gzip:  6.06 kB
 dist/assets/ManageUpPage-BopNWUqT.js                34.82 kB │ gzip: 11.45 kB
 dist/assets/ManageShell-BJvydHRh.js                 46.72 kB │ gzip: 16.52 kB
 dist/assets/index-C-E5912O.js                      229.99 kB │ gzip: 84.60 kB
-✓ built in 3.91s
+✓ built in 3.78s
 
 > bili-charge-dynamics-frontend@0.0.0 build:mock /home/kevin/Projects/PI/bili_charge_dynamics/frontend
 > vue-tsc --noEmit && vite build --mode mock --outDir dist-mock
@@ -83,28 +83,28 @@ dist-mock/assets/DetailPage-C_bDhQdf.js                                         
 dist-mock/assets/ManageUpPage-DK3Lt-_a.js                                        34.81 kB │ gzip: 11.44 kB
 dist-mock/assets/ManageShell-DSRaH6Hh.js                                         46.72 kB │ gzip: 16.52 kB
 dist-mock/assets/index-CeKSQI_l.js                                              226.10 kB │ gzip: 84.87 kB
-✓ built in 3.66s
-nginx: the configuration file /tmp/dynamics-static-1LomrD/nginx.conf syntax is ok
-nginx: configuration file /tmp/dynamics-static-1LomrD/nginx.conf test is successful
+✓ built in 4.14s
+nginx: the configuration file /tmp/dynamics-static-42eeaD/nginx.conf syntax is ok
+nginx: configuration file /tmp/dynamics-static-42eeaD/nginx.conf test is successful
 PASS: mock 产物 31 个哈希资源可达，路由 chunk 8 个
 === 阶段 1/3：显式 mock 构建的阅读/缓存/404/构建复现与发布回退（http://127.0.0.1:4273） ===
 
 Running 10 tests using 1 worker
 
   ✓   1 [desktop-chromium] › tests/e2e/static-delivery.spec.ts:10:1 › 六类页面深链接和带扩展名的页面仍返回重新验证的入口，资源按明确路径分类 (70ms)
-  ✓   2 [desktop-chromium] › tests/e2e/static-delivery.spec.ts:21:1 › 入口可通过 ETag 和修改时间重新验证，成功返回 304 (11ms)
-  ✓   3 [desktop-chromium] › tests/e2e/static-delivery.spec.ts:35:1 › 入口引用的哈希脚本与样式有正确 MIME 与长期缓存，应用自有图片与头像按未版本化处理 (31ms)
-  ✓   4 [desktop-chromium] › tests/e2e/static-delivery.spec.ts:59:1 › 缺失脚本样式图片及无扩展名资源返回不可存储的 404，不回退到应用入口 (18ms)
-  ✓   5 [desktop-chromium] › tests/e2e/static-delivery.spec.ts:72:1 › 正常产物深链接刷新可看图和返回；页面不存在和内容不存在仍由前端表达 (593ms)
-  ✓   6 [mobile-chromium] › tests/e2e/static-delivery.spec.ts:10:1 › 六类页面深链接和带扩展名的页面仍返回重新验证的入口，资源按明确路径分类 (66ms)
+  ✓   2 [desktop-chromium] › tests/e2e/static-delivery.spec.ts:21:1 › 入口可通过 ETag 和修改时间重新验证，成功返回 304 (12ms)
+  ✓   3 [desktop-chromium] › tests/e2e/static-delivery.spec.ts:35:1 › 入口引用的哈希脚本与样式有正确 MIME 与长期缓存，应用自有图片与头像按未版本化处理 (34ms)
+  ✓   4 [desktop-chromium] › tests/e2e/static-delivery.spec.ts:59:1 › 缺失脚本样式图片及无扩展名资源返回不可存储的 404，不回退到应用入口 (19ms)
+  ✓   5 [desktop-chromium] › tests/e2e/static-delivery.spec.ts:72:1 › 正常产物深链接刷新可看图和返回；页面不存在和内容不存在仍由前端表达 (579ms)
+  ✓   6 [mobile-chromium] › tests/e2e/static-delivery.spec.ts:10:1 › 六类页面深链接和带扩展名的页面仍返回重新验证的入口，资源按明确路径分类 (69ms)
   ✓   7 [mobile-chromium] › tests/e2e/static-delivery.spec.ts:21:1 › 入口可通过 ETag 和修改时间重新验证，成功返回 304 (12ms)
-  ✓   8 [mobile-chromium] › tests/e2e/static-delivery.spec.ts:35:1 › 入口引用的哈希脚本与样式有正确 MIME 与长期缓存，应用自有图片与头像按未版本化处理 (40ms)
-  ✓   9 [mobile-chromium] › tests/e2e/static-delivery.spec.ts:59:1 › 缺失脚本样式图片及无扩展名资源返回不可存储的 404，不回退到应用入口 (20ms)
-  ✓  10 [mobile-chromium] › tests/e2e/static-delivery.spec.ts:72:1 › 正常产物深链接刷新可看图和返回；页面不存在和内容不存在仍由前端表达 (550ms)
+  ✓   8 [mobile-chromium] › tests/e2e/static-delivery.spec.ts:35:1 › 入口引用的哈希脚本与样式有正确 MIME 与长期缓存，应用自有图片与头像按未版本化处理 (34ms)
+  ✓   9 [mobile-chromium] › tests/e2e/static-delivery.spec.ts:59:1 › 缺失脚本样式图片及无扩展名资源返回不可存储的 404，不回退到应用入口 (18ms)
+  ✓  10 [mobile-chromium] › tests/e2e/static-delivery.spec.ts:72:1 › 正常产物深链接刷新可看图和返回；页面不存在和内容不存在仍由前端表达 (594ms)
 
   10 passed (3.3s)
 
-> bili-charge-dynamics-frontend@0.0.0 build /tmp/dynamics-static-1LomrD/build-source
+> bili-charge-dynamics-frontend@0.0.0 build /tmp/dynamics-static-42eeaD/build-source
 > vue-tsc --noEmit && vite build
 
 vite v7.3.1 building client environment for production...
@@ -141,9 +141,9 @@ dist/assets/DetailPage-De0sBGKb.js                  18.06 kB │ gzip:  6.06 kB
 dist/assets/ManageUpPage-BopNWUqT.js                34.82 kB │ gzip: 11.45 kB
 dist/assets/ManageShell-BJvydHRh.js                 46.72 kB │ gzip: 16.52 kB
 dist/assets/index-C-E5912O.js                      229.99 kB │ gzip: 84.60 kB
-✓ built in 3.72s
+✓ built in 4.40s
 
-> bili-charge-dynamics-frontend@0.0.0 build:fault /tmp/dynamics-static-1LomrD/build-source
+> bili-charge-dynamics-frontend@0.0.0 build:fault /tmp/dynamics-static-42eeaD/build-source
 > vue-tsc --noEmit && vite build --mode fault --outDir dist-mock
 
 vite v7.3.1 building client environment for fault...
@@ -183,9 +183,9 @@ dist-mock/assets/DetailPage-Dk5LgbN6.js                                         
 dist-mock/assets/ManageUpPage-BYkPUCaa.js                                        34.81 kB │ gzip: 11.44 kB
 dist-mock/assets/ManageShell-CB8cVdNh.js                                         46.72 kB │ gzip: 16.52 kB
 dist-mock/assets/index-DeeUyoNR.js                                              226.51 kB │ gzip: 84.99 kB
-✓ built in 3.77s
+✓ built in 3.90s
 
-> bili-charge-dynamics-frontend@0.0.0 build:mock /tmp/dynamics-static-1LomrD/build-source
+> bili-charge-dynamics-frontend@0.0.0 build:mock /tmp/dynamics-static-42eeaD/build-source
 > vue-tsc --noEmit && vite build --mode mock --outDir dist-mock
 
 vite v7.3.1 building client environment for mock...
@@ -225,10 +225,10 @@ dist-mock/assets/DetailPage-C_bDhQdf.js                                         
 dist-mock/assets/ManageUpPage-DK3Lt-_a.js                                        34.81 kB │ gzip: 11.44 kB
 dist-mock/assets/ManageShell-DSRaH6Hh.js                                         46.72 kB │ gzip: 16.52 kB
 dist-mock/assets/index-CeKSQI_l.js                                              226.10 kB │ gzip: 84.87 kB
-✓ built in 3.77s
+✓ built in 4.62s
 PASS: 生产与显式 mock bundle 构建可复现；fault 构建单独输出且不改动生产产物
 
-> bili-charge-dynamics-frontend@0.0.0 build:mock /tmp/dynamics-static-1LomrD/build-source
+> bili-charge-dynamics-frontend@0.0.0 build:mock /tmp/dynamics-static-42eeaD/build-source
 > vue-tsc --noEmit && vite build --mode mock --outDir dist-mock
 
 vite v7.3.1 building client environment for mock...
@@ -268,14 +268,14 @@ dist-mock/assets/DetailPage-C8mf6kqD.js                                         
 dist-mock/assets/ManageUpPage-Dz9rNtVC.js                                        34.81 kB │ gzip: 11.44 kB
 dist-mock/assets/ManageShell-DRTAGzYt.js                                         46.72 kB │ gzip: 16.52 kB
 dist-mock/assets/index-IyFYg4CP.js                                              226.16 kB │ gzip: 84.90 kB
-✓ built in 3.81s
+✓ built in 3.85s
 PASS: build update /assets/index-CeKSQI_l.js -> /assets/index-IyFYg4CP.js; 新旧入口引用资源（共 3 个）均可达，浏览器加载 release B
 === 阶段 2/3：mock 产物回退到上一版，旧/新哈希资源仍可达 ===
 PASS: 回退到旧入口；旧/新入口引用资源（共 3 个）仍可达，页面重新加载为旧产物“充电动态归档”
 === 阶段 3/3：生产构建 + 实际 API/collector（六路由、401、更新与回退） ===
 PASS: production Adapter, 六条路由 direct/reload, 28 个哈希资源可达, public images, read-only browsing, API/resource errors, 401 prompt and secret scan
 
-> bili-charge-dynamics-frontend@0.0.0 build /tmp/dynamics-static-1LomrD/build-source
+> bili-charge-dynamics-frontend@0.0.0 build /tmp/dynamics-static-42eeaD/build-source
 > vue-tsc --noEmit && vite build
 
 vite v7.3.1 building client environment for production...
@@ -312,7 +312,7 @@ dist/assets/DetailPage-xLLIubcg.js                  18.06 kB │ gzip:  6.06 kB
 dist/assets/ManageUpPage-BvQvBd77.js                34.82 kB │ gzip: 11.45 kB
 dist/assets/ManageShell-CFM2f1iv.js                 46.72 kB │ gzip: 16.52 kB
 dist/assets/index-Pa2PSiv9.js                      230.05 kB │ gzip: 84.63 kB
-✓ built in 3.75s
+✓ built in 3.76s
 PASS: build update /assets/index-C-E5912O.js -> /assets/index-Pa2PSiv9.js; 新旧入口引用资源（共 3 个）均可达，浏览器加载 release B
 PASS: 回退到旧入口；旧/新入口引用资源（共 3 个）仍可达，页面重新加载为旧产物“充电动态归档”
 PASS: 生产产物原子切换与回退；SQLite 文件未替换、collector 未重启，归档内容不变
@@ -355,4 +355,4 @@ dist/assets/DetailPage-De0sBGKb.js                  18.06 kB │ gzip:  6.06 kB
 dist/assets/ManageUpPage-BopNWUqT.js                34.82 kB │ gzip: 11.45 kB
 dist/assets/ManageShell-BJvydHRh.js                 46.72 kB │ gzip: 16.52 kB
 dist/assets/index-C-E5912O.js                      229.99 kB │ gzip: 84.60 kB
-✓ built in 3.72s
+✓ built in 3.87s
