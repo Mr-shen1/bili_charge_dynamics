@@ -401,3 +401,108 @@ it('离开楼中楼后迟到的翻页结果不改写详情，重新进入仍从�
   await screen.findByRole('list', { name: '相关回复' });
   expect(seen.at(-1)).toEqual({ rootId, limit: 10, page: 1, cursor: undefined });
 });
+
+/** jsdom 没有 scrollIntoView：记录被定位的元素，验证定位落在目标回复而不是页面顶部。 */
+function recordScrollIntoView(): Element[] {
+  const scrolled: Element[] = [];
+  Object.defineProperty(Element.prototype, 'scrollIntoView', {
+    configurable: true,
+    writable: true,
+    value(this: Element) { scrolled.push(this); },
+  });
+  return scrolled;
+}
+
+function locatePath(replyId: string): string {
+  return `/dynamics/${dynamicId}/comments/${rootId}/replies/${replyId}/locate`;
+}
+
+it('窄屏精确入口直达目标所在页并高亮该条：不回第一页，也不先回到页面顶部', async () => {
+  installCompactViewport(true);
+  const scrolled = recordScrollIntoView();
+  const target = replies(25)[13]!;
+  const located: string[] = [];
+  const pageReads: ReplyRequest[] = [];
+  const reader = threadReader({
+    readReplies: async input => {
+      pageReads.push(requestOf(input));
+      return { status: 'success', data: pageBatch(25, input.page ?? 1) };
+    },
+    locateReply: async input => {
+      located.push(input.replyId);
+      return {
+        status: 'success',
+        data: { ...pageBatch(25, 2), page: 2,
+          items: pageBatch(25, 2).items.map(item =>
+            item.id === target.id ? { ...item, text: locateLongText } : item) },
+      };
+    },
+  });
+
+  const router = await showApp(reader, locatePath(target.id));
+  const list = await screen.findByRole('list', { name: '相关回复' });
+  await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(10));
+
+  // 只有一次定位读取：不先读第 1 页，也不为此渲染全部回复。
+  expect(located).toEqual([target.id]);
+  expect(pageReads).toEqual([]);
+  const entries = within(list).getAllByRole('listitem');
+  expect(entries.map(item => item.dataset.readingId)).toEqual(replies(25).slice(10, 20).map(item => `reply:${rootId}:${item.id}`));
+  const marked = entries.filter(item => item.getAttribute('data-located') === 'true');
+  expect(marked.map(item => item.dataset.readingId)).toEqual([`reply:${rootId}:${target.id}`]);
+  expect(marked[0]!.getAttribute('aria-current')).toBe('true');
+  expect(scrolled.at(-1)).toBe(marked[0]);
+  // 楼中楼正文不折叠：定位可读，不需要展开动作。
+  expect(within(marked[0]!).queryByRole('button', { name: /回复正文/ })).toBeNull();
+  expect(within(marked[0]!).getByText('第七行边界 7', { exact: false })).toBeTruthy();
+  // 页头与分页仍按本地总数：停在目标页，不重置为第一页。
+  expect(screen.getByText('相关回复共25条')).toBeTruthy();
+  expect(screen.getByRole('article', { name: '被回复的评论' })).toBeTruthy();
+  const pager = screen.getByRole('navigation', { name: '回复分页' });
+  expect(within(pager).getByRole('button', { name: '2' }).getAttribute('aria-current')).toBe('page');
+  // 定位模式不先滚到页面顶部再找目标。
+  expect(layout.scrollTo).not.toHaveBeenCalled();
+
+  // 定位后的普通翻页仍是原页内替换。
+  await fireEvent.click(screen.getByRole('button', { name: '下一页' }));
+  await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(5));
+  expect(pageReads.at(-1)).toEqual({ rootId, limit: 10, page: 3, cursor: undefined });
+
+  // 返回仍按无详情来源的规则替换为对应动态详情。
+  await fireEvent.click(screen.getByRole('button', { name: '返回评论' }));
+  await waitFor(() => expect(router.currentRoute.value.path).toBe(`/dynamics/${dynamicId}`));
+});
+
+it('窄屏精确入口：目标不存在可返回动态，临时失败可局部重试后再定位', async () => {
+  installCompactViewport(true);
+  recordScrollIntoView();
+  const missing = threadReader({ locateReply: async () => ({ status: 'not-found' }) });
+  const router = await showApp(missing, locatePath('9999'));
+  const notice = () => screen.getByRole('region', { name: '定位结果' });
+  await waitFor(() => expect(within(notice()).getByRole('status').textContent).toContain('不存在或未归档'));
+  expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+  await fireEvent.click(within(notice()).getByRole('button', { name: '返回动态' }));
+  await waitFor(() => expect(router.currentRoute.value.path).toBe(`/dynamics/${dynamicId}`));
+
+  cleanup();
+  const target = replies(25)[13]!;
+  const attempts: string[] = [];
+  const retrying = threadReader({
+    locateReply: async input => {
+      attempts.push(input.replyId);
+      if (attempts.length === 1) return { status: 'error' };
+      return { status: 'success', data: { ...pageBatch(25, 2), page: 2 } };
+    },
+  });
+  await showApp(retrying, locatePath(target.id));
+  await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('读取失败'));
+  await fireEvent.click(screen.getByRole('button', { name: '重试' }));
+  await waitFor(() => expect(screen.getByRole('list', { name: '相关回复' })).toBeTruthy());
+  const marked = within(screen.getByRole('list', { name: '相关回复' }))
+    .getAllByRole('listitem').filter(item => item.getAttribute('data-located') === 'true');
+  expect(marked.map(item => item.dataset.readingId)).toEqual([`reply:${rootId}:${target.id}`]);
+  expect(attempts).toEqual([target.id, target.id]);
+});
+
+const locateLongText = Array.from({ length: 7 }, (_value, line) =>
+  `第七行边界 ${line + 1}：楼中楼正文直接展示，不新增折叠。`).join('\n');

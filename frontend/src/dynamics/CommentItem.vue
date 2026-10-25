@@ -25,6 +25,8 @@ const props = defineProps<{
   reply?: ReplySnapshot;
   /** 精确入口定位到的目标评论：只做一次性标记，不参与排序或读取。 */
   highlight?: boolean;
+  /** 精确入口定位到的目标回复：交给本楼的回复区展开所在页。 */
+  locateReplyId?: string | null;
 }>();
 const emit = defineEmits<{ toggle: []; reply: [ReplySnapshot] }>();
 
@@ -100,6 +102,7 @@ function openThread(): void {
           :root-id="comment.id"
           :author-id="authorId"
           :initial="reply"
+          :locate-reply-id="locateReplyId ?? null"
           @update="emit('reply', $event)"
         />
       </template>

@@ -21,6 +21,8 @@ const props = defineProps<{
   canLocate: boolean;
   /** 精确入口的目标一级评论：定位到该条而不是评论区顶部。 */
   locateRootId?: string | null;
+  /** 精确入口的目标楼中楼回复：根评论只作定位上下文，滚动交给目标回复本身。 */
+  locateReplyId?: string | null;
 }>();
 const emit = defineEmits<{ 'update:snapshot': [CommentSnapshot] }>();
 const { reader } = useSession();
@@ -34,7 +36,9 @@ const reloadKey = ref(0);
 const currentSnapshot = shallowRef<CommentSnapshot>(props.snapshot);
 const root = ref<HTMLElement | null>(null);
 // 主动入口/切换排序的定位意图只消费一次：失败/取消后不反复抢用户滚动。
-let entryPending = props.target === 'comments' || Boolean(props.locateRootId);
+// 回复精确入口先定位到目标回复，根评论不再单独抢占滚动。
+const locateRootOnly = computed(() => Boolean(props.locateRootId) && !props.locateReplyId);
+let entryPending = props.target === 'comments' || locateRootOnly.value;
 let sortPending = false;
 let releaseSortCancel = (): void => undefined;
 const listKey = computed(() => `${sort.value}:${reloadKey.value}`);
@@ -91,7 +95,7 @@ const sortModel = computed<CommentSort>({
     sort.value = next;
     reloadKey.value += 1;
     // 精确入口切换排序后仍以同一目标为首批锚点，不退回普通首批。
-    entryPending = Boolean(props.locateRootId);
+    entryPending = locateRootOnly.value;
     publish(emptyCommentSnapshot(next));
     locate();
     armSortLocate();
@@ -132,6 +136,7 @@ function restartReading(): void {
       :compact="compact"
       :initial="currentSnapshot"
       :anchor-id="locateRootId ?? null"
+      :locate-reply-id="locateReplyId ?? null"
       @update="publish"
       @settled="settle"
       @restart="restartReading"

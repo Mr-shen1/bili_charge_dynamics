@@ -76,6 +76,10 @@ def _root_offset_cursor(resource, limit, offset):
     return f"{offset:x}-{digest}"
 
 
+# 回复页码固定每页 10 条：与 page 模式的固定批量、前端 replyPageSize 一致。
+REPLY_PAGE_SIZE = 10
+
+
 def _root_offset(resource, limit, cursor):
     matched = re.fullmatch(r"([0-9a-f]{1,8})-([0-9a-f]{16})", cursor)
     if matched is None:
@@ -83,6 +87,11 @@ def _root_offset(resource, limit, cursor):
     offset = int(matched.group(1), 16)
     # 摘要不符时按无效游标处理：不猜来源动态/排序，也不接受被改写的偏移。
     return offset if _root_offset_cursor(resource, limit, offset) == cursor else None
+
+
+def _reply_offset(page, total):
+    """页码模式的切片起点：超长正整数页码必然越界，不转换成可能溢出的整数。"""
+    return (int(page) - 1) * REPLY_PAGE_SIZE if len(str(page)) <= len(str(total)) else total
 
 
 def _freeze_pages(documents, limit):
@@ -994,30 +1003,12 @@ class Store(CheckStore, DiscoveryStore):
             if page is None:
                 connection.execute("BEGIN IMMEDIATE")
             try:
-                root = json.loads(connection.execute(
-                    "SELECT document FROM root_comments WHERE dynamic_id = ? AND id = ?", (id, root_id)
-                ).fetchone()[0])
-                documents = [json.loads(row[0]) for row in connection.execute(
-                    """SELECT document FROM replies WHERE dynamic_id = ? AND root_id = ? ORDER BY
-                    json_extract(document, '$.published_at') IS NULL ASC,
-                    json_extract(document, '$.published_at') ASC, id COLLATE BINARY ASC""", (id, root_id)
-                )]
-                authors = {item["id"]: item["author"] for item in [root] + documents}
-                for document in documents:
-                    author = authors.get(document["parent_id"])
-                    document["reply_to"] = author if author and author.get("id") is not None else None
-                progress = connection.execute("SELECT status, synced_source_reply_count FROM reply_sync WHERE dynamic_id = ? AND root_id = ?",
-                                              (id, root_id)).fetchone()
-                metadata = {"source_reply_count": root.get("source_reply_count"), "local_reply_count": len(documents),
-                            "replies_last_attempt": progress["status"] if progress else "pending",
-                            "synced_source_reply_count": progress["synced_source_reply_count"] if progress else None}
+                reading = self._reply_reading(connection, id, root_id)
                 if page is not None:
-                    # 超长正整数页码必然越界，避免转换为 Python/SQLite 整数时溢出。
-                    offset = (int(page) - 1) * 10 if len(str(page)) <= len(str(len(documents))) else len(documents)
-                    result = {"items": documents[offset:offset + 10], "next_cursor": None,
-                              "root": root, "count": len(documents), **metadata}
+                    result = self._reply_page_document(reading, page)
                     connection.commit()
                     return result
+                root, documents, metadata = reading
                 # 预览与追加是同一持久读取上下文，不按首批大小切所有后续页。
                 first, following = _freeze_pages(documents[3:], 10)
                 result = {"items": documents[:3], "next_cursor": uuid4().hex if documents[3:] else None}
@@ -1034,6 +1025,55 @@ class Store(CheckStore, DiscoveryStore):
             except BaseException:
                 connection.rollback()
                 raise
+
+    def locate_reply(self, id, root_id, reply_id):
+        """按动态、根评论与目标回复身份给出目标所在页；只读归档，不冻结快照也不访问上游。"""
+        with self.connection() as connection:
+            connection.execute("BEGIN")
+            try:
+                if not connection.execute("SELECT 1 FROM archives WHERE id = ?", (id,)).fetchone():
+                    raise APIError("NOT_FOUND")
+                reading = self._reply_reading(connection, id, root_id)
+                for index, document in enumerate(reading[1]):
+                    if document["id"] == reply_id:
+                        page = index // REPLY_PAGE_SIZE + 1
+                        result = self._reply_page_document(reading, page)
+                        # 只有定位读取声明页码：page 模式的分页契约不为此改变。
+                        result["page"] = page
+                        return result
+                # 目标属于别的楼或尚未归档：一律当作不存在，不暴露其他楼的回复。
+                raise APIError("NOT_FOUND")
+            finally:
+                connection.rollback()
+
+    def _reply_reading(self, connection, id, root_id):
+        """同根完整本地回复与逐根状态：时间升序、null 后置、ID BINARY，并解析 reply_to。"""
+        row = connection.execute("SELECT document FROM root_comments WHERE dynamic_id = ? AND id = ?", (id, root_id)).fetchone()
+        if row is None:
+            raise APIError("NOT_FOUND")
+        root = json.loads(row[0])
+        documents = [json.loads(stored[0]) for stored in connection.execute(
+            """SELECT document FROM replies WHERE dynamic_id = ? AND root_id = ? ORDER BY
+            json_extract(document, '$.published_at') IS NULL ASC,
+            json_extract(document, '$.published_at') ASC, id COLLATE BINARY ASC""", (id, root_id)
+        )]
+        authors = {item["id"]: item["author"] for item in [root] + documents}
+        for document in documents:
+            author = authors.get(document["parent_id"])
+            document["reply_to"] = author if author and author.get("id") is not None else None
+        progress = connection.execute("SELECT status, synced_source_reply_count FROM reply_sync WHERE dynamic_id = ? AND root_id = ?",
+                                     (id, root_id)).fetchone()
+        metadata = {"source_reply_count": root.get("source_reply_count"), "local_reply_count": len(documents),
+                    "replies_last_attempt": progress["status"] if progress else "pending",
+                    "synced_source_reply_count": progress["synced_source_reply_count"] if progress else None}
+        return root, documents, metadata
+
+    def _reply_page_document(self, reading, page):
+        """按固定页码切一页：page 模式与定位读取共用同一个切片与计数口径。"""
+        root, documents, metadata = reading
+        offset = _reply_offset(page, len(documents))
+        return {"items": documents[offset:offset + REPLY_PAGE_SIZE], "next_cursor": None,
+                "root": root, "count": len(documents), **metadata}
 
     def delete_monitor(self, uid):
         with self.connection() as connection, connection:

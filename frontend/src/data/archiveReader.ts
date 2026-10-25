@@ -1,4 +1,4 @@
-import type { ArchiveMetadata, ArchiveWorkState, Comment, CommentBatch, CommentLocationResult, DetailResult, Dynamic, DynamicImage, ImageOwner, DynamicBatch, DynamicReader, ReadResult, Reply, ReplyBatch, User } from './contracts';
+import type { ArchiveMetadata, ArchiveWorkState, Comment, CommentBatch, CommentLocationResult, DetailResult, ReplyLocationResult, Dynamic, DynamicImage, ImageOwner, DynamicBatch, DynamicReader, ReadResult, Reply, ReplyBatch, User } from './contracts';
 import { replyAppendSize, replyPreviewSize } from './contracts';
 import { isValidId } from './identifiers';
 import { isRecord as record } from './guards';
@@ -179,6 +179,35 @@ function commentBatch(raw: unknown, dynamicId: string, limit: number): CommentBa
   return { items, nextCursor: raw.next_cursor };
 }
 
+// 楼中楼页码模式的响应：固定每页批量、next_cursor 为 null，必须带本楼计数与根评论。
+// 定位读取与普通页码读取共用此映射，避免两套页校验分叉。
+function replyPageBatch(raw: unknown, dynamicId: string, rootId: string, limit: number): ReplyBatch | null {
+  if (!record(raw) || !Array.isArray(raw.items) || raw.items.length > limit
+    || raw.next_cursor !== null) return null;
+  const total = count(raw.count);
+  if (total === null) return null;
+  if (raw.replies_last_attempt !== undefined && !commentAttempt(raw.replies_last_attempt)) return null;
+  for (const key of ['source_reply_count', 'local_reply_count', 'synced_source_reply_count']) {
+    if (raw[key] !== undefined && raw[key] !== null && count(raw[key]) === null) return null;
+  }
+  const items: Reply[] = [];
+  for (const item of raw.items) {
+    const parsed = parseReply(item, dynamicId, rootId);
+    if (!parsed || items.some(existing => existing.id === parsed.id)) return null;
+    items.push(parsed);
+  }
+  const root = raw.root === undefined || raw.root === null ? null : parseComment(raw.root, dynamicId);
+  // 页码读取每页都必须带回本楼根评论：缺了就不是这一楼的可读页。
+  if (!root || root.id !== rootId) return null;
+  return {
+    items, nextCursor: null, count: total, root,
+    ...(raw.source_reply_count !== undefined ? { sourceReplyCount: count(raw.source_reply_count) } : {}),
+    ...(raw.local_reply_count !== undefined ? { localReplyCount: count(raw.local_reply_count) } : {}),
+    ...(commentAttempt(raw.replies_last_attempt) ? { repliesLastAttempt: raw.replies_last_attempt } : {}),
+    ...(raw.synced_source_reply_count !== undefined ? { syncedSourceReplyCount: count(raw.synced_source_reply_count) } : {}),
+  };
+}
+
 /** 只读本地归档。传输替身不绕过生产 DTO 映射；错误响应/异常永不回显。 */
 export function createArchiveReader(transport: ArchiveTransport = (url, init) => fetch(url, init)): DynamicReader {
   return {
@@ -289,10 +318,13 @@ export function createArchiveReader(transport: ArchiveTransport = (url, init) =>
         if (signal.aborted) return { status: 'cancelled' };
         if (response.status === 422 && record(body) && record(body.error) && body.error.code === 'CURSOR_INVALID')
           return { status: 'error', reason: 'invalid-cursor' };
+        // 页码模式与定位读取共用同一页映射：每页 10 条、必须带本楼计数与根评论。
+        if (page !== undefined) {
+          const batch = replyPageBatch(body, dynamicId, rootId, limit);
+          return batch ? { status: 'success', data: batch } : failed;
+        }
         if (response.status !== 200 || !record(body) || !Array.isArray(body.items)
           || body.items.length > limit || !(body.next_cursor === null || typeof body.next_cursor === 'string')) return failed;
-        const total = count(body.count);
-        if (page !== undefined && (total === null || body.next_cursor !== null)) return failed;
         if (body.replies_last_attempt !== undefined && !commentAttempt(body.replies_last_attempt)) return failed;
         for (const key of ['source_reply_count', 'local_reply_count', 'synced_source_reply_count']) {
           if (body[key] !== undefined && body[key] !== null && count(body[key]) === null) return failed;
@@ -305,15 +337,33 @@ export function createArchiveReader(transport: ArchiveTransport = (url, init) =>
         }
         const root = body.root === undefined || body.root === null ? null : parseComment(body.root, dynamicId);
         if (body.root !== undefined && body.root !== null && !root) return failed;
-        if (page !== undefined && (!root || root.id !== rootId)) return failed;
         return { status: 'success', data: { items, nextCursor: body.next_cursor,
-          ...(page !== undefined && total !== null ? { count: total } : {}),
           ...(root ? { root } : {}),
           ...(body.source_reply_count !== undefined ? { sourceReplyCount: count(body.source_reply_count) } : {}),
           ...(body.local_reply_count !== undefined ? { localReplyCount: count(body.local_reply_count) } : {}),
           ...(commentAttempt(body.replies_last_attempt) ? { repliesLastAttempt: body.replies_last_attempt } : {}),
           ...(body.synced_source_reply_count !== undefined ? { syncedSourceReplyCount: count(body.synced_source_reply_count) } : {}),
         } };
+      } catch { return signal.aborted ? { status: 'cancelled' } : failed; }
+    },
+    async locateReply({ dynamicId, rootId, replyId, signal }): Promise<ReplyLocationResult> {
+      if (signal.aborted) return { status: 'cancelled' };
+      // 非法身份等同于“这个位置没有可读回复”，不探测归档是否存在。
+      if (!isValidId(dynamicId) || !isValidId(rootId) || !isValidId(replyId)) return { status: 'not-found' };
+      try {
+        const response = await transport(
+          `/api/archive/dynamics/${dynamicId}/comments/${rootId}/replies/${replyId}/location`,
+          { method: 'GET', signal, cache: 'no-store' });
+        if (signal.aborted) return { status: 'cancelled' };
+        if (response.status === 404) return { status: 'not-found' };
+        const body: unknown = await response.json();
+        if (signal.aborted) return { status: 'cancelled' };
+        if (response.status !== 200) return failed;
+        const batch = replyPageBatch(body, dynamicId, rootId, replyAppendSize);
+        const page = record(body) ? count(body.page) : null;
+        // 页码必须是正整数，且目标确实就在这一页里：绝不把别的页或楼层第一页当作定位成功。
+        if (!batch || page === null || page < 1 || !batch.items.some(item => item.id === replyId)) return failed;
+        return { status: 'success', data: { ...batch, page } };
       } catch { return signal.aborted ? { status: 'cancelled' } : failed; }
     },
   };

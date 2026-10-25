@@ -3,8 +3,9 @@
 除只读/既有写接口外，本模块额外提供**仅测试用**的采集驱动端点：
 `POST /api/test/collect` 显式驱动一次真实 Collector 节拍、`POST /api/test/source-failure`
 切换固定上游失败、`POST /api/test/root-comments` 为指定动态启用 45 条虚构一级评论、
+`POST /api/test/replies` 为其中某个根评论启用 25 条虚构楼中楼回复、
 `GET /api/test/source-requests` 读取本进程累计的上游请求计数。它们不在生产应用里注册，
-也不访问真实上游或上传 OSS；默认根评论页仍为空，未启用时既有用例行为不变。
+也不访问真实上游或上传 OSS；默认根评论页与楼中楼页仍为空，未启用时既有用例行为不变。
 
 BILI_DATABASE_PATH=/tmp/bili-e2e.sqlite uv run uvicorn \
     backend.tests.live_app:create_app --factory --host 127.0.0.1 --port 8765
@@ -38,6 +39,10 @@ CARDS = {
 
 # 一级评论定位夹具：默认关闭，只有显式启用后才给该动态下发 45 条虚构根评论。
 ROOT_FIXTURE = {"dynamic": None, "size": 45}
+# 楼中楼回复定位夹具：默认关闭，只有显式启用后才给指定根评论下发 25 条虚构回复。
+REPLY_FIXTURE = {"dynamic": None, "root": None, "size": 25}
+# 一级评论夹具里第一个根评论的来源回复数（rcount）：与 REPLY_FIXTURE 的条数一致。
+ROOT_REPLY_COUNT = REPLY_FIXTURE["size"]
 # 本进程累计的上游请求：用于断言归档读取不触发采集。
 SOURCE_REQUESTS = {"total": 0, "reply": 0, "count": 0}
 
@@ -50,14 +55,51 @@ def root_comments(dynamic):
     for index in range(ROOT_FIXTURE["size"]):
         item = copy.deepcopy(root)
         item.update(rpid=860000 + index + 1, rpid_str=str(860000 + index + 1),
-                    like=ROOT_FIXTURE["size"] - index, rcount=0, ctime=1791513496 - index,
-                    root=0, root_str="0", parent=0, parent_str="0")
+                    like=ROOT_FIXTURE["size"] - index,
+                    # 第一个根评论带来源回复数，用于驱动楼中楼整楼同步。
+                    rcount=ROOT_REPLY_COUNT if index == 0 else 0,
+                    ctime=1791513496 - index, root=0, root_str="0", parent=0, parent_str="0")
         item["member"] = {"mid": "909001", "uname": "虚构楼主", "avatar": None}
         item["content"] = {"message": f"虚构一级评论 {index + 1}\n第二行：换行与 emoji 🙂", "pictures": []}
         item["replies"] = None
         item["oid"], item["type"] = int("99" + dynamic), 17
         comments.append(item)
     return comments
+
+
+def reply_items(dynamic, root):
+    """25 条虚构楼中楼回复：时间递增，第 1/2/3 页分别 10/10/5 条。"""
+    template = json.loads((Path(__file__).parent / "fixtures/replies.json").read_text())
+    reply = template["data"]["replies"][0]
+    items = []
+    for index in range(REPLY_FIXTURE["size"]):
+        item = copy.deepcopy(reply)
+        item.update(rpid_str=str(960000 + index + 1), oid=int("99" + dynamic), type=17,
+                    root_str=root, root=0, parent_str=root, parent=0,
+                    ctime=1791513600 + index, like=index,
+                    content={"message": f"虚构回复 {index + 1}\n第二行：换行与 emoji 🙂"})
+        item["member"] = {"mid": "909002", "uname": "虚构回复者", "avatar": None}
+        items.append(item)
+    return items
+
+
+def reply_page(dynamic, root, page):
+    """楼中楼页：ps 固定 20，页码与资源身份按请求回显；未启用的楼返回确认空页。"""
+    template = json.loads((Path(__file__).parent / "fixtures/replies.json").read_text())
+    payload = template["data"]
+    enabled = REPLY_FIXTURE["dynamic"] == dynamic and REPLY_FIXTURE["root"] == root
+    items = reply_items(dynamic, root) if enabled else []
+    start = (page - 1) * 20
+    spliced = items[start:start + 20]
+    root_payload = payload["root"]
+    root_payload.update(rpid_str=root, root_str="0", parent_str="0", oid=int("99" + dynamic), type=17,
+                        rcount=len(items), member={"mid": "909001", "uname": "虚构楼主", "avatar": None},
+                        content={"message": "虚构楼中楼根评论"})
+    return {"code": 0, "data": {
+        "page": {"num": page, "size": 20, "count": len(items)},
+        "root": root_payload,
+        "replies": spliced or None,
+    }}
 
 
 def comment_page(dynamic, page):
@@ -171,12 +213,20 @@ def dynamic_source(request):
         SOURCE_REQUESTS["count"] += 1
         enabled = ROOT_FIXTURE["dynamic"] == url.params.get("oid", "")[2:]
         return httpx.Response(200, json={"code": 0, "data": {"count": ROOT_FIXTURE["size"] if enabled else 0}})
+    if url.host == "api.bilibili.com" and url.path == "/x/v2/reply/reply":
+        # 楼中楼请求：只有显式启用（POST /api/test/replies）的楼才给虚构回复。
+        SOURCE_REQUESTS["reply"] += 1
+        if SOURCE_FAILURE["reply"]:
+            raise httpx.ConnectError("FICTIONAL_REPLY_FAILURE", request=request)
+        root = url.params.get("root", "")
+        dynamic = url.params.get("oid", "")
+        dynamic = dynamic[2:] if dynamic.startswith("99") else dynamic
+        return httpx.Response(200, json=reply_page(dynamic, root, int(url.params.get("pn", "1"))))
     if url.host == "api.bilibili.com" and url.path == "/x/v2/reply":
         SOURCE_REQUESTS["reply"] += 1
         if SOURCE_FAILURE["reply"]:
             raise httpx.ConnectError("FICTIONAL_REPLY_FAILURE", request=request)
         page = int(url.params.get("pn", "1"))
-        # 带 root 参数的是楼中楼请求：本夹具不提供具体回复，保持既有空页行为。
         enabled = (ROOT_FIXTURE["dynamic"] and not url.params.get("root")
                    and url.params.get("oid") in (ROOT_FIXTURE["dynamic"], "99" + ROOT_FIXTURE["dynamic"]))
         if enabled:
@@ -214,6 +264,13 @@ def create_app():
         """仅测试夹具：为指定动态启用 45 条虚构一级评论；不写数据库，归档仍走 /api/sync/initial。"""
         ROOT_FIXTURE["dynamic"] = payload.get("dynamic")
         return {"dynamic": ROOT_FIXTURE["dynamic"], "size": ROOT_FIXTURE["size"]}
+
+    @app.post("/api/test/replies", include_in_schema=False)
+    async def enable_replies(payload: dict):
+        """仅测试夹具：为指定动态的某个根评论启用 25 条虚构楼中楼；不写数据库。"""
+        REPLY_FIXTURE["dynamic"] = payload.get("dynamic")
+        REPLY_FIXTURE["root"] = payload.get("root")
+        return dict(REPLY_FIXTURE)
 
     @app.get("/api/test/source-requests", include_in_schema=False)
     async def read_source_requests():

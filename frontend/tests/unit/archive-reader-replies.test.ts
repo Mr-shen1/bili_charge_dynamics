@@ -156,3 +156,87 @@ it('回复 DTO 映射保留嵌套目标、正文与身份，取消优先于成�
   expect(await cancelled.readReplies({ dynamicId: '1001', rootId: '5001', limit: 3, signal: controller.signal }))
     .toEqual({ status: 'cancelled' });
 });
+
+it('定位读取走 location 端点：保留目标所在页码、根评论与逐根状态，请求 no-store', async () => {
+  const requests: { url: string; init: RequestInit }[] = [];
+  const reader = createArchiveReader(async (url, init) => {
+    requests.push({ url, init });
+    return Response.json({
+      items: [archiveReply(11), archiveReply(12)],
+      next_cursor: null,
+      page: 2,
+      count: 25,
+      root: archiveRoot(),
+      source_reply_count: 27,
+      local_reply_count: 25,
+      replies_last_attempt: 'success',
+      synced_source_reply_count: 25,
+    });
+  });
+
+  const result = await reader.locateReply({
+    dynamicId: '1001', rootId: '5001', replyId: '9012', signal: signal(),
+  });
+  if (result.status !== 'success') throw new Error('定位读取应成功');
+  expect(result.data).toMatchObject({
+    page: 2, count: 25, sourceReplyCount: 27, localReplyCount: 25,
+    repliesLastAttempt: 'success', nextCursor: null,
+  });
+  expect(result.data.root?.id).toBe('5001');
+  expect(result.data.items.map(item => item.id)).toEqual(['9011', '9012']);
+  expect(requests.map(request => signature(request.url))).toEqual([
+    '/api/archive/dynamics/1001/comments/5001/replies/9012/location',
+  ]);
+  expect(requests[0]!.init.method).toBe('GET');
+  expect(requests[0]!.init.cache).toBe('no-store');
+});
+
+it('定位读取：404 与非法身份是 not-found，其他失败可重试，页内没有目标不算定位成功', async () => {
+  let requests = 0;
+  const notFound = createArchiveReader(async () => {
+    requests += 1;
+    return Response.json({ error: { code: 'NOT_FOUND' } }, { status: 404 });
+  });
+  expect(await notFound.locateReply({ dynamicId: '1001', rootId: '5001', replyId: '9001', signal: signal() }))
+    .toEqual({ status: 'not-found' });
+  // 非法身份不发请求：等同于这个位置没有可读回复。
+  for (const item of [
+    { dynamicId: 'x', rootId: '5001', replyId: '9001' },
+    { dynamicId: '1001', rootId: '', replyId: '9001' },
+    { dynamicId: '1001', rootId: '5001', replyId: '0x1' },
+  ]) {
+    expect(await notFound.locateReply({ ...item, signal: signal() })).toEqual({ status: 'not-found' });
+  }
+  expect(requests).toBe(1);
+
+  // 临时失败与不存在分开：非 200、DTO 不合法、页码缺失或目标不在页内都是可重试错误。
+  const bodies: { status: number; body: unknown }[] = [
+    { status: 503, body: { error: { code: 'STORAGE_UNAVAILABLE' } } },
+    { status: 200, body: { items: [archiveReply(11)], next_cursor: null, count: 25, root: archiveRoot() } },
+    {
+      status: 200,
+      body: { items: [archiveReply(11)], next_cursor: null, page: 2, count: 25,
+        root: archiveRoot({ id: '5002' }) },
+    },
+    {
+      status: 200,
+      body: { items: [], next_cursor: null, page: 2, count: 25, root: archiveRoot() },
+    },
+    {
+      status: 200,
+      body: { items: [archiveReply(11), archiveReply(12)], next_cursor: null, page: 2, count: 25,
+        root: archiveRoot() },
+    },
+  ];
+  for (const item of bodies) {
+    const reader = createArchiveReader(async () => Response.json(item.body, { status: item.status }));
+    expect(await reader.locateReply({ dynamicId: '1001', rootId: '5001', replyId: '9001', signal: signal() }),
+      JSON.stringify(item.body)).toEqual({ status: 'error' });
+  }
+
+  const controller = new AbortController();
+  controller.abort();
+  const cancelled = createArchiveReader(async () => Response.json({ items: [], next_cursor: null }));
+  expect(await cancelled.locateReply({ dynamicId: '1001', rootId: '5001', replyId: '9001', signal: controller.signal }))
+    .toEqual({ status: 'cancelled' });
+});

@@ -12,7 +12,12 @@ import CommentSection from './CommentSection.vue';
 import DynamicContent from './DynamicContent.vue';
 import ReadNotice from './ReadNotice.vue';
 
-const props = defineProps<{ dynamicId: string; commentTargetId?: string | null }>();
+const props = defineProps<{
+  dynamicId: string;
+  commentTargetId?: string | null;
+  /** 楼中楼回复精确入口：需要同时带上所属根评论才能读到目标回复。 */
+  replyTargetId?: string | null;
+}>();
 const { reader } = useSession();
 const navigation = useArchiveNavigation();
 // 访问身份在 setup 时固定：卸载时仍按本次访问保存，不受已经切换的路由影响。
@@ -62,6 +67,7 @@ const canLocate = computed(() => entryAllowed.value);
       :target="target"
       :can-locate="canLocate"
       :locate-root-id="commentTargetId ?? null"
+      :locate-reply-id="replyTargetId ?? null"
       @update:snapshot="comments = $event"
     />
   </div>

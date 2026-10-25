@@ -238,6 +238,17 @@
 - 保留评论未归档、成功空、读取失败和逐图待归档/失败提示。只有评论文本成功不表示图片归档完成，归档 GET 成功也不表示采集完整；管理页仍可读取完整同步状态。
 - Adapter 与后端同步字段保持不变，状态判定及管理诊断仍使用实际 checkpoint，未知成功时间不补造。后端字段契约见 [采集契约](collector-api.md#26-评论分项状态与时间)；[26 验收](../../../.scratch/backend-integration/acceptance-26.md) 为当时界面的历史证据，不覆盖本次精简修改，本次按用户要求未运行验证。
 
+## 飞书通知 03 增量：楼中楼回复精确入口
+
+- 链接：`/dynamics/{dynamicId}/comments/{rootId}/replies/{replyId}/locate`。三个身份都是 URL 路径里的十进制字符串，不含凭据；直开、刷新、宽窄屏与历史返回都走这同一条链接，不依赖旧会话或已加载的 DOM。04 在消息中使用该链接。
+- 分支：宽屏在动态详情内复用原回复区（不另建评论阅读器），窄屏复用原独立楼中楼页。两条分支由同一链接决定，页面组件只按既有 640px 断点选择，不改变原有入口行为。
+- 读取：`DynamicReader.locateReply({dynamicId, rootId, replyId, signal})` → `GET /api/archive/dynamics/{id}/comments/{root_id}/replies/{reply_id}/location`（无 query）。返回 `{items, nextCursor:null, page, count, root, ...}`，`items` 就是目标所在页，`page` 由服务端按目标位置给出。
+- 结果语义：`{status:'not-found'}` 只表示目标回复不存在或未归档（HTTP 404、非法身份）；传输异常、非 200、DTO 不合法、页码缺失或**目标不在这一页**都是 `{status:'error'}`（可重试）；取消优先返回 `cancelled`。绝不把楼层第一页或页首当作定位成功。
+- 宽屏行为：先用 02 的一级评论定位读取取“含所属根评论”的批次（因此目标根评论在后续批也能显示），再由该根的回复区以目标身份读一次定位；不先读 3 条预览，也不先读第 1 页。目标正文默认展开，加高亮标记（`data-located`／`aria-current`）并定位到该条；分页停在目标页，后续翻页仍是原页内替换；收起回到 3 条预览首屏（按需补读预览）并把所属根评论定位到开头。所属根评论在回复精确定位时只作上下文，不单独高亮或抢占滚动。
+- 窄屏行为：独立楼中楼页的首个读取改为定位，直接显示目标所在页与高亮条目，不再先读第 1 页也不先滚到页面顶部；页头数量、根评论上下文、分页与返回规则不变。
+- 异常：目标不存在显示固定提示与“返回动态”入口（替换为对应详情，不留下不可用地址）；临时失败显示既有读取失败与局部重试（重试重发定位，不猜页码）。用户已滚动或离开后迟到的定位结果不抢滚动、不污染新的目标或详情。
+- 证据：前端单元测试 `tests/unit/archive-reader-replies.test.ts`、`tests/unit/reply-reading.test.ts`、`tests/unit/thread-reading.test.ts`；生产装配 + 归档 HTTP 替身 `tests/e2e/reply-location.spec.ts`（桌面）与 `tests/e2e/reply-location-thread.spec.ts`（Pixel 7 视口）；实际 API + 隔离 SQLite `tests/e2e-location/reply-location.spec.ts`（`pnpm test:e2e:location`）。汇总见 [03 证据](../../../.scratch/feishu-notifications/evidence/03-reply-deep-link.md)。
+
 ## 飞书通知 02 增量：精确一级评论入口
 
 - 链接：`/dynamics/{dynamicId}/comments/{rootId}/locate`。动态与目标评论身份都是 URL 路径里的字符串 ID，不含凭据；直接打开、刷新、宽窄屏与历史返回都走这同一条路由，不依赖旧会话或已加载的 DOM。03 将按同一形状扩展为楼中楼回复入口，04 在消息中使用该链接。

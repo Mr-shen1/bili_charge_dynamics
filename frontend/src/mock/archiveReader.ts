@@ -259,5 +259,19 @@ export function createMockArchiveReader(): DynamicReader {
         sourceReplyCount: replyRoot.replyCount ?? undefined,
       } };
     },
+    async locateReply({ dynamicId, rootId, replyId, signal }) {
+      if (signal.aborted) return cancelled;
+      // 与生产定位一致：只有带回复夹具的第一条动态首个根评论可定位，其余按不存在处理。
+      if (dynamicId !== dynamics[0]!.id || rootId !== replyRoot.id) return { status: 'not-found' };
+      const index = mockReplies.findIndex(item => item.id === replyId);
+      if (index < 0) return { status: 'not-found' };
+      const page = Math.floor(index / replyAppendSize) + 1;
+      const offset = (page - 1) * replyAppendSize;
+      return { status: 'success', data: {
+        items: mockReplies.slice(offset, offset + replyAppendSize), nextCursor: null, page,
+        count: mockReplies.length, root: replyRoot, sourceReplyCount: replyRoot.replyCount,
+        localReplyCount: mockReplies.length, repliesLastAttempt: 'success',
+      } };
+    },
   };
 }

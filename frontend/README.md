@@ -27,10 +27,13 @@
 | 16 | 隔离 Nginx 静态交付：本机临时编译 Nginx 1.28.0 下六路由直达/刷新、入口与全部哈希资源可达、管理 401 提示、生产/mock 原子切换与前端回退、SQLite 与 collector 不受影响 |
 | 17 | 统一上线就绪汇总：结论**可申请统一上线**——候选产物唯一（视觉重拍 63/63 判定口径（AE + 1% fuzz）零差异像素，50 张与签收图字节相同、13 张仅抗锯齿级差异）、自动化/交付/回退在新候选上重跑通过、AC-01–AC-34 台账完整；设备复验与可审计性缺口按用户裁决记录，已知限制见证据 §7，不授权部署 |
 
-飞书通知票据 02 在同一应用里新增一级评论精确入口（`/dynamics/{id}/comments/{rootId}/locate`）：
-直开／刷新直接取含目标的那一批、展开并高亮该条，目标不存在时提示并可返回对应动态。
-行为与测试入口见 [前端读取契约](../docs/backend/api/archive-api-client.md#飞书通知-02-增量精确一级评论入口)；
-该票不属于上表 02–17 的迁移范围，也不改变其验收结论。
+飞书通知票据 02/03 在同一应用里新增两条精确入口：一级评论 `/dynamics/{id}/comments/{rootId}/locate`
+与楼中楼回复 `/dynamics/{id}/comments/{rootId}/replies/{replyId}/locate`。
+前者直开／刷新直接取含目标的那一批、展开并高亮该条；后者宽屏在详情内展开所属根评论的回复区并显示目标所在页，
+窄屏在原独立楼中楼页直达目标页，目标不存在时提示并可返回对应动态。
+行为与测试入口见[前端读取契约 02](../docs/backend/api/archive-api-client.md#飞书通知-02-增量精确一级评论入口)与
+[03](../docs/backend/api/archive-api-client.md#飞书通知-03-增量楼中楼回复精确入口)；
+两票不属于上表 02–17 的迁移范围，也不改变其验收结论。
 
 对应规格与票据：[实施规格](../.scratch/frontend-vue-migration/spec.md) · [票据目录](../.scratch/frontend-vue-migration/issues/) ·
 [图片预览验证证据](../.scratch/frontend-vue-migration/evidence/01-native-image-preview.md) ·
@@ -67,7 +70,7 @@ E2E_TARGET=preview pnpm test:e2e   # 同一批用例跑 mock 装配的构建产�
 pnpm test:e2e:production # 生产装配（六路由/404/无自检入口）与 fault 装配冒烟
 pnpm test:e2e:manage    # 管理页 + 实际 API（backend/tests/live_app 虚构上游）+ 本次运行独占 SQLite
                        # 只用本机回环地址；如设置了 HTTP(S)_PROXY，需用 NO_PROXY=127.0.0.1,localhost 或清空代理变量
-pnpm test:e2e:location  # 一级评论精确入口 + 实际归档 API（同一虚构上游，另建独占 SQLite 与端口）
+pnpm test:e2e:location  # 一级评论与楼中楼回复精确入口 + 实际归档 API（同一虚构上游，另建独占 SQLite 与端口）
                        # 同样的代理变量要求；与 test:e2e-manage 分开，避免跨文件顺序依赖
 pnpm visual:baseline     # 票据 14：pnpm build + 四宽度受控截图 + 布局/触控/焦点审计
                        # 输出到 ../.scratch/frontend-vue-migration/evidence/visual-14/
@@ -120,12 +123,12 @@ pnpm playwright test --project=desktop-chromium-archive tests/e2e/replies.spec.t
 | `src/dynamics/` | 归档读取行为：scope 导航条、cursor/page 读取、卡片/详情、`CommentSection`/`CommentList`/`CommentItem` 与 `useCommentsRead`、`ReplySection`/`ReplyPager` 与 `useReplyPreview`/`useReplyPage`、窄屏 `ReplyPreview` 与 `useThreadAuthor`、折叠/状态提示与展示格式化 |
 | `src/app/assembly.ts` | 装配隔离：`production` / `mock` / `fault`；自检路由只在后两者注册 |
 | `src/app/reader.ts` | 读取装配：生产用真实 API Adapter；mock/fault 用受控归档读取，普通构建摇掉 |
-| `src/app/router.ts` | 六条基线路由 + 一级评论精确入口 `/dynamics/:dynamicId/comments/:rootId/locate` + 404；`scrollBehavior: () => false`（位置恢复由导航协调器负责） |
+| `src/app/router.ts` | 六条基线路由 + 一级评论精确入口 `/dynamics/:dynamicId/comments/:rootId/locate` + 楼中楼回复精确入口 `/dynamics/:dynamicId/comments/:rootId/replies/:replyId/locate` + 404；`scrollBehavior: () => false`（位置恢复由导航协调器负责） |
 | `src/app/App.vue` | 应用壳：导航、主栏、唯一 `PreviewHost`、非生产装配标识 |
 | `src/theme/theme.css` | Element Plus 主题变量 + 基础布局/图片栅格/预览层样式 |
 | `src/preview/` | 票据 01/04/08 验证过的图片层：图片组与手势、`el-image` 缩略图、独立 `el-image-viewer`、归档图片组连接（动态与各根评论 owner 隔离，历史写入委托导航协调器） |
 | `src/manage/` | 管理行为：生产管理 Adapter（`main.ts` 装配，含 `listUps`/`addUp`/`updateMonitor`/`deleteMonitor`/目标增删读/`readDiscovery`/`listChecks`）、共享页头、列表访问、身份卡（启停、模式与近期 N 草稿、删除配置与重新添加）、`ManageTargets` 指定目标区、`CheckStatusPanel`/`CheckStatusDetail` 检查与归档进度、`DiscoveryStatusPanel` 发现与窗口、`discoveryState.ts` 发现契约、`checkStatusText.ts`/`discoveryText.ts`/`status.ts` 状态文案、`useStatusRead` 一次性读取、`manage.css` 共享版式、按 UID 的防重锁与访问存活校验 |
-| `src/pages/` | 六条基线路由页面（另有一级评论精确入口复用详情页）；`ListPage.vue`/`DetailPage.vue`/`CommentThreadPage.vue` 已接真实读取，`ManagePage.vue`/`ManageUpPage.vue` 已接真实管理接口（含检查与发现状态），`NotFoundPage.vue` 为不存在页 |
+| `src/pages/` | 六条基线路由页面（另有一级评论精确入口复用详情页，楼中楼回复精确入口按 640px 断点在详情与独立楼中楼页之间分支）；`ListPage.vue`/`DetailPage.vue`/`CommentThreadPage.vue` 已接真实读取，`ManagePage.vue`/`ManageUpPage.vue` 已接真实管理接口（含检查与发现状态），`NotFoundPage.vue` 为不存在页 |
 | `src/mock/` | 受控图片夹具、25 条模拟归档（含 4/9/12 图、长图与异常状态）与 45 条一级评论（含混合状态/长图/纯图/超量评论图片组）及 fault 读取计划，只在 mock/fault 装配加载 |
 | `public/images/unavailable/` | 应用自有的异常图片占位，随生产构建发布；不是来源业务图 |
 | `server/imageServer.mjs` | 图片夹具服务器：缩略/预览不同地址、坏图、无效地址、可重试失败、请求记录 |
@@ -134,8 +137,8 @@ pnpm playwright test --project=desktop-chromium-archive tests/e2e/replies.spec.t
 | `scripts/verify-static-delivery.mjs` 等 | 交付工具：临时 Nginx 静态交付演练、生产 API + collector 验收、入口原子更新、nginx 配置一致性、LAN HTTP 历史恢复（仓库根的 `deploy/`、`backend/` 由脚本向上定位） |
 | `tests/unit` | 历史元数据、装配选择、归档 Adapter（列表、一级评论含 UP 摘要、评论图片与回复）/图片组契约、管理 Adapter（映射、错误白名单、401、取消）契约、检查/发现状态 DTO 守卫与自相矛盾响应拒绝、回复分页与目标文案、列表/详情/一级评论（含评论图片）/窄屏入口/楼中楼/回复/图片预览/管理列表、单 UP 启停与模式/目标/检查与发现状态页面行为 |
 | `tests/fixtures` / `tests/support` | 生产 DTO 夹具、可注入读取与管理接口替身、预览探针、窄屏视口桩与 jsdom 排版/滚动替身 |
-| `tests/e2e` | 骨架冒烟/预览/详情恢复/动态图片/评论图片（mock 装配）+ 列表、一级评论（含根评论 `media` 映射）、管理列表/启停/模式与目标、宽屏回复、窄屏楼中楼与图片读取（生产装配，HTTP 传输按用例替换）+ `static-delivery`（真实 Nginx 缓存/404/深链接，`E2E_TARGET=nginx` 单独跑） |
-| `tests/e2e-location` | 一级评论精确入口 + 实际归档 API（`backend/tests/live_app` 虚构上游，仅测试用的 45 条虚构根评论夹具）+ 本次运行独占 SQLite：后续批目标直开定位、窄屏刷新、目标不存在提示，读取不触发上游采集 |
+| `tests/e2e` | 骨架冒烟/预览/详情恢复/动态图片/评论图片（mock 装配）+ 列表、一级评论（含根评论 `media` 映射）、管理列表/启停/模式与目标、宽屏回复、宽屏/窄屏回复精确入口、窄屏楼中楼与图片读取（生产装配，HTTP 传输按用例替换）+ `static-delivery`（真实 Nginx 缓存/404/深链接，`E2E_TARGET=nginx` 单独跑） |
+| `tests/e2e-location` | 一级评论与楼中楼回复精确入口 + 实际归档 API（`backend/tests/live_app` 虚构上游，仅测试用的 45 条虚构根评论与 25 条虚构楼中楼夹具）+ 本次运行独占 SQLite：后续批/页目标直开定位、窄屏刷新、目标不存在提示，读取不触发上游采集 |
 | `tests/e2e-manage` | 管理页 + 实际 API（`backend/tests/live_app` 虚构上游，含动态页/detail/空根评论/独立评论计数/近期发现页 + **仅测试用**的 `POST /api/test/collect`、`/api/test/source-failure` 采集驱动端点）+ 本次运行独占 SQLite；覆盖模式保存、目标归属校验与停用/移除目标/删配置后的归档保留、检查无变化、根评论失败的分项失败与整轮成功、发现失败保留旧窗口、读取不触发采集 |
 | `tests/e2e-production` | 生产装配六路由/404/无自检入口 + fault 装配冒烟 |
 | `tests/e2e-visual` | 票据 14 视觉取证：受控归档 DTO/固定 SVG 图片替身、四宽度截图与布局审计 |

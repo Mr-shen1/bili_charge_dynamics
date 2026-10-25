@@ -21,7 +21,8 @@ export interface CommentReadState {
 export interface ReplyReadState {
   readonly data: ReplyBatch | null;
   readonly reason?: Extract<ReadResult<ReplyBatch>, { status: 'error' }>['reason'];
-  readonly status: 'loading' | 'success' | 'error' | 'cancelled';
+  // `not-found` 只用于楼中楼精确入口：目标回复不存在与暂时失败必须区分。
+  readonly status: 'loading' | 'success' | 'error' | 'cancelled' | 'not-found';
 }
 
 /**

@@ -13,6 +13,8 @@ export function useReplyPreview(
   reader: DynamicReader,
   input: { dynamicId: string; rootId: string },
   initial?: ReplyReadState,
+  /** `auto: false`：精确入口首个读取走定位，预览留到收起后按需读取。 */
+  options: { auto?: boolean } = {},
 ) {
   const state = shallowRef<ReplyReadState>(initial ?? { data: null, status: 'loading' });
   let request: AbortController | null = null;
@@ -61,6 +63,7 @@ export function useReplyPreview(
 
   onMounted(() => {
     active = true;
+    if (options.auto === false) return;
     // 已恢复成功/失败结果时等待用户显式重试；只有未开始或已取消的读取自动继续。
     if (!initial || initial.status === 'loading' || initial.status === 'cancelled') void load();
   });

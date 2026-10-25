@@ -121,6 +121,16 @@ export type DetailResult = ReadResult<Dynamic> | { readonly status: 'not-found' 
  */
 export type CommentLocationResult = ReadResult<CommentBatch> | { readonly status: 'not-found' };
 
+/**
+ * 楼中楼精确入口的读取结果：`page` 是目标回复所在页码（1 起）。
+ * 不存在不当作读取失败，也不能用楼层第一页冒充定位成功。
+ */
+export interface ReplyLocation extends ReplyBatch {
+  readonly page: number;
+}
+
+export type ReplyLocationResult = ReadResult<ReplyLocation> | { readonly status: 'not-found' };
+
 export interface DynamicReader {
   readonly creator: User;
   readonly discussions?: 'not-archived';
@@ -132,4 +142,6 @@ export interface DynamicReader {
   readComments(input: { readonly dynamicId: string; readonly sort: CommentSort; readonly cursor?: string | null; readonly signal: AbortSignal }): Promise<ReadResult<CommentBatch>>;
   // 以动态与目标一级评论身份定位：只读归档，返回含目标的批次与续读游标。
   locateComment(input: { readonly dynamicId: string; readonly rootId: string; readonly sort: CommentSort; readonly signal: AbortSignal }): Promise<CommentLocationResult>;
+  // 以动态、根评论与目标回复身份定位：只读归档，返回目标所在页。
+  locateReply(input: { readonly dynamicId: string; readonly rootId: string; readonly replyId: string; readonly signal: AbortSignal }): Promise<ReplyLocationResult>;
 }

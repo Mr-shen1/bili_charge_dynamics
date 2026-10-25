@@ -10,6 +10,7 @@ export function createReader(overrides: Partial<DynamicReader> = {}): DynamicRea
     readComments: async () => ({ status: 'error' }),
     locateComment: async () => ({ status: 'not-found' }),
     readReplies: async () => ({ status: 'error' }),
+    locateReply: async () => ({ status: 'not-found' }),
     ...overrides,
   };
 }

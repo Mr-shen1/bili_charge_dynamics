@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { ElButton } from 'element-plus';
 import type { Comment, Reply } from '../data/contracts';
 import { useArchiveNavigation } from '../app/navigation';
 import { useSession } from '../app/session';
 import { displayTime } from '../dynamics/display';
+import type { ReadStatus } from '../dynamics/readStatus';
 import { replyBodyText, replyTargetNickname } from '../dynamics/replyText';
 import { replyPageCount, replyPageSize } from '../dynamics/replyPaging';
 import { useReplyPage } from '../dynamics/useReplyPage';
@@ -14,22 +15,55 @@ import ReadOnlyLike from '../dynamics/ReadOnlyLike.vue';
 import ReplyPager from '../dynamics/ReplyPager.vue';
 import UserAvatar from '../dynamics/UserAvatar.vue';
 
-const props = defineProps<{ dynamicId: string; rootId: string }>();
+const props = defineProps<{ dynamicId: string; rootId: string; replyId?: string | null }>();
 
 const { reader } = useSession();
 const navigation = useArchiveNavigation();
 // 楼中楼没有自己的阅读快照：每次重新挂载都从第 1 页实时读取，并回到页面顶部。
+// 回复精确入口首个读取改为按目标身份定位，直接显示目标所在页而不是第 1 页。
+const located = computed(() => props.replyId ?? null);
 const { state, loadPage, retry } = useReplyPage(
   (page, signal) => reader.readReplies({
     dynamicId: props.dynamicId, rootId: props.rootId, page, limit: replyPageSize, signal,
   }),
-  1,
+  located.value ? null : 1,
+  located.value
+    ? signal => reader.locateReply({
+      dynamicId: props.dynamicId, rootId: props.rootId, replyId: located.value!, signal,
+    })
+    : undefined,
 );
 const { authorId } = useThreadAuthor(reader, props.dynamicId);
 
-onMounted(() => { window.scrollTo?.({ top: 0 }); });
+const container = ref<HTMLElement | null>(null);
+// 只有确实读到目标才标记：目标不在当前页绝不冒充定位成功。
+const highlightId = computed(() => (located.value
+  && state.value.data?.items.some(item => item.id === located.value) ? located.value : null));
+const locateMissing = computed(() => located.value !== null && state.value.status === 'not-found');
+const noticeStatus = computed<ReadStatus>(() => {
+  const status = state.value.status;
+  return status === 'not-found' ? 'success' : status;
+});
 
-const root = computed<Comment | null>(() => state.value.data?.root ?? null);
+/** 精确入口把目标回复定位到视口；结果只消费一次，不反复抢滚动。 */
+let locatePending = Boolean(props.replyId);
+const locate = async (): Promise<void> => {
+  if (!locatePending) return;
+  await nextTick();
+  const target = highlightId.value
+    ? container.value?.querySelector<HTMLElement>(`[data-reading-id="reply:${props.rootId}:${highlightId.value}"]`)
+    : null;
+  locatePending = false;
+  (target ?? container.value)?.scrollIntoView?.({ block: 'start', behavior: 'instant' });
+};
+onUnmounted(() => { locatePending = false; });
+
+onMounted(() => {
+  // 精确定位自己决定落点，不先回到页面顶部再找目标。
+  if (!located.value) window.scrollTo?.({ top: 0 });
+});
+
+const rootComment = computed<Comment | null>(() => state.value.data?.root ?? null);
 const items = computed<readonly Reply[]>(() => state.value.data?.items ?? []);
 /** 页头数量：来源总数 → 本页本地 count → 已读条数。 */
 const total = computed(() => state.value.data?.sourceReplyCount
@@ -50,8 +84,20 @@ const invalidCursor = computed(() => state.value.reason === 'invalid-cursor');
 const busy = computed(() => state.value.status === 'loading' || invalidCursor.value);
 const heading = computed(() => `相关回复共${total.value}条`);
 
+// 定位结果落下（成功/不存在/失败）后处理一次，布局稳定后再落点。
+watch(highlightId, () => { void locate(); }, { flush: 'post' });
+watch(() => state.value.status, status => {
+  if (status !== 'loading' && locatePending) void locate();
+}, { flush: 'post' });
+
 function restart(): void {
   void loadPage(1);
+}
+
+/** 读取提示上的显式重试：定位未成功时重发定位，成功后仍把目标带回视口。 */
+function retryRead(): void {
+  if (located.value && !state.value.data) locatePending = true;
+  retry();
 }
 
 function back(): void {
@@ -74,32 +120,38 @@ function rootText(comment: Comment): string {
 </script>
 
 <template>
-  <div class="thread-visit">
+  <div ref="container" class="thread-visit">
     <el-button class="thread-back" text aria-label="返回评论" @click="back">‹ 评论详情</el-button>
     <section v-if="invalidCursor" class="thread-status">
       <p role="alert">回复读取标记无效，请重新开始读取。</p>
       <el-button type="primary" link class="thread-action" @click="restart">重新开始读取</el-button>
     </section>
+    <section v-if="locateMissing" class="thread-status" aria-label="定位结果">
+      <p role="status">目标回复不存在或未归档，无法定位到这条回复。</p>
+      <el-button type="primary" link class="thread-action" @click="navigation.showDetail(dynamicId)">
+        返回动态
+      </el-button>
+    </section>
     <ReadNotice
-      v-if="!state.data && !invalidCursor"
-      :status="state.status"
+      v-if="!state.data && !invalidCursor && !locateMissing"
+      :status="noticeStatus"
       area="相关回复"
-      @retry="retry"
+      @retry="retryRead"
     />
     <template v-if="state.data">
-      <article v-if="root" class="thread-root" aria-label="被回复的评论">
+      <article v-if="rootComment" class="thread-root" aria-label="被回复的评论">
         <div class="thread-root__identity">
-          <UserAvatar :user="root.author" :size="40" class="thread-avatar" />
-          <span class="thread-nickname">{{ root.author.nickname ?? '未知用户' }}</span>
-          <span v-if="root.author.id === authorId" class="thread-badge thread-badge--up">UP主</span>
-          <span v-if="root.isPinned" class="thread-badge">置顶</span>
+          <UserAvatar :user="rootComment.author" :size="40" class="thread-avatar" />
+          <span class="thread-nickname">{{ rootComment.author.nickname ?? '未知用户' }}</span>
+          <span v-if="rootComment.author.id === authorId" class="thread-badge thread-badge--up">UP主</span>
+          <span v-if="rootComment.isPinned" class="thread-badge">置顶</span>
         </div>
-        <p class="thread-root__text">{{ rootText(root) }}</p>
+        <p class="thread-root__text">{{ rootText(rootComment) }}</p>
         <div class="thread-metrics">
-          <time class="thread-time" :datetime="root.publishedAt ?? undefined">
-            {{ displayTime(root.publishedAt) }}
+          <time class="thread-time" :datetime="rootComment.publishedAt ?? undefined">
+            {{ displayTime(rootComment.publishedAt) }}
           </time>
-          <ReadOnlyLike :count="root.likeCount" />
+          <ReadOnlyLike :count="rootComment.likeCount" />
         </div>
       </article>
       <header class="thread-heading">
@@ -114,7 +166,10 @@ function rootText(comment: Comment): string {
           v-for="item in items"
           :key="item.id"
           class="thread-reply"
+          :class="{ 'thread-reply--target': highlightId === item.id }"
           :data-reading-id="`reply:${rootId}:${item.id}`"
+          :data-located="highlightId === item.id ? 'true' : undefined"
+          :aria-current="highlightId === item.id ? 'true' : undefined"
         >
           <div class="thread-reply__identity">
             <UserAvatar :user="item.author" :size="24" class="thread-avatar" />
@@ -135,9 +190,9 @@ function rootText(comment: Comment): string {
       <p v-else class="thread-status" role="status">暂无回复</p>
       <ReadNotice
         v-if="state.status !== 'success' && !invalidCursor"
-        :status="state.status"
+        :status="noticeStatus"
         area="相关回复追加"
-        @retry="retry"
+        @retry="retryRead"
       />
       <ReplyPager
         v-if="total > 0"
@@ -261,6 +316,14 @@ function rootText(comment: Comment): string {
 }
 .thread-reply:first-child {
   border-top: 0;
+}
+/* 精确定位的一次性标记：定位完成后保持可见，但不再改变滚动位置。 */
+.thread-reply--target {
+  background: var(--brand-soft, #e6f6f7);
+  border-radius: var(--radius);
+  box-shadow: inset 3px 0 0 var(--brand);
+  outline: 1px solid var(--brand);
+  outline-offset: 2px;
 }
 .thread-reply__text {
   font-size: 15px;

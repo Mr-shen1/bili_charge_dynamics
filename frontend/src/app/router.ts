@@ -3,7 +3,7 @@ import { previewFixturesEnabled } from './assembly';
 
 /**
  * 正式页面路由：六条基线路由（全部/单 UP 列表、动态详情、独立楼中楼、管理列表、单 UP 管理）
- * 加一级评论精确入口；图片自检页只在 mock/fault 装配注册。
+ * 加一级评论与楼中楼回复两个精确入口；图片自检页只在 mock/fault 装配注册。
  * 图片自检页只在 mock/fault 装配注册，生产构建不会得到该入口。
  */
 export function createAppRouter(): Router {
@@ -17,6 +17,11 @@ export function createAppRouter(): Router {
         // 一级评论精确入口：动态与目标评论身份都在路径里，直接打开、刷新与历史返回走同一页面。
         path: '/dynamics/:dynamicId/comments/:rootId/locate', name: 'comment-locate',
         component: () => import('../pages/DetailPage.vue'), props: true,
+      },
+      {
+        // 楼中楼回复精确入口：宽屏在详情里定位，窄屏在独立楼中楼页定位，共用同一链接。
+        path: '/dynamics/:dynamicId/comments/:rootId/replies/:replyId/locate', name: 'reply-locate',
+        component: () => import('../pages/ReplyLocatePage.vue'), props: true,
       },
       {
         path: '/dynamics/:dynamicId/comments/:rootId', name: 'thread',

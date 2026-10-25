@@ -235,6 +235,20 @@ v9 为媒体尝试表增加根 owner 标识（旧动态图尝试保持空根标�
 
 浏览器入口为 `/dynamics/{dynamicId}/comments/{rootId}/locate`（前端专用路由，见[客户端契约](archive-api-client.md#飞书通知-02-增量精确一级评论入口)）。自动化证据见 [02 证据](../../../.scratch/feishu-notifications/evidence/02-root-comment-deep-link.md)。
 
+## 飞书通知 03 增量：楼中楼回复定位读取
+
+本节为通知消息的楼中楼回复精确入口提供只读归档契约。它复用 02 的一级评论定位与既有回复页码模式，不新增采集、通知或账号能力，也不改变既有分页契约。
+
+- `GET /api/archive/dynamics/{id}/comments/{root_id}/replies/{reply_id}/location` 返回 `{items, next_cursor, page, count, root, source_reply_count, local_reply_count, replies_last_attempt, synced_source_reply_count}`。
+- `items` 是**目标所在页**（固定 10 条），排序与 `GET .../replies?page=` 完全一致（发表时间升序、null 后置、ID BINARY 升序）；`page` 是该页在所属根完整本地回复集合中的页码（1 起，末页可能不足 10 条）；`root` 是该根评论，供显示所属楼层上下文；`count` 与 `local_reply_count` 是该根完整本地回复数；`source_reply_count` 与 `replies_last_attempt` 沿用逐根状态口径。
+- 定位读取与普通页码读取共用同一份切片和 `reply_to` 解析实现，只是额外返回 `page`。`next_cursor` 恒为 `null`：后续翻页仍走 `GET .../replies?page=N&limit=10`，不为此新增游标模式。
+- 动态不存在、根评论不属于该动态或尚未归档、目标回复不属于该根或尚未归档，一律 `404 NOT_FOUND`（不暴露其他楼或其他动态的回复）。
+- 该端点不接受查询参数：`sort`、`page`、`limit`、`cursor` 等任何未知或重复 query 均返回 `422 INVALID_INPUT`。
+- 只读定位只访问本地 SQLite：不访问上游、不写归档、不冻结 `reply_pages` 行、不启动采集或通知。定位本身没有采集副作用。
+- 归档读取的既有约束继续适用：ID 一律字符串、错误只返回固定脱敏码、代理鉴权不变。
+
+浏览器入口为 `/dynamics/{dynamicId}/comments/{rootId}/replies/{replyId}/locate`（前端专用路由，见[客户端契约](archive-api-client.md#飞书通知-03-增量楼中楼回复精确入口)）。自动化证据见 [03 证据](../../../.scratch/feishu-notifications/evidence/03-reply-deep-link.md)。
+
 ## 安全及证据
 
 初始化 JSON 只用 JSON 解析器，不执行网页 JavaScript、`eval` 或表达式；不固定脚本标签或模块数组下标，不依赖 `opus/detail` JSON 取得编辑信号。固定脱敏 fixture 是协议回归证据，不证明所有上游页面、权限状态或长期运行可用。

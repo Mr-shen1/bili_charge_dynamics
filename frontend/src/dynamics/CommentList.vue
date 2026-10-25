@@ -20,6 +20,8 @@ const props = defineProps<{
   initial: CommentSnapshot;
   /** 精确入口的目标一级评论；首批改走定位读取，成功后高亮并展开该条。 */
   anchorId?: string | null;
+  /** 精确入口的目标回复：只交给所属根评论的回复区，根评论本身不高亮。 */
+  locateReplyId?: string | null;
 }>();
 const emit = defineEmits<{ update: [CommentSnapshot]; settled: []; restart: [] }>();
 
@@ -29,7 +31,8 @@ const { state, load } = useCommentsRead(
   reader, { dynamicId: props.dynamicId, sort: props.sort, anchorId: props.anchorId }, props.initial.read);
 const expanded = ref<Record<string, boolean>>({ ...props.initial.expanded });
 // 只标记确实读到的目标：目标不在已读批次里绝不冒充定位成功。
-const highlightId = computed(() => (props.anchorId
+// 回复精确入口只高亮目标回复，所属根评论只作上下文，不抢高亮。
+const highlightId = computed(() => (!props.locateReplyId && props.anchorId
   && state.value.data?.items.some(item => item.id === props.anchorId) ? props.anchorId : null));
 const replies = ref<Record<string, ReplySnapshot>>({ ...props.initial.replies });
 const area = computed(() => props.sort === 'hot' ? '最热评论' : '最新评论');
@@ -97,6 +100,7 @@ watch(() => state.value.status, status => {
       :expanded="expanded[item.id] ?? false"
       :reply="replies[item.id]"
       :highlight="highlightId === item.id"
+      :locate-reply-id="locateReplyId && item.id === anchorId ? locateReplyId : null"
       @toggle="toggle(item.id)"
       @reply="setReply(item.id, $event)"
     />

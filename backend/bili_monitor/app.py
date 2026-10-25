@@ -256,6 +256,12 @@ def create_app(
             raise APIError("INVALID_INPUT" if cursor is None else "CURSOR_INVALID")
         return await run_store(store.list_replies, id, root_id, cursor)
 
+    @application.get("/api/archive/dynamics/{id}/comments/{root_id}/replies/{reply_id}/location")
+    async def locate_reply(id: UID, root_id: UID, reply_id: UID, request: Request):
+        """以动态、根评论与目标回复身份定位所在页；只读本地归档，不启动采集或通知。"""
+        validate_query(request)
+        return await run_store(store.locate_reply, id, root_id, reply_id)
+
     return application
 
 

@@ -1,15 +1,18 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, useId, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, useId, watch } from 'vue';
 import { ElButton } from 'element-plus';
 import { replyPreviewSize } from '../data/contracts';
 import type { Reply } from '../data/contracts';
 import type { ReplyReadState, ReplySnapshot } from '../app/snapshots';
 import { useSession } from '../app/session';
+import { useArchiveNavigation } from '../app/navigation';
+import { onUserScroll } from '../app/readingPosition';
 import { useReplyPage } from './useReplyPage';
 import { useReplyPreview } from './useReplyPreview';
 import { replyPageCount, replyPageSize } from './replyPaging';
 import { replyBodyText, replyTargetNickname } from './replyText';
 import { displayTime } from './display';
+import type { ReadStatus } from './readStatus';
 import FoldableText from './FoldableText.vue';
 import ReadNotice from './ReadNotice.vue';
 import ReadOnlyLike from './ReadOnlyLike.vue';
@@ -21,20 +24,32 @@ const props = defineProps<{
   rootId: string;
   authorId: string;
   initial?: ReplySnapshot;
+  /** 精确入口的目标回复：首读改为定位读取，展开所在页并高亮该条。 */
+  locateReplyId?: string | null;
 }>();
 const emit = defineEmits<{ update: [ReplySnapshot] }>();
 
 const { reader } = useSession();
+const navigation = useArchiveNavigation();
+const located = computed(() => props.locateReplyId ?? null);
+// 定位进来的回复区没有读过预览：首个读取走定位，预览等收起时再按需读取。
 const preview = useReplyPreview(
-  reader, { dynamicId: props.dynamicId, rootId: props.rootId }, props.initial?.read);
-const expanded = ref(props.initial?.expanded ?? false);
+  reader, { dynamicId: props.dynamicId, rootId: props.rootId }, props.initial?.read,
+  { auto: !located.value });
+const expanded = ref(Boolean(located.value) || (props.initial?.expanded ?? false));
 const expandedTexts = ref<Record<string, boolean>>({ ...props.initial?.expandedTexts });
 // 已展开的历史恢复按保存页码实时重读；未展开时不启用页码读取。
+// 精确入口首个请求是定位读取（页码由服务端给出），不先读第 1 页。
 const live = useReplyPage(
   (page, signal) => reader.readReplies({
     dynamicId: props.dynamicId, rootId: props.rootId, page, limit: replyPageSize, signal,
   }),
-  expanded.value ? props.initial?.page ?? 1 : null,
+  expanded.value && !located.value ? props.initial?.page ?? 1 : null,
+  located.value
+    ? signal => reader.locateReply({
+      dynamicId: props.dynamicId, rootId: props.rootId, replyId: located.value!, signal,
+    })
+    : undefined,
 );
 
 const state = computed<ReplyReadState>(() => {
@@ -44,6 +59,15 @@ const state = computed<ReplyReadState>(() => {
   return { ...current, data: current.data ?? (current.page === 1 ? preview.state.value.data : null) };
 });
 const invalidCursor = computed(() => state.value.reason === 'invalid-cursor');
+// 只有确实读到目标才标记：目标不在当前页绝不冒充定位成功。
+const highlightId = computed(() => (located.value
+  && live.state.value.data?.items.some(item => item.id === located.value) ? located.value : null));
+// 目标不存在有自己的提示与返回入口，不交给通用读取失败提示。
+const locateMissing = computed(() => located.value !== null && live.state.value.status === 'not-found');
+const noticeStatus = computed<ReadStatus>(() => {
+  const status = state.value.status;
+  return status === 'not-found' ? 'success' : status;
+});
 const localTotal = computed(() => state.value.data?.count ?? state.value.data?.localReplyCount ?? null);
 const pages = computed(() => replyPageCount(localTotal.value, state.value.data?.items.length ?? 0));
 const currentPage = computed(() => Math.min(live.state.value.page, pages.value));
@@ -67,8 +91,13 @@ const section = ref<HTMLElement | null>(null);
 const listId = useId();
 
 function load(): void {
-  if (expanded.value) live.retry();
-  else void preview.load();
+  if (!expanded.value) {
+    void preview.load();
+    return;
+  }
+  // 精确定位的显式重试：成功后仍把目标带回视口（用户自己点了重试，不算抢滚动）。
+  if (located.value && !live.state.value.data) locatePending = true;
+  live.retry();
 }
 
 /** 展开：每次展开都重读第 1 页，不复用任何已读页结果。 */
@@ -87,7 +116,48 @@ async function collapse(): Promise<void> {
   await nextTick();
   section.value?.closest<HTMLElement>('[data-reading-id^="comment:"]')
     ?.scrollIntoView?.({ block: 'start', behavior: 'instant' });
+  // 精确定位进入时没读过预览：收起后按常规首屏读 3 条，不留下空白回复区。
+  if (!preview.state.value.data) void preview.load();
 }
+
+/**
+ * 精确定位：目标正文默认展开，并在 DOM 更新后把目标回复定位到视口。
+ * 定位意图只消费一次；成功、失败与「不存在」都会落到目标回复或本区提示上。
+ */
+let locatePending = Boolean(props.locateReplyId);
+let releaseLocate = (): void => undefined;
+
+function locateTarget(): void {
+  const target = highlightId.value
+    ? section.value?.querySelector<HTMLElement>(`[data-reading-id="reply:${props.rootId}:${highlightId.value}"]`)
+    : null;
+  // 目标读不到时定位到本回复区的提示，绝不把楼层顶部当作定位结果。
+  (target ?? section.value)?.scrollIntoView?.({ block: 'start', behavior: 'instant' });
+  locatePending = false;
+  releaseLocate();
+}
+
+onMounted(() => {
+  if (!locatePending) return;
+  // 用户在结果落下前自己滚动/触摸/按键时，不再把位置抢回目标。
+  releaseLocate = onUserScroll(() => {
+    locatePending = false;
+    releaseLocate();
+  });
+});
+onUnmounted(() => { releaseLocate(); });
+
+// 目标的折叠正文在定位时直接展开，保证可直接阅读。
+watch(highlightId, id => {
+  if (id && !expandedTexts.value[id]) expandedTexts.value = { ...expandedTexts.value, [id]: true };
+}, { immediate: true });
+// 成功、不存在与失败都在布局稳定后处理一次，迟到结果不反复抢滚动。
+watch(() => [highlightId.value, state.value.status], async () => {
+  if (!locatePending) return;
+  if (state.value.status === 'loading') return;
+  await nextTick();
+  if (locatePending) locateTarget();
+}, { flush: 'post' });
 
 /** 失效 cursor：丢弃预览与页码状态，重新从首批 3 条开始读取。 */
 function restart(): void {
@@ -129,9 +199,15 @@ watch([() => preview.state.value, expanded, () => live.state.value.page, expande
       <p role="alert">回复读取标记无效，请重新开始读取。</p>
       <el-button type="primary" link class="reply-action" @click="restart">重新开始读取</el-button>
     </section>
+    <section v-if="locateMissing" class="reply-status" aria-label="定位结果">
+      <p role="status">目标回复不存在或未归档，无法定位到这条回复。</p>
+      <el-button type="primary" link class="reply-action" @click="navigation.showDetail(dynamicId)">
+        返回动态
+      </el-button>
+    </section>
     <ReadNotice
-      v-if="!state.data && !invalidCursor"
-      :status="state.status"
+      v-if="!state.data && !invalidCursor && !locateMissing"
+      :status="noticeStatus"
       area="回复"
       @retry="load"
     />
@@ -141,7 +217,10 @@ watch([() => preview.state.value, expanded, () => live.state.value.page, expande
         v-for="item in visible"
         :key="item.id"
         class="reply"
+        :class="{ 'reply--target': highlightId === item.id }"
         :data-reading-id="`reply:${rootId}:${item.id}`"
+        :data-located="highlightId === item.id ? 'true' : undefined"
+        :aria-current="highlightId === item.id ? 'true' : undefined"
       >
         <div class="reply__identity">
           <UserAvatar :user="item.author" :size="24" class="reply__avatar" />
@@ -168,7 +247,7 @@ watch([() => preview.state.value, expanded, () => live.state.value.page, expande
     </ul>
     <ReadNotice
       v-if="state.data && hasItems && state.status !== 'success' && !invalidCursor"
-      :status="state.status"
+      :status="noticeStatus"
       area="回复"
       @retry="load"
     />
@@ -219,6 +298,14 @@ watch([() => preview.state.value, expanded, () => live.state.value.page, expande
 }
 .reply:first-child {
   border-top: 0;
+}
+/* 精确定位的一次性标记：定位完成后保持可见，但不再改变滚动位置。 */
+.reply--target {
+  background: var(--brand-soft, #e6f6f7);
+  border-radius: var(--radius);
+  box-shadow: inset 3px 0 0 var(--brand);
+  outline: 1px solid var(--brand);
+  outline-offset: 2px;
 }
 .reply__identity {
   display: flex;

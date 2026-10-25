@@ -34,6 +34,20 @@ function pageBatch(total: number, page: number): ReplyBatch {
 }
 
 /** 详情 + 一级评论的公共读取；回复读取由各用例决定。 */
+/**
+ * 宽屏回复精确入口仍复用一级评论定位读取：先用 02 的契约取含所属根评论的批次，
+ * 再由该根的回复区按目标身份定位。这里把它作为默认读取提供。
+ */
+function locateRootReader(reader: Partial<DynamicReader>) {
+  return detailReader({
+    locateComment: async () => ({
+      status: 'success',
+      data: { items: [comment(1, { replyCount: 25 })], nextCursor: null },
+    }),
+    ...reader,
+  });
+}
+
 function detailReader(reader: Partial<DynamicReader>, roots = [comment(1, { replyCount: 25 })]) {
   return createReader({
     readDetail: async () => ({ status: 'success', data: commentDynamic() }),
@@ -607,4 +621,153 @@ it('取消后的迟到失败与异常不改写收起后的预览态', async () =
   expect(within(commentItem(1)).queryByRole('alert')).toBeNull();
   expect(within(replyList(1)[0]!).getAllByRole('listitem')).toHaveLength(3);
   expect(within(region).queryByRole('navigation', { name: '回复分页' })).toBeNull();
+});
+
+function locatePath(replyId: string, rootId = comment(1).id): string {
+  return `/dynamics/1001/comments/${rootId}/replies/${replyId}/locate`;
+}
+
+const locateLongText = Array.from({ length: 7 }, (_value, line) =>
+  `第七行边界 ${line + 1}：这是一段足够长的回复正文，用于验证定位后默认展开。`).join('\n');
+
+function locatedItems(region: HTMLElement): HTMLElement[] {
+  return within(region).getAllByRole('listitem').filter(item => item.getAttribute('data-located') === 'true');
+}
+
+it('宽屏精确入口只读目标所在页：展开并高亮该条，不先读预览也不渲染全部回复', async () => {
+  const scrolled = recordScrollIntoView();
+  const rootId = comment(1).id;
+  const target = replies(25)[13]!;
+  const located: { rootId: string; replyId: string }[] = [];
+  const pageReads: ReplyRequest[] = [];
+  const reader = locateRootReader({
+    readReplies: async input => {
+      pageReads.push(replySignal(input));
+      return { status: 'success', data: pageBatch(25, input.page ?? 1) };
+    },
+    locateReply: async input => {
+      located.push({ rootId: input.rootId, replyId: input.replyId });
+      return {
+        status: 'success',
+        data: { ...pageBatch(25, 2), page: 2,
+          items: pageBatch(25, 2).items.map(item =>
+            item.id === target.id ? { ...item, text: locateLongText } : item) },
+      };
+    },
+  });
+
+  await showApp(reader, locatePath(target.id));
+  const region = await screen.findByRole('region', { name: '评论区' });
+  await waitFor(() => expect(replyList(1)).toHaveLength(1));
+
+  // 只按目标身份读定位响应：既不先读 3 条预览，也不先读第 1 页。
+  expect(located).toEqual([{ rootId, replyId: target.id }]);
+  expect(pageReads).toEqual([]);
+  const list = replyList(1)[0]!;
+  const entries = within(list).getAllByRole('listitem');
+  expect(entries).toHaveLength(10);
+  expect(entries.map(item => item.dataset.readingId))
+    .toEqual(replies(25).slice(10, 20).map(item => `reply:${rootId}:${item.id}`));
+  // 只有目标一条被标记，且定位落在目标回复本身。
+  expect(locatedItems(region).map(item => item.dataset.readingId)).toEqual([`reply:${rootId}:${target.id}`]);
+  const highlighted = locatedItems(region)[0]!;
+  expect(highlighted.getAttribute('aria-current')).toBe('true');
+  expect(scrolled.at(-1)).toBe(highlighted);
+  // 目标正文整段可读；折叠开关按真实行高判定，默认展开由浏览器用例断言。
+  expect(highlighted.textContent).toContain('第七行边界 7');
+  // 分页停在第 2 页，不回到第 1 页。
+  expect(within(region).getByRole('button', { name: '2' }).getAttribute('aria-current')).toBe('page');
+
+  // 定位后的翻页仍是原页内替换，不累计也不渲染全部。
+  await fireEvent.click(within(region).getByRole('button', { name: '下一页' }));
+  await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(5));
+  expect(pageReads.at(-1)).toEqual({ rootId, limit: 10, page: 3, cursor: undefined });
+  expect(within(list).getAllByRole('listitem')[4]!.dataset.readingId).toBe(`reply:${rootId}:9025`);
+
+  // 收起回到常规 3 条预览首屏：按需读取预览，不再停留在定位页。
+  await fireEvent.click(within(region).getByRole('button', { name: '收起' }));
+  await waitFor(() => expect(pageReads.filter(item => item.page === undefined)).toHaveLength(1));
+  await waitFor(() => expect(within(replyList(1)[0]!).getAllByRole('listitem')).toHaveLength(3));
+  expect(within(region).queryByRole('navigation', { name: '回复分页' })).toBeNull();
+  expect(locatedItems(region)).toHaveLength(0);
+});
+
+it('宽屏精确入口：目标不存在时明确提示并可返回动态，不读取预览或页码', async () => {
+  const pageReads: ReplyRequest[] = [];
+  const reader = locateRootReader({
+    readReplies: async input => {
+      pageReads.push(replySignal(input));
+      return { status: 'success', data: pageBatch(25, input.page ?? 1) };
+    },
+    locateReply: async () => ({ status: 'not-found' }),
+  });
+
+  const router = await showApp(reader, locatePath('9999'));
+  const region = await screen.findByRole('region', { name: '评论区' });
+  const replyRegion = () => within(commentItem(1)).getByRole('region', { name: '回复区' });
+  await waitFor(() => expect(within(replyRegion()).getByRole('status').textContent)
+    .toContain('不存在或未归档'));
+  // 所属根评论仍在（上下文），但没有回复列表、没有高亮，也没有读页码模式。
+  expect(within(region).getByRole('listitem')).toBeTruthy();
+  expect(within(replyRegion()).queryByRole('list', { name: '回复列表' })).toBeNull();
+  expect(locatedItems(region)).toHaveLength(0);
+  expect(pageReads).toEqual([]);
+
+  await fireEvent.click(within(replyRegion()).getByRole('button', { name: '返回动态' }));
+  await waitFor(() => expect(router.currentRoute.value.path).toBe('/dynamics/1001'));
+});
+
+it('宽屏精确入口：临时失败保留局部重试，重试成功后才展开并高亮目标', async () => {
+  const rootId = comment(1).id;
+  const target = replies(25)[13]!;
+  const attempts: string[] = [];
+  const reader = locateRootReader({
+    readReplies: async input => ({ status: 'success', data: pageBatch(25, input.page ?? 1) }),
+    locateReply: async input => {
+      attempts.push(input.replyId);
+      if (attempts.length === 1) return { status: 'error' };
+      return { status: 'success', data: { ...pageBatch(25, 2), page: 2 } };
+    },
+  });
+
+  await showApp(reader, locatePath(target.id));
+  const region = await screen.findByRole('region', { name: '评论区' });
+  await waitFor(() => expect(within(region).getByRole('alert').textContent).toContain('读取失败'));
+  expect(locatedItems(region)).toHaveLength(0);
+
+  await fireEvent.click(within(region).getByRole('button', { name: '重试' }));
+  await waitFor(() => expect(locatedItems(region)).toHaveLength(1));
+  expect(locatedItems(region)[0]!.dataset.readingId).toBe(`reply:${rootId}:${target.id}`);
+  expect(attempts).toEqual([target.id, target.id]);
+});
+
+it('宽屏精确入口：切换目标链接时迟到的前一次定位不覆盖当前目标', async () => {
+  recordScrollIntoView();
+  const rootId = comment(1).id;
+  const first = replies(25)[13]!;
+  const second = replies(25)[23]!;
+  const pending = deferred<Awaited<ReturnType<DynamicReader['locateReply']>>>();
+  const requested: string[] = [];
+  const reader = locateRootReader({
+    readReplies: async input => ({ status: 'success', data: pageBatch(25, input.page ?? 1) }),
+    locateReply: async input => {
+      requested.push(input.replyId);
+      return input.replyId === first.id
+        ? pending.promise
+        : { status: 'success', data: { ...pageBatch(25, 3), page: 3 } };
+    },
+  });
+
+  const router = await showApp(reader, locatePath(first.id));
+  await waitFor(() => expect(requested).toEqual([first.id]));
+  await router.push(locatePath(second.id));
+  const region = await screen.findByRole('region', { name: '评论区' });
+  await waitFor(() => expect(within(region).getByRole('button', { name: '3' }).getAttribute('aria-current'))
+    .toBe('page'));
+
+  pending.resolve({ status: 'success', data: { ...pageBatch(25, 2), page: 2 } });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(locatedItems(region).map(item => item.dataset.readingId)).toEqual([`reply:${rootId}:${second.id}`]);
+  expect(within(region).getByRole('button', { name: '3' }).getAttribute('aria-current')).toBe('page');
+  expect(within(region).queryByRole('alert')).toBeNull();
 });
