@@ -1,5 +1,6 @@
 """身份与配置分离；每次操作独立连接，网络不进入 SQLite 事务。"""
 
+import hashlib
 import json
 import sqlite3
 import re
@@ -56,6 +57,32 @@ def _reconcile_root_media(document, sources, count, observed_count):
         # checks.py 的「无 pending 根」谓词也会让目标永远重领工作。
         reconcile_media(document, [], version, owner_type="comment")
     # 已有图片项却缺键时什么都不做：不擦除已知媒体，也不冒充空组。
+
+
+def _root_resource(id, sort):
+    return f"root-comments:{id}:{sort}:v1"
+
+
+def _root_order(sort):
+    """一级评论排序：置顶优先，最热再看点赞，最后按发表时间与 ID 稳定收尾。"""
+    return ("CASE WHEN json_extract(document, '$.is_pinned') = 1 THEN 0 ELSE 1 END ASC, "
+            + ("json_extract(document, '$.like_count') DESC, " if sort == "hot" else "")
+            + "json_extract(document, '$.published_at') DESC, id COLLATE BINARY ASC")
+
+
+def _root_offset_cursor(resource, limit, offset):
+    """定位窗口的续读游标：无状态偏移，摘要绑定动态、排序与批量，读取不写库。"""
+    digest = hashlib.sha256(f"{resource}|{limit}|{offset}".encode()).hexdigest()[:16]
+    return f"{offset:x}-{digest}"
+
+
+def _root_offset(resource, limit, cursor):
+    matched = re.fullmatch(r"([0-9a-f]{1,8})-([0-9a-f]{16})", cursor)
+    if matched is None:
+        return None
+    offset = int(matched.group(1), 16)
+    # 摘要不符时按无效游标处理：不猜来源动态/排序，也不接受被改写的偏移。
+    return offset if _root_offset_cursor(resource, limit, offset) == cursor else None
 
 
 def _freeze_pages(documents, limit):
@@ -761,27 +788,26 @@ class Store(CheckStore, DiscoveryStore):
                 raise
 
     def list_roots(self, id, sort="hot", limit=20, cursor=None):
-        resource = f"root-comments:{id}:{sort}:v1"
+        resource = _root_resource(id, sort)
         with self.connection() as connection:
             if not connection.execute("SELECT 1 FROM archives WHERE id = ?", (id,)).fetchone():
                 raise APIError("NOT_FOUND")
             if cursor is not None:
-                if re.fullmatch(r"[a-f0-9]{32}", cursor) is None:
+                if re.fullmatch(r"[a-f0-9]{32}", cursor) is not None:
+                    row = connection.execute("""SELECT document FROM root_comment_pages
+                        WHERE token = ? AND resource = ? AND batch_limit = ?""",
+                        (cursor, resource, limit)).fetchone()
+                    if row is None:
+                        raise APIError("CURSOR_INVALID")
+                    return json.loads(row[0])
+                # 定位入口给出的续读游标不冻结整份快照：按当前排序重新取窗口，读取不写库。
+                offset = _root_offset(resource, limit, cursor)
+                if offset is None:
                     raise APIError("CURSOR_INVALID")
-                row = connection.execute("""SELECT document FROM root_comment_pages
-                    WHERE token = ? AND resource = ? AND batch_limit = ?""", (cursor, resource, limit)).fetchone()
-                if row is None:
-                    raise APIError("CURSOR_INVALID")
-                return json.loads(row[0])
+                return self._root_window(resource, limit, offset, self._ordered_roots(connection, id, sort))
             connection.execute("BEGIN IMMEDIATE")
             try:
-                documents = [json.loads(row[0]) for row in connection.execute(
-                    "SELECT document FROM root_comments WHERE dynamic_id = ? ORDER BY "
-                    + "CASE WHEN json_extract(document, '$.is_pinned') = 1 THEN 0 ELSE 1 END ASC, "
-                    + ("json_extract(document, '$.like_count') DESC, " if sort == "hot" else "")
-                    + "json_extract(document, '$.published_at') DESC, id COLLATE BINARY ASC", (id,)
-                )]
-                self._attach_up_replies(connection, id, documents)
+                documents = self._ordered_roots(connection, id, sort)
                 first, following = _freeze_pages(documents, limit)
                 for token, result in following:
                     connection.execute("INSERT INTO root_comment_pages VALUES (?, ?, ?, ?)",
@@ -791,6 +817,33 @@ class Store(CheckStore, DiscoveryStore):
             except BaseException:
                 connection.rollback()
                 raise
+
+    def locate_root(self, id, sort, root_id, limit=20):
+        """按动态与目标评论身份给出以目标开头的批次；只读归档，不冻结快照也不访问上游。"""
+        with self.connection() as connection:
+            if not connection.execute("SELECT 1 FROM archives WHERE id = ?", (id,)).fetchone():
+                raise APIError("NOT_FOUND")
+            documents = self._ordered_roots(connection, id, sort)
+            for index, document in enumerate(documents):
+                if document["id"] == root_id:
+                    return self._root_window(_root_resource(id, sort), limit, index, documents)
+            # 目标属于别的动态或尚未归档：一律当作不存在，不暴露其他动态的评论。
+            raise APIError("NOT_FOUND")
+
+    def _ordered_roots(self, connection, id, sort):
+        documents = [json.loads(row[0]) for row in connection.execute(
+            "SELECT document FROM root_comments WHERE dynamic_id = ? ORDER BY " + _root_order(sort), (id,)
+        )]
+        self._attach_up_replies(connection, id, documents)
+        return documents
+
+    def _root_window(self, resource, limit, offset, documents):
+        following = offset + limit
+        return {
+            "items": documents[offset:following],
+            # 续读沿用同一排序与批量；无更多时为 null，不伪造结束结语。
+            "next_cursor": _root_offset_cursor(resource, limit, following) if following < len(documents) else None,
+        }
 
     def _attach_up_replies(self, connection, id, documents):
         """为楼中楼预览附上作者最早的一条回复；未参与讨论时为 null。"""

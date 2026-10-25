@@ -19,6 +19,8 @@ const props = defineProps<{
   target: 'top' | 'comments';
   /** 用户已经主动操作过页面时，迟到的入口/排序定位不再抢回。 */
   canLocate: boolean;
+  /** 精确入口的目标一级评论：定位到该条而不是评论区顶部。 */
+  locateRootId?: string | null;
 }>();
 const emit = defineEmits<{ 'update:snapshot': [CommentSnapshot] }>();
 const { reader } = useSession();
@@ -32,15 +34,23 @@ const reloadKey = ref(0);
 const currentSnapshot = shallowRef<CommentSnapshot>(props.snapshot);
 const root = ref<HTMLElement | null>(null);
 // 主动入口/切换排序的定位意图只消费一次：失败/取消后不反复抢用户滚动。
-let entryPending = props.target === 'comments';
+let entryPending = props.target === 'comments' || Boolean(props.locateRootId);
 let sortPending = false;
 let releaseSortCancel = (): void => undefined;
 const listKey = computed(() => `${sort.value}:${reloadKey.value}`);
 const sourceCount = computed(() => props.archive?.commentSync?.sourceCommentCount ?? props.sourceCommentCount);
 const headingLabel = computed(() => `${props.archive ? '来源' : ''}评论 ${displayCount(sourceCount.value)}`);
 
+// 精确定位的目标元素：按业务锚点查找，不依赖评论是否在首批 DOM 里。
+function targetElement(id: string): HTMLElement | null {
+  const anchors = root.value?.querySelectorAll<HTMLElement>('[data-reading-id]') ?? [];
+  return Array.from(anchors).find(element => element.dataset.readingId === `comment:${id}`) ?? null;
+}
+
 function locate(): void {
-  root.value?.scrollIntoView?.({ block: 'start', behavior: 'instant' });
+  const target = props.locateRootId ? targetElement(props.locateRootId) : null;
+  // 目标确实可读才定位到它；读不到时退回评论区顶部，绝不把页首当作定位结果。
+  (target ?? root.value)?.scrollIntoView?.({ block: 'start', behavior: 'instant' });
 }
 
 function settle(): void {
@@ -80,7 +90,8 @@ const sortModel = computed<CommentSort>({
     // 切换排序：定位评论区，重置目标排序首批、文字与回复展开状态（列表整体重挂载）。
     sort.value = next;
     reloadKey.value += 1;
-    entryPending = false;
+    // 精确入口切换排序后仍以同一目标为首批锚点，不退回普通首批。
+    entryPending = Boolean(props.locateRootId);
     publish(emptyCommentSnapshot(next));
     locate();
     armSortLocate();
@@ -120,6 +131,7 @@ function restartReading(): void {
       :archive="archive"
       :compact="compact"
       :initial="currentSnapshot"
+      :anchor-id="locateRootId ?? null"
       @update="publish"
       @settled="settle"
       @restart="restartReading"

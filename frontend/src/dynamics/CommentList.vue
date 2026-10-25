@@ -3,7 +3,9 @@ import { computed, ref, watch } from 'vue';
 import { ElButton } from 'element-plus';
 import type { ArchiveMetadata, CommentSort } from '../data/contracts';
 import type { CommentSnapshot, ReplySnapshot } from '../app/snapshots';
+import { useArchiveNavigation } from '../app/navigation';
 import { useSession } from '../app/session';
+import type { ReadStatus } from './readStatus';
 import { useCommentsRead } from './useCommentsRead';
 import CommentItem from './CommentItem.vue';
 import ReadNotice from './ReadNotice.vue';
@@ -16,18 +18,31 @@ const props = defineProps<{
   /** 宽屏才渲染内联回复区；窄屏回复入口由 07 交付。 */
   compact: boolean;
   initial: CommentSnapshot;
+  /** 精确入口的目标一级评论；首批改走定位读取，成功后高亮并展开该条。 */
+  anchorId?: string | null;
 }>();
 const emit = defineEmits<{ update: [CommentSnapshot]; settled: []; restart: [] }>();
 
 const { reader } = useSession();
+const navigation = useArchiveNavigation();
 const { state, load } = useCommentsRead(
-  reader, { dynamicId: props.dynamicId, sort: props.sort }, props.initial.read);
+  reader, { dynamicId: props.dynamicId, sort: props.sort, anchorId: props.anchorId }, props.initial.read);
 const expanded = ref<Record<string, boolean>>({ ...props.initial.expanded });
+// 只标记确实读到的目标：目标不在已读批次里绝不冒充定位成功。
+const highlightId = computed(() => (props.anchorId
+  && state.value.data?.items.some(item => item.id === props.anchorId) ? props.anchorId : null));
 const replies = ref<Record<string, ReplySnapshot>>({ ...props.initial.replies });
 const area = computed(() => props.sort === 'hot' ? '最热评论' : '最新评论');
+// not-found 有自己的提示与返回入口，不交给通用读取失败提示。
+const noticeStatus = computed<ReadStatus>(() => (state.value.status === 'not-found' ? 'success' : state.value.status));
 // 成功空只在归档确认本轮根评论同步完成后才是“暂无评论”，否则不冒充来源没有评论。
 const emptyUnarchived = computed(() => Boolean(props.archive
   && (props.archive.rootCommentsLastAttempt ?? props.archive.work.comments) !== 'success'));
+
+// 定位到的目标正文默认展开：折叠的正文必须可直接阅读。
+watch(highlightId, id => {
+  if (id && !expanded.value[id]) expanded.value = { ...expanded.value, [id]: true };
+}, { immediate: true });
 
 function toggle(id: string): void {
   expanded.value = { ...expanded.value, [id]: !expanded.value[id] };
@@ -53,12 +68,18 @@ watch(() => state.value.status, status => {
     <p role="alert">评论读取标记无效，请重新开始读取。</p>
     <el-button type="primary" link class="comment-action" @click="emit('restart')">重新开始读取</el-button>
   </section>
+  <section v-if="state.status === 'not-found'" class="comment-status" aria-label="定位结果">
+    <p role="status">目标评论不存在或未归档，无法定位到这条评论。</p>
+    <el-button type="primary" link class="comment-action" @click="navigation.showDetail(dynamicId)">
+      返回动态
+    </el-button>
+  </section>
   <p v-if="state.reason === 'not-archived'" class="comment-status" role="status">
     评论尚未归档；来源计数不代表本地已有评论。
   </p>
   <ReadNotice
     v-if="!state.data && state.reason !== 'invalid-cursor' && state.reason !== 'not-archived'"
-    :status="state.status"
+    :status="noticeStatus"
     :area="area"
     @retry="load()"
   />
@@ -75,6 +96,7 @@ watch(() => state.value.status, status => {
       :compact="compact"
       :expanded="expanded[item.id] ?? false"
       :reply="replies[item.id]"
+      :highlight="highlightId === item.id"
       @toggle="toggle(item.id)"
       @reply="setReply(item.id, $event)"
     />
@@ -86,7 +108,7 @@ watch(() => state.value.status, status => {
   >
     <ReadNotice
       v-if="state.status !== 'success' && state.reason !== 'invalid-cursor'"
-      :status="state.status"
+      :status="noticeStatus"
       :area="`${area}追加`"
       @retry="load()"
     />

@@ -7,11 +7,14 @@ export interface ListReadState {
   readonly status: 'loading' | 'success' | 'error' | 'cancelled';
 }
 
-/** 一级评论的已读批次与 cursor 进度；切换排序时整份重置。 */
+/**
+ * 一级评论的已读批次与 cursor 进度；切换排序时整份重置。
+ * `not-found` 只用于精确入口：目标不存在与暂时失败必须区分。
+ */
 export interface CommentReadState {
   readonly data: CommentBatch | null;
   readonly reason?: Extract<ReadResult<CommentBatch>, { status: 'error' }>['reason'];
-  readonly status: 'loading' | 'success' | 'error' | 'cancelled';
+  readonly status: 'loading' | 'success' | 'error' | 'cancelled' | 'not-found';
 }
 
 /** 单个回复区的 cursor 预览结果；展开后的页码读取另有独立状态。 */

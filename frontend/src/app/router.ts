@@ -2,7 +2,8 @@ import { createRouter, createWebHistory, type Router } from 'vue-router';
 import { previewFixturesEnabled } from './assembly';
 
 /**
- * 六条正式页面路由保持与代码基线一致：全部/单 UP 列表、动态详情、独立楼中楼、管理列表、单 UP 管理。
+ * 正式页面路由：六条基线路由（全部/单 UP 列表、动态详情、独立楼中楼、管理列表、单 UP 管理）
+ * 加一级评论精确入口；图片自检页只在 mock/fault 装配注册。
  * 图片自检页只在 mock/fault 装配注册，生产构建不会得到该入口。
  */
 export function createAppRouter(): Router {
@@ -12,6 +13,11 @@ export function createAppRouter(): Router {
       { path: '/', name: 'list', component: () => import('../pages/ListPage.vue') },
       { path: '/ups/:upId', name: 'up-list', component: () => import('../pages/ListPage.vue'), props: true },
       { path: '/dynamics/:dynamicId', name: 'detail', component: () => import('../pages/DetailPage.vue'), props: true },
+      {
+        // 一级评论精确入口：动态与目标评论身份都在路径里，直接打开、刷新与历史返回走同一页面。
+        path: '/dynamics/:dynamicId/comments/:rootId/locate', name: 'comment-locate',
+        component: () => import('../pages/DetailPage.vue'), props: true,
+      },
       {
         path: '/dynamics/:dynamicId/comments/:rootId', name: 'thread',
         component: () => import('../pages/CommentThreadPage.vue'), props: true,

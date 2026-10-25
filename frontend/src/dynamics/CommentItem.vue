@@ -23,6 +23,8 @@ const props = defineProps<{
   compact: boolean;
   expanded: boolean;
   reply?: ReplySnapshot;
+  /** 精确入口定位到的目标评论：只做一次性标记，不参与排序或读取。 */
+  highlight?: boolean;
 }>();
 const emit = defineEmits<{ toggle: []; reply: [ReplySnapshot] }>();
 
@@ -44,7 +46,13 @@ function openThread(): void {
 </script>
 
 <template>
-  <li class="comment" :data-reading-id="`comment:${comment.id}`">
+  <li
+    class="comment"
+    :class="{ 'comment--target': highlight }"
+    :data-reading-id="`comment:${comment.id}`"
+    :data-located="highlight ? 'true' : undefined"
+    :aria-current="highlight ? 'true' : undefined"
+  >
     <div class="comment__identity">
       <UserAvatar :user="comment.author" :size="40" class="comment__avatar" />
     </div>
@@ -106,6 +114,14 @@ function openThread(): void {
   min-width: 0;
   padding: 14px 0;
   border-top: 1px solid var(--line);
+}
+/* 精确定位的一次性标记：定位完成后保持可见，但不再改变滚动位置。 */
+.comment--target {
+  background: var(--brand-soft, #e6f6f7);
+  border-radius: var(--radius);
+  box-shadow: inset 3px 0 0 var(--brand);
+  outline: 1px solid var(--brand);
+  outline-offset: 2px;
 }
 .comment__identity {
   display: flex;

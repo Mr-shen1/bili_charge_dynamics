@@ -1,4 +1,4 @@
-# 前端归档读取与指定目标（02 / 13 / 16 / 17 / 18 / 20 / 22 / 26）
+# 前端归档读取与指定目标（02 / 13 / 16 / 17 / 18 / 20 / 22 / 26；飞书通知 02 增精确定位入口）
 
 > Vue 前端重构已由票据 12 形成仅含 Vue 的候选产物，见[重构方案](../../design/frontend-migration.md)。HTTP/DTO、读取/管理语义、生产/mock/fault 装配边界保持不变；图片展示与预览细节以修订后的 SRS 为准。下列分阶段实现、React/RTL/StrictMode 测试及旧网格/预览记录保留其历史范围，不改写为 Vue 实现或新版通过证据；新增验证须单独记录。
 
@@ -237,3 +237,12 @@
 - 移除详情中的“读取评论同步状态”按钮及提示区域，不额外重读详情。分页继续只追加本地读取快照；终页隐藏加载更多按钮，不显示“本地归档评论已读完”或“评论已加载完毕”。排序、cursor、展开和阅读恢复规则不变。
 - 保留评论未归档、成功空、读取失败和逐图待归档/失败提示。只有评论文本成功不表示图片归档完成，归档 GET 成功也不表示采集完整；管理页仍可读取完整同步状态。
 - Adapter 与后端同步字段保持不变，状态判定及管理诊断仍使用实际 checkpoint，未知成功时间不补造。后端字段契约见 [采集契约](collector-api.md#26-评论分项状态与时间)；[26 验收](../../../.scratch/backend-integration/acceptance-26.md) 为当时界面的历史证据，不覆盖本次精简修改，本次按用户要求未运行验证。
+
+## 飞书通知 02 增量：精确一级评论入口
+
+- 链接：`/dynamics/{dynamicId}/comments/{rootId}/locate`。动态与目标评论身份都是 URL 路径里的字符串 ID，不含凭据；直接打开、刷新、宽窄屏与历史返回都走这同一条路由，不依赖旧会话或已加载的 DOM。03 将按同一形状扩展为楼中楼回复入口，04 在消息中使用该链接。
+- 读取：`DynamicReader.locateComment({dynamicId, rootId, sort, signal})` → `GET /api/archive/dynamics/{id}/comments/{root_id}/location?sort=hot|latest`（批量固定 20，不带 cursor/limit）。返回 `{items, nextCursor}`，第一项必须是目标评论。
+- 结果语义：`{status:'not-found'}` 只表示目标不存在或未归档（HTTP 404、非法身份）；传输异常、非 200 其他状态、DTO 不合法或响应窗口里没有目标都是 `{status:'error'}`（可重试）；取消优先返回 `cancelled`。绝不把页首或邻近评论当作定位成功。
+- 页面行为：首批直接使用定位批次（不先读首批、不渲染全部评论），目标正文默认展开、加高亮标记（`data-located`／`aria-current`）并定位到该条；后续“加载更多评论”沿用定位批次的 `next_cursor`。目标不存在显示固定提示与“返回动态”入口（替换为对应详情，不留下不可用地址）；临时失败显示既有读取失败与重试。用户已滚动后迟到的定位结果仍高亮目标但不抢滚动，定位意图只消费一次。
+- 排序切换仍以同一目标为首批锚点重新定位；普通详情入口与评论区入口行为不变（无锚点时不请求定位端点、不高亮）。该页不保存自己的阅读快照，重新进入按链接重新定位。
+- 证据：前端单元测试 `tests/unit/comment-reading.test.ts`、`tests/unit/archive-reader-comments.test.ts`；生产装配 + 归档 HTTP 替身 `tests/e2e/comment-location.spec.ts`（桌面与 Pixel 7）；实际 API + 隔离 SQLite `tests/e2e-location/comment-location.spec.ts`（`pnpm test:e2e:location`）。汇总见 [02 证据](../../../.scratch/feishu-notifications/evidence/02-root-comment-deep-link.md)。

@@ -577,3 +577,148 @@ it('读取器声明不具备讨论能力时显示未归档且不发评论请求'
   expect(within(region).queryAllByRole('listitem')).toHaveLength(0);
   expect(calls).toBe(0);
 });
+
+/** jsdom 没有 scrollIntoView：记录被定位的元素，验证定位落在目标评论而不是评论区顶部。 */
+function recordScrollIntoView(): Element[] {
+  const scrolled: Element[] = [];
+  Object.defineProperty(Element.prototype, 'scrollIntoView', {
+    configurable: true,
+    writable: true,
+    value(this: Element) { scrolled.push(this); },
+  });
+  return scrolled;
+}
+
+const longComment = Array.from({ length: 7 }, (_value, line) =>
+  `第七行边界 ${line + 1}：这是一段足够长的评论正文，用于验证定位后默认展开。`).join('\n');
+
+it('直开一级评论定位链接：按目标身份取定位批次、展开正文、高亮目标并续读定位窗口', async () => {
+  const scrolled = recordScrollIntoView();
+  const all = comments(45);
+  const target = { ...all[24]!, text: longComment };
+  const located: { rootId: string; sort: CommentSort }[] = [];
+  const reads: (string | null | undefined)[] = [];
+  const reader = createReader({
+    readDetail: async () => ({ status: 'success', data: commentDynamic() }),
+    readComments: async input => {
+      reads.push(input.cursor);
+      return { status: 'success', data: { items: all.slice(0, 20), nextCursor: 'first-page-20' } };
+    },
+    locateComment: async input => {
+      located.push({ rootId: input.rootId, sort: input.sort });
+      return { status: 'success', data: { items: [target, ...all.slice(25, 39)], nextCursor: 'located-40' } };
+    },
+  });
+
+  await showApp(reader, `/dynamics/1001/comments/${target.id}/locate`);
+  const region = await screen.findByRole('region', { name: '评论区' });
+  await waitFor(() => expect(within(region).getAllByRole('listitem')).toHaveLength(15));
+
+  // 只按目标身份取定位批次，不先读首批，也不因定位渲染全部评论。
+  expect(located).toEqual([{ rootId: target.id, sort: 'hot' }]);
+  expect(reads).toEqual([]);
+  const first = within(region).getAllByRole('listitem')[0]!;
+  expect(first.getAttribute('data-reading-id')).toBe(`comment:${target.id}`);
+  expect(first.getAttribute('data-located')).toBe('true');
+  expect(within(region).getAllByRole('listitem').filter(item => item.getAttribute('data-located') === 'true')).toHaveLength(1);
+  // 定位落在目标评论本身，不是评论区顶部。
+  expect(scrolled.at(-1)).toBe(first);
+
+  // 续读沿用定位窗口的 cursor，不回退到首批 cursor。
+  await fireEvent.click(within(region).getByRole('button', { name: '加载更多评论' }));
+  await waitFor(() => expect(reads).toEqual(['located-40']));
+});
+
+it('定位目标不存在时明确提示并可返回动态，不请求普通分页也不把页首当成功', async () => {
+  const reads: unknown[] = [];
+  const reader = createReader({
+    readDetail: async () => ({ status: 'success', data: commentDynamic() }),
+    readComments: async input => {
+      reads.push(input.cursor);
+      return { status: 'success', data: { items: comments(20), nextCursor: 'c20' } };
+    },
+    locateComment: async () => ({ status: 'not-found' }),
+  });
+
+  const router = await showApp(reader, '/dynamics/1001/comments/9999/locate');
+  const region = await screen.findByRole('region', { name: '评论区' });
+  await waitFor(() => expect(within(region).getByRole('status').textContent).toContain('不存在或未归档'));
+  expect(within(region).queryAllByRole('listitem')).toHaveLength(0);
+  expect(reads).toEqual([]);
+
+  await fireEvent.click(within(region).getByRole('button', { name: '返回动态' }));
+  await waitFor(() => expect(router.currentRoute.value.path).toBe('/dynamics/1001'));
+});
+
+it('定位临时失败可局部重试，重试成功后才高亮目标', async () => {
+  recordScrollIntoView();
+  let attempts = 0;
+  const target = comment(24);
+  const reader = createReader({
+    readDetail: async () => ({ status: 'success', data: commentDynamic() }),
+    locateComment: async () => {
+      attempts += 1;
+      if (attempts === 1) return { status: 'error' };
+      return { status: 'success', data: { items: [target], nextCursor: null } };
+    },
+  });
+
+  await showApp(reader, `/dynamics/1001/comments/${target.id}/locate`);
+  const region = await screen.findByRole('region', { name: '评论区' });
+  await waitFor(() => expect(within(region).getByRole('alert').textContent).toContain('读取失败'));
+  expect(within(region).queryAllByRole('listitem')).toHaveLength(0);
+
+  await fireEvent.click(within(region).getByRole('button', { name: '重试' }));
+  await waitFor(() => expect(within(region).getAllByRole('listitem')).toHaveLength(1));
+  expect(attempts).toBe(2);
+  expect(within(region).getAllByRole('listitem')[0]!.getAttribute('data-located')).toBe('true');
+});
+
+it('用户已滚动时迟到的定位结果不抢回位置，仍高亮目标', async () => {
+  const scrolled = recordScrollIntoView();
+  const target = comment(24);
+  const pending = deferred<Awaited<ReturnType<DynamicReader['locateComment']>>>();
+  const reader = createReader({
+    readDetail: async () => ({ status: 'success', data: commentDynamic() }),
+    locateComment: async () => pending.promise,
+  });
+
+  await showApp(reader, `/dynamics/1001/comments/${target.id}/locate`);
+  const region = await screen.findByRole('region', { name: '评论区' });
+  // 用户主动滚动（滚轮）后，迟到的定位批次不得再把视口拉回目标。
+  await fireEvent.wheel(window);
+  pending.resolve({ status: 'success', data: { items: [target], nextCursor: null } });
+  await waitFor(() => expect(within(region).getAllByRole('listitem')).toHaveLength(1));
+  expect(within(region).getAllByRole('listitem')[0]!.getAttribute('data-located')).toBe('true');
+  expect(scrolled).toEqual([]);
+});
+
+it('切换定位链接时另一条访问的迟到响应不覆盖当前目标', async () => {
+  recordScrollIntoView();
+  const first = comment(24);
+  const second = comment(30);
+  const pending = deferred<Awaited<ReturnType<DynamicReader['locateComment']>>>();
+  const requested: string[] = [];
+  const reader = createReader({
+    readDetail: async () => ({ status: 'success', data: commentDynamic() }),
+    locateComment: async input => {
+      requested.push(input.rootId);
+      return input.rootId === first.id
+        ? pending.promise
+        : { status: 'success', data: { items: [second], nextCursor: null } };
+    },
+  });
+
+  const router = await showApp(reader, `/dynamics/1001/comments/${first.id}/locate`);
+  await waitFor(() => expect(requested).toEqual([first.id]));
+  await router.push(`/dynamics/1001/comments/${second.id}/locate`);
+  const region = await screen.findByRole('region', { name: '评论区' });
+  await waitFor(() => expect(within(region).getAllByRole('listitem')).toHaveLength(1));
+  expect(within(region).getAllByRole('listitem')[0]!.getAttribute('data-reading-id')).toBe(`comment:${second.id}`);
+
+  pending.resolve({ status: 'success', data: { items: [first], nextCursor: null } });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(within(region).getAllByRole('listitem')).toHaveLength(1);
+  expect(within(region).getAllByRole('listitem')[0]!.getAttribute('data-reading-id')).toBe(`comment:${second.id}`);
+  expect(within(region).getAllByRole('listitem')[0]!.getAttribute('data-located')).toBe('true');
+});

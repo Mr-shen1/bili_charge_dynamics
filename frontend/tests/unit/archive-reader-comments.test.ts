@@ -248,3 +248,77 @@ it('根评论 media 按来源顺序映射为当前图片，owner 绑定该评论
   // 只请求评论接口本身，不请求任何来源地址或第三方图片。
   expect(urls).toEqual(['/api/archive/dynamics/1001/comments?sort=hot&limit=20']);
 });
+
+it('按动态与目标评论身份定位：路径只带动态、目标与排序，成功批次以目标开头', async () => {
+  const requests: { url: string; init: RequestInit }[] = [];
+  const all = Array.from({ length: 45 }, (_value, index) => archiveComment(index + 1));
+  const reader = createArchiveReader(async (url, init) => {
+    requests.push({ url, init });
+    return Response.json({ items: all.slice(25, 45), next_cursor: 'loc-45' });
+  });
+
+  const result = await reader.locateComment({
+    dynamicId: '1001', rootId: '5026', sort: 'hot', signal: new AbortController().signal,
+  });
+  if (result.status !== 'success') throw new Error('定位读取应成功');
+  expect(result.data.items.map(item => item.id)).toEqual(all.slice(25, 45).map(item => item.id));
+  expect(result.data.nextCursor).toBe('loc-45');
+  // 定位只带目标与排序：批量由契约固定，不带凭据或额外查询。
+  expect(signature(requests[0]!.url)).toBe('/api/archive/dynamics/1001/comments/5026/location?sort=hot');
+  expect(requests[0]!.init.method).toBe('GET');
+  expect(requests[0]!.init.signal).toBeInstanceOf(AbortSignal);
+});
+
+it('定位目标不存在与暂时失败分开：404 为不存在，异常/结构不符为可重试错误', async () => {
+  const missing = createArchiveReader(async () => Response.json({ error: { code: 'NOT_FOUND' } }, { status: 404 }));
+  expect(await missing.locateComment({
+    dynamicId: '1001', rootId: '9999', sort: 'hot', signal: new AbortController().signal,
+  })).toEqual({ status: 'not-found' });
+
+  const throwing = createArchiveReader(async () => { throw new Error('SECRET_TOKEN'); });
+  expect(await throwing.locateComment({
+    dynamicId: '1001', rootId: '5026', sort: 'hot', signal: new AbortController().signal,
+  })).toEqual({ status: 'error' });
+
+  const unstable = createArchiveReader(async () => Response.json({ error: { code: 'STORAGE_UNAVAILABLE' } }, { status: 503 }));
+  expect(await unstable.locateComment({
+    dynamicId: '1001', rootId: '5026', sort: 'hot', signal: new AbortController().signal,
+  })).toEqual({ status: 'error' });
+});
+
+it('定位成功但窗口不含目标时按错误处理，不把页首当作定位结果', async () => {
+  const wrongWindow = createArchiveReader(async () => Response.json({
+    items: [archiveComment(1), archiveComment(2)], next_cursor: null,
+  }));
+  expect(await wrongWindow.locateComment({
+    dynamicId: '1001', rootId: '5026', sort: 'hot', signal: new AbortController().signal,
+  })).toEqual({ status: 'error' });
+
+  const otherDynamic = createArchiveReader(async () => Response.json({
+    items: [archiveComment(1, { dynamic_id: '2002' })], next_cursor: null,
+  }));
+  expect(await otherDynamic.locateComment({
+    dynamicId: '1001', rootId: '5001', sort: 'hot', signal: new AbortController().signal,
+  })).toEqual({ status: 'error' });
+});
+
+it('定位入参非法不发请求，已取消优先于响应', async () => {
+  let called = 0;
+  const reader = createArchiveReader(async () => { called += 1; return Response.json({ items: [], next_cursor: null }); });
+  const signal = new AbortController().signal;
+  expect(await reader.locateComment({ dynamicId: 'not-an-id', rootId: '5026', sort: 'hot', signal }))
+    .toEqual({ status: 'not-found' });
+  expect(await reader.locateComment({ dynamicId: '1001', rootId: '', sort: 'hot', signal }))
+    .toEqual({ status: 'not-found' });
+  expect(await reader.locateComment({ dynamicId: '1001', rootId: '5026', sort: 'wrong' as never, signal }))
+    .toEqual({ status: 'not-found' });
+  expect(called).toBe(0);
+
+  const controller = new AbortController();
+  controller.abort();
+  const cancelled = createArchiveReader(async () => { called += 1; return Response.json({ items: [], next_cursor: null }); });
+  expect(await cancelled.locateComment({
+    dynamicId: '1001', rootId: '5026', sort: 'hot', signal: controller.signal,
+  })).toEqual({ status: 'cancelled' });
+  expect(called).toBe(0);
+});

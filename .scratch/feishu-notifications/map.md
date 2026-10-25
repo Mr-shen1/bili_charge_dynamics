@@ -12,6 +12,9 @@
 ## Decisions-so-far
 
 - 01 已 `resolved`：动态变化闭环落地事务发件箱 + 独立通知进程（schema v16）；通知阶段自有令牌，入选令牌轮换不重设起点；证据见 [evidence/01-dynamic-change-notification.md](evidence/01-dynamic-change-notification.md)。
+- 02 已 `resolved`：一级评论精确链接贯通只读定位读取契约（`GET /api/archive/dynamics/{id}/comments/{root_id}/location`）与生产前端入口 `/dynamics/{dynamicId}/comments/{rootId}/locate`；定位读取零写入、不冻结快照、续读用无状态偏移游标，链接只含字符串身份与无凭据；证据见 [evidence/02-root-comment-deep-link.md](evidence/02-root-comment-deep-link.md)。
+- 02 已用 `--no-ff` 合并进集成分支（合并 tip `594476c`，源 `a297ab0`）：无冲突，01 通知模块与 schema v16 迁移未变，02 只重构一级评论排序/窗口读取；定位契约与链接形状供 03（`.../replies/{replyId}/locate` 同形状）与 04（消息链接）复用。
+- 当前解锁：03、04（09 已在独立工作树 `/tmp/feishu-worktrees/09` 实施）；其余依赖边与 11 人工授权门槛不变。
 
 - 起始可并行票为 01、02，分别在 `/tmp/feishu-worktrees/01`、`/tmp/feishu-worktrees/02` 实施。
 - 本轮接续 01、02 已存在的未提交工作，保留其内容并由各实施代理核验、完成；不重置工作树。

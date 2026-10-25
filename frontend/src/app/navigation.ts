@@ -34,6 +34,8 @@ export interface ArchiveNavigation {
   openThread(dynamicId: string, rootId: string): void;
   /** 退出楼中楼：有有效详情来源时真实后退，否则替换为对应动态详情。 */
   returnFromThread(dynamicId: string): void;
+  /** 放弃不可用的精确定位入口，替换为对应动态详情；当前访问不会留下定位记录。 */
+  showDetail(dynamicId: string): void;
   returnToList(): void;
   openPreview(marker: Omit<PreviewMarker, 'sessionId'>): Promise<void>;
   replacePreview(marker: Omit<PreviewMarker, 'sessionId'> | null): Promise<void>;
@@ -219,6 +221,11 @@ export function createArchiveNavigation(): ArchiveNavigation {
     void afterPersist(source, () => router.push({ path: entry.path, state: stateFor(entry, null) }));
   }
 
+  /** 精确定位失败时的兜底入口：替换为动态详情，不把不可用地址留在历史里。 */
+  function showDetail(dynamicId: string): void {
+    replaceWith(router.resolve({ name: 'detail', params: { dynamicId } }).path);
+  }
+
   function returnFromThread(dynamicId: string): void {
     const entry = current.value;
     const expected = router.resolve({ name: 'detail', params: { dynamicId } }).path;
@@ -288,6 +295,7 @@ export function createArchiveNavigation(): ArchiveNavigation {
     openDetail,
     openThread,
     returnFromThread,
+    showDetail,
     returnToList,
     openPreview,
     replacePreview,

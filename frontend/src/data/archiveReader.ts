@@ -1,4 +1,4 @@
-import type { ArchiveMetadata, ArchiveWorkState, Comment, CommentBatch, DetailResult, Dynamic, DynamicImage, ImageOwner, DynamicBatch, DynamicReader, ReadResult, Reply, ReplyBatch, User } from './contracts';
+import type { ArchiveMetadata, ArchiveWorkState, Comment, CommentBatch, CommentLocationResult, DetailResult, Dynamic, DynamicImage, ImageOwner, DynamicBatch, DynamicReader, ReadResult, Reply, ReplyBatch, User } from './contracts';
 import { replyAppendSize, replyPreviewSize } from './contracts';
 import { isValidId } from './identifiers';
 import { isRecord as record } from './guards';
@@ -166,6 +166,19 @@ function parseReply(raw: unknown, dynamicId: string, rootId: string): Reply | nu
     parentId: raw.parent_id === rootId ? null : raw.parent_id };
 }
 
+// 一级评论批次只在结构完整时接受；重复 ID 视为不可读，不静默去重。
+function commentBatch(raw: unknown, dynamicId: string, limit: number): CommentBatch | null {
+  if (!record(raw) || !Array.isArray(raw.items) || raw.items.length > limit
+    || !(raw.next_cursor === null || typeof raw.next_cursor === 'string')) return null;
+  const items: Comment[] = [];
+  for (const item of raw.items) {
+    const parsed = parseComment(item, dynamicId);
+    if (!parsed || items.some(existing => existing.id === parsed.id)) return null;
+    items.push(parsed);
+  }
+  return { items, nextCursor: raw.next_cursor };
+}
+
 /** 只读本地归档。传输替身不绕过生产 DTO 映射；错误响应/异常永不回显。 */
 export function createArchiveReader(transport: ArchiveTransport = (url, init) => fetch(url, init)): DynamicReader {
   return {
@@ -237,15 +250,27 @@ export function createArchiveReader(transport: ArchiveTransport = (url, init) =>
         if (signal.aborted) return { status: 'cancelled' };
         if (response.status === 422 && record(body) && record(body.error) && body.error.code === 'CURSOR_INVALID')
           return { status: 'error', reason: 'invalid-cursor' };
-        if (response.status !== 200 || !record(body) || !Array.isArray(body.items)
-          || body.items.length > 20 || !(body.next_cursor === null || typeof body.next_cursor === 'string')) return failed;
-        const items: Comment[] = [];
-        for (const raw of body.items) {
-          const item = parseComment(raw, dynamicId);
-          if (!item || items.some(existing => existing.id === item.id)) return failed;
-          items.push(item);
-        }
-        return { status: 'success', data: { items, nextCursor: body.next_cursor } };
+        const batch = response.status === 200 ? commentBatch(body, dynamicId, 20) : null;
+        return batch ? { status: 'success', data: batch } : failed;
+      } catch { return signal.aborted ? { status: 'cancelled' } : failed; }
+    },
+    async locateComment({ dynamicId, rootId, sort, signal }): Promise<CommentLocationResult> {
+      if (signal.aborted) return { status: 'cancelled' };
+      // 非法身份等同于“这个位置没有可读评论”，不探测归档是否存在。
+      if (!isValidId(dynamicId) || !isValidId(rootId) || !(sort === 'hot' || sort === 'latest')) return { status: 'not-found' };
+      try {
+        const response = await transport(
+          `/api/archive/dynamics/${dynamicId}/comments/${rootId}/location?${new URLSearchParams({ sort })}`,
+          { method: 'GET', signal });
+        if (signal.aborted) return { status: 'cancelled' };
+        if (response.status === 404) return { status: 'not-found' };
+        const body: unknown = await response.json();
+        if (signal.aborted) return { status: 'cancelled' };
+        if (response.status !== 200) return failed;
+        const batch = commentBatch(body, dynamicId, 20);
+        // 目标必须就在这一批里：绝不把页首或邻近评论当作定位成功。
+        if (!batch || !batch.items.some(item => item.id === rootId)) return failed;
+        return { status: 'success', data: batch };
       } catch { return signal.aborted ? { status: 'cancelled' } : failed; }
     },
     async readReplies({ dynamicId, rootId, limit, page, cursor, signal }): Promise<ReadResult<ReplyBatch>> {

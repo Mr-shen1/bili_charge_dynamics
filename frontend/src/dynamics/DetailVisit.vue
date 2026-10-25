@@ -12,7 +12,7 @@ import CommentSection from './CommentSection.vue';
 import DynamicContent from './DynamicContent.vue';
 import ReadNotice from './ReadNotice.vue';
 
-const props = defineProps<{ dynamicId: string }>();
+const props = defineProps<{ dynamicId: string; commentTargetId?: string | null }>();
 const { reader } = useSession();
 const navigation = useArchiveNavigation();
 // 访问身份在 setup 时固定：卸载时仍按本次访问保存，不受已经切换的路由影响。
@@ -61,6 +61,7 @@ const canLocate = computed(() => entryAllowed.value);
       :snapshot="comments"
       :target="target"
       :can-locate="canLocate"
+      :locate-root-id="commentTargetId ?? null"
       @update:snapshot="comments = $event"
     />
   </div>

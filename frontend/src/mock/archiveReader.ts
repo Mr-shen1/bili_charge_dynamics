@@ -217,6 +217,20 @@ export function createMockArchiveReader(): DynamicReader {
         },
       };
     },
+    async locateComment({ dynamicId, rootId, sort, signal }) {
+      if (signal.aborted) return cancelled;
+      const ordered = dynamicId === dynamics[0]!.id ? orderedComments[sort] : [];
+      const index = ordered.findIndex(item => item.id === rootId);
+      if (index < 0) return { status: 'not-found' };
+      const prefix = `mock-comments:${dynamicId}:${sort}:`;
+      return {
+        status: 'success',
+        data: {
+          items: ordered.slice(index, index + 20),
+          nextCursor: index + 20 < ordered.length ? `${prefix}${index + 20}` : null,
+        },
+      };
+    },
     async readReplies({ dynamicId, rootId, limit, page, cursor, signal }) {
       if (signal.aborted) return cancelled;
       if (!(cursor == null || typeof cursor === 'string')) return failed;

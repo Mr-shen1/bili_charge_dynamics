@@ -39,6 +39,10 @@ export function archiveRouter() {
       { path: '/ups/:upId', name: 'up-list', component: ListPage, props: true },
       { path: '/dynamics/:dynamicId', name: 'detail', component: DetailPage, props: true },
       {
+        path: '/dynamics/:dynamicId/comments/:rootId/locate', name: 'comment-locate',
+        component: DetailPage, props: true,
+      },
+      {
         path: '/dynamics/:dynamicId/comments/:rootId', name: 'thread',
         component: CommentThreadPage, props: true,
       },

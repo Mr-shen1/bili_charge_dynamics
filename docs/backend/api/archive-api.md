@@ -1,4 +1,4 @@
-# 指定目标、首次归档与归档读取接口（02 / 13 / 15 / 17 / 19 / 21 / 26 / 28 后端）
+# 指定目标、首次归档与归档读取接口（02 / 13 / 15 / 17 / 19 / 21 / 26 / 28 后端；飞书通知 02 增精确定位读取）
 
 02 交付指定目标的首次正文归档和基础读取；13 后端扩展全部／单 UP 读取与持久身份列表；15 增加已有根评论首次归档及最热／最新读取，17 补齐楼中楼来源分页与持久读取。19 增加动态图下载、OSS 上传与独立重试，21 将共用媒体能力接入一级评论；近期窗口与周期检查另见 [采集契约](collector-api.md) 和 [近期发现](discovery-api.md)，前端 Adapter／最小路由契约见 [archive-api-client.md](archive-api-client.md)，具体自动化证据见 [13 验收记录](../../../.scratch/backend-integration/acceptance-13.md)。管理身份及配置契约见 [management-api.md](management-api.md)，来源证据及限制见 [backend-feasibility.md](../evidence/backend-feasibility.md)。
 
@@ -16,6 +16,7 @@
 | `GET /api/archive/dynamics` | `scope=all\|up`、条件必需的 `uid`、`limit`、可选 `cursor` | `{items: Archive[], next_cursor: string \| null}` |
 | `GET /api/archive/dynamics/{id}` | 无 | `Archive`；本地不存在时 `404` |
 | `GET /api/archive/dynamics/{id}/comments` | `sort=hot\|latest`、`limit`、可选 `cursor` | `{items: RootComment[], next_cursor: string \| null}` |
+| `GET /api/archive/dynamics/{id}/comments/{root_id}/location` | `sort=hot\|latest`（默认 hot） | `{items: RootComment[], next_cursor: string \| null}`，首批第一项即目标；不存在为 `404` |
 | `GET /api/archive/dynamics/{id}/comments/{root_id}/replies` | cursor 模式首读 `limit=3`/续读 `limit=10`；或互斥的正整数 `page`、`limit=10` | 共用 `items` 与独立计数/状态；cursor 模式返回 `next_cursor`，首批另含 `root`；page 模式每页返回 `root`、本地 `count`、`next_cursor:null` |
 
 UID 和动态 ID 必须是十进制字符串，不经 JavaScript Number 转换。不符返回 `409 TARGET_AUTHOR_MISMATCH`，无法确认返回 `502 TARGET_UNVERIFIED`；都不建立关联。上游请求不在数据库事务内，错误只返回固定脱敏提示，不传递上游响应、URL、请求头或异常文本。
@@ -220,6 +221,19 @@ v9 为媒体尝试表增加根 owner 标识（旧动态图尝试保持空根标�
 评论媒体仍经现有根评论 GET 读取。新首批冻结当时完整媒体状态；上传或来源更新只影响新的首批，不改写有效的旧根／回复／动态 cursor 内容、顺序、绑定或有效期。旧冻结根页可能没有新增字段，不据此推断已上传。
 
 自动化证据见 [21 验收记录](../../../.scratch/backend-integration/acceptance-21.md)。本票不交付 #22 图片预览／纯图 UI、#25/#30 自动计数联动、回复图片、真实 OSS 操作、图片变体／CDN或对象回收。
+
+## 飞书通知 02 增量：精确一级评论定位读取
+
+本节为通知消息的一级评论精确入口提供只读归档契约，供票据 03（楼中楼回复）和 04（消息中使用的稳定链接）复用。它不新增采集、通知或账号能力，也不改变既有分页契约。
+
+- `GET /api/archive/dynamics/{id}/comments/{root_id}/location?sort=hot|latest` 返回 `{items, next_cursor}`，结构与该动态的一级评论批次相同：`items` 最多 20 条，且**第一项就是目标评论**；`next_cursor` 是该排序下定位窗口之后的续读游标，可直接用于 `GET /api/archive/dynamics/{id}/comments?cursor=...`。
+- 排序与 `/comments` 完全一致（置顶优先、最热按点赞、其后发表时间与 ID 稳定收尾），按目标在该排序中的位置取窗口，不重新排序、不额外渲染全部评论。
+- 动态不存在、根评论不属于该动态或尚未归档，一律 `404 NOT_FOUND`（不暴露其他动态的评论）；非法排序、未知或重复查询参数返回 `422 INVALID_INPUT`。`limit` 不是该端点的参数，批量固定 20，与前端一级评论批次一致。
+- 定位读取只访问本地 SQLite：不访问上游、不写归档、不冻结快照、不创建 `root_comment_pages` 行，也不启动采集或通知。因此“定位 → 读取”本身没有采集副作用。
+- 续读游标绑定动态、排序与批量，格式无效、摘要不符或跨动态／跨排序复用返回 `422 CURSOR_INVALID`。与其他 cursor 不同，定位游标**不冻结当时快照**：续读按当前归档重新取窗口，因此期间新增或点赞变化可能让窗口边界前移／后移；同一 ID 不会被重复展示（前端按 ID 去重），删除评论不在本期范围。该取舍让定位请求保持零写入；需要冻结快照的调用方仍应先读不带 cursor 的首批。
+- 归档读取的既有约束继续适用：只读本地归档、上游不可用不触发采集、错误只返回固定脱敏码、ID 一律字符串。
+
+浏览器入口为 `/dynamics/{dynamicId}/comments/{rootId}/locate`（前端专用路由，见[客户端契约](archive-api-client.md#飞书通知-02-增量精确一级评论入口)）。自动化证据见 [02 证据](../../../.scratch/feishu-notifications/evidence/02-root-comment-deep-link.md)。
 
 ## 安全及证据
 

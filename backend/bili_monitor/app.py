@@ -230,6 +230,15 @@ def create_app(
         validate_query(request, ("sort", "limit", "cursor"))
         return await run_store(store.list_roots, id, sort, limit, cursor)
 
+    @application.get("/api/archive/dynamics/{id}/comments/{root_id}/location")
+    async def locate_comment(
+        id: UID, root_id: UID, request: Request,
+        sort: Literal["hot", "latest"] = "hot",
+    ):
+        """以动态与目标一级评论身份定位；只读本地归档，不启动采集或通知。"""
+        validate_query(request, ("sort",))
+        return await run_store(store.locate_root, id, sort, root_id)
+
     @application.get("/api/archive/dynamics/{id}/comments/{root_id}/replies")
     async def read_replies(
         id: UID, root_id: UID, request: Request,

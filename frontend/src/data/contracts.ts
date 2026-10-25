@@ -115,6 +115,12 @@ export type ReadResult<T> =
 
 export type DetailResult = ReadResult<Dynamic> | { readonly status: 'not-found' };
 
+/**
+ * 精确评论入口的读取结果：不存在与暂时失败分开，成功批次以目标评论开头。
+ * 不存在不当作读取失败，也不能用列表顶部冒充定位成功。
+ */
+export type CommentLocationResult = ReadResult<CommentBatch> | { readonly status: 'not-found' };
+
 export interface DynamicReader {
   readonly creator: User;
   readonly discussions?: 'not-archived';
@@ -124,4 +130,6 @@ export interface DynamicReader {
   readList(input: { readonly scope: ArchiveScope; readonly limit: number; readonly cursor?: string | null; readonly signal: AbortSignal }): Promise<ReadResult<DynamicBatch>>;
   readDetail(input: { readonly id: string; readonly signal: AbortSignal }): Promise<DetailResult>;
   readComments(input: { readonly dynamicId: string; readonly sort: CommentSort; readonly cursor?: string | null; readonly signal: AbortSignal }): Promise<ReadResult<CommentBatch>>;
+  // 以动态与目标一级评论身份定位：只读归档，返回含目标的批次与续读游标。
+  locateComment(input: { readonly dynamicId: string; readonly rootId: string; readonly sort: CommentSort; readonly signal: AbortSignal }): Promise<CommentLocationResult>;
 }
