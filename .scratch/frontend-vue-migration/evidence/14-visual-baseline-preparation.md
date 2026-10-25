@@ -2,8 +2,8 @@
 
 - 对应票据：[14 确认新版视觉与四视口操作基准](../issues/14-visual-baseline-approval.md)
 - 对应规格：[实施规格 §视觉、兼容与交付](../spec.md)、[UI 视觉规范 §5](../../../docs/design/ui-reference.md)、[SRS FR-53/FR-26](../../../docs/product/SRS.md)
-- 证据状态：**已准备四宽度受控截图 63 张与自动化布局审计，修复首轮发现的 6 类缺陷，并按用户首轮反馈完成第 2 轮视觉调整；最终签收未完成。**
-  本票不得标为完成，未建立黄金图或差异回归基准，未执行部署，也未代替票据 15/16。
+- 证据状态：**用户已签收全部 63 张四宽度受控截图；黄金图与差异比较基准已建立（Linux Chromium）。**
+  本票完成；未执行部署，也不代替票据 15（真机）、16（静态交付）的验证。
 
 ## 1. 版本关联
 
@@ -14,6 +14,7 @@
 | 构建命令 | `pnpm build`（`vue-tsc --noEmit && vite build`）；截图由 `pnpm visual:baseline` 构建后以 `vite preview` 提供，不拍 dev server |
 | 依赖 | `pnpm-lock.yaml` 未改；Element Plus 2.14.7、Vue 3.5.44、Vite 7.3.1、Playwright 1.58.2 |
 | 运行时 | Node v24.21.0、pnpm 10.34.6、Chromium 145.0.7632.6（Playwright 自带） |
+| 黄金图 | `frontend/tests/visual-baseline/`：63 张 PNG + `manifest.json`（版本 1，签收候选 `89d0b49`）；比较 AE + 1% fuzz，阈值 0.02% 像素 |
 
 截图与布局审计都跑这份候选产物；管理读取经 vite 代理到 `backend/tests/live_app` 的虚构上游，数据库是
 本次运行独占的临时 SQLite，不访问真实来源，也不上传 OSS。
@@ -138,7 +139,7 @@ Element Plus 隐藏的原生 radio，样式修好后该点击会被可见的 lab
 
 ## 8. 未验证与边界
 
-- 视觉签收本身未完成：截图是候选实现，不是用户确认的基准，不能自建黄金图。
+- 黄金图绑定 Linux Chromium 145 + 本机字体（`Noto Sans CJK KR` 回退）。换机器、换字体或换 DPR 时比较器会因条件不一致拒绝比较；那不是“视觉回归失败”，需要在对应环境另行取证。
 - Linux Chromium 以外的浏览器、iPhone Safari、真实触摸手势与真机字体由票据 15 执行；本目录不代替。
 - Nginx 静态交付、资源更新与回退由票据 16 执行。
 - 图片为固定 SVG 夹具（含长图与坏图），不是来源业务图；来源图片的构图、色彩与真实加载耗时不在本证据范围。
@@ -157,9 +158,20 @@ pnpm playwright test --config playwright.visual.config.ts tests/e2e-visual/layou
 
 # 只跑截图
 pnpm playwright test --config playwright.visual.config.ts tests/e2e-visual/capture.spec.ts
+
+# 与用户签收的黄金图比较；不一致时退出并输出差异图到 test-results/visual-diff/
+pnpm visual:compare
+
+# 只在确认视觉变化是预期的之后更新黄金图，必须写原因
+pnpm visual:golden -- --reason "例如：按复审把排序分段从 44px 收到 32px"
 ```
 
-脚本每次运行会清空 `visual-14/` 并重写截图与 `conditions.json`；不得仅通过覆盖截图掩盖意外变化。
+`visual:baseline` 每次运行会清空 `visual-14/` 并重写截图与 `conditions.json`；`visual:compare` 与
+黄金图（`tests/visual-baseline/`）才是回归判断依据。不能仅通过重跑截图掩盖意外变化。
+
+比较口径：ImageMagick `compare -metric AE`，`-fuzz 1%` 吸收抗锯齿差异（实测重复运行差异为 0），
+超过 0.02% 像素即失败；环境条件（浏览器、DPR、宽度、时区、locale、字体）与 `manifest.json` 不一致时
+拒绝比较。更新黄金图会递增 `baselineVersion` 并把日期、候选提交与原因写入 `manifest.json`。
 
 ## 10. 用户确认范围与签收记录
 
@@ -176,9 +188,10 @@ pnpm playwright test --config playwright.visual.config.ts tests/e2e-visual/captu
 
 | 项 | 记录 |
 | --- | --- |
-| 确认日期 | 2026-10-25（首轮 + 第 1 点复审），第 2 点待复审 |
-| 确认人 | 用户（对话中确认） |
-| 候选提交 / 构建 | 首轮 `7785602`；第 2 轮为本次反馈后的产品提交（见 §1） |
-| 确认范围 | 首轮：除评论排序/回复入口尺寸、管理页面包屑对齐外的全部场景 |
-| 结论与反馈 | 首轮部分通过；第 1 点（排序/回复入口尺寸）已复审通过；第 2 点（面包屑对齐）已按“当前页标签不得更高”修正，等待复审 |
-| 黄金图位置 | 待最终确认后建立（尚未建立） |
+| 确认日期 | 2026-10-25 |
+| 确认人 | 用户（对话中确认“这下可以了”） |
+| 候选提交 / 构建 | `89d0b49e213861badcecfe667de4f9330f134d22`；`assets/index-*.js` 与 28 个产物哈希见 `conditions.json` |
+| 确认范围 | 全部 63 张受控截图（360/390/768/1280，含列表、单 UP、详情、一级评论、宽屏回复、窄屏楼中楼、图片预览、预览错误态、管理列表、单 UP 管理、指定模式及各空态/错误态） |
+| 结论与反馈 | 通过。首轮：除排序/回复入口尺寸、管理页面包屑对齐外全部通过；第 1 点改后通过；第 2 点经“当前页标签高于链接”二次修正后通过 |
+| 黄金图位置 | `frontend/tests/visual-baseline/`（63 张 + `manifest.json` 版本 1，签收候选 `89d0b49`） |
+| 比较基准 | `pnpm visual:compare`：AE + 1% fuzz + 0.02% 像素阈值；条件不一致拒绝比较；更新需 `--reason` |

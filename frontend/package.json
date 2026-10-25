@@ -17,6 +17,8 @@
     "test:e2e:production": "playwright test --config playwright.production.config.ts",
     "test:e2e:manage": "playwright test --config playwright.manage.config.ts",
     "visual:baseline": "pnpm build && playwright test --config playwright.visual.config.ts",
+    "visual:compare": "node scripts/compare-visual-baseline.mjs",
+    "visual:golden": "node scripts/compare-visual-baseline.mjs --update",
     "test:delivery": "node scripts/verify-static-delivery.mjs",
     "test:nginx-parity": "node scripts/verify-nginx-parity.mjs",
     "test:http": "node scripts/verify-http-navigation.mjs",
