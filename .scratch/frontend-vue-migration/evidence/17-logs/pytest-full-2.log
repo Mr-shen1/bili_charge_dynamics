@@ -1,0 +1,187 @@
+........................................................................ [  8%]
+........................................................................ [ 17%]
+........................................................................ [ 26%]
+........................................................................ [ 35%]
+.......................................................................F [ 44%]
+........................................................................ [ 53%]
+........................................................................ [ 62%]
+........................................................................ [ 71%]
+........................................................................ [ 80%]
+........................................................................ [ 88%]
+........................................................................ [ 97%]
+.................                                                        [100%]
+=================================== FAILURES ===================================
+_ test_interrupted_sync_stays_stopped_across_locked_restart_and_resumes_pending[body-window] _
+
+tmp_path = PosixPath('/tmp/pytest-of-kevin/pytest-325/test_interrupted_sync_stays_st4')
+change = 'window', phase = 'body'
+
+    @pytest.mark.parametrize("change", CHANGES)
+    @pytest.mark.parametrize("phase", ["body", "roots", "replies", "dynamic_upload", "comment_upload"])
+    def test_interrupted_sync_stays_stopped_across_locked_restart_and_resumes_pending(tmp_path, change, phase):
+        path = tmp_path / "recovery.sqlite"
+        prepare(path, change)
+        source = RecentContentSource()
+    
+        async def scenario():
+            blocked, release = asyncio.Event(), asyncio.Event()
+            syncing = False
+            clock = ControlledClock()
+            routes = {"body": f"/opus/{RECENT_ID}", "roots": "/x/v2/reply", "replies": "/x/v2/reply/reply"}
+    
+            async def upstream(request):
+                response = source(request)
+                if syncing and request.url.path == routes.get(phase):
+                    blocked.set()
+                    await release.wait()
+                return response
+    
+            class DelayedOSS(RecordingOSS):
+                async def upload(self, key, content, content_type):
+                    if phase == ("comment_upload" if "/comments/" in key else "dynamic_upload"):
+                        blocked.set()
+                        await release.wait()
+                    return await super().upload(key, content, content_type)
+    
+            uploader = DelayedOSS()
+            async with httpx.AsyncClient(transport=httpx.MockTransport(upstream)) as client, httpx.AsyncClient(
+                transport=httpx.MockTransport(source.download)
+            ) as media_client:
+                collector = Collector(Store(path), client, ImageDownloader(media_client), uploader, clock=clock)
+                if change == "window":
+                    assert await collector.discover_once(UID)
+                assert await collector.check_once(UID, RECENT_ID)
+                syncing = True
+                execution = asyncio.create_task(collector.execute_pending())
+                restarted = None
+                try:
+                    await asyncio.wait_for(blocked.wait(), 3)
+                    await remove(path, change, collector, source)
+                    execution.cancel()
+                    with pytest.raises(asyncio.CancelledError):
+                        await execution
+                    interrupted = checks(path)[RECENT_ID]
+                    partial = read_partial(path)
+                    assert interrupted["work"] == "running" and not interrupted["active"]
+                    # API 重开不会自行恢复/领取，旧分项和 observed 完整保留。
+                    assert checks(path)[RECENT_ID] == interrupted and read_partial(path) == partial
+                    source.calls.clear()
+                    restarted = asyncio.create_task(Collector(
+                        Store(path), client, ImageDownloader(media_client), uploader, clock=clock,
+                    ).run())
+                    await eventually(lambda: checks(path)[RECENT_ID]["work"] == "pending" and 15 in clock.deadlines)
+                    recovered = checks(path)[RECENT_ID]
+                    assert not recovered["active"] and recovered["observed"] == interrupted["observed"]
+                    assert recovered["revision"] == interrupted["revision"]
+                    assert recovered["last_succeeded_at"] == interrupted["last_succeeded_at"]
+                    assert read_partial(path) == partial
+                    assert not any(route == f"/opus/{RECENT_ID}" for route, _ in source.calls)
+                    # 等本轮发现真正提交再停，避免人为中断一个新的 discovery 领取。
+                    if change == "window":
+                        await eventually(lambda: read_state(path)[0]["status"] == "discovered")
+                    # 正式进程已取得锁并恢复 pending；停下后新入口能继续实际分项。
+                    restarted.cancel()
+                    await asyncio.gather(restarted, return_exceptions=True)
+                    await restore(path, change, collector, source)
+                    release.set()
+                    reopened = Collector(Store(path), client, ImageDownloader(media_client), uploader, clock=clock)
+                    await reopened.execute_pending()
+                    assert checks(path)[RECENT_ID]["work"] == "complete"
+                    assert_complete_content(read_content(path))
+                    assert len(uploader.keys) == 3
+                finally:
+                    release.set()
+                    execution.cancel()
+                    tasks = [execution]
+                    if restarted is not None:
+                        restarted.cancel()
+                        tasks.append(restarted)
+                    await asyncio.gather(*tasks, return_exceptions=True)
+    
+>       asyncio.run(scenario())
+
+backend/tests/test_inflight_recovery.py:120: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../../../.local/share/uv/python/cpython-3.12.15-linux-x86_64-gnu/lib/python3.12/asyncio/runners.py:195: in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.15-linux-x86_64-gnu/lib/python3.12/asyncio/runners.py:118: in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.15-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py:691: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+backend/tests/test_inflight_recovery.py:109: in scenario
+    assert_complete_content(read_content(path))
+                            ^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+path = PosixPath('/tmp/pytest-of-kevin/pytest-325/test_interrupted_sync_stays_st4/recovery.sqlite')
+
+    def read_content(path):
+        # 不提供任何内容上游 handler：归档、scope、身份和分页读取只能依赖真实 SQLite。
+        with archive_client(path) as api:
+            detail = api.get(ARCHIVE)
+            assert detail.status_code == 200
+            content = archive_content(detail.json())  # 仅排除可变的实时检查投影。
+            for params in ({"scope": "all"}, {"scope": "up", "uid": UID}):
+                response = api.get("/api/archive/dynamics", params=params)
+                assert response.status_code == 200
+>               assert response.json()["items"] == [content]
+E               AssertionError: assert [{'author': {...firmed', ...}] == [{'author': {...': None, ...}]
+E                 
+E                 Left contains one more item: {'author': {'avatar_url': 'https://example.invalid/avatar.png', 'id': '900719925474099312345', 'nickname': '虚构星海'}, 'comment_locator': None, 'comments_error': 'COMMENT_LOCATOR_UNCONFIRMED', 'comments_last_attempt': 'unconfirmed', ...}
+E                 Use -v to get more diff
+
+backend/tests/test_recent_window_content.py:158: AssertionError
+----------------------------- Captured stderr call -----------------------------
+INFO discovery_started 
+INFO discovery_finished accepted=true
+INFO check_started 
+INFO comment_locator_refreshed source=basic
+INFO check_finished recorded=true edit_status=unknown comment_count_status=observed
+INFO sync_started attempt=306 revision=1
+INFO discovery_started 
+INFO discovery_finished accepted=true
+INFO collector_attempt_cancelled attempt=306
+INFO collector_started cadence_seconds=15 max_checks=4 max_syncs=4 max_discoveries=2 recovery=complete
+INFO discovery_started 
+INFO check_started 
+WARNING check_source_failed stage=page reason=internal_error http_status=none
+WARNING check_source_failed stage=detail reason=internal_error http_status=none
+INFO discovery_finished accepted=true
+WARNING check_source_failed stage=comment_count reason=locator_missing http_status=none
+INFO check_finished recorded=true edit_status=none comment_count_status=failed
+INFO collector_tick targets=1 recent_ups=1 pending=1 checks_in_flight=1 syncs_in_flight=1 discoveries_in_flight=1 checks_started=1 syncs_started=1 discoveries_started=1
+INFO sync_started attempt=307 revision=1
+WARNING body_source_failed attempt=307 stage=page reason=internal_error http_status=none
+WARNING body_source_failed attempt=307 stage=detail reason=internal_error http_status=none
+INFO body_sync_finished attempt=307 outcome=failed accepted=false
+WARNING root_sync_unconfirmed attempt=307 reason=locator_missing
+INFO replies_sync_skipped attempt=307 reason=roots_unconfirmed
+WARNING sync_finished attempt=307 succeeded=false complete=false elapsed_ms=0 text=pending comments=pending replies=pending media=pending
+INFO collector_stopping reason=cancelled
+INFO collector_stopped 
+INFO discovery_started 
+INFO discovery_finished accepted=true
+INFO sync_started attempt=308 revision=1
+INFO body_sync_finished attempt=308 outcome=success accepted=true
+INFO root_sync_started attempt=308
+INFO root_sync_finished attempt=308 pages=2 roots=2 pin_known=true
+INFO replies_sync_started attempt=308 roots=2
+INFO replies_sync_finished attempt=308 succeeded=true degraded=false roots=2 skipped=0
+INFO sync_finished attempt=308 succeeded=true complete=true elapsed_ms=0 text=success comments=success replies=success media=success
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/starlette/testclient.py:37
+  /home/kevin/Projects/PI/bili_charge_dynamics/.venv/lib/python3.12/site-packages/starlette/testclient.py:37: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = typing.Callable[[], typing.ContextManager[anyio.abc.BlockingPortal]]
+
+backend/tests/test_dynamic_media.py::test_configured_real_oss_adapter_uses_signed_put_and_never_exposes_credentials[200]
+backend/tests/test_dynamic_media.py::test_configured_real_oss_adapter_uses_signed_put_and_never_exposes_credentials[403]
+  /home/kevin/Projects/PI/bili_charge_dynamics/.venv/lib/python3.12/site-packages/oss2/auth.py:540: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now_datetime = datetime.utcnow()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED backend/tests/test_inflight_recovery.py::test_interrupted_sync_stays_stopped_across_locked_restart_and_resumes_pending[body-window]
+1 failed, 808 passed, 3 warnings in 133.61s (0:02:13)

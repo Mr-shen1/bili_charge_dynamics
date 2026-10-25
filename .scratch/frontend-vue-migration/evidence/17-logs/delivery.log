@@ -1,0 +1,358 @@
+
+> bili-charge-dynamics-frontend@0.0.0 test:delivery /home/kevin/Projects/PI/bili_charge_dynamics/frontend
+> node scripts/verify-static-delivery.mjs
+
+nginx version: nginx/1.28.0
+
+> bili-charge-dynamics-frontend@0.0.0 build /home/kevin/Projects/PI/bili_charge_dynamics/frontend
+> vue-tsc --noEmit && vite build
+
+vite v7.3.1 building client environment for production...
+transforming...
+✓ 1780 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                      0.46 kB │ gzip:  0.32 kB
+dist/assets/UserAvatar-Dje3KGZD.css                  0.09 kB │ gzip:  0.10 kB
+dist/assets/ReadNotice-Cfo76pwj.css                  0.32 kB │ gzip:  0.20 kB
+dist/assets/ReplyPager-CfpI0OJ7.css                  0.65 kB │ gzip:  0.28 kB
+dist/assets/ManagePage-B-gTWe17.css                  1.18 kB │ gzip:  0.50 kB
+dist/assets/ManageShell-BLM-a8kI.css                 1.78 kB │ gzip:  0.60 kB
+dist/assets/DynamicContent-CzFXcakS.css              1.91 kB │ gzip:  0.65 kB
+dist/assets/CommentThreadPage-DtaLFI7d.css           2.04 kB │ gzip:  0.63 kB
+dist/assets/ListPage-Cto3jMeN.css                    2.28 kB │ gzip:  0.83 kB
+dist/assets/ManageUpPage-CVEEzFBM.css                2.36 kB │ gzip:  0.67 kB
+dist/assets/DetailPage-BMl-32cC.css                  5.64 kB │ gzip:  1.25 kB
+dist/assets/index-DDIJRK8V.css                      70.76 kB │ gzip: 10.29 kB
+dist/assets/_plugin-vue_export-helper-DlAUqK2U.js    0.09 kB │ gzip:  0.10 kB
+dist/assets/index-vr_gDm5u.js                        0.44 kB │ gzip:  0.34 kB
+dist/assets/display-Cvhq1Yp_.js                      0.47 kB │ gzip:  0.34 kB
+dist/assets/NotFoundPage-3gVQv4LQ.js                 0.52 kB │ gzip:  0.41 kB
+dist/assets/UserAvatar-CqGYnuFg.js                   0.83 kB │ gzip:  0.58 kB
+dist/assets/ReadNotice-BXgOqtqE.js                   0.91 kB │ gzip:  0.59 kB
+dist/assets/ManagePage-CoBpNHdy.js                   3.44 kB │ gzip:  1.80 kB
+dist/assets/ReplyPager-DtNwX84x.js                   3.75 kB │ gzip:  1.91 kB
+dist/assets/CommentThreadPage-DF4mlpIg.js            5.13 kB │ gzip:  2.25 kB
+dist/assets/index-DKBDl9dV.js                        6.11 kB │ gzip:  2.62 kB
+dist/assets/index-wVE7swtF.js                        6.63 kB │ gzip:  2.73 kB
+dist/assets/ListPage-DQUbyPrf.js                     7.34 kB │ gzip:  3.23 kB
+dist/assets/DynamicContent-B9UdEapu.js              11.75 kB │ gzip:  4.99 kB
+dist/assets/DetailPage-De0sBGKb.js                  18.06 kB │ gzip:  6.06 kB
+dist/assets/ManageUpPage-BopNWUqT.js                34.82 kB │ gzip: 11.45 kB
+dist/assets/ManageShell-BJvydHRh.js                 46.72 kB │ gzip: 16.52 kB
+dist/assets/index-C-E5912O.js                      229.99 kB │ gzip: 84.60 kB
+✓ built in 3.91s
+
+> bili-charge-dynamics-frontend@0.0.0 build:mock /home/kevin/Projects/PI/bili_charge_dynamics/frontend
+> vue-tsc --noEmit && vite build --mode mock --outDir dist-mock
+
+vite v7.3.1 building client environment for mock...
+transforming...
+✓ 1780 modules transformed.
+rendering chunks...
+computing gzip size...
+dist-mock/index.html                                                              0.46 kB │ gzip:  0.32 kB
+dist-mock/assets/UserAvatar-Dje3KGZD.css                                          0.09 kB │ gzip:  0.10 kB
+dist-mock/assets/ReadNotice-Cfo76pwj.css                                          0.32 kB │ gzip:  0.20 kB
+dist-mock/assets/ReplyPager-CfpI0OJ7.css                                          0.65 kB │ gzip:  0.28 kB
+dist-mock/assets/ManagePage-B-gTWe17.css                                          1.18 kB │ gzip:  0.50 kB
+dist-mock/assets/ManageShell-BLM-a8kI.css                                         1.78 kB │ gzip:  0.60 kB
+dist-mock/assets/DynamicContent-CzFXcakS.css                                      1.91 kB │ gzip:  0.65 kB
+dist-mock/assets/CommentThreadPage-DtaLFI7d.css                                   2.04 kB │ gzip:  0.63 kB
+dist-mock/assets/ListPage-Cto3jMeN.css                                            2.28 kB │ gzip:  0.83 kB
+dist-mock/assets/ManageUpPage-CVEEzFBM.css                                        2.36 kB │ gzip:  0.67 kB
+dist-mock/assets/DetailPage-BMl-32cC.css                                          5.64 kB │ gzip:  1.25 kB
+dist-mock/assets/index-DDIJRK8V.css                                              70.76 kB │ gzip: 10.29 kB
+dist-mock/assets/_plugin-vue_export-helper-DlAUqK2U.js                            0.09 kB │ gzip:  0.10 kB
+dist-mock/assets/index-Q2TdOKLI.js                                                0.44 kB │ gzip:  0.34 kB
+dist-mock/assets/display-Cvhq1Yp_.js                                              0.47 kB │ gzip:  0.34 kB
+dist-mock/assets/NotFoundPage-CaBgkuqo.js                                         0.52 kB │ gzip:  0.41 kB
+dist-mock/assets/PreviewOtherPage-ByvXkLiM.js                                     0.62 kB │ gzip:  0.50 kB
+dist-mock/assets/UserAvatar-BPMPs1Vy.js                                           0.83 kB │ gzip:  0.58 kB
+dist-mock/assets/ReadNotice-vmK2FG0B.js                                           0.91 kB │ gzip:  0.59 kB
+dist-mock/assets/PreviewFixturesPage-BgNkxCc-.js                                  2.57 kB │ gzip:  1.31 kB
+dist-mock/assets/ManagePage-BVA0t_oQ.js                                           3.44 kB │ gzip:  1.80 kB
+dist-mock/assets/ReplyPager-pmicVekI.js                                           3.75 kB │ gzip:  1.91 kB
+dist-mock/assets/CommentThreadPage-BIZnk23-.js                                    5.13 kB │ gzip:  2.25 kB
+dist-mock/assets/ThumbnailGrid.vue_vue_type_script_setup_true_lang-B3poPVwg.js    5.96 kB │ gzip:  2.65 kB
+dist-mock/assets/DynamicContent-MKp-9aab.js                                       6.01 kB │ gzip:  2.78 kB
+dist-mock/assets/index-DOM5IErX.js                                                6.11 kB │ gzip:  2.62 kB
+dist-mock/assets/index-CgPPyWU7.js                                                6.63 kB │ gzip:  2.73 kB
+dist-mock/assets/ListPage-Dgh6gxJi.js                                             7.41 kB │ gzip:  3.28 kB
+dist-mock/assets/DetailPage-C_bDhQdf.js                                          18.13 kB │ gzip:  6.11 kB
+dist-mock/assets/ManageUpPage-DK3Lt-_a.js                                        34.81 kB │ gzip: 11.44 kB
+dist-mock/assets/ManageShell-DSRaH6Hh.js                                         46.72 kB │ gzip: 16.52 kB
+dist-mock/assets/index-CeKSQI_l.js                                              226.10 kB │ gzip: 84.87 kB
+✓ built in 3.66s
+nginx: the configuration file /tmp/dynamics-static-1LomrD/nginx.conf syntax is ok
+nginx: configuration file /tmp/dynamics-static-1LomrD/nginx.conf test is successful
+PASS: mock 产物 31 个哈希资源可达，路由 chunk 8 个
+=== 阶段 1/3：显式 mock 构建的阅读/缓存/404/构建复现与发布回退（http://127.0.0.1:4273） ===
+
+Running 10 tests using 1 worker
+
+  ✓   1 [desktop-chromium] › tests/e2e/static-delivery.spec.ts:10:1 › 六类页面深链接和带扩展名的页面仍返回重新验证的入口，资源按明确路径分类 (70ms)
+  ✓   2 [desktop-chromium] › tests/e2e/static-delivery.spec.ts:21:1 › 入口可通过 ETag 和修改时间重新验证，成功返回 304 (11ms)
+  ✓   3 [desktop-chromium] › tests/e2e/static-delivery.spec.ts:35:1 › 入口引用的哈希脚本与样式有正确 MIME 与长期缓存，应用自有图片与头像按未版本化处理 (31ms)
+  ✓   4 [desktop-chromium] › tests/e2e/static-delivery.spec.ts:59:1 › 缺失脚本样式图片及无扩展名资源返回不可存储的 404，不回退到应用入口 (18ms)
+  ✓   5 [desktop-chromium] › tests/e2e/static-delivery.spec.ts:72:1 › 正常产物深链接刷新可看图和返回；页面不存在和内容不存在仍由前端表达 (593ms)
+  ✓   6 [mobile-chromium] › tests/e2e/static-delivery.spec.ts:10:1 › 六类页面深链接和带扩展名的页面仍返回重新验证的入口，资源按明确路径分类 (66ms)
+  ✓   7 [mobile-chromium] › tests/e2e/static-delivery.spec.ts:21:1 › 入口可通过 ETag 和修改时间重新验证，成功返回 304 (12ms)
+  ✓   8 [mobile-chromium] › tests/e2e/static-delivery.spec.ts:35:1 › 入口引用的哈希脚本与样式有正确 MIME 与长期缓存，应用自有图片与头像按未版本化处理 (40ms)
+  ✓   9 [mobile-chromium] › tests/e2e/static-delivery.spec.ts:59:1 › 缺失脚本样式图片及无扩展名资源返回不可存储的 404，不回退到应用入口 (20ms)
+  ✓  10 [mobile-chromium] › tests/e2e/static-delivery.spec.ts:72:1 › 正常产物深链接刷新可看图和返回；页面不存在和内容不存在仍由前端表达 (550ms)
+
+  10 passed (3.3s)
+
+> bili-charge-dynamics-frontend@0.0.0 build /tmp/dynamics-static-1LomrD/build-source
+> vue-tsc --noEmit && vite build
+
+vite v7.3.1 building client environment for production...
+transforming...
+✓ 1780 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                      0.46 kB │ gzip:  0.32 kB
+dist/assets/UserAvatar-Dje3KGZD.css                  0.09 kB │ gzip:  0.10 kB
+dist/assets/ReadNotice-Cfo76pwj.css                  0.32 kB │ gzip:  0.20 kB
+dist/assets/ReplyPager-CfpI0OJ7.css                  0.65 kB │ gzip:  0.28 kB
+dist/assets/ManagePage-B-gTWe17.css                  1.18 kB │ gzip:  0.50 kB
+dist/assets/ManageShell-BLM-a8kI.css                 1.78 kB │ gzip:  0.60 kB
+dist/assets/DynamicContent-CzFXcakS.css              1.91 kB │ gzip:  0.65 kB
+dist/assets/CommentThreadPage-DtaLFI7d.css           2.04 kB │ gzip:  0.63 kB
+dist/assets/ListPage-Cto3jMeN.css                    2.28 kB │ gzip:  0.83 kB
+dist/assets/ManageUpPage-CVEEzFBM.css                2.36 kB │ gzip:  0.67 kB
+dist/assets/DetailPage-BMl-32cC.css                  5.64 kB │ gzip:  1.25 kB
+dist/assets/index-DDIJRK8V.css                      70.76 kB │ gzip: 10.29 kB
+dist/assets/_plugin-vue_export-helper-DlAUqK2U.js    0.09 kB │ gzip:  0.10 kB
+dist/assets/index-vr_gDm5u.js                        0.44 kB │ gzip:  0.34 kB
+dist/assets/display-Cvhq1Yp_.js                      0.47 kB │ gzip:  0.34 kB
+dist/assets/NotFoundPage-3gVQv4LQ.js                 0.52 kB │ gzip:  0.41 kB
+dist/assets/UserAvatar-CqGYnuFg.js                   0.83 kB │ gzip:  0.58 kB
+dist/assets/ReadNotice-BXgOqtqE.js                   0.91 kB │ gzip:  0.59 kB
+dist/assets/ManagePage-CoBpNHdy.js                   3.44 kB │ gzip:  1.80 kB
+dist/assets/ReplyPager-DtNwX84x.js                   3.75 kB │ gzip:  1.91 kB
+dist/assets/CommentThreadPage-DF4mlpIg.js            5.13 kB │ gzip:  2.25 kB
+dist/assets/index-DKBDl9dV.js                        6.11 kB │ gzip:  2.62 kB
+dist/assets/index-wVE7swtF.js                        6.63 kB │ gzip:  2.73 kB
+dist/assets/ListPage-DQUbyPrf.js                     7.34 kB │ gzip:  3.23 kB
+dist/assets/DynamicContent-B9UdEapu.js              11.75 kB │ gzip:  4.99 kB
+dist/assets/DetailPage-De0sBGKb.js                  18.06 kB │ gzip:  6.06 kB
+dist/assets/ManageUpPage-BopNWUqT.js                34.82 kB │ gzip: 11.45 kB
+dist/assets/ManageShell-BJvydHRh.js                 46.72 kB │ gzip: 16.52 kB
+dist/assets/index-C-E5912O.js                      229.99 kB │ gzip: 84.60 kB
+✓ built in 3.72s
+
+> bili-charge-dynamics-frontend@0.0.0 build:fault /tmp/dynamics-static-1LomrD/build-source
+> vue-tsc --noEmit && vite build --mode fault --outDir dist-mock
+
+vite v7.3.1 building client environment for fault...
+transforming...
+✓ 1780 modules transformed.
+rendering chunks...
+computing gzip size...
+dist-mock/index.html                                                              0.46 kB │ gzip:  0.31 kB
+dist-mock/assets/UserAvatar-Dje3KGZD.css                                          0.09 kB │ gzip:  0.10 kB
+dist-mock/assets/ReadNotice-Cfo76pwj.css                                          0.32 kB │ gzip:  0.20 kB
+dist-mock/assets/ReplyPager-CfpI0OJ7.css                                          0.65 kB │ gzip:  0.28 kB
+dist-mock/assets/ManagePage-B-gTWe17.css                                          1.18 kB │ gzip:  0.50 kB
+dist-mock/assets/ManageShell-BLM-a8kI.css                                         1.78 kB │ gzip:  0.60 kB
+dist-mock/assets/DynamicContent-CzFXcakS.css                                      1.91 kB │ gzip:  0.65 kB
+dist-mock/assets/CommentThreadPage-DtaLFI7d.css                                   2.04 kB │ gzip:  0.63 kB
+dist-mock/assets/ListPage-Cto3jMeN.css                                            2.28 kB │ gzip:  0.83 kB
+dist-mock/assets/ManageUpPage-CVEEzFBM.css                                        2.36 kB │ gzip:  0.67 kB
+dist-mock/assets/DetailPage-BMl-32cC.css                                          5.64 kB │ gzip:  1.25 kB
+dist-mock/assets/index-DDIJRK8V.css                                              70.76 kB │ gzip: 10.29 kB
+dist-mock/assets/_plugin-vue_export-helper-DlAUqK2U.js                            0.09 kB │ gzip:  0.10 kB
+dist-mock/assets/index-CnQkAzIj.js                                                0.44 kB │ gzip:  0.34 kB
+dist-mock/assets/display-Cvhq1Yp_.js                                              0.47 kB │ gzip:  0.34 kB
+dist-mock/assets/NotFoundPage-DkIZuno8.js                                         0.52 kB │ gzip:  0.41 kB
+dist-mock/assets/PreviewOtherPage-CaAQFnik.js                                     0.62 kB │ gzip:  0.50 kB
+dist-mock/assets/UserAvatar-DFJVlzqV.js                                           0.83 kB │ gzip:  0.58 kB
+dist-mock/assets/ReadNotice-Cg8tjstf.js                                           0.91 kB │ gzip:  0.58 kB
+dist-mock/assets/PreviewFixturesPage-CU_iO1_r.js                                  2.57 kB │ gzip:  1.32 kB
+dist-mock/assets/ManagePage-Kn_LNmZx.js                                           3.44 kB │ gzip:  1.80 kB
+dist-mock/assets/ReplyPager-CryN8qgO.js                                           3.75 kB │ gzip:  1.91 kB
+dist-mock/assets/CommentThreadPage-K1xJuCcf.js                                    5.13 kB │ gzip:  2.25 kB
+dist-mock/assets/ThumbnailGrid.vue_vue_type_script_setup_true_lang-D9x7bbbH.js    5.96 kB │ gzip:  2.65 kB
+dist-mock/assets/DynamicContent-72yQUVeZ.js                                       6.01 kB │ gzip:  2.78 kB
+dist-mock/assets/index-nzGGBDfF.js                                                6.11 kB │ gzip:  2.62 kB
+dist-mock/assets/index-CGq0h4bi.js                                                6.63 kB │ gzip:  2.73 kB
+dist-mock/assets/ListPage-B_hf_b3_.js                                             7.41 kB │ gzip:  3.28 kB
+dist-mock/assets/DetailPage-Dk5LgbN6.js                                          18.13 kB │ gzip:  6.11 kB
+dist-mock/assets/ManageUpPage-BYkPUCaa.js                                        34.81 kB │ gzip: 11.44 kB
+dist-mock/assets/ManageShell-CB8cVdNh.js                                         46.72 kB │ gzip: 16.52 kB
+dist-mock/assets/index-DeeUyoNR.js                                              226.51 kB │ gzip: 84.99 kB
+✓ built in 3.77s
+
+> bili-charge-dynamics-frontend@0.0.0 build:mock /tmp/dynamics-static-1LomrD/build-source
+> vue-tsc --noEmit && vite build --mode mock --outDir dist-mock
+
+vite v7.3.1 building client environment for mock...
+transforming...
+✓ 1780 modules transformed.
+rendering chunks...
+computing gzip size...
+dist-mock/index.html                                                              0.46 kB │ gzip:  0.32 kB
+dist-mock/assets/UserAvatar-Dje3KGZD.css                                          0.09 kB │ gzip:  0.10 kB
+dist-mock/assets/ReadNotice-Cfo76pwj.css                                          0.32 kB │ gzip:  0.20 kB
+dist-mock/assets/ReplyPager-CfpI0OJ7.css                                          0.65 kB │ gzip:  0.28 kB
+dist-mock/assets/ManagePage-B-gTWe17.css                                          1.18 kB │ gzip:  0.50 kB
+dist-mock/assets/ManageShell-BLM-a8kI.css                                         1.78 kB │ gzip:  0.60 kB
+dist-mock/assets/DynamicContent-CzFXcakS.css                                      1.91 kB │ gzip:  0.65 kB
+dist-mock/assets/CommentThreadPage-DtaLFI7d.css                                   2.04 kB │ gzip:  0.63 kB
+dist-mock/assets/ListPage-Cto3jMeN.css                                            2.28 kB │ gzip:  0.83 kB
+dist-mock/assets/ManageUpPage-CVEEzFBM.css                                        2.36 kB │ gzip:  0.67 kB
+dist-mock/assets/DetailPage-BMl-32cC.css                                          5.64 kB │ gzip:  1.25 kB
+dist-mock/assets/index-DDIJRK8V.css                                              70.76 kB │ gzip: 10.29 kB
+dist-mock/assets/_plugin-vue_export-helper-DlAUqK2U.js                            0.09 kB │ gzip:  0.10 kB
+dist-mock/assets/index-Q2TdOKLI.js                                                0.44 kB │ gzip:  0.34 kB
+dist-mock/assets/display-Cvhq1Yp_.js                                              0.47 kB │ gzip:  0.34 kB
+dist-mock/assets/NotFoundPage-CaBgkuqo.js                                         0.52 kB │ gzip:  0.41 kB
+dist-mock/assets/PreviewOtherPage-ByvXkLiM.js                                     0.62 kB │ gzip:  0.50 kB
+dist-mock/assets/UserAvatar-BPMPs1Vy.js                                           0.83 kB │ gzip:  0.58 kB
+dist-mock/assets/ReadNotice-vmK2FG0B.js                                           0.91 kB │ gzip:  0.59 kB
+dist-mock/assets/PreviewFixturesPage-BgNkxCc-.js                                  2.57 kB │ gzip:  1.31 kB
+dist-mock/assets/ManagePage-BVA0t_oQ.js                                           3.44 kB │ gzip:  1.80 kB
+dist-mock/assets/ReplyPager-pmicVekI.js                                           3.75 kB │ gzip:  1.91 kB
+dist-mock/assets/CommentThreadPage-BIZnk23-.js                                    5.13 kB │ gzip:  2.25 kB
+dist-mock/assets/ThumbnailGrid.vue_vue_type_script_setup_true_lang-B3poPVwg.js    5.96 kB │ gzip:  2.65 kB
+dist-mock/assets/DynamicContent-MKp-9aab.js                                       6.01 kB │ gzip:  2.78 kB
+dist-mock/assets/index-DOM5IErX.js                                                6.11 kB │ gzip:  2.62 kB
+dist-mock/assets/index-CgPPyWU7.js                                                6.63 kB │ gzip:  2.73 kB
+dist-mock/assets/ListPage-Dgh6gxJi.js                                             7.41 kB │ gzip:  3.28 kB
+dist-mock/assets/DetailPage-C_bDhQdf.js                                          18.13 kB │ gzip:  6.11 kB
+dist-mock/assets/ManageUpPage-DK3Lt-_a.js                                        34.81 kB │ gzip: 11.44 kB
+dist-mock/assets/ManageShell-DSRaH6Hh.js                                         46.72 kB │ gzip: 16.52 kB
+dist-mock/assets/index-CeKSQI_l.js                                              226.10 kB │ gzip: 84.87 kB
+✓ built in 3.77s
+PASS: 生产与显式 mock bundle 构建可复现；fault 构建单独输出且不改动生产产物
+
+> bili-charge-dynamics-frontend@0.0.0 build:mock /tmp/dynamics-static-1LomrD/build-source
+> vue-tsc --noEmit && vite build --mode mock --outDir dist-mock
+
+vite v7.3.1 building client environment for mock...
+transforming...
+✓ 1780 modules transformed.
+rendering chunks...
+computing gzip size...
+dist-mock/index.html                                                              0.48 kB │ gzip:  0.33 kB
+dist-mock/assets/UserAvatar-Dje3KGZD.css                                          0.09 kB │ gzip:  0.10 kB
+dist-mock/assets/ReadNotice-Cfo76pwj.css                                          0.32 kB │ gzip:  0.20 kB
+dist-mock/assets/ReplyPager-CfpI0OJ7.css                                          0.65 kB │ gzip:  0.28 kB
+dist-mock/assets/ManagePage-B-gTWe17.css                                          1.18 kB │ gzip:  0.50 kB
+dist-mock/assets/ManageShell-BLM-a8kI.css                                         1.78 kB │ gzip:  0.60 kB
+dist-mock/assets/DynamicContent-CzFXcakS.css                                      1.91 kB │ gzip:  0.65 kB
+dist-mock/assets/CommentThreadPage-DtaLFI7d.css                                   2.04 kB │ gzip:  0.63 kB
+dist-mock/assets/ListPage-Cto3jMeN.css                                            2.28 kB │ gzip:  0.83 kB
+dist-mock/assets/ManageUpPage-CVEEzFBM.css                                        2.36 kB │ gzip:  0.67 kB
+dist-mock/assets/DetailPage-BMl-32cC.css                                          5.64 kB │ gzip:  1.25 kB
+dist-mock/assets/index-DDIJRK8V.css                                              70.76 kB │ gzip: 10.29 kB
+dist-mock/assets/_plugin-vue_export-helper-DlAUqK2U.js                            0.09 kB │ gzip:  0.10 kB
+dist-mock/assets/index-D9gLrHb7.js                                                0.44 kB │ gzip:  0.34 kB
+dist-mock/assets/display-Cvhq1Yp_.js                                              0.47 kB │ gzip:  0.34 kB
+dist-mock/assets/NotFoundPage-BXC1dVHh.js                                         0.52 kB │ gzip:  0.41 kB
+dist-mock/assets/PreviewOtherPage-CIQlMESZ.js                                     0.62 kB │ gzip:  0.50 kB
+dist-mock/assets/UserAvatar-CWuQFUWd.js                                           0.83 kB │ gzip:  0.58 kB
+dist-mock/assets/ReadNotice-CvMFjdUl.js                                           0.91 kB │ gzip:  0.59 kB
+dist-mock/assets/PreviewFixturesPage-B-ks5A2R.js                                  2.57 kB │ gzip:  1.32 kB
+dist-mock/assets/ManagePage-Dr9ibdNA.js                                           3.44 kB │ gzip:  1.80 kB
+dist-mock/assets/ReplyPager-C2lBdYd5.js                                           3.75 kB │ gzip:  1.91 kB
+dist-mock/assets/CommentThreadPage-BXyckyeq.js                                    5.13 kB │ gzip:  2.25 kB
+dist-mock/assets/ThumbnailGrid.vue_vue_type_script_setup_true_lang-Dm7bBFBh.js    5.96 kB │ gzip:  2.66 kB
+dist-mock/assets/DynamicContent-BSJwmL1h.js                                       6.01 kB │ gzip:  2.78 kB
+dist-mock/assets/index-CDYs3rhG.js                                                6.11 kB │ gzip:  2.62 kB
+dist-mock/assets/index-B9v9T03f.js                                                6.63 kB │ gzip:  2.73 kB
+dist-mock/assets/ListPage-DWuBvgH1.js                                             7.41 kB │ gzip:  3.28 kB
+dist-mock/assets/DetailPage-C8mf6kqD.js                                          18.13 kB │ gzip:  6.11 kB
+dist-mock/assets/ManageUpPage-Dz9rNtVC.js                                        34.81 kB │ gzip: 11.44 kB
+dist-mock/assets/ManageShell-DRTAGzYt.js                                         46.72 kB │ gzip: 16.52 kB
+dist-mock/assets/index-IyFYg4CP.js                                              226.16 kB │ gzip: 84.90 kB
+✓ built in 3.81s
+PASS: build update /assets/index-CeKSQI_l.js -> /assets/index-IyFYg4CP.js; 新旧入口引用资源（共 3 个）均可达，浏览器加载 release B
+=== 阶段 2/3：mock 产物回退到上一版，旧/新哈希资源仍可达 ===
+PASS: 回退到旧入口；旧/新入口引用资源（共 3 个）仍可达，页面重新加载为旧产物“充电动态归档”
+=== 阶段 3/3：生产构建 + 实际 API/collector（六路由、401、更新与回退） ===
+PASS: production Adapter, 六条路由 direct/reload, 28 个哈希资源可达, public images, read-only browsing, API/resource errors, 401 prompt and secret scan
+
+> bili-charge-dynamics-frontend@0.0.0 build /tmp/dynamics-static-1LomrD/build-source
+> vue-tsc --noEmit && vite build
+
+vite v7.3.1 building client environment for production...
+transforming...
+✓ 1780 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                      0.48 kB │ gzip:  0.33 kB
+dist/assets/UserAvatar-Dje3KGZD.css                  0.09 kB │ gzip:  0.10 kB
+dist/assets/ReadNotice-Cfo76pwj.css                  0.32 kB │ gzip:  0.20 kB
+dist/assets/ReplyPager-CfpI0OJ7.css                  0.65 kB │ gzip:  0.28 kB
+dist/assets/ManagePage-B-gTWe17.css                  1.18 kB │ gzip:  0.50 kB
+dist/assets/ManageShell-BLM-a8kI.css                 1.78 kB │ gzip:  0.60 kB
+dist/assets/DynamicContent-CzFXcakS.css              1.91 kB │ gzip:  0.65 kB
+dist/assets/CommentThreadPage-DtaLFI7d.css           2.04 kB │ gzip:  0.63 kB
+dist/assets/ListPage-Cto3jMeN.css                    2.28 kB │ gzip:  0.83 kB
+dist/assets/ManageUpPage-CVEEzFBM.css                2.36 kB │ gzip:  0.67 kB
+dist/assets/DetailPage-BMl-32cC.css                  5.64 kB │ gzip:  1.25 kB
+dist/assets/index-DDIJRK8V.css                      70.76 kB │ gzip: 10.29 kB
+dist/assets/_plugin-vue_export-helper-DlAUqK2U.js    0.09 kB │ gzip:  0.10 kB
+dist/assets/index-CMnOCtkn.js                        0.44 kB │ gzip:  0.34 kB
+dist/assets/display-Cvhq1Yp_.js                      0.47 kB │ gzip:  0.34 kB
+dist/assets/NotFoundPage-Cag8r5qv.js                 0.52 kB │ gzip:  0.41 kB
+dist/assets/UserAvatar-Dqv6KoIO.js                   0.83 kB │ gzip:  0.58 kB
+dist/assets/ReadNotice-CfNX72DY.js                   0.91 kB │ gzip:  0.59 kB
+dist/assets/ManagePage-D9aQrZIb.js                   3.44 kB │ gzip:  1.80 kB
+dist/assets/ReplyPager-Dudu9CDj.js                   3.75 kB │ gzip:  1.91 kB
+dist/assets/CommentThreadPage-CCra8KtD.js            5.13 kB │ gzip:  2.25 kB
+dist/assets/index-CE6AECbD.js                        6.11 kB │ gzip:  2.62 kB
+dist/assets/index-jkdXugZi.js                        6.63 kB │ gzip:  2.73 kB
+dist/assets/ListPage-DI0q-4q6.js                     7.34 kB │ gzip:  3.23 kB
+dist/assets/DynamicContent-DiMVUV_F.js              11.75 kB │ gzip:  4.99 kB
+dist/assets/DetailPage-xLLIubcg.js                  18.06 kB │ gzip:  6.06 kB
+dist/assets/ManageUpPage-BvQvBd77.js                34.82 kB │ gzip: 11.45 kB
+dist/assets/ManageShell-CFM2f1iv.js                 46.72 kB │ gzip: 16.52 kB
+dist/assets/index-Pa2PSiv9.js                      230.05 kB │ gzip: 84.63 kB
+✓ built in 3.75s
+PASS: build update /assets/index-C-E5912O.js -> /assets/index-Pa2PSiv9.js; 新旧入口引用资源（共 3 个）均可达，浏览器加载 release B
+PASS: 回退到旧入口；旧/新入口引用资源（共 3 个）仍可达，页面重新加载为旧产物“充电动态归档”
+PASS: 生产产物原子切换与回退；SQLite 文件未替换、collector 未重启，归档内容不变
+PASS: real API + collector share SQLite; production build update, API unavailable 502 and diagnostic secret scan
+
+> bili-charge-dynamics-frontend@0.0.0 build /home/kevin/Projects/PI/bili_charge_dynamics/frontend
+> vue-tsc --noEmit && vite build
+
+vite v7.3.1 building client environment for production...
+transforming...
+✓ 1780 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                      0.46 kB │ gzip:  0.32 kB
+dist/assets/UserAvatar-Dje3KGZD.css                  0.09 kB │ gzip:  0.10 kB
+dist/assets/ReadNotice-Cfo76pwj.css                  0.32 kB │ gzip:  0.20 kB
+dist/assets/ReplyPager-CfpI0OJ7.css                  0.65 kB │ gzip:  0.28 kB
+dist/assets/ManagePage-B-gTWe17.css                  1.18 kB │ gzip:  0.50 kB
+dist/assets/ManageShell-BLM-a8kI.css                 1.78 kB │ gzip:  0.60 kB
+dist/assets/DynamicContent-CzFXcakS.css              1.91 kB │ gzip:  0.65 kB
+dist/assets/CommentThreadPage-DtaLFI7d.css           2.04 kB │ gzip:  0.63 kB
+dist/assets/ListPage-Cto3jMeN.css                    2.28 kB │ gzip:  0.83 kB
+dist/assets/ManageUpPage-CVEEzFBM.css                2.36 kB │ gzip:  0.67 kB
+dist/assets/DetailPage-BMl-32cC.css                  5.64 kB │ gzip:  1.25 kB
+dist/assets/index-DDIJRK8V.css                      70.76 kB │ gzip: 10.29 kB
+dist/assets/_plugin-vue_export-helper-DlAUqK2U.js    0.09 kB │ gzip:  0.10 kB
+dist/assets/index-vr_gDm5u.js                        0.44 kB │ gzip:  0.34 kB
+dist/assets/display-Cvhq1Yp_.js                      0.47 kB │ gzip:  0.34 kB
+dist/assets/NotFoundPage-3gVQv4LQ.js                 0.52 kB │ gzip:  0.41 kB
+dist/assets/UserAvatar-CqGYnuFg.js                   0.83 kB │ gzip:  0.58 kB
+dist/assets/ReadNotice-BXgOqtqE.js                   0.91 kB │ gzip:  0.59 kB
+dist/assets/ManagePage-CoBpNHdy.js                   3.44 kB │ gzip:  1.80 kB
+dist/assets/ReplyPager-DtNwX84x.js                   3.75 kB │ gzip:  1.91 kB
+dist/assets/CommentThreadPage-DF4mlpIg.js            5.13 kB │ gzip:  2.25 kB
+dist/assets/index-DKBDl9dV.js                        6.11 kB │ gzip:  2.62 kB
+dist/assets/index-wVE7swtF.js                        6.63 kB │ gzip:  2.73 kB
+dist/assets/ListPage-DQUbyPrf.js                     7.34 kB │ gzip:  3.23 kB
+dist/assets/DynamicContent-B9UdEapu.js              11.75 kB │ gzip:  4.99 kB
+dist/assets/DetailPage-De0sBGKb.js                  18.06 kB │ gzip:  6.06 kB
+dist/assets/ManageUpPage-BopNWUqT.js                34.82 kB │ gzip: 11.45 kB
+dist/assets/ManageShell-BJvydHRh.js                 46.72 kB │ gzip: 16.52 kB
+dist/assets/index-C-E5912O.js                      229.99 kB │ gzip: 84.60 kB
+✓ built in 3.72s

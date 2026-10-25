@@ -1,0 +1,305 @@
+.......................F................................................ [  8%]
+........................................................................ [ 17%]
+........................................................................ [ 26%]
+........................................................................ [ 35%]
+........................................................................ [ 44%]
+........................................................................ [ 53%]
+........................................................................ [ 62%]
+........................................................................ [ 71%]
+........................................................................ [ 80%]
+........................................................................ [ 88%]
+........................................................................ [ 97%]
+.................                                                        [100%]
+=================================== FAILURES ===================================
+_____ test_three_targets_obey_two_sync_slots_without_stalling_checks[run] ______
+
+fut = <coroutine object eventually.<locals>.wait at 0x7f9abc3522c0>, timeout = 3
+
+    async def wait_for(fut, timeout):
+        """Wait for the single Future or coroutine to complete, with timeout.
+    
+        Coroutine will be wrapped in Task.
+    
+        Returns result of the Future or coroutine.  When a timeout occurs,
+        it cancels the task and raises TimeoutError.  To avoid the task
+        cancellation, wrap it in shield().
+    
+        If the wait is cancelled, the task is also cancelled.
+    
+        If the task suppresses the cancellation and returns a value instead,
+        that value is returned.
+    
+        This function is a coroutine.
+        """
+        # The special case for timeout <= 0 is for the following case:
+        #
+        # async def test_waitfor():
+        #     func_started = False
+        #
+        #     async def func():
+        #         nonlocal func_started
+        #         func_started = True
+        #
+        #     try:
+        #         await asyncio.wait_for(func(), 0)
+        #     except asyncio.TimeoutError:
+        #         assert not func_started
+        #     else:
+        #         assert False
+        #
+        # asyncio.run(test_waitfor())
+    
+    
+        if timeout is not None and timeout <= 0:
+            fut = ensure_future(fut)
+    
+            if fut.done():
+                return fut.result()
+    
+            await _cancel_and_wait(fut)
+            try:
+                return fut.result()
+            except exceptions.CancelledError as exc:
+                raise TimeoutError from exc
+    
+        async with timeouts.timeout(timeout):
+>           return await fut
+                   ^^^^^^^^^
+
+../../../.local/share/uv/python/cpython-3.12.15-linux-x86_64-gnu/lib/python3.12/asyncio/tasks.py:520: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/tests/collector_clock.py:36: in wait
+    await asyncio.sleep(0.001)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+delay = 0.001, result = None
+
+    async def sleep(delay, result=None):
+        """Coroutine that completes after a given time (in seconds)."""
+        if delay <= 0:
+            await __sleep0()
+            return result
+    
+        loop = events.get_running_loop()
+        future = loop.create_future()
+        h = loop.call_later(delay,
+                            futures._set_result_unless_cancelled,
+                            future, result)
+        try:
+>           return await future
+                   ^^^^^^^^^^^^
+E           asyncio.exceptions.CancelledError
+
+../../../.local/share/uv/python/cpython-3.12.15-linux-x86_64-gnu/lib/python3.12/asyncio/tasks.py:665: CancelledError
+
+The above exception was the direct cause of the following exception:
+
+tmp_path = PosixPath('/tmp/pytest-of-kevin/pytest-321/test_three_targets_obey_two_sy1')
+entrypoint = 'run'
+
+    @pytest.mark.parametrize("entrypoint", ["execute_pending", "run"])
+    def test_three_targets_obey_two_sync_slots_without_stalling_checks(tmp_path, entrypoint):
+        path = tmp_path / "monitor.sqlite"
+        ids = ("123", "124", "125")
+        configured(path, ids)
+        source = CommentSource()
+    
+        async def scenario():
+            clock = ControlledClock()
+            started = {id: asyncio.Event() for id in ids}
+            release = {id: asyncio.Event() for id in ids}
+            active = {id: 0 for id in ids}
+            peak, first_pages = 0, []
+            counts = {id: 0 for id in ids}
+    
+            async def upstream(request):
+                nonlocal peak
+                url = request.url
+                if url.path == "/x/v2/reply/count":
+                    counts[url.params["oid"][2:]] += 1
+                if url.path == "/x/v2/reply" and url.params["pn"] == "1":
+                    id = url.params["oid"][2:]
+                    first_pages.append(id)
+                    active[id] += 1
+                    peak = max(peak, sum(active.values()))
+                    started[id].set()
+                    try:
+                        await release[id].wait()
+                    finally:
+                        active[id] -= 1
+                # 第一个目标是真实结构的根＋回复；其他目标使用共享零评论原始 JSON。
+                if url.path == "/opus/123" or url.params.get("oid") == "99123" or url.params.get("id") == "123":
+                    return source(request)
+                return empty_upstream(request)
+    
+            async with httpx.AsyncClient(transport=httpx.MockTransport(upstream)) as client:
+                collector = Collector(Store(path), client, clock=clock, max_syncs=2)
+                for id in ids:
+                    await collector.check_once(UID, id)
+                running = asyncio.create_task(getattr(collector, entrypoint)())
+                try:
+                    await asyncio.wait_for(asyncio.gather(started["123"].wait(), started["124"].wait()), 3)
+                    states = read_checks(path)
+                    assert [states[id]["work"] for id in ids] == ["running", "running", "pending"]
+                    assert not started["125"].is_set()
+                    assert active == {"123": 1, "124": 1, "125": 0}
+                    assert peak == 2
+                    if entrypoint == "run":
+                        await eventually(lambda: clock.deadlines == [15])
+                        for tick in (15, 30):
+                            clock.advance(tick)
+                            # HTTP 已可见不表示 check coroutine 已退出；仍忙时本槽允许跳过。
+                            await eventually(lambda: clock.deadlines[-1] == tick + 15)
+                            assert not started["125"].is_set()
+                            assert active == {"123": 1, "124": 1, "125": 0}
+                            assert first_pages == ["123", "124"] or first_pages == ["124", "123"]
+                            assert all(row["revision"] == 1 for row in read_checks(path).values())
+                        await eventually(lambda: all(counts[id] >= 3 for id in ids))
+                    else:
+                        # 独立执行批次同样不占用检查 I/O 或 SQLite 长事务。
+                        clock.advance(15)
+                        await asyncio.wait_for(asyncio.gather(*(collector.check_once(UID, id) for id in ids)), 3)
+                        assert all(row["last_checked_at"] == clock.now() for row in read_checks(path).values())
+                        assert not started["125"].is_set()
+    
+                    with archive_client(path) as api:
+                        assert api.get(ARCHIVE).status_code == 200
+                        assert api.get(ARCHIVE + "/comments").status_code == 200
+                        assert api.patch(f"/api/manage/ups/{UID}/monitor", json={
+                            "mode": "specified", "recent_n": 11, "enabled": True}).status_code == 200
+                    # 释放一个槽，仍暂停另一个同步；第三个必须能够随后执行。
+                    release["123"].set()
+                    await eventually(lambda: read_checks(path)["123"]["work"] == "complete")
+                    if entrypoint == "run":
+                        clock.advance(45)
+                    await asyncio.wait_for(started["125"].wait(), 3)
+                    assert not release["124"].is_set()
+                    assert active == {"123": 0, "124": 1, "125": 1}
+                    assert peak == 2
+                    assert sorted(first_pages) == list(ids)
+                    assert all(first_pages.count(id) == 1 for id in ids)
+                    states = read_checks(path)
+                    assert states["124"]["work"] == states["125"]["work"] == "running"
+                    release["124"].set()
+                    release["125"].set()
+                    await eventually(lambda: all(row["work"] == "complete" for row in read_checks(path).values()))
+                    if entrypoint == "run":
+                        await eventually(lambda: clock.deadlines[-1] == 60)
+                        clock.advance(60)
+                        await eventually(lambda: clock.deadlines[-1] == 75)
+                    else:
+                        await asyncio.wait_for(running, 3)
+                    assert peak == 2
+                    assert active == dict.fromkeys(ids, 0)
+                    assert sorted(first_pages) == list(ids)  # 完成后不再叠加／重扫同目标。
+                    with archive_client(path) as api:
+                        for id in ids:
+                            response = api.get(f"/api/archive/dynamics/{id}")
+                            assert response.status_code == 200
+                            archive = response.json()
+                            total = 7 if id == "123" else 0
+                            assert archive["synced_comment_count"] == archive["synced_reply_comment_count"] == total
+                            assert archive["comments_last_attempt"] == archive["replies_last_attempt"] == "success"
+                finally:
+                    for event in release.values():
+                        event.set()
+                    running.cancel()
+                    await asyncio.gather(running, return_exceptions=True)
+    
+>       asyncio.run(scenario())
+
+backend/tests/test_comment_count_recovery.py:490: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+../../../.local/share/uv/python/cpython-3.12.15-linux-x86_64-gnu/lib/python3.12/asyncio/runners.py:195: in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.15-linux-x86_64-gnu/lib/python3.12/asyncio/runners.py:118: in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../../../.local/share/uv/python/cpython-3.12.15-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py:691: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+backend/tests/test_comment_count_recovery.py:438: in scenario
+    await eventually(lambda: all(counts[id] >= 3 for id in ids))
+backend/tests/collector_clock.py:37: in eventually
+    await asyncio.wait_for(wait(), timeout=3)
+../../../.local/share/uv/python/cpython-3.12.15-linux-x86_64-gnu/lib/python3.12/asyncio/tasks.py:519: in wait_for
+    async with timeouts.timeout(timeout):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <Timeout [expired]>
+exc_type = <class 'asyncio.exceptions.CancelledError'>
+exc_val = CancelledError(), exc_tb = <traceback object at 0x7f9abda09680>
+
+    async def __aexit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> Optional[bool]:
+        assert self._state in (_State.ENTERED, _State.EXPIRING)
+    
+        if self._timeout_handler is not None:
+            self._timeout_handler.cancel()
+            self._timeout_handler = None
+    
+        if self._state is _State.EXPIRING:
+            self._state = _State.EXPIRED
+    
+            if self._task.uncancel() <= self._cancelling and exc_type is exceptions.CancelledError:
+                # Since there are no new cancel requests, we're
+                # handling this.
+>               raise TimeoutError from exc_val
+E               TimeoutError
+
+../../../.local/share/uv/python/cpython-3.12.15-linux-x86_64-gnu/lib/python3.12/asyncio/timeouts.py:115: TimeoutError
+----------------------------- Captured stderr call -----------------------------
+INFO check_started 
+INFO comment_locator_refreshed source=basic
+INFO check_finished recorded=true edit_status=observed comment_count_status=observed
+INFO check_started 
+INFO comment_locator_refreshed source=basic
+INFO check_finished recorded=true edit_status=observed comment_count_status=observed
+INFO check_started 
+INFO comment_locator_refreshed source=basic
+INFO check_finished recorded=true edit_status=observed comment_count_status=observed
+INFO collector_started cadence_seconds=15 max_checks=4 max_syncs=2 max_discoveries=2 recovery=complete
+INFO collector_tick targets=3 recent_ups=0 pending=3 checks_in_flight=3 syncs_in_flight=2 discoveries_in_flight=0 checks_started=3 syncs_started=2 discoveries_started=0
+INFO check_started 
+INFO check_started 
+INFO check_started 
+INFO sync_started attempt=51 revision=1
+INFO sync_started attempt=52 revision=1
+INFO check_finished recorded=true edit_status=observed comment_count_status=observed
+INFO check_finished recorded=true edit_status=observed comment_count_status=observed
+INFO body_sync_finished attempt=52 outcome=success accepted=true
+INFO root_sync_started attempt=52
+INFO body_sync_finished attempt=51 outcome=success accepted=true
+INFO root_sync_started attempt=51
+INFO check_started 
+INFO collector_tick targets=3 recent_ups=0 pending=1 checks_in_flight=3 syncs_in_flight=2 discoveries_in_flight=0 checks_started=2 syncs_started=0 discoveries_started=0
+INFO check_started 
+INFO check_finished recorded=true edit_status=observed comment_count_status=observed
+INFO collector_tick targets=3 recent_ups=0 pending=1 checks_in_flight=3 syncs_in_flight=2 discoveries_in_flight=0 checks_started=0 syncs_started=0 discoveries_started=0
+INFO check_finished recorded=true edit_status=observed comment_count_status=observed
+INFO check_finished recorded=true edit_status=observed comment_count_status=observed
+INFO collector_stopping reason=cancelled
+INFO collector_attempt_cancelled attempt=51
+INFO collector_attempt_cancelled attempt=52
+INFO collector_stopped 
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/starlette/testclient.py:37
+  /home/kevin/Projects/PI/bili_charge_dynamics/.venv/lib/python3.12/site-packages/starlette/testclient.py:37: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = typing.Callable[[], typing.ContextManager[anyio.abc.BlockingPortal]]
+
+backend/tests/test_dynamic_media.py::test_configured_real_oss_adapter_uses_signed_put_and_never_exposes_credentials[200]
+backend/tests/test_dynamic_media.py::test_configured_real_oss_adapter_uses_signed_put_and_never_exposes_credentials[403]
+  /home/kevin/Projects/PI/bili_charge_dynamics/.venv/lib/python3.12/site-packages/oss2/auth.py:540: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now_datetime = datetime.utcnow()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED backend/tests/test_comment_count_recovery.py::test_three_targets_obey_two_sync_slots_without_stalling_checks[run]
+1 failed, 808 passed, 3 warnings in 136.44s (0:02:16)
+exit=1

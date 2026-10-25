@@ -3,7 +3,8 @@
 技术栈：Vue 3 + TypeScript + Vite + Vue Router + Element Plus，继续静态 SPA 交付。票据 12 已把完整阅读与管理流程收敛到本应用，
 并删除废弃 React 栈（含 React Router、RTL 适配、旧组件、旧夹具素材与专用构建配置）；仓库里只剩这一套前端实现。
 **已交付范围以本文件「已交付」一节为单一来源**，其他文档只保留指针与证据链接。
-候选版本仍需票据 14–17 的视觉签收、真机验收、静态交付与上线汇总；13 的协议回归只证明自动化与隔离集成。
+票据 14–17 已完成：视觉签收、真机验收、隔离静态交付与上线就绪汇总。17 的结论是**可申请统一上线**，
+但部署须另行授权；其中输入框字号按用户裁决保持库默认 14px，iOS 聚焦放大（F-15-02）作为已知限制记录。13 的协议回归只证明自动化与隔离集成。
 
 ## 已交付
 
@@ -22,7 +23,9 @@
 | 12 | 仅含 Vue 的候选产物：六条路由与完整阅读/管理流程均由 Vue 承载、删除 React 栈与重复实现、交付工具去掉框架耦合、默认真实 API 与 mock/fault 隔离保持 |
 | 13 | 协议与跨流程回归：mock、生产 Adapter/HTTP 替身、实际 API＋隔离 SQLite 分开取证，六路由/分页排序/恢复/图片/管理/竞态逐项回归，建立 AC-01–AC-34 台账 |
 | 14 | 新版视觉签收：63 张四宽度受控截图（含空态/错误态）、布局/触控/焦点审计、用户两轮反馈修正、黄金图与 `visual:compare` 基准 |
+| 15 | 实际设备验收：Linux Chrome `155.0.8059.39`（1280 宽）与 iPhone 13 Pro / iOS 16.4 / Safari 16.4 人工实测；真机暴露并修复 F-15-01（写锁卡死）与 F-15-02（输入框自动放大），最终候选 `32c9510`；无逐项截图/录屏、UA 未采集、B7–B10 未跑均如实记录 |
 | 16 | 隔离 Nginx 静态交付：本机临时编译 Nginx 1.28.0 下六路由直达/刷新、入口与全部哈希资源可达、管理 401 提示、生产/mock 原子切换与前端回退、SQLite 与 collector 不受影响 |
+| 17 | 统一上线就绪汇总：结论**可申请统一上线**——候选产物唯一（视觉重拍 63/63 逐像素相同）、自动化/交付/回退在新候选上重跑通过、AC-01–AC-34 台账完整；设备复验与可审计性缺口按用户裁决记录，已知限制见证据 §7，不授权部署 |
 
 对应规格与票据：[实施规格](../.scratch/frontend-vue-migration/spec.md) · [票据目录](../.scratch/frontend-vue-migration/issues/) ·
 [图片预览验证证据](../.scratch/frontend-vue-migration/evidence/01-native-image-preview.md) ·
@@ -61,8 +64,10 @@ pnpm test:e2e:manage    # 管理页 + 实际 API（backend/tests/live_app 虚构
                        # 只用本机回环地址；如设置了 HTTP(S)_PROXY，需用 NO_PROXY=127.0.0.1,localhost 或清空代理变量
 pnpm visual:baseline     # 票据 14：pnpm build + 四宽度受控截图 + 布局/触控/焦点审计
                        # 输出到 ../.scratch/frontend-vue-migration/evidence/visual-14/
+                       # 想复核另一份候选而不覆盖签收记录：VISUAL_OUT_DIR=<其他目录> pnpm visual:baseline
                        # 配置自动补 NO_PROXY=127.0.0.1,localhost，无需手工设置
 pnpm visual:compare      # 与 tests/visual-baseline/ 的用户签收黄金图逐张比较（AE，fuzz 1%，阈值 0.02%）
+                       # 比较指定目录：pnpm visual:compare --current <截图目录>（本命令只比较现成 PNG，不重新截图）
 pnpm visual:golden -- --reason "为什么是预期变化"
                        # 仅在确认视觉变化是预期的之后更新黄金图；必须写原因并进提交
 pnpm test:nginx-parity   # 只比对 deploy/nginx*.conf 的 location/server 指令一致性，无需 nginx 二进制
@@ -154,8 +159,10 @@ mode 与自检构建中出现。
 后续视觉变更先跑 `pnpm visual:compare`；只有确认变化符合预期，才用 `pnpm visual:golden -- --reason "..."`
 更新黄金图并提交原因，不能用重跑截图掩盖退化。
 
-仍待执行的是 17（上线就绪汇总）。13 只证明自动化与隔离集成；14 只证明 Linux Chromium 下的视觉基准；
-15 只证明两类真机目标；16 只在本机隔离 Nginx 下验证静态交付、资源更新与前端回退，
+17 的上线就绪汇总已完成，结论为**可申请统一上线**：视觉重拍与签收黄金图逐像素相同，自动化、隔离 Nginx 交付与回退都在最终候选上重跑；
+设备复验与可审计性缺口、以及输入框字号与 iOS 聚焦放大等已知限制见
+[17 上线就绪汇总证据 §7](../.scratch/frontend-vue-migration/evidence/17-release-readiness.md)。13 只证明自动化与隔离集成；
+14 只证明 Linux Chromium 下的视觉基准；15 只证明两类真机目标；16 只在本机隔离 Nginx 下验证静态交付、资源更新与前端回退，
 不代表目标机、云部署、持续运行或正式上线通过。
 
 票据 15 已完成真机验收（Linux Chrome 155.0.8059.39 与 iPhone 13 Pro / iOS 16.4），记录见

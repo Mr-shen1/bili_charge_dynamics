@@ -1,0 +1,11 @@
+
+> bili-charge-dynamics-frontend@0.0.0 test:nginx-parity /home/kevin/Projects/PI/bili_charge_dynamics/frontend
+> node scripts/verify-nginx-parity.mjs
+
+nginx 部署配置与隔离基准一致：
+  location 块 8 个逐一匹配
+  server 级指令 4 条匹配
+  片段安装路径 /etc/nginx/snippets/bili-locations.conf 两处 include 一致
+  阶段一仅监听回环；阶段二锁住 /manage、/api/manage/、/api/sync/ 且 realm 统一
+
+注意：本脚本只做结构与一致性校验，不替代目标机上的 `nginx -t`。

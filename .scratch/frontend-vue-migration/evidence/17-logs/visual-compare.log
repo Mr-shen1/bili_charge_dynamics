@@ -1,0 +1,6 @@
+
+> bili-charge-dynamics-frontend@0.0.0 visual:compare /home/kevin/Projects/PI/bili_charge_dynamics/frontend
+> node scripts/compare-visual-baseline.mjs --current /home/kevin/Projects/PI/bili_charge_dynamics/.scratch/frontend-vue-migration/evidence/visual-17
+
+视觉回归通过：63 张与黄金图一致（AE，fuzz 1%，阈值 0.02%）
+基准版本 1，签收候选 89d0b49e213861badcecfe667de4f9330f134d22

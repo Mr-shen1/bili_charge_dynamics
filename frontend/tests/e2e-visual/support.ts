@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { expect, type Page, type Route } from '@playwright/test';
 import {
   IMAGE_ORIGIN, firstPage, identities, mainDynamicId, replies, rootComments, rootWithReplies, secondPage,
@@ -9,9 +9,10 @@ import {
 /** 票据 14 的四个验收宽度与固定 CSS 视口高度；截图条件按此记录。 */
 export const VIEWPORTS = [360, 390, 768, 1280] as const;
 export const VIEWPORT_HEIGHT = 900;
-export const SCREENSHOT_DIR = join(
-  process.cwd(), '..', '.scratch', 'frontend-vue-migration', 'evidence', 'visual-14',
-);
+// 默认写票据 14 的签收目录；复核另一份候选时用 VISUAL_OUT_DIR 指到新目录，避免覆盖签收记录。
+export const SCREENSHOT_DIR = process.env.VISUAL_OUT_DIR
+  ? resolve(process.env.VISUAL_OUT_DIR)
+  : join(process.cwd(), '..', '.scratch', 'frontend-vue-migration', 'evidence', 'visual-14');
 
 export interface ArchiveFaults {
   listEmpty?: boolean;

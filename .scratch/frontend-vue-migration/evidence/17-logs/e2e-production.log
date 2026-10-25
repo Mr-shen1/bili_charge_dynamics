@@ -1,0 +1,46 @@
+
+> bili-charge-dynamics-frontend@0.0.0 test:e2e:production /home/kevin/Projects/PI/bili_charge_dynamics/frontend
+> playwright test --config playwright.production.config.ts
+
+
+Running 6 tests using 1 worker
+
+[2m[WebServer] [22m[2m20:14:27[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/archive/ups[39m
+[2m[WebServer] [22mError: connect ECONNREFUSED 127.0.0.1:8000
+[2m[WebServer] [22m    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:2021:16)
+[2m[WebServer] [22m[2m20:14:27[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/archive/dynamics?limit=10&scope=all[39m
+[2m[WebServer] [22mError: connect ECONNREFUSED 127.0.0.1:8000
+[2m[WebServer] [22m    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:2021:16)
+[2m[WebServer] [22m[2m20:14:28[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/archive/ups[39m
+[2m[WebServer] [22mError: connect ECONNREFUSED 127.0.0.1:8000
+[2m[WebServer] [22m    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:2021:16)
+[2m[WebServer] [22m[2m20:14:28[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/archive/dynamics?limit=10&scope=up&uid=7[39m
+[2m[WebServer] [22mError: connect ECONNREFUSED 127.0.0.1:8000
+[2m[WebServer] [22m    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:2021:16)
+[2m[WebServer] [22m[2m20:14:28[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/manage/ups[39m
+[2m[WebServer] [22mError: connect ECONNREFUSED 127.0.0.1:8000
+[2m[WebServer] [22m    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:2021:16)
+[2m[WebServer] [22m[2m20:14:29[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/manage/ups[39m
+[2m[WebServer] [22mError: connect ECONNREFUSED 127.0.0.1:8000
+[2m[WebServer] [22m    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:2021:16)
+  ✓  1 [production] › tests/e2e-production/assemblies.spec.ts:4:1 › 生产装配渲染六条正式路由与不存在页 (2.2s)
+[2m[WebServer] [22m[2m20:14:29[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/archive/ups[39m
+[2m[WebServer] [22mError: connect ECONNREFUSED 127.0.0.1:8000
+[2m[WebServer] [22m    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:2021:16)
+[2m[WebServer] [22m[2m20:14:29[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/archive/dynamics?limit=10&scope=all[39m
+[2m[WebServer] [22mError: connect ECONNREFUSED 127.0.0.1:8000
+[2m[WebServer] [22m    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:2021:16)
+  ✓  2 [production] › tests/e2e-production/assemblies.spec.ts:35:1 › 生产装配没有自检入口、装配标识或自检路由 (606ms)
+  -  3 [production] › tests/e2e-production/assemblies.spec.ts:50:1 › fault 装配与 mock 装配相互独立
+  -  4 [fault] › tests/e2e-production/assemblies.spec.ts:4:1 › 生产装配渲染六条正式路由与不存在页
+  -  5 [fault] › tests/e2e-production/assemblies.spec.ts:35:1 › 生产装配没有自检入口、装配标识或自检路由
+[2m[WebServer] [22m[2m20:14:32[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /images/thumb/archive-quad-2.svg[39m
+[2m[WebServer] [22mError: connect ECONNREFUSED 127.0.0.1:4319
+[2m[WebServer] [22m    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:2021:16)
+[2m[WebServer] [22m[2m20:14:32[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /images/thumb/archive-quad-1.svg[39m
+[2m[WebServer] [22mError: connect ECONNREFUSED 127.0.0.1:4319
+[2m[WebServer] [22m    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:2021:16)
+  ✓  6 [fault] › tests/e2e-production/assemblies.spec.ts:50:1 › fault 装配与 mock 装配相互独立 (1.4s)
+
+  3 skipped
+  3 passed (8.1s)

@@ -2,7 +2,7 @@
 // 运行：pnpm visual:baseline（先 pnpm build，再跑本配置的四个宽度）。
 import { createHash } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { expect, test, type Page } from '@playwright/test';
 import {
@@ -61,7 +61,8 @@ test.beforeAll(async () => {
   artifacts['sourceStatus'] = git(['status', '--porcelain']).split('\n')
     .filter(Boolean)
     // .pi/ 是代理工具配置，截图目录是本次输出：两者不属于候选源码，其余未提交文件仍如实记录。
-    .filter(line => !line.includes('.pi/') && !line.includes('evidence/visual-14/'));
+    // 截图目录按实际输出位置排除，换 VISUAL_OUT_DIR 复核另一份候选时不会把自己算成源码改动。
+    .filter(line => !line.includes('.pi/') && !line.includes(basename(SCREENSHOT_DIR)));
   await prepareOutputDirectory();
   resetSamples();
 });
@@ -262,8 +263,10 @@ test.afterAll(async () => {
     ticket: '14',
     scope: 'Vue 新版视觉受控截图（未签收；签收范围与反馈单独登记）',
     artifacts,
-    sourceNote: '截图产生于本次改动提交前的工作树；sourceCommit 为当时的 HEAD，sourceStatus 列出未提交改动。'
-      + '最终提交与产物标识以 evidence/14-visual-baseline-preparation.md 登记为准。',
+    // 目录用途随运行变化（票据 14 的签收目录，或 VISUAL_OUT_DIR 指向的复核目录），这里只记录与产物相关的事实，
+    // 引用本目录的证据文档自行说明用途与结论。
+    sourceNote: '截图产生于本次运行的工作树；sourceCommit 为当时的 HEAD，sourceStatus 列出未提交改动。'
+      + '本目录的用途、签收范围与结论以引用它的证据文档为准（票据 14 为 evidence/14-visual-baseline-preparation.md）。',
     environment: {
       browser: `Chromium ${browserVersion}`,
       playwrightVersion: JSON.parse(

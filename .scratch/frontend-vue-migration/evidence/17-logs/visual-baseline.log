@@ -1,0 +1,58 @@
+
+> bili-charge-dynamics-frontend@0.0.0 visual:baseline /home/kevin/Projects/PI/bili_charge_dynamics/frontend
+> pnpm build && playwright test --config playwright.visual.config.ts
+
+
+> bili-charge-dynamics-frontend@0.0.0 build /home/kevin/Projects/PI/bili_charge_dynamics/frontend
+> vue-tsc --noEmit && vite build
+
+vite v7.3.1 building client environment for production...
+transforming...
+✓ 1780 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                      0.46 kB │ gzip:  0.32 kB
+dist/assets/UserAvatar-Dje3KGZD.css                  0.09 kB │ gzip:  0.10 kB
+dist/assets/ReadNotice-Cfo76pwj.css                  0.32 kB │ gzip:  0.20 kB
+dist/assets/ReplyPager-CfpI0OJ7.css                  0.65 kB │ gzip:  0.28 kB
+dist/assets/ManagePage-B-gTWe17.css                  1.18 kB │ gzip:  0.50 kB
+dist/assets/ManageShell-BLM-a8kI.css                 1.78 kB │ gzip:  0.60 kB
+dist/assets/DynamicContent-CzFXcakS.css              1.91 kB │ gzip:  0.65 kB
+dist/assets/CommentThreadPage-DtaLFI7d.css           2.04 kB │ gzip:  0.63 kB
+dist/assets/ListPage-Cto3jMeN.css                    2.28 kB │ gzip:  0.83 kB
+dist/assets/ManageUpPage-CVEEzFBM.css                2.36 kB │ gzip:  0.67 kB
+dist/assets/DetailPage-BMl-32cC.css                  5.64 kB │ gzip:  1.25 kB
+dist/assets/index-DDIJRK8V.css                      70.76 kB │ gzip: 10.29 kB
+dist/assets/_plugin-vue_export-helper-DlAUqK2U.js    0.09 kB │ gzip:  0.10 kB
+dist/assets/index-vr_gDm5u.js                        0.44 kB │ gzip:  0.34 kB
+dist/assets/display-Cvhq1Yp_.js                      0.47 kB │ gzip:  0.34 kB
+dist/assets/NotFoundPage-3gVQv4LQ.js                 0.52 kB │ gzip:  0.41 kB
+dist/assets/UserAvatar-CqGYnuFg.js                   0.83 kB │ gzip:  0.58 kB
+dist/assets/ReadNotice-BXgOqtqE.js                   0.91 kB │ gzip:  0.59 kB
+dist/assets/ManagePage-CoBpNHdy.js                   3.44 kB │ gzip:  1.80 kB
+dist/assets/ReplyPager-DtNwX84x.js                   3.75 kB │ gzip:  1.91 kB
+dist/assets/CommentThreadPage-DF4mlpIg.js            5.13 kB │ gzip:  2.25 kB
+dist/assets/index-DKBDl9dV.js                        6.11 kB │ gzip:  2.62 kB
+dist/assets/index-wVE7swtF.js                        6.63 kB │ gzip:  2.73 kB
+dist/assets/ListPage-DQUbyPrf.js                     7.34 kB │ gzip:  3.23 kB
+dist/assets/DynamicContent-B9UdEapu.js              11.75 kB │ gzip:  4.99 kB
+dist/assets/DetailPage-De0sBGKb.js                  18.06 kB │ gzip:  6.06 kB
+dist/assets/ManageUpPage-BopNWUqT.js                34.82 kB │ gzip: 11.45 kB
+dist/assets/ManageShell-BJvydHRh.js                 46.72 kB │ gzip: 16.52 kB
+dist/assets/index-C-E5912O.js                      229.99 kB │ gzip: 84.60 kB
+✓ built in 3.79s
+[2m[WebServer] [22mINFO:     Started server process [1836519]
+[2m[WebServer] [22mINFO:     Waiting for application startup.
+[2m[WebServer] [22mINFO:     Application startup complete.
+[2m[WebServer] [22mINFO:     Uvicorn running on http://127.0.0.1:4178 (Press CTRL+C to quit)
+
+Running 6 tests using 1 worker
+
+  ✓  1 tests/e2e-visual/capture.spec.ts:70:1 › 归档阅读场景与四宽度截图 (12.4s)
+  ✓  2 tests/e2e-visual/capture.spec.ts:143:1 › 归档空态与错误态 (9.0s)
+  ✓  3 tests/e2e-visual/capture.spec.ts:174:1 › 管理列表与单 UP 管理截图（实际 API + 隔离 SQLite） (4.0s)
+  ✓  4 tests/e2e-visual/capture.spec.ts:216:1 › 管理空态与错误态 (1.9s)
+  ✓  5 tests/e2e-visual/layout.spec.ts:77:1 › 四宽度阅读布局、触控与焦点 (8.8s)
+  ✓  6 tests/e2e-visual/layout.spec.ts:164:1 › 四宽度管理页布局、触控与焦点 (1.4s)
+
+  6 passed (41.6s)
