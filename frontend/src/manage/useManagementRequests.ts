@@ -23,11 +23,21 @@ export function useManagementRequests() {
     const controller = new AbortController();
     controllers.set(uid, controller);
     sync();
-    const result = await operation(controller.signal);
-    if (!active || controller.signal.aborted || controllers.get(uid) !== controller) return null;
-    controllers.delete(uid);
-    sync();
-    return result.status === 'cancelled' ? null : result;
+    try {
+      const result = await operation(controller.signal);
+      if (!active || controller.signal.aborted || controllers.get(uid) !== controller) return null;
+      return result.status === 'cancelled' ? null : result;
+    } catch {
+      // 取消不是错误；其余异常（含同步抛出）必须变成可见失败，并由 finally 释放写锁，
+      // 否则这个 UID 会永久停在在途状态，同一 UP 的后续写入全部被挡掉（票据 15 的 F-15-01）。
+      if (!active || controller.signal.aborted || controllers.get(uid) !== controller) return null;
+      return { status: 'error', message: '管理接口响应异常，请重试。' };
+    } finally {
+      if (controllers.get(uid) === controller) {
+        controllers.delete(uid);
+        sync();
+      }
+    }
   }
 
   onUnmounted(() => {

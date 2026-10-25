@@ -397,6 +397,54 @@ describe('/manage/ups/:upId 删除配置与指定目标', () => {
     expect(listTargets).toHaveBeenCalledTimes(2);
   });
 
+  it('写入同步抛错后释放该 UP 的写锁，可原位重试而不是永久停在在途状态', async () => {
+    // 真机基线 iOS 16.4 缺 AbortSignal.any：早期实现在写请求前组合信号，同步抛错，
+    // 而写锁没有 finally 释放，于是按钮永久停在「正在校验…」且同一 UP 的后续写入全被挡掉。
+    const addTarget = vi.fn()
+      .mockImplementationOnce(() => {
+        throw new TypeError('AbortSignal.any is not a function');
+      })
+      .mockResolvedValueOnce({ status: 'success' as const, data: { id: '999' } });
+    const card = await specified(createManagement({
+      listUps: async () => ({ status: 'success', data: [managementUp('123')] }),
+      listTargets: async () => ({ status: 'success', data: [] }),
+      addTarget,
+    }));
+    const input = await card.findByRole('textbox', { name: '动态 ID' }) as HTMLInputElement;
+    await fireEvent.update(input, '999');
+    await fireEvent.submit(input.closest('form')!);
+
+    // 异常必须变成可见的失败反馈，而不是把写入锁留在这个 UP 上：按钮回到可点的重试态。
+    expect((await card.findByRole('alert')).textContent).toContain('管理接口响应异常');
+    const retry = card.getByRole('button', { name: '重试添加目标' }) as HTMLButtonElement;
+    expect(retry.disabled).toBe(false);
+    expect(input.value).toBe('999');
+
+    await fireEvent.submit(input.closest('form')!);
+    expect(await card.findByText('归属校验通过，目标关联已保存。')).toBeTruthy();
+    expect(addTarget).toHaveBeenCalledTimes(2);
+  });
+
+  it('移除目标同步抛错同样释放写锁，随后可移除其他目标', async () => {
+    const deleteTarget = vi.fn()
+      .mockImplementationOnce(() => {
+        throw new TypeError('AbortSignal.any is not a function');
+      })
+      .mockResolvedValueOnce({ status: 'success' as const, data: undefined });
+    const card = await specified(createManagement({
+      listUps: async () => ({ status: 'success', data: [managementUp('123')] }),
+      listTargets: async () => ({ status: 'success', data: [{ id: '1000' }, { id: '1001' }] }),
+      deleteTarget,
+    }));
+    await fireEvent.click(await card.findByRole('button', { name: '移除目标 1000' }));
+    expect((await card.findByRole('alert')).textContent).toContain('管理接口响应异常');
+    expect((card.getByRole('button', { name: '移除目标 1001' }) as HTMLButtonElement).disabled).toBe(false);
+
+    await fireEvent.click(card.getByRole('button', { name: '移除目标 1001' }));
+    expect(await card.findByText('目标已移除；已有归档保留。')).toBeTruthy();
+    expect(deleteTarget).toHaveBeenCalledTimes(2);
+  });
+
   it('同一 UP 的写入串行：目标添加在途时其他写入与重复提交被阻止', async () => {
     const pending = deferred<Awaited<ReturnType<ReturnType<typeof createManagement>['addTarget']>>>();
     const addTarget = vi.fn(() => pending.promise);

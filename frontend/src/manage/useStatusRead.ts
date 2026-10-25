@@ -1,5 +1,6 @@
 import { computed, onMounted, onUnmounted, ref, type Ref } from 'vue';
 import { reportReadError } from '../app/readError';
+import { combineSignals } from '../app/signals';
 import type { ManagementResult } from './managementApi';
 
 /**
@@ -21,7 +22,7 @@ export function useStatusRead<T>(noun: string, load: (signal: AbortSignal) => Pr
     state.value = 'loading';
     try {
       // 卸载时生命周期信号先行取消，传输忽略取消也不会把结果写回已离开的面板。
-      const result = await load(AbortSignal.any([controller.signal, lifetime.signal]));
+      const result = await load(combineSignals(controller.signal, lifetime.signal));
       if (!active || controller.signal.aborted || request !== controller) return;
       request = null;
       if (result.status === 'success') {

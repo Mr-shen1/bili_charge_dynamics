@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { ElAlert, ElButton, ElForm, ElFormItem, ElInput } from 'element-plus';
 import { useSession } from '../app/session';
+import { combineSignals } from '../app/signals';
 import { reportReadError } from '../app/readError';
 import {
   invalidTargetMessage, isValidTargetId, type ManagedTarget,
@@ -70,10 +71,10 @@ async function add(): Promise<void> {
   notice.value = null;
   addPending.value = true;
   const result = await props.requests.run(props.uid, signal =>
-    management.addTarget({ uid: props.uid, id: submitted, signal: AbortSignal.any([signal, lifetime.signal]) }));
+    management.addTarget({ uid: props.uid, id: submitted, signal: combineSignals(signal, lifetime.signal) }));
+  addPending.value = false;
   // 已取消、离开页面或属于别的写入：迟到结果不改写当前目标区。
   if (!result) return;
-  addPending.value = false;
   if (result.status === 'success') {
     const added = result.data;
     targets.value = targets.value.some(target => target.id === added.id) ? targets.value
@@ -91,9 +92,9 @@ async function remove(targetId: string): Promise<void> {
   notice.value = null;
   removingId.value = targetId;
   const result = await props.requests.run(props.uid, signal =>
-    management.deleteTarget({ uid: props.uid, id: targetId, signal: AbortSignal.any([signal, lifetime.signal]) }));
-  if (!result) return;
+    management.deleteTarget({ uid: props.uid, id: targetId, signal: combineSignals(signal, lifetime.signal) }));
   removingId.value = null;
+  if (!result) return;
   if (result.status === 'success') {
     targets.value = targets.value.filter(target => target.id !== targetId);
     notice.value = { error: false, text: '目标已移除；已有归档保留。', action: 'remove' };

@@ -251,6 +251,17 @@ test.describe('UP 监控管理', () => {
         };
       });
       expect(list.scrollWidth, `${width}px 管理列表不应横向溢出`).toBeLessThanOrEqual(list.clientWidth);
+      // 新增 UID 的输入框是 B1 报告 iOS 放大的现场，同样要 ≥16px。
+      const listInputFontSizes = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>(
+        '.manage-add input, .manage-add textarea',
+      )].filter(node => {
+        const field = node as HTMLInputElement;
+        return field.type !== 'radio' && field.type !== 'checkbox' && node.getBoundingClientRect().width > 0;
+      }).map(node => Math.round(parseFloat(getComputedStyle(node).fontSize))));
+      expect(listInputFontSizes.length).toBeGreaterThan(0);
+      for (const size of listInputFontSizes) {
+        expect(size, `${width}px 新增 UID 输入框字号不应小于 16px`).toBeGreaterThanOrEqual(16);
+      }
       expect(list.heights.length).toBeGreaterThan(0);
       for (const height of list.heights) {
         expect(height, `${width}px 管理列表触控区域高度`).toBeGreaterThanOrEqual(44);
@@ -296,6 +307,11 @@ test.describe('UP 监控管理', () => {
           heights,
           cardWidth: Math.round(card?.getBoundingClientRect().width ?? 0),
           cardScrollWidth: card?.scrollWidth ?? 0,
+          // 只看能聚焦放大的文本输入框：radio/checkbox 的隐藏原生控件不参与 iOS 自动缩放。
+          inputFontSizes: [...document.querySelectorAll<HTMLInputElement>('.manage-up input')]
+            .filter(node => node.type !== 'radio' && node.type !== 'checkbox'
+              && node.getBoundingClientRect().width > 0)
+            .map(node => Math.round(parseFloat(getComputedStyle(node).fontSize))),
         };
       });
       expect(specified.scrollWidth, `${width}px 指定模式不应横向溢出`).toBeLessThanOrEqual(specified.clientWidth);
@@ -304,6 +320,12 @@ test.describe('UP 监控管理', () => {
       expect(specified.heights.length).toBeGreaterThanOrEqual(4);
       for (const height of specified.heights) {
         expect(height, `${width}px 指定模式触控区域高度`).toBeGreaterThanOrEqual(44);
+      }
+      // iOS Safari 对 font-size < 16px 的输入框聚焦时强制放大整页且失焦不还原（票据 15 F-15-02），
+      // 输入类控件因此统一不小于 16px。
+      expect(specified.inputFontSizes.length).toBeGreaterThan(0);
+      for (const size of specified.inputFontSizes) {
+        expect(size, `${width}px 输入框字号不应小于 16px`).toBeGreaterThanOrEqual(16);
       }
 
       // 检查与发现状态：读取按钮、折叠头与展开后的详情同样不横溢且可点按。
