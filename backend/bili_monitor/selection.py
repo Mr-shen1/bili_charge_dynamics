@@ -2,6 +2,8 @@
 
 from uuid import uuid4
 
+from .notifications import outbox
+
 
 SELECTED_TARGETS = """SELECT t.uid, t.id FROM targets t JOIN monitors m ON m.uid = t.uid
     WHERE m.enabled = 1 AND m.mode = 'specified'
@@ -29,8 +31,17 @@ def refresh_selections(connection, uid, *, reset=False):
         f"SELECT id FROM ({SELECTED_TARGETS}) WHERE uid = ?", (uid,))}
     previous = {row[0] for row in connection.execute(
         "SELECT id FROM target_selections WHERE uid = ?", (uid,))}
-    for id in previous if reset else previous - selected:
+    # 只有真正离开入选才结束通知阶段；reset 只轮换令牌，持续入选不得重设起点。
+    removed = previous - selected
+    for id in previous if reset else removed:
         connection.execute("DELETE FROM target_selections WHERE uid = ? AND id = ?", (uid, id))
+    for id in removed:
+        if outbox.has_schema(connection):
+            outbox.retire(connection, uid, id)
     for id in selected if reset else selected - previous:
+        token = uuid4().hex
         connection.execute("INSERT INTO target_selections(uid, id, token) VALUES (?, ?, ?)",
-                           (uid, id, uuid4().hex))
+                           (uid, id, token))
+        # 旧版本迁移创建入选表时，通知 schema 尚未建立。
+        if outbox.has_schema(connection):
+            outbox.activate(connection, uid, id, token)

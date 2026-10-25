@@ -90,7 +90,7 @@ print('user_version', c.execute('PRAGMA user_version').fetchone()[0])
 "
 ```
 
-当前代码 `Store.migrate` 迁移到 `user_version = 14`；升级后应等于它。小于它是迁移未执行，大于它是库比代码新（旧代码会拒绝启动）。
+当前代码 `Store.migrate` 迁移到 `user_version = 16`；升级后应等于它。小于它是迁移未执行，大于它是库比代码新（旧代码会拒绝启动）。
 
 - 采集状态用只读 HTTP 核对（不触发检查）：`GET /api/manage/ups/{uid}/checks`、`/discovery`。
 - 前端仍由 `bili-charge-live-34-web.service` 提供，`http://127.0.0.1:18445/manage` 应照常可用；前端未发版时无需重启它。

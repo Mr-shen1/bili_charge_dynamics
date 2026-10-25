@@ -9,7 +9,7 @@
 | [SRS：软件需求规格](product/SRS.md) | 确认产品范围、FR/DR/NFR 和验收条件；Vue 迁移的既有行为冲突按已确认代码基线同步 |
 | [FSR：可行性研究](product/FSR.md) | 了解方案取舍、资源假设、风险与可行性边界 |
 | [HLD：高层设计](design/HLD.md) | 理解模块职责、读取/采集边界、状态及部署设计 |
-| [飞书通知需求与设计](design/feishu-notifications.md) | 接入飞书、调整消息/群路由、确定通知时机与基线、实现事务发件箱/独立投递进程或评论精确链接时阅读；用户已确认，尚未实施验收，对应 SRS FR-21 / AC-35 |
+| [飞书通知需求与设计](design/feishu-notifications.md) | 接入飞书、调整消息/群路由、确定通知时机与基线、实现事务发件箱/独立投递进程或评论精确链接时阅读；用户已确认，票据 01（动态变化闭环）已实施并取证，其余未实施未验收，对应 SRS FR-21 / AC-35 |
 | [领域词汇](../GLOSSARY.md) | 区分动态变化、新增评论、UP 群/全员群/系统群及通知基线；原阅读术语仍见 SRS |
 | [UI 视觉规范](design/ui-reference.md) | Vue 新版视觉基准与功能裁剪；旧参考图、像素量测和 #35 记录保留为历史 |
 | [前端重构：Vue 3 + Element Plus](design/frontend-migration.md) | 已确认的目标技术栈、UI/图片替换边界、分阶段实施与统一上线门槛；已交付范围与命令以 [前端 README](../frontend/README.md) 为单一来源（票据 12 已形成仅含 Vue 的候选产物，13 已完成协议与跨流程回归，14 已完成视觉签收并建立黄金图，15 已完成真机验收，16 已完成本机隔离 Nginx 静态交付/资源更新/回退，17 已出上线就绪汇总：**结论可申请统一上线**，附已裁决的已知限制，部署另行授权） |
@@ -22,6 +22,7 @@
 | --- | --- |
 | [监控管理接口](backend/api/management-api.md) | UID、配置、模式、错误与持久化契约 |
 | [固定节拍采集与检查状态](backend/api/collector-api.md) | 独立采集进程、固定节拍、观察/执行状态与重启边界 |
+| [通知进程与动态变化投递](backend/api/notification-process.md) | 独立通知进程启动、路由配置、事件资格与去重、发件箱状态、投递/退避/租约参数与迁移；只在 01 交付范围内有效 |
 | [近期目标发现与窗口](backend/api/discovery-api.md) | 原识别规则、跨页凑 N、可信发布/失败保留、模式互斥、窗口生命周期与只读管理 HTTP |
 | [指定目标与首次归档接口](backend/api/archive-api.md) | 目标校验、一次初始化、归档读取及信息边界 |
 | [归档 API 客户端](backend/api/archive-api-client.md) | 前端生产 Adapter 的读取与映射约定 |

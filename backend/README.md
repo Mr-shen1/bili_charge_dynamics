@@ -17,7 +17,7 @@ exec .venv/bin/python -m uvicorn backend.bili_monitor.app:app --host 127.0.0.1 -
 
 Python 使用 `.python-version` 的 3.12 系列（记录实际补丁版本）；FastAPI、HTTPX、Uvicorn、OSS SDK 和测试依赖由清单/`uv.lock` 固定。上述路径是示例，须选择**仓库外持久、可写的绝对 SQLite 路径**，与 collector 完全相同，不随发布目录切换；默认 `backend/data/monitor.sqlite` 仅适合本地开发。依赖经 uv 同步后直接 `exec` 其解释器，打印的 shell PID 随即成为 Python PID，不会只杀掉 uv 父进程而留下子进程。仅一个 API，不加 `--workers` / `--reload`；没有内嵌定时器或常驻 Node.js，collector 另起终端。
 
-API 的 ASGI lifespan 与取得锁的 collector 启动都调用 `Store.migrate`（当前 v13）。升级先 TERM/Ctrl-C 停两个进程、等退出，再切换同一代码版本并 `uv sync --locked`；先启动 API 完成迁移并确认 `GET /api/manage/ups` 为 200，再启动 collector。未来 schema 拒绝启动，失败事务回滚；无独立迁移 CLI、自动降级或备份，勿删库、改版本号或让旧进程与新迁移并行。
+API 的 ASGI lifespan、取得锁的 collector 与独立通知进程启动都调用 `Store.migrate`（当前 v16）。升级先 TERM/Ctrl-C 停两个进程、等退出，再切换同一代码版本并 `uv sync --locked`；先启动 API 完成迁移并确认 `GET /api/manage/ups` 为 200，再启动 collector。未来 schema 拒绝启动，失败事务回滚；无独立迁移 CLI、自动降级或备份，勿删库、改版本号或让旧进程与新迁移并行。
 
 **首期无鉴权**：管理、初始化及归档接口均可被访问者调用，可能暴露内容或被修改配置。请通过监听地址、防火墙或反向代理限制暴露；隐藏入口不是保护。本期没有备份或容量治理。
 
@@ -33,6 +33,23 @@ exec .venv/bin/python -m backend.bili_monitor.service --host 127.0.0.1 --port 80
 该入口托管一个 API 子进程和一个独立 collector 子进程，不在 API 内运行定时器。等待 API 完成迁移和监听后才启动 collector；两者继承同一绝对数据库路径、可选 `BILI_COOKIE_FILE` 与 OSS 环境。任一子进程退出时会停止另一进程并报固定错误，便于外部服务托管发现故障；Ctrl-C/TERM 先等待 collector 退出，再停止 API。不要与下节的手动双进程入口同时使用，也不要在已有 collector 运行时重复启动。
 
 当前本机 `live-34/run-api.sh` 已改用该入口，仍保留原端口、数据库和 Cookie 文件路径；需要维护者重启原服务才会生效。它仍清除 OSS 配置，因此有图目标的媒体会保持待归档，不能把文本完成视为全项完成。本次未启动、重启服务，也未做测试或运行验证。
+
+## 飞书通知进程（01）
+
+动态可信新版本正文成功归档后登记通知事件，由独立进程按索引领取并投递到 UP 群；首次正文只建立基线，通知失败不回写归档成功状态。启动与配置见[通知进程与投递契约](../docs/backend/api/notification-process.md)：
+
+```sh
+export BILI_DATABASE_PATH=/srv/bili-monitor/monitor.sqlite
+export BILI_NOTIFICATION_CONFIG=/srv/bili-monitor/notifications.json
+exec .venv/bin/python -m backend.bili_monitor.notifier
+```
+
+通知进程与 API/collector 使用同一 SQLite，但有独立 `.notifier.lock`，同一库只能运行一个投递实例；`service.py` 目前仍只托管 API 与 collector，三进程托管属票据 10。配置与凭据只在服务端文件，不进入浏览器、日志或发件箱。最小隔离演示（不访问网络、不读取真实凭据）：
+
+```sh
+demo_dir=$(mktemp -d)
+uv run python -m backend.tests.notification_demo --database "$demo_dir/monitor.sqlite"
+```
 
 ## 23 独立采集进程
 
@@ -254,7 +271,7 @@ initial 在根／回复独立提交后处理评论图；正文受限不阻断实
 
 ## SQLite 与安全
 
-schema 顺序：v1 身份/配置、v2 targets、v3 archives/generation、v4 持久分页、v5 cursor 资源/过期/索引、v6 根评论及独立持久评论页、v7 回复／逐根同步状态／回复持久页、v8 媒体尝试令牌及归档文档媒体字段、v9 评论 owner 尝试标识与旧根来源 pending 回填、v10 持久目标检查/观察/工作/时间/独立错误、v11 目标领取 fencing 令牌、v12 按 UP 发现尝试/可信结果/领取令牌、v13 当前入选目标令牌。v0–v12 短事务迁移到 v13，冲突回滚、未来版本拒绝启动；旧 v4 无限期 cursor 被失效，但归档不删。每次操作独立连接并启用外键，等待锁最多 2 秒；数据库操作在线程池执行，网络不进事务。删除配置只 cascade 指定关联，绝不 cascade 身份或归档。
+schema 顺序：v1 身份/配置、v2 targets、v3 archives/generation、v4 持久分页、v5 cursor 资源/过期/索引、v6 根评论及独立持久评论页、v7 回复／逐根同步状态／回复持久页、v8 媒体尝试令牌及归档文档媒体字段、v9 评论 owner 尝试标识与旧根来源 pending 回填、v10 持久目标检查/观察/工作/时间/独立错误、v11 目标领取 fencing 令牌、v12 按 UP 发现尝试/可信结果/领取令牌、v13 当前入选目标令牌、v14 回复同步时间与观察计数、v15 页面信号采样时间、v16 通知阶段/基线/写领取/事件/目标投递。v0–v15 短事务迁移到 v16，冲突回滚、未来版本拒绝启动；旧 v4 无限期 cursor 被失效，但归档不删。每次操作独立连接并启用外键，等待锁最多 2 秒；数据库操作在线程池执行，网络不进事务。删除配置只 cascade 指定关联，绝不 cascade 身份或归档。
 
 错误响应使用固定错误码与提示，不记录请求体、完整上游响应或异常秘密；错误消息只允许管理接口诊断约定所引用的固定安全目录。HTTPX/HTTPCore、OSS SDK、Requests/urllib3 传输日志及 Uvicorn access 日志禁用。Nginx 模板显式 `access_log off; error_log /dev/null;`：默认 error 日志在 API 不可达时也会泄露 query，所以不用原始请求日志诊断，改查 `nginx -t`、HTTP 状态、进程退出及固定脱敏 API 错误；外层代理也不得重新记录原始 URI/请求体。本票测试不读取真实 Cookie、不执行/导入参考脚本、不请求真实上游。
 

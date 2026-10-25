@@ -8,6 +8,7 @@ from uuid import uuid4
 from contextlib import contextmanager
 from pathlib import Path
 
+from .notifications import outbox
 from .contracts import APIError
 from .checks import CheckStore
 from .selection import refresh_selections, selection_token, selection_matches
@@ -85,7 +86,7 @@ class Store(CheckStore, DiscoveryStore):
             connection.execute("BEGIN IMMEDIATE")
             try:
                 version = connection.execute("PRAGMA user_version").fetchone()[0]
-                if version > 15:
+                if version > 16:
                     raise RuntimeError("Unsupported database schema version")
                 if version == 0:
                     connection.execute("""CREATE TABLE identities (
@@ -223,7 +224,9 @@ class Store(CheckStore, DiscoveryStore):
                     columns = {row[1] for row in connection.execute("PRAGMA table_info(target_checks)")}
                     if "page_checked_at" not in columns:
                         connection.execute("ALTER TABLE target_checks ADD COLUMN page_checked_at TEXT")
-                connection.execute("PRAGMA user_version = 15")
+                if version < 16:
+                    outbox.migrate(connection)
+                connection.execute("PRAGMA user_version = 16")
                 connection.commit()
             except BaseException:
                 connection.rollback()
@@ -458,6 +461,7 @@ class Store(CheckStore, DiscoveryStore):
                     ON CONFLICT(id) DO UPDATE SET generation = archives.generation + 1""",
                     (id, uid, json.dumps(document, ensure_ascii=False)))
                 generation = connection.execute("SELECT generation FROM archives WHERE id = ?", (id,)).fetchone()[0]
+                outbox.claim_body(connection, uid, id, generation)
                 connection.commit()
                 return generation
             except BaseException:
@@ -540,6 +544,7 @@ class Store(CheckStore, DiscoveryStore):
                         document.pop("restricted_version", None)
                         if version is not None:
                             document["synced_version"] = version
+                        outbox.record_body(connection, id, generation, document, version)
                     document["work"]["text"] = (
                         "success" if document["observed_version"] == document["synced_version"] else "pending"
                     )
