@@ -156,12 +156,24 @@ mode 与自检构建中出现。
 17（上线就绪汇总）。13 只证明自动化与隔离集成；14 只证明 Linux Chromium 下的视觉基准，
 不代表真机、Nginx 交付、真实上游或持续运行通过。
 
+票据 15 由人工执行，代理侧已就绪的部分见
+[15 实际设备验收证据](../.scratch/frontend-vue-migration/evidence/15-real-device-acceptance.md)：候选登记与产物校验
+（`evidence/device-15/candidate.json`）、局域网启动脚本、环境 A/B 两份逐条清单、清单自检（自动化 Chromium
+验证清单里的按钮名与页数与当前代码一致，不构成设备证据）。真机实测尚未执行，因此本目录不宣称真机通过。
+
 ## iPhone 真机验证
 
 ```bash
+# 票据 15 的受控环境（推荐）：先校验产物属于登记的验收候选，再发布到局域网
+../.scratch/frontend-vue-migration/evidence/device-15/serve-env-a.sh
+
+# 手工起法（与上面等价）
 pnpm images                                   # 终端 1：夹具服务器 4319
 pnpm build:mock && pnpm serve:lan             # 终端 2：自检产物 4318
 ```
 
-手机与电脑同网段，Safari 打开 `http://<电脑局域网 IP>:4318/__preview-fixtures`，按 01 证据文档第 8 节的清单核对
-（滑动切图、双指/双击缩放、未放大禁拖、长图可读、关闭与后退/前进）。真机结论不能用桌面自动化替代。
+手机与电脑同网段，Safari 打开脚本打印的 `http://<电脑局域网 IP>:4318/`。验收按
+[15 证据文档第 5 节](../.scratch/frontend-vue-migration/evidence/15-real-device-acceptance.md)逐条进行——
+那是按当前代码核过的完整清单（阅读/管理/图片/历史/触控）；01 证据文档第 8 节只记录早期原型的手势结论，
+手势项（滑动切图、双指/双击缩放、未放大禁拖）仍有效，但页面入口与夹具名称以 15 的清单为准。
+真机结论不能用桌面自动化替代。

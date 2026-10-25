@@ -1,0 +1,62 @@
+# 2026-10-25T15:58:47+08:00 环境 B 冒烟：serve-env-b.sh + 经代理的管理接口与种子采集
+产物与已登记候选一致：946ed66 /assets/index-CQY1bbb2.js / /assets/index-DyrVySkq.js
+（当前 HEAD ecf891b 只多了不改变产品树的提交）
+INFO:     Started server process [1723391]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:4327 (Press CTRL+C to quit)
+  ➜  Local:   http://localhost:4328/
+  ➜  Network: http://192.168.8.20:4328/
+
+环境 B（生产装配 + 隔离 API，端口 4328 / API 4327）已就绪：
+  http://192.168.8.20:4328/
+
+临时 SQLite：/tmp/bili-device15-zqo2cg/monitor.sqlite（本次运行独占，不触碰本机运行实例）
+
+管理流程用界面操作即可；固定上游的归档种子按需在电脑终端执行，顺序不能颠倒：
+  # 0. 先启用监控（界面里点「启用监控」等价于这条；未启用时发现不会被接受）
+  curl -fsS -X PATCH http://127.0.0.1:4327/api/manage/ups/202/monitor -H 'content-type: application/json' -d '{"mode":"recent","recent_n":1,"enabled":true}'
+  # 1. 发现（近期 N 条窗口）
+  curl -fsS -X POST http://127.0.0.1:4327/api/test/collect -H 'content-type: application/json' -d '{"action":"discover","uid":"202"}'
+  # 2. 检查（登记观察，窗口成员待同步）
+  curl -fsS -X POST http://127.0.0.1:4327/api/test/collect -H 'content-type: application/json' -d '{"action":"check","uid":"202"}'
+  # 3. 执行（真实 Collector 节拍，写入归档正文与动态图）
+  curl -fsS -X POST http://127.0.0.1:4327/api/test/collect -H 'content-type: application/json' -d '{"action":"execute"}'
+  # 固定上游失败/恢复：{"feed":true} 影响发现，{"reply":true} 影响根评论
+  curl -fsS -X POST http://127.0.0.1:4327/api/test/source-failure -H 'content-type: application/json' -d '{"feed":true}'
+
+固定上游事实（2026-10-25 实测）：
+  - 可新增 202 / 707 / 555；555 是「别的作者」，把 202 的动态关联到 555 会得到归属校验失败。
+  - 新增 303 会得到 PROFILE_UNAVAILABLE（502，无法取得完整公开资料），用来验证真实错误反馈。
+  - 执行上面三步种子后，归档只有一条动态 9007199254740993123，且没有图片（固定上游正文不含媒体）。
+  - 头像地址是 example.invalid，加载失败按应用兜底显示，属预期；归档图片的成功与失败态在环境 A 验证。
+
+验收清单见 ../15-real-device-acceptance.md 第 7 节（环境 B）。停止：Ctrl+C
+
+
+$ curl -sS -w  [%{http_code}]\n http://127.0.0.1:4328/api/manage/ups
+{"ups":[]} [200]
+
+$ curl -sS -w  [%{http_code}]\n -X POST http://127.0.0.1:4328/api/manage/ups -H content-type: application/json -d {"uid":"202"}
+{"uid":"202","name":"虚构晨光","avatar_url":"https://example.invalid/dawn.png","monitor":{"mode":"recent","recent_n":10,"enabled":false,"last_checked_at":null,"last_succeeded_at":null}} [201]
+
+$ curl -sS -w  [%{http_code}]\n -X POST http://127.0.0.1:4328/api/manage/ups -H content-type: application/json -d {"uid":"555"}
+{"uid":"555","name":"虚构他人","avatar_url":"https://example.invalid/other.png","monitor":{"mode":"recent","recent_n":10,"enabled":false,"last_checked_at":null,"last_succeeded_at":null}} [201]
+
+$ curl -sS -w  [%{http_code}]\n -X POST http://127.0.0.1:4328/api/manage/ups -H content-type: application/json -d {"uid":"303"}
+{"error":{"code":"PROFILE_UNAVAILABLE","message":"无法取得完整公开资料"}} [502]
+
+$ curl -sS -w  [%{http_code}]\n -X PATCH http://127.0.0.1:4328/api/manage/ups/202/monitor -H content-type: application/json -d {"mode":"recent","recent_n":1,"enabled":true}
+{"uid":"202","name":"虚构晨光","avatar_url":"https://example.invalid/dawn.png","monitor":{"mode":"recent","recent_n":1,"enabled":true,"last_checked_at":null,"last_succeeded_at":null}} [200]
+
+$ curl -sS -w  [%{http_code}]\n -X POST http://127.0.0.1:4327/api/test/collect -H content-type: application/json -d {"action":"discover","uid":"202"}
+{"accepted":[true]} [200]
+
+$ curl -sS -w  [%{http_code}]\n -X POST http://127.0.0.1:4327/api/test/collect -H content-type: application/json -d {"action":"check","uid":"202"}
+{"accepted":[true]} [200]
+
+$ curl -sS -w  [%{http_code}]\n -X POST http://127.0.0.1:4327/api/test/collect -H content-type: application/json -d {"action":"execute","uid":"202"}
+{"accepted":[true]} [200]
+
+$ GET /api/archive/dynamics?scope=all
+{"items":[{"id":"9007199254740993123","author":{"id":"202","nickname":"虚构晨光","avatar_url":"https://example.invalid/dawn.png"},"published_at":"2026-10-09T10:38:16+08:00","edited_at":null,"edit_status":"unknown","title":null,"text":"虚构正文 9007199254740993123","content_state":"success","last_attempt":"success","source_comment_count":0,"local_comment_count":0,"media_sources":[],"media":[],"previous_media":[],"media_version":null,"synced_media_version":null,"media_last_attempt":"success","comment_locator":{"oid":"999007199254740993123","type":17,"source":"basic","policy_version":1},"observed_version":null,"synced_version":null,"local_reply_count":0,"replies_last_attempt":"success",
