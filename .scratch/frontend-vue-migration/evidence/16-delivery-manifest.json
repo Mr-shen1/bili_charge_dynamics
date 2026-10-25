@@ -1,0 +1,351 @@
+{
+  "ticket": "16-static-delivery-rollback",
+  "source": {
+    "commit": "d1b60c3208dba85c9feeb51db31a6f3728050e66",
+    "branch": "feat/backend-integration",
+    "lockfiles": {
+      "frontend/pnpm-lock.yaml": "8b7b09908c334a72895d0da69ec33375e830a863bca987b47978e1314fe2811a",
+      "uv.lock": "c55b8767d7908e009f4ebcd8b319d1ddf7c4fcb836fc3e406326c5079726b538"
+    },
+    "runtime": {
+      "node": "24.21.0",
+      "pnpm": "pnpm@10.34.6",
+      "uv": "0.12.23",
+      "python": "3.12.15"
+    },
+    "dependencies": {
+      "element-plus": "2.14.7",
+      "vue": "3.5.44",
+      "vue-router": "4.6.4"
+    },
+    "devDependencies": {
+      "@playwright/test": "1.58.2",
+      "@testing-library/vue": "8.1.0",
+      "@types/node": "24.10.13",
+      "@vitejs/plugin-vue": "6.0.10",
+      "@vue/test-utils": "2.5.1",
+      "jsdom": "28.1.0",
+      "typescript": "5.9.3",
+      "vite": "7.3.1",
+      "vitest": "4.0.18",
+      "vue-tsc": "3.3.13"
+    }
+  },
+  "environment": {
+    "os": "CachyOS Linux 7.2.11-1-cachyos x86_64",
+    "chromium": "145.0.7632.6 (Playwright 1.58.2)",
+    "nginx": {
+      "version": "nginx/1.28.0",
+      "built_by": "gcc 16.2.1 20260810 (GCC)",
+      "configure": "--prefix=/tmp/nginx-16/runtime",
+      "mime_types": "/tmp/nginx-16/nginx-1.28.0/conf/mime.types"
+    },
+    "delivery_port": 4273,
+    "example_port_note": "127.0.0.1:4173 was occupied by an existing local ssh tunnel; the existing instance was not touched"
+  },
+  "artifacts": {
+    "production": {
+      "label": "pnpm build → frontend/dist",
+      "entry": "index.html",
+      "entry_refs": [
+        "/assets/index-B7KnNIzH.js",
+        "/assets/index-BT3uA9bJ.css"
+      ],
+      "entry_sha256": "2c116b88fb390506617629a7e4c92c5319357ac9c89ac3a28cf5f360c80bb3d7",
+      "entry_bytes": 455,
+      "asset_count": 28,
+      "route_chunks": [
+        "CommentThreadPage-DDIOfZxd.js",
+        "DetailPage-GFoUlk9o.js",
+        "ListPage-CigxL0Pe.js",
+        "ManagePage-D7tjVsH8.js",
+        "ManageUpPage-ByFxGsbl.js",
+        "NotFoundPage-BavUUe9r.js"
+      ],
+      "assets": {
+        "CommentThreadPage-DDIOfZxd.js": {
+          "sha256": "b589e6e58d0316b85349388ab8c0d7073a68a304fb646a7183df3d164adccbcb",
+          "bytes": 5128
+        },
+        "CommentThreadPage-DtaLFI7d.css": {
+          "sha256": "e89a53bce2b492ef2ce34d830d7ccaadfeb39a4a9d2e947841b162618881fb01",
+          "bytes": 2035
+        },
+        "DetailPage-BMl-32cC.css": {
+          "sha256": "8b4711b781d37ac4fbdef7c341d67e3df75285061e9e7962de24cd7665d5cdf1",
+          "bytes": 5638
+        },
+        "DetailPage-GFoUlk9o.js": {
+          "sha256": "2a0d67215076d4958866a61d871adb11cb1544045ef0b61eada0419c4ad8ddcd",
+          "bytes": 18058
+        },
+        "DynamicContent-CzFXcakS.css": {
+          "sha256": "6dbb46bbe8ec7da19871052f8687e1149771c7813942a47132009c2d32c6d530",
+          "bytes": 1908
+        },
+        "DynamicContent-DpKh6GiB.js": {
+          "sha256": "bd0a9b58428a1086c5bfa900ba194b71f0907c6efac3f77bc224b0e5326cb50c",
+          "bytes": 11750
+        },
+        "ListPage-CigxL0Pe.js": {
+          "sha256": "8fbdf356143cfd9d76a896fa932f48c4cd6d4950b6486209c5b68dc673e47c97",
+          "bytes": 7338
+        },
+        "ListPage-Cto3jMeN.css": {
+          "sha256": "aa0f1148ee6f7d130f1426e15b7b133a4325104ecdc377faad5fddd7dac81420",
+          "bytes": 2279
+        },
+        "ManagePage-B-gTWe17.css": {
+          "sha256": "7582f8bb79a85aa78070de8051841ad2f9f61ecdfa0c98575ebe4e57f97aaeb8",
+          "bytes": 1176
+        },
+        "ManagePage-D7tjVsH8.js": {
+          "sha256": "95460fd6d8dc180a8af47597d6f7494d4b971ead00a4da860bc1648bdbbb64b8",
+          "bytes": 3439
+        },
+        "ManageShell-BLM-a8kI.css": {
+          "sha256": "8347d45e68c4eb60855e702507ac2b254377d8e50f583801390e9c69b51dc3b5",
+          "bytes": 1782
+        },
+        "ManageShell-ClMO-zju.js": {
+          "sha256": "e3ad1f81b81def336821e5116cad5d6bbc5e09d3e01480b87e4619f264d4d9d1",
+          "bytes": 46719
+        },
+        "ManageUpPage-ByFxGsbl.js": {
+          "sha256": "32d22752a1a9b5bffcf4c16f0024c34af5024205d8d4688a1253918c3005f239",
+          "bytes": 34818
+        },
+        "ManageUpPage-CVEEzFBM.css": {
+          "sha256": "19b28ab8c496c98acbe0481cc1c0e763bd9d90775f630f3580ea6dc7992244d5",
+          "bytes": 2361
+        },
+        "NotFoundPage-BavUUe9r.js": {
+          "sha256": "f8e6f881e1e957e8fdc3528809a3ff74f32b47d339d2e8242f500189bc154b64",
+          "bytes": 516
+        },
+        "ReadNotice-CTAvZgvk.js": {
+          "sha256": "1d3564ae93308cd0931123cef31eca435e22b3e063f961fd0ebf406d2604cbbe",
+          "bytes": 911
+        },
+        "ReadNotice-Cfo76pwj.css": {
+          "sha256": "c5e15b187efe9033653d98dee3ceaaa2805353d4fb3c03b8e638b5c839a73212",
+          "bytes": 315
+        },
+        "ReplyPager-CfpI0OJ7.css": {
+          "sha256": "4b54842ac5d3b1e39abbfd2eea2c4a93d414b03f9227a5a42d4805ca7277c0f5",
+          "bytes": 648
+        },
+        "ReplyPager-HqjI7yU1.js": {
+          "sha256": "6b9bbf97f32b9a923cfb674651b8c6230ae3528bcc71f179a46a2111bf2ba142",
+          "bytes": 3750
+        },
+        "UserAvatar-BvFNs6zA.js": {
+          "sha256": "ff6a9cb5ba6f3693e918ad50b9a21f3b7be985cd063a1a5e881044dfbe444c88",
+          "bytes": 826
+        },
+        "UserAvatar-Dje3KGZD.css": {
+          "sha256": "3dffeea0e88ec1ba5a904f32a5542b275b8440c8cd64dc3b37cdba062514508d",
+          "bytes": 85
+        },
+        "_plugin-vue_export-helper-DlAUqK2U.js": {
+          "sha256": "cb85b0f263dbe24e857338301c0627076592e9f1f1a5662929f86d2c126444aa",
+          "bytes": 91
+        },
+        "display-Cvhq1Yp_.js": {
+          "sha256": "11776ccf5b73a001dbfdbe402d74745fb89cb96541fd6983a90c7ff0a87d0bbb",
+          "bytes": 472
+        },
+        "index-B7KnNIzH.js": {
+          "sha256": "f64e317660921c3066ab9ea8c582eafba232fcc8f1ca8c06452abafbf2c3f758",
+          "bytes": 229985
+        },
+        "index-BT3uA9bJ.css": {
+          "sha256": "3a2ad6c21262016747726263e4f1868218064f2764aaa3d11115e59faf926cdb",
+          "bytes": 70811
+        },
+        "index-BzHD40Sp.js": {
+          "sha256": "fa98fea2779fda3604330b2088decc02c7a9da938674288fa939b96e5ca9ce4a",
+          "bytes": 6626
+        },
+        "index-DEJ6p1xs.js": {
+          "sha256": "ee7fdf29abf45ad979dde45349624896a481cf4d251b970646d1dfb56894abd8",
+          "bytes": 6109
+        },
+        "index-DXXzYPsI.js": {
+          "sha256": "731739079c289d619433facedcb1cc913a34ceb97a5190fd2b60cd7dde04584b",
+          "bytes": 443
+        }
+      }
+    },
+    "mock": {
+      "label": "pnpm build:mock → frontend/dist-mock",
+      "entry": "index.html",
+      "entry_refs": [
+        "/assets/index-04TF_EoI.js",
+        "/assets/index-BT3uA9bJ.css"
+      ],
+      "entry_sha256": "b4da317b2a868bda63d5803cb57c3d51b3ffd6b02950f0175786d42d35eeab65",
+      "entry_bytes": 455,
+      "asset_count": 31,
+      "route_chunks": [
+        "CommentThreadPage-awxCQCk_.js",
+        "DetailPage-CNipg95z.js",
+        "ListPage-CccXer9l.js",
+        "ManagePage-C8mQn6eP.js",
+        "ManageUpPage-K75-dS1j.js",
+        "NotFoundPage-BIfC0aG3.js",
+        "PreviewFixturesPage-Ckdy6oTR.js",
+        "PreviewOtherPage-BuvweYrp.js"
+      ],
+      "assets": {
+        "CommentThreadPage-DtaLFI7d.css": {
+          "sha256": "e89a53bce2b492ef2ce34d830d7ccaadfeb39a4a9d2e947841b162618881fb01",
+          "bytes": 2035
+        },
+        "CommentThreadPage-awxCQCk_.js": {
+          "sha256": "07c1edfa46b2b02b5ef1492a0f040e185d0111b4e4b1eb0fe2c1fa35d39a02ae",
+          "bytes": 5128
+        },
+        "DetailPage-BMl-32cC.css": {
+          "sha256": "8b4711b781d37ac4fbdef7c341d67e3df75285061e9e7962de24cd7665d5cdf1",
+          "bytes": 5638
+        },
+        "DetailPage-CNipg95z.js": {
+          "sha256": "4ca366917c07b315b80ad81096c1dfa763fd25eb4e3883ffeb4e2c38f9401f0c",
+          "bytes": 18130
+        },
+        "DynamicContent-BHGrTFTV.js": {
+          "sha256": "b29770da5148cf9e0caa4c01adc30e41c81f39c8d59a580deaa7829aef778987",
+          "bytes": 6010
+        },
+        "DynamicContent-CzFXcakS.css": {
+          "sha256": "6dbb46bbe8ec7da19871052f8687e1149771c7813942a47132009c2d32c6d530",
+          "bytes": 1908
+        },
+        "ListPage-CccXer9l.js": {
+          "sha256": "cd3c206ab2a500e6eb26c5dca264045e34de111b408e54fdc86b3348a4d203e3",
+          "bytes": 7410
+        },
+        "ListPage-Cto3jMeN.css": {
+          "sha256": "aa0f1148ee6f7d130f1426e15b7b133a4325104ecdc377faad5fddd7dac81420",
+          "bytes": 2279
+        },
+        "ManagePage-B-gTWe17.css": {
+          "sha256": "7582f8bb79a85aa78070de8051841ad2f9f61ecdfa0c98575ebe4e57f97aaeb8",
+          "bytes": 1176
+        },
+        "ManagePage-C8mQn6eP.js": {
+          "sha256": "951461d7f8d0506869382efaf1e07d5cb749c29a31a4f3d0082baad0ed35dda8",
+          "bytes": 3436
+        },
+        "ManageShell-BLM-a8kI.css": {
+          "sha256": "8347d45e68c4eb60855e702507ac2b254377d8e50f583801390e9c69b51dc3b5",
+          "bytes": 1782
+        },
+        "ManageShell-CmmA-AGS.js": {
+          "sha256": "1192c161a788ab0161a4fcc6522dfda906509a9d71a3bbcd5ec351ca9c90244d",
+          "bytes": 46715
+        },
+        "ManageUpPage-CVEEzFBM.css": {
+          "sha256": "19b28ab8c496c98acbe0481cc1c0e763bd9d90775f630f3580ea6dc7992244d5",
+          "bytes": 2361
+        },
+        "ManageUpPage-K75-dS1j.js": {
+          "sha256": "a54807c559128c840df544e117febe6a3dfdd5cc0888b4a447a2d416d19d637f",
+          "bytes": 34810
+        },
+        "NotFoundPage-BIfC0aG3.js": {
+          "sha256": "51b6ed0ae5f3e2ba0b97860cf3cc8c6b31d62f604cd21c17b4f37e02bade7915",
+          "bytes": 516
+        },
+        "PreviewFixturesPage-Ckdy6oTR.js": {
+          "sha256": "2569c46fa8d2ccf758c6f071740251ae3725ec99c142b081af662cd137284e33",
+          "bytes": 2565
+        },
+        "PreviewOtherPage-BuvweYrp.js": {
+          "sha256": "921535c1ff0d6e6a42e08989bd223ad633482c753b06c76d27cb66b1b6a2c3a9",
+          "bytes": 622
+        },
+        "ReadNotice-Cfo76pwj.css": {
+          "sha256": "c5e15b187efe9033653d98dee3ceaaa2805353d4fb3c03b8e638b5c839a73212",
+          "bytes": 315
+        },
+        "ReadNotice-Cs6ApP-z.js": {
+          "sha256": "0352789e776b169a8f939bd7f58520bdd02ccbcb4a33e3215ba0bd5289df7a11",
+          "bytes": 911
+        },
+        "ReplyPager-BR_iL-as.js": {
+          "sha256": "01c15b197c625f1567dbdb7a804df94fe3ab97e183560a0c186e9d8b54356605",
+          "bytes": 3749
+        },
+        "ReplyPager-CfpI0OJ7.css": {
+          "sha256": "4b54842ac5d3b1e39abbfd2eea2c4a93d414b03f9227a5a42d4805ca7277c0f5",
+          "bytes": 648
+        },
+        "ThumbnailGrid.vue_vue_type_script_setup_true_lang-BXmT5RnW.js": {
+          "sha256": "5c02e974672f1bd6375987572a67714eaa3413f2aae4cedea6218c4b89926834",
+          "bytes": 5958
+        },
+        "UserAvatar-CY9GaZ9G.js": {
+          "sha256": "f1d86842695a04f5966b05ae6bc85d046b11c1db2bc1047102408c600c53ecb5",
+          "bytes": 826
+        },
+        "UserAvatar-Dje3KGZD.css": {
+          "sha256": "3dffeea0e88ec1ba5a904f32a5542b275b8440c8cd64dc3b37cdba062514508d",
+          "bytes": 85
+        },
+        "_plugin-vue_export-helper-DlAUqK2U.js": {
+          "sha256": "cb85b0f263dbe24e857338301c0627076592e9f1f1a5662929f86d2c126444aa",
+          "bytes": 91
+        },
+        "display-Cvhq1Yp_.js": {
+          "sha256": "11776ccf5b73a001dbfdbe402d74745fb89cb96541fd6983a90c7ff0a87d0bbb",
+          "bytes": 472
+        },
+        "index-04TF_EoI.js": {
+          "sha256": "9e346f46b0f47d95d113a35e7b89a272eee753dd5fdbf6a37ac9947edbdf538d",
+          "bytes": 226099
+        },
+        "index-BT3uA9bJ.css": {
+          "sha256": "3a2ad6c21262016747726263e4f1868218064f2764aaa3d11115e59faf926cdb",
+          "bytes": 70811
+        },
+        "index-CN6xQzpV.js": {
+          "sha256": "1f8fc29bc285699fb00fc2c5c0c2a95056d1b960bdc9dd3551899c3134091891",
+          "bytes": 6626
+        },
+        "index-DOlhI8Xi.js": {
+          "sha256": "1620520fb39b1a31d390765c2056b78123a90ca82f5d6f4a9b647a50723c4571",
+          "bytes": 444
+        },
+        "index-PIGyyYdC.js": {
+          "sha256": "768e17c043f851f85441471555702642aa84f1d429ed1f1bb46ec8eb15fded1f",
+          "bytes": 6107
+        }
+      }
+    }
+  },
+  "commands": [
+    "nvm use (Node 24.21.0)",
+    "uv sync --locked",
+    "pnpm install --frozen-lockfile",
+    "pnpm check",
+    "pnpm check:dist",
+    "pnpm test:nginx-parity",
+    "DELIVERY_PORT=4273 NGINX_BIN=<nginx-1.28.0>/objs/nginx NGINX_MIME_TYPES=<nginx-1.28.0>/conf/mime.types pnpm test:delivery"
+  ],
+  "results": {
+    "pnpm check": "typecheck + 254 unit tests + e2e project guard passed",
+    "pnpm test:e2e": "173 passed (3.3m)",
+    "pnpm test:e2e:production": "3 passed",
+    "pnpm test:e2e:manage": "7 passed",
+    "pnpm test:delivery": [
+      "mock: 31 hashed assets reachable; six-route deep links/reload; entry ETag 304; missing resources 404+no-store",
+      "mock: reproducible rebuild; fault build isolated to dist-mock",
+      "mock: atomic update index-04TF_EoI.js -> index-BAwDpWvZ.js; rollback keeps old and new assets reachable",
+      "production: six routes direct/reload; 28 hashed assets reachable; 401 Basic prompt; API 404/422/502 no SPA fallback",
+      "production: update index-B7KnNIzH.js -> index-CRj90T7m.js; rollback with unchanged archive, SQLite inode and collector process"
+    ],
+    "pnpm test:nginx-parity": "passed (8 locations, server directives, public namespace rules)"
+  }
+}
