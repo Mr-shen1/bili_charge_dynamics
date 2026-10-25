@@ -1,0 +1,251 @@
+
+> bili-charge-dynamics-frontend@0.0.0 check /home/kevin/Projects/PI/bili_charge_dynamics/frontend
+> pnpm typecheck && pnpm test && pnpm check:e2e-projects
+
+
+> bili-charge-dynamics-frontend@0.0.0 typecheck /home/kevin/Projects/PI/bili_charge_dynamics/frontend
+> vue-tsc --noEmit
+
+
+> bili-charge-dynamics-frontend@0.0.0 test /home/kevin/Projects/PI/bili_charge_dynamics/frontend
+> vitest run
+
+
+[1m[46m RUN [49m[22m [36mv4.0.18 [39m[90m/home/kevin/Projects/PI/bili_charge_dynamics/frontend[39m
+
+Not implemented: Window's scrollTo() method
+[90mstderr[2m | tests/unit/manage-up-page.test.ts[2m > [22m[2m/manage/ups/:upId 单 UP 管理页[2m > [22m[2m读取后展示身份、UID 与监控状态，启停使用已保存配置
+[22m[39m[Vue warn]: Duplicate keys found during update: "123:recent:10:false" Make sure keys are unique. 
+  at <UpVisit key="da98040f-565a-4456-bdc7-5c4197d4806b:123" uid="123" > 
+  at <ManageShell list-link="" > 
+  at <ManageUpPage upId="123" onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< {} > > 
+  at <RouterView> 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+Not implemented: Window's scrollTo() method
+[90mstderr[2m | tests/unit/manage-up-page.test.ts[2m > [22m[2m/manage/ups/:upId 单 UP 管理页[2m > [22m[2m启停失败保持已保存状态并原位重试，重复写入被阻止
+[22m[39m[Vue warn]: Duplicate keys found during update: "123:recent:10:false" Make sure keys are unique. 
+  at <UpVisit key="663330bf-c82b-4b09-83b0-5e8b79ba5e01:123" uid="123" > 
+  at <ManageShell list-link="" > 
+  at <ManageUpPage upId="123" onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< {} > > 
+  at <RouterView> 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+Not implemented: Window's scrollTo() method
+Not implemented: Window's scrollTo() method
+Not implemented: Window's scrollTo() method
+Not implemented: Window's scrollTo() method
+Not implemented: Window's scrollTo() method
+Not implemented: Window's scrollTo() method
+Not implemented: Window's scrollTo() method
+Not implemented: Window's scrollTo() method
+Not implemented: Window's scrollTo() method
+Not implemented: Window's scrollTo() method
+Not implemented: Window's scrollTo() method
+[90mstderr[2m | tests/unit/manage-up-page.test.ts[2m > [22m[2m/manage/ups/:upId 监控模式与近期 N[2m > [22m[2m表单按已保存配置展示，保存提交完整配置并保留启停状态
+[22m[39m[Vue warn]: Duplicate keys found during update: "123:recent:25:true" Make sure keys are unique. 
+  at <UpVisit key="918b0c3c-68bf-4442-89f7-58c9bea44139:123" uid="123" > 
+  at <ManageShell list-link="" > 
+  at <ManageUpPage upId="123" onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< {} > > 
+  at <RouterView> 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+Not implemented: Window's scrollTo() method
+Not implemented: Window's scrollTo() method
+[90mstderr[2m | tests/unit/manage-status.test.ts[2m > [22m[2m状态读取与草稿、配置变化相互隔离[2m > [22m[2m已保存配置改变后不沿用上一份检查与发现状态
+[22m[39m[Vue warn]: Duplicate keys found during update: "123:specified:10:true" Make sure keys are unique. 
+  at <UpVisit key="324bed7a-9b47-4859-879b-eba93949f4c2:123" uid="123" > 
+  at <ManageShell list-link="" > 
+  at <ManageUpPage upId="123" onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< {} > > 
+  at <RouterView> 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+Not implemented: Window's scrollTo() method
+ [32m✓[39m tests/unit/manage-status.test.ts [2m([22m[2m12 tests[22m[2m)[22m[33m 4768[2mms[22m[39m
+     [33m[2m✓[22m[39m 读取后才呈现，且按观察、执行、分项与时间分别展示，不合并成笼统成功 [33m 1084[2mms[22m[39m
+     [33m[2m✓[22m[39m 折叠细节默认收起，读取后可展开（键盘切换由 e2e 覆盖） [33m 603[2mms[22m[39m
+     [33m[2m✓[22m[39m 离开页面后迟到的成功或失败不改写新的访问 [33m 337[2mms[22m[39m
+     [33m[2m✓[22m[39m 读取状态不覆盖未提交的模式与近期 N 草稿 [33m 544[2mms[22m[39m
+     [33m[2m✓[22m[39m 已保存配置改变后不沿用上一份检查与发现状态 [33m 456[2mms[22m[39m
+Not implemented: Window's scrollTo() method
+Not implemented: Window's scrollTo() method
+Not implemented: Window's scrollTo() method
+Not implemented: Window's scrollTo() method
+Not implemented: Window's scrollTo() method
+Not implemented: Window's scrollTo() method
+[90mstderr[2m | tests/unit/manage-up-page.test.ts[2m > [22m[2m/manage/ups/:upId 监控模式与近期 N[2m > [22m[2m模式互斥：切到指定模式隐藏近期 N，保存提交指定模式
+[22m[39m[Vue warn]: Duplicate keys found during update: "123:specified:10:true" Make sure keys are unique. 
+  at <UpVisit key="9d7fb110-0726-4971-86ac-e7709250f7b6:123" uid="123" > 
+  at <ManageShell list-link="" > 
+  at <ManageUpPage upId="123" onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< {} > > 
+  at <RouterView> 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+Not implemented: Window's scrollTo() method
+ [32m✓[39m tests/unit/list-page.test.ts [2m([22m[2m14 tests[22m[2m)[22m[33m 6377[2mms[22m[39m
+     [33m[2m✓[22m[39m 默认全部，25 条按 10/10/5 连续追加并结束提示 [33m 2865[2mms[22m[39m
+     [33m[2m✓[22m[39m 追加去重，不因服务端重复或跨批重复多出卡片 [33m 794[2mms[22m[39m
+     [33m[2m✓[22m[39m 同批重复点击只读一次，失败保留原批并可用同一 cursor 重试 [33m 392[2mms[22m[39m
+     [33m[2m✓[22m[39m 切换 scope 后忽略旧 scope 的迟到成功与失败，不清掉新加载态 [33m 548[2mms[22m[39m
+[90mstderr[2m | tests/unit/manage-up-page.test.ts[2m > [22m[2m/manage/ups/:upId 监控模式与近期 N[2m > [22m[2m保存失败保留草稿并与已保存模式区分，可原位重试
+[22m[39m[Vue warn]: Duplicate keys found during update: "123:recent:42:true" Make sure keys are unique. 
+  at <UpVisit key="cddd3d4c-4043-4f46-82b7-fa35654ac136:123" uid="123" > 
+  at <ManageShell list-link="" > 
+  at <ManageUpPage upId="123" onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< {} > > 
+  at <RouterView> 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | tests/unit/manage-up-page.test.ts[2m > [22m[2m/manage/ups/:upId 删除配置与指定目标[2m > [22m[2m删除监控配置只删配置：身份与归档保留，可重新添加回默认配置
+[22m[39m[Vue warn]: Duplicate keys found during update: "123:none" Make sure keys are unique. 
+  at <UpVisit key="7178b2fb-1f0c-4cef-8682-7b216db8aaf0:123" uid="123" > 
+  at <ManageShell list-link="" > 
+  at <ManageUpPage upId="123" onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< {} > > 
+  at <RouterView> 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | tests/unit/manage-up-page.test.ts[2m > [22m[2m/manage/ups/:upId 删除配置与指定目标[2m > [22m[2m删除监控配置只删配置：身份与归档保留，可重新添加回默认配置
+[22m[39m[Vue warn]: Duplicate keys found during update: "123:recent:10:false" Make sure keys are unique. 
+  at <UpVisit key="7178b2fb-1f0c-4cef-8682-7b216db8aaf0:123" uid="123" > 
+  at <ManageShell list-link="" > 
+  at <ManageUpPage upId="123" onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< {} > > 
+  at <RouterView> 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+[90mstderr[2m | tests/unit/manage-up-page.test.ts[2m > [22m[2m/manage/ups/:upId 删除配置与指定目标[2m > [22m[2m删除失败保留已保存配置并原位重试
+[22m[39m[Vue warn]: Duplicate keys found during update: "123:none" Make sure keys are unique. 
+  at <UpVisit key="0d1be422-2a4d-463f-9e09-c5a9960de378:123" uid="123" > 
+  at <ManageShell list-link="" > 
+  at <ManageUpPage upId="123" onVnodeUnmounted=fn<onVnodeUnmounted> ref=Ref< {} > > 
+  at <RouterView> 
+  at <Anonymous ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+ [32m✓[39m tests/unit/thread-reading.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 8695[2mms[22m[39m
+   [33m[2m✓[22m[39m 直达楼中楼按 page=1&limit=10 读取：展示根评论、回复与分页，不渲染图片也不折叠 [33m 1459[2mms[22m[39m
+   [33m[2m✓[22m[39m 页头数量按来源数→本地 count→items 数回退，分页只按本地 count 计算 [33m 330[2mms[22m[39m
+   [33m[2m✓[22m[39m 每页替换当前页：25 条按 10/10/5 翻页，数据缩减后越界页重读有效末页 [33m 1279[2mms[22m[39m
+   [33m[2m✓[22m[39m 分页器收起与返回按钮都退回详情，并保持详情已读内容不重读 [33m 3882[2mms[22m[39m
+   [33m[2m✓[22m[39m 只有 CURSOR_INVALID 显示失效标记并可重新开始读取，普通错误按可重试读取处理 [33m 746[2mms[22m[39m
+   [33m[2m✓[22m[39m 离开楼中楼后迟到的翻页结果不改写详情，重新进入仍从第 1 页开始 [33m 720[2mms[22m[39m
+ [32m✓[39m tests/unit/comment-images.test.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 3116[2mms[22m[39m
+   [33m[2m✓[22m[39m 一级评论图片按评论 owner 渲染为独立预览组，顺序与所点索引正确 [33m 719[2mms[22m[39m
+   [33m[2m✓[22m[39m 评论多于九张时只展示前九张，末张仍可进入完整组且索引正确 [33m 455[2mms[22m[39m
+   [33m[2m✓[22m[39m 动态图与各条根评论的图片组互不混入 [33m 410[2mms[22m[39m
+   [33m[2m✓[22m[39m 打开、切图与关闭评论图片预览不重置排序与已加载评论，也不新增历史记录 [33m 790[2mms[22m[39m
+   [33m[2m✓[22m[39m 触发缩略图节点被替换后，关闭预览按稳定 ID 找回焦点 [33m 326[2mms[22m[39m
+Not implemented: Window's scrollTo() method
+Not implemented: Window's scrollTo() method
+ [32m✓[39m tests/unit/detail-reading.test.ts [2m([22m[2m13 tests[22m[2m)[22m[33m 12710[2mms[22m[39m
+   [33m[2m✓[22m[39m 卡片进入详情顶部并全文展示，返回恢复来源列表的已加载批次与位置 [33m 3162[2mms[22m[39m
+   [33m[2m✓[22m[39m 从单 UP 来源进入详情，返回仍在同一 scope 并恢复已加载批次 [33m 1308[2mms[22m[39m
+   [33m[2m✓[22m[39m 同一动态的多次访问各存快照，后退/前进分别恢复自己的位置 [33m 1595[2mms[22m[39m
+   [33m[2m✓[22m[39m 回到首页的新访问不继承旧列表访问的批次与位置，旧访问快照也不被覆盖 [33m 2135[2mms[22m[39m
+   [33m[2m✓[22m[39m 主动再次进入同一动态走新访问并从顶部开始，不沿用旧位置 [33m 824[2mms[22m[39m
+   [33m[2m✓[22m[39m 离开未完成的追加读取再返回，从原 cursor 继续且不遗留永久加载态 [33m 1572[2mms[22m[39m
+   [33m[2m✓[22m[39m 旧访问的迟到详情成功/失败不覆盖新访问 [33m 725[2mms[22m[39m
+   [33m[2m✓[22m[39m 详情展示完整图片组，点击任意缩略图按所点索引打开预览 [33m 609[2mms[22m[39m
+ [32m✓[39m tests/unit/manage-page.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 4154[2mms[22m[39m
+     [33m[2m✓[22m[39m 读取中先给状态，随后按 UID 展示身份与监控状态，点卡片进入单 UP 管理 [33m 765[2mms[22m[39m
+     [33m[2m✓[22m[39m UID 校验失败不发请求：空白、前导零、科学计数与超长都保留输入 [33m 660[2mms[22m[39m
+     [33m[2m✓[22m[39m 新增失败保留输入并原位重试，失败时不显示成功提示 [33m 440[2mms[22m[39m
+     [33m[2m✓[22m[39m 阻塞时重复提交被阻止，迟到失败只落到当前访问 [33m 1390[2mms[22m[39m
+ [32m✓[39m tests/unit/management-api.test.ts [2m([22m[2m57 tests[22m[2m)[22m[32m 114[2mms[22m[39m
+ [32m✓[39m tests/unit/archive-reader-comments.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 54[2mms[22m[39m
+ [32m✓[39m tests/unit/reply-reading.test.ts [2m([22m[2m15 tests[22m[2m)[22m[33m 14838[2mms[22m[39m
+   [33m[2m✓[22m[39m 宽屏为有回复的一级评论读 3 条 cursor 预览，并提供展开入口 [33m 1503[2mms[22m[39m
+   [33m[2m✓[22m[39m 展开用 page+limit=10 读第 1 页，翻页按 10/10/5 替换当前页，同页重读也发真实请求 [33m 2055[2mms[22m[39m
+   [33m[2m✓[22m[39m 收起取消在途请求、定位根评论开头并保存第 1 页，再次展开重新首读 [33m 1218[2mms[22m[39m
+   [33m[2m✓[22m[39m 详情历史恢复展开状态与页码，并实时重读保存页而不是复用冻结结果 [33m 1414[2mms[22m[39m
+   [33m[2m✓[22m[39m 数量缩减导致页码越界时重读有效末页，分页只按本地总数计算 [33m 948[2mms[22m[39m
+   [33m[2m✓[22m[39m 单个回复区失败只影响该区域并保留已有评论，重试沿用同一请求 [33m 383[2mms[22m[39m
+   [33m[2m✓[22m[39m 翻页失败保留当前页内容并可按同一页码重试 [33m 960[2mms[22m[39m
+   [33m[2m✓[22m[39m 只有嵌套回复且目标昵称可用时显示“回复 X:”，并剥离来源重复前缀 [33m 303[2mms[22m[39m
+   [33m[2m✓[22m[39m 翻页在途时页码按钮禁用，连点不会发出第二个并发请求 [33m 1032[2mms[22m[39m
+   [33m[2m✓[22m[39m 切换排序重置回复展开状态，旧回复区的迟到页码结果不生效 [33m 1154[2mms[22m[39m
+   [33m[2m✓[22m[39m 离开详情取消在途页码请求，重新进入的新访问不显示旧展开状态 [33m 1793[2mms[22m[39m
+   [33m[2m✓[22m[39m 读取器声明不提供回复时整块提示未归档且不发请求，来源计数未知仍读本地回复 [33m 363[2mms[22m[39m
+   [33m[2m✓[22m[39m 本地零条不被解释成来源没有回复，失败/未完成/未确认各自区分 [33m 534[2mms[22m[39m
+   [33m[2m✓[22m[39m 取消后的迟到失败与异常不改写收起后的预览态 [33m 903[2mms[22m[39m
+ [32m✓[39m tests/unit/compact-comment-preview.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 1676[2mms[22m[39m
+   [33m[2m✓[22m[39m 窄屏正来源回复数用 UP 摘要进入独立楼中楼，不读取内联回复 [33m 914[2mms[22m[39m
+   [33m[2m✓[22m[39m 无法判定视口时按宽屏渲染内联回复区，不出窄屏入口 [33m 302[2mms[22m[39m
+ [32m✓[39m tests/unit/archive-reader-list.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 46[2mms[22m[39m
+ [32m✓[39m tests/unit/manage-up-page.test.ts [2m([22m[2m25 tests[22m[2m)[22m[33m 15307[2mms[22m[39m
+     [33m[2m✓[22m[39m 读取后展示身份、UID 与监控状态，启停使用已保存配置 [33m 1770[2mms[22m[39m
+     [33m[2m✓[22m[39m 启停失败保持已保存状态并原位重试，重复写入被阻止 [33m 930[2mms[22m[39m
+     [33m[2m✓[22m[39m 离开页面后旧启停的迟到失败不改写新的访问 [33m 567[2mms[22m[39m
+     [33m[2m✓[22m[39m 跨 UP 的迟到成功不改写当前卡片的身份与状态 [33m 308[2mms[22m[39m
+     [33m[2m✓[22m[39m 近期 N 本地校验失败不发请求，草稿保留并原位重试 [33m 929[2mms[22m[39m
+     [33m[2m✓[22m[39m 模式互斥：切到指定模式隐藏近期 N，保存提交指定模式 [33m 358[2mms[22m[39m
+     [33m[2m✓[22m[39m 保存失败保留草稿并与已保存模式区分，可原位重试 [33m 389[2mms[22m[39m
+     [33m[2m✓[22m[39m 草稿按 UP 与模式隔离：换 UP 或往返模式后不沿用上一份草稿与反馈 [33m 559[2mms[22m[39m
+     [33m[2m✓[22m[39m 删除监控配置只删配置：身份与归档保留，可重新添加回默认配置 [33m 407[2mms[22m[39m
+     [33m[2m✓[22m[39m 删除失败保留已保存配置并原位重试 [33m 343[2mms[22m[39m
+     [33m[2m✓[22m[39m 指定模式读取关联目标，添加区分正确、不符与未知并保留输入 [33m 568[2mms[22m[39m
+     [33m[2m✓[22m[39m 动态 ID 与 UID 一样按字符串校验，非法输入不发请求 [33m 548[2mms[22m[39m
+     [33m[2m✓[22m[39m 移除目标只解除关联并给正确反馈 [33m 456[2mms[22m[39m
+     [33m[2m✓[22m[39m 目标读取失败只影响该区域并原位重试 [33m 435[2mms[22m[39m
+     [33m[2m✓[22m[39m 写入同步抛错后释放该 UP 的写锁，可原位重试而不是永久停在在途状态 [33m 635[2mms[22m[39m
+     [33m[2m✓[22m[39m 移除目标同步抛错同样释放写锁，随后可移除其他目标 [33m 767[2mms[22m[39m
+     [33m[2m✓[22m[39m 同一 UP 的写入串行：目标添加在途时其他写入与重复提交被阻止 [33m 1069[2mms[22m[39m
+     [33m[2m✓[22m[39m 切换模式卸载目标区：旧请求迟到成功不改写当前模式与反馈 [33m 1520[2mms[22m[39m
+     [33m[2m✓[22m[39m 移除失败只影响移除本身：添加按钮不变成重试添加，同按钮可重试移除 [33m 856[2mms[22m[39m
+     [33m[2m✓[22m[39m 添加失败后添加按钮给重试入口 [33m 562[2mms[22m[39m
+     [33m[2m✓[22m[39m 切换模式会取消在途的目标写入，旧结果不再落到新页面 [33m 648[2mms[22m[39m
+ [32m✓[39m tests/unit/archive-reader-replies.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 33[2mms[22m[39m
+ [32m✓[39m tests/unit/history-state.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m tests/unit/image-groups.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m tests/unit/read-error.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m tests/unit/browser-baseline.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 27[2mms[22m[39m
+ [32m✓[39m tests/unit/signals.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m tests/unit/assembly.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m tests/unit/reply-paging.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m tests/unit/reply-text.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m tests/unit/preview-marker.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m tests/unit/comment-reading.test.ts [2m([22m[2m20 tests[22m[2m)[22m[33m 18696[2mms[22m[39m
+   [33m[2m✓[22m[39m 无会话新访问的详情默认按最热读取首批 20 条，置顶标识来自服务端顺序 [33m 1978[2mms[22m[39m
+   [33m[2m✓[22m[39m 一级评论按 20/20/5 cursor 追加，结束后不再请求也不恢复结语 [33m 2356[2mms[22m[39m
+   [33m[2m✓[22m[39m 追加失败保留已读内容，重试沿用同一 cursor，双击不重复发请求 [33m 1302[2mms[22m[39m
+   [33m[2m✓[22m[39m 切换排序重置为目标排序首批，不沿用旧排序的分页进度 [33m 1353[2mms[22m[39m
+   [33m[2m✓[22m[39m 点击已在用的排序不重置也不重复请求 [33m 479[2mms[22m[39m
+   [33m[2m✓[22m[39m 快速切换排序时旧排序迟到的 error 不污染最后选择 [33m 313[2mms[22m[39m
+   [33m[2m✓[22m[39m 历史返回恢复排序、已读批次与 cursor，继续追加不重读首批 [33m 2657[2mms[22m[39m
+   [33m[2m✓[22m[39m 评论入口进入同页详情并重建讨论状态，不沿用旧阅读位置 [33m 1885[2mms[22m[39m
+   [33m[2m✓[22m[39m 同一动态的多次访问各自保留排序与批次，互不覆盖 [33m 3838[2mms[22m[39m
+   [33m[2m✓[22m[39m 失效 cursor 保留已读内容，重新开始读取丢弃旧批次并重读首批 [33m 543[2mms[22m[39m
+   [33m[2m✓[22m[39m 跨批重复的评论按 ID 去重，不重复展示 [33m 312[2mms[22m[39m
+   [33m[2m✓[22m[39m 离开未完成的追加读取再返回，从原 cursor 继续且不遗留永久加载态 [33m 468[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m23 passed[39m[22m[90m (23)[39m
+[2m      Tests [22m [1m[32m254 passed[39m[22m[90m (254)[39m
+[2m   Start at [22m 17:45:10
+[2m   Duration [22m 24.10s[2m (transform 7.71s, setup 0ms, import 33.21s, tests 90.67s, environment 29.27s)[22m
+
+
+> bili-charge-dynamics-frontend@0.0.0 check:e2e-projects /home/kevin/Projects/PI/bili_charge_dynamics/frontend
+> node scripts/check-e2e-projects.mjs
+
+e2e 项目覆盖与各 spec 的 @projects 声明一致：
+  app-shell.spec.ts            desktop-chromium, mobile-chromium
+  comment-images.spec.ts       desktop-chromium, mobile-chromium
+  comments.spec.ts             desktop-chromium-archive, mobile-chromium-archive
+  detail.spec.ts               desktop-chromium, mobile-chromium
+  dynamic-images.spec.ts       desktop-chromium, mobile-chromium
+  list.spec.ts                 desktop-chromium-archive, mobile-chromium-archive
+  manage.spec.ts               desktop-chromium-archive, mobile-chromium-archive
+  preview-gestures.spec.ts     desktop-chromium, mobile-chromium
+  preview-history.spec.ts      desktop-chromium, mobile-chromium
+  preview-images.spec.ts       desktop-chromium, mobile-chromium
+  preview-layout.spec.ts       desktop-chromium, mobile-chromium
+  replies.spec.ts              desktop-chromium-archive
+  static-delivery.spec.ts      desktop-chromium, mobile-chromium  [E2E_TARGET=nginx]
+  thread.spec.ts               mobile-chromium-archive
+check exit=0

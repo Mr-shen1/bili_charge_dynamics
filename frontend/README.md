@@ -156,10 +156,11 @@ mode 与自检构建中出现。
 17（上线就绪汇总）。13 只证明自动化与隔离集成；14 只证明 Linux Chromium 下的视觉基准，
 不代表真机、Nginx 交付、真实上游或持续运行通过。
 
-票据 15 由人工执行，代理侧已就绪的部分见
+票据 15 已完成真机验收（Linux Chrome 155.0.8059.39 与 iPhone 13 Pro / iOS 16.4），记录见
 [15 实际设备验收证据](../.scratch/frontend-vue-migration/evidence/15-real-device-acceptance.md)：候选登记与产物校验
-（`evidence/device-15/candidate.json`）、局域网启动脚本、环境 A/B 两份逐条清单、清单自检（自动化 Chromium
-验证清单里的按钮名与页数与当前代码一致，不构成设备证据）。真机实测尚未执行，因此本目录不宣称真机通过。
+（`evidence/device-15/candidate.json`）、局域网启动脚本、环境 A/B 两份逐条清单与结论。真机暴露并已修复两处 iOS 缺陷：
+`AbortSignal.any` 在 iOS 16.4 缺失导致管理写锁卡死（F-15-01），以及输入框 13px 触发整页放大（F-15-02）；
+`tests/unit/browser-baseline.test.ts` 现在会挡住 iOS 16.4 缺失的 Web API 重新混进源码。
 
 ## iPhone 真机验证
 
