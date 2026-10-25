@@ -40,6 +40,16 @@ def is_archive_delivery_url(url):
                 or host == "bilibili.com" or host.endswith(".bilibili.com"))
 
 
+def _comment_version_count(version):
+    """根评论媒体版本形如 comments:<来源评论总数>；无法解析时返回 -1（视为不领先）。"""
+    if not isinstance(version, str) or not version.startswith("comments:"):
+        return -1
+    try:
+        return int(version.split(":", 1)[1])
+    except ValueError:
+        return -1
+
+
 def refresh_media_progress(document, *, empty_confirmed=True):
     """按单图结果聚合；迁移中没有成功正文的空来源不能确认媒体成功空。"""
     items = document["media"]
@@ -108,7 +118,14 @@ async def sync_media(store, downloader, uploader, id, current_only=False, media_
         if not items:
             raise APIError("NOT_FOUND")
     result = {"processed": 0, "succeeded": 0, "failed": 0}
-    if uploader is None or (current_only and archive["media_version"] != archive["observed_version"]):
+    stale_version = archive["media_version"] != archive["observed_version"]
+    if current_only and stale_version and root_id is not None and not items and not archive.get("media_sources"):
+        # 只有「媒体版本反而领先观察版本」（计数回落）才结算：此时新快照不可能新增图片。
+        # 观察版本更新但媒体还没跟上时不结算，避免用未成功的观察推进媒体。
+        if _comment_version_count(archive["media_version"]) > _comment_version_count(archive["observed_version"]):
+            await to_thread.run_sync(store.settle_empty_media, id, root_id, archive["observed_version"])
+            return result
+    if uploader is None or (current_only and stale_version):
         return result
     for item in items:
         if item["status"] == "success":

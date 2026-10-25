@@ -1,5 +1,6 @@
 """21 / T2-T3：根评论原始 JSON→共用下载/模拟 OSS→SQLite→HTTP。"""
 
+import asyncio
 import copy
 import json
 from datetime import datetime, timezone
@@ -16,6 +17,8 @@ import pytest
 
 from backend.tests.archive_support import UID, TARGETS, archive_content, NULL_COMMENT_STATUS, readable_html, detail_json, set_specified
 from backend.tests.root_support import COMMENTS, root_fixture, source_handler
+from backend.bili_monitor.media import sync_media
+from backend.bili_monitor.storage import Store
 from backend.tests.test_dynamic_media import FakeOSS, PICS, SYNC, media_client, prepare, no_real_oss_environment
 
 ARCHIVE = "/api/archive/dynamics/123"
@@ -520,3 +523,39 @@ def test_actual_reply_and_embedded_preview_images_are_not_downloaded_or_archived
         assert len(downloaded) == 2
         assert set(downloaded) == {PICS[0]["url"]}
         assert all("media" not in reply and "media_sources" not in reply for reply in replies["items"])
+
+
+def test_stale_empty_comment_media_settles_instead_of_blocking_completion(tmp_path):
+    """计数回落会让 observed_version 与 media_version 分开；空图组必须能自行结算。"""
+    path = tmp_path / "stale-empty.sqlite"
+    state = comment_state()
+    for root in state["roots"]:
+        root["content"].pop("pictures", None)          # 与来源一致：无图根评论不带 pictures 键
+    with media_client(path, state, FakeOSS(), source_handler=source_handler(state)) as client:
+        prepare(client)
+        client.post(SYNC, json={"uid": UID})
+        roots = roots_by_id(client)
+        root_id = next(iter(roots))
+        assert roots[root_id]["media"] == []
+        assert roots[root_id]["work"]["media"] == "success"
+
+    # 人为制造版本分离：media_version 领先 observed_version，work.media 回到 pending。
+    with sqlite3.connect(path) as database:
+        document = json.loads(database.execute(
+            "SELECT document FROM root_comments WHERE dynamic_id = '123' AND id = ?", (root_id,)).fetchone()[0])
+        document["observed_version"] = "comments:9"
+        document["media_version"] = "comments:10"
+        document["work"]["media"] = "pending"
+        database.execute(
+            "UPDATE root_comments SET document = ? WHERE dynamic_id = '123' AND id = ?",
+            (json.dumps(document, ensure_ascii=False), root_id))
+
+    store = Store(path)
+    asyncio.run(sync_media(store, None, FakeOSS(), "123", current_only=True, root_id=root_id))
+
+    with sqlite3.connect(path) as database:
+        settled = json.loads(database.execute(
+            "SELECT document FROM root_comments WHERE dynamic_id = '123' AND id = ?", (root_id,)).fetchone()[0])
+    assert settled["work"]["media"] == "success"
+    assert settled["media_last_attempt"] == "success"
+    assert settled["observed_version"] == settled["media_version"] == "comments:9"

@@ -640,6 +640,33 @@ class Store(CheckStore, DiscoveryStore):
                 connection.rollback()
                 raise
 
+    def settle_empty_media(self, id, root_id, version):
+        """根评论组本来没有图片、又落后一个观察版本时按当前版本结算。
+
+        计数回落会让 observed_version 与 media_version 分开，而 sync_media 的版本守卫
+        会提前返回；如果没有这一步，work.media 永久 pending，目标每个节拍都会重新领工作。
+        """
+        if root_id is None:
+            return False
+        with self.connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                document = self._read_media_owner(connection, id, root_id)
+                if document is None or document.get("media") or document.get("media_sources"):
+                    connection.commit()
+                    return False
+                document["media_version"] = version
+                document["synced_media_version"] = version
+                document.setdefault("work", {})["media"] = "success"
+                document["media_last_attempt"] = "success"
+                self._write_media_owner(connection, id, root_id, document)
+                self._refresh_comment_media_success(connection, id, None, media_completed=True)
+                connection.commit()
+                return True
+            except BaseException:
+                connection.rollback()
+                raise
+
     def _refresh_comment_media_success(self, connection, id, succeeded_at, *, media_completed=False):
         # 仅在实际根分页或上传提交时推进；读取/检查不补造旧归档的成功时间。
         row = connection.execute("SELECT document FROM archives WHERE id = ?", (id,)).fetchone()
