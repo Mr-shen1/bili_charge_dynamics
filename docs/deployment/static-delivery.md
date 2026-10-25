@@ -1,6 +1,6 @@
 # 静态交付与 Nginx 运行说明
 
-> [Vue 3 + Element Plus 重构方案](../design/frontend-migration.md) 已确认，票据 12 已交付仅含 Vue 的候选产物：构建在 `frontend/`、产物为 `frontend/dist/`，Nginx 静态托管与 API 代理规则不变。本页命令已按候选产物更新，但**尚未在真实目标环境重新执行**；票据 16 负责静态交付、资源更新与前端回退验收，票据 13–15 负责协议、视觉与真机。前端切换不迁移/回退数据库；旧哈希资源保留及原子发布要求不变。
+> [Vue 3 + Element Plus 重构方案](../design/frontend-migration.md) 已确认，票据 12 已交付仅含 Vue 的候选产物：构建在 `frontend/`、产物为 `frontend/dist/`，Nginx 静态托管与 API 代理规则不变。本页命令已按候选产物更新；票据 16 已在**本机隔离环境**用临时编译的 Nginx 1.28.0 执行静态交付、资源更新与前端回退，结果见[16 交付证据](../../.scratch/frontend-vue-migration/evidence/16-static-delivery-rollback.md)，**未在真实目标机或云环境执行**，不构成上线结论；票据 13–15 覆盖协议、视觉与真机。前端切换不迁移/回退数据库；旧哈希资源保留、原子发布与回退要求见第 3 节。
 
 ## 当前范围：后端集成 #31
 
@@ -102,7 +102,7 @@ pnpm test:delivery
 cd ..
 ```
 
-需要 uv 的 dev 依赖、可执行 Nginx/mime.types、Chromium 及其系统库，且 Nginx `127.0.0.1:4173` 空闲。脚本选择临时空闲 API 端口并仅在临时配置替换上游，不占用维护者的 8000、不修改系统服务。`frontend/scripts/verify-static-delivery.mjs` 托管显式 mock 构建（`frontend/dist-mock`）做阅读/缓存/更新与构建重现/fault 隔离，再通过 `verify-production-deployment.mjs`、`verify-production-delivery.mjs` 启动实际 API/独立 collector 共享临时 SQLite，验证生产六条路由直达/刷新、未知页、只读浏览、API 200/404/422/502、资源 404/cache、生产构建真实更新、旧哈希保留及 HTTP/UI/产物/日志的虚构秘密扫描。生产 `frontend/dist` 不再被 mock 构建覆盖；fault 构建输出到 `dist-mock`，脚本断言它不影响生产产物。给 `test:delivery` 传 Playwright 文件只筛选历史 mock 部分，不跳过生产阶段。本机未安装 Nginx，本次未执行该步。
+需要 uv 的 dev 依赖、可执行 Nginx/mime.types、Chromium 及其系统库，且 Nginx `127.0.0.1:4173` 空闲。脚本选择临时空闲 API 端口并仅在临时配置替换上游，不占用维护者的 8000、不修改系统服务；`4173` 已被现有实例或隧道占用时用 `DELIVERY_PORT=<空闲端口>` 换端口，**不要停掉现有实例**。`frontend/scripts/verify-static-delivery.mjs` 托管显式 mock 构建（`frontend/dist-mock`）做阅读/缓存/更新与构建重现/fault 隔离，再通过 `verify-production-deployment.mjs`、`verify-production-delivery.mjs` 启动实际 API/独立 collector 共享临时 SQLite，验证生产六条路由直达/刷新、未知页、只读浏览、API 200/404/422/502、资源 404/cache、入口引用的全部哈希资源、生产构建真实更新与回退、旧哈希保留及 HTTP/UI/产物/日志的虚构秘密扫描。第二个临时 server 只给 `/api/manage/` 加 Basic 保护，用来确认反代 401 不回退 SPA 且前端仍显示固定身份验证提示。生产 `frontend/dist` 不再被 mock 构建覆盖；fault 构建输出到 `dist-mock`，脚本断言它不影响生产产物。给 `test:delivery` 传 Playwright 文件只筛选历史 mock 部分，不跳过生产阶段。
 
 隔离 API 是 `backend.tests.deployment_fixture:create_app --factory`，必须指定 `BILI_DATABASE_PATH`；独立采集入口为 `python -m backend.tests.deployment_fixture --database PATH`，PATH 与 API 相同（均用 uv 环境）。它们复用生产实现，只替换外部来源/下载/上传，不访问真实上游/OSS；上传返回 `https://media.example.invalid/deployment.png`，浏览器仅 route 外部图片传输，不替换 API/Adapter/SQLite。`test_deployment_processes.py` 负责两进程持久化、检查/同步和重启/恢复边界。实际结果见 #31 验收记录；本文不替代执行证据，不把 fixture 公开图当真实 OSS 或真机证据。
 
@@ -166,17 +166,24 @@ Nginx 默认静态 ETag/Last-Modified 用于重新验证；`no-cache` 不是 `no
 2. 保留上一版哈希资源：切换入口时，已打开页面仍可能使用旧脚本/样式。可将旧 `assets/` 中不冲突的哈希文件保留在新目录，或使用共享哈希资源目录。已发布同 URL 的内容不得改写；版本化图片也需按仍可访问的旧页面保留。
 3. 在同一文件系统用重命名原子切换 `current` 链接，避免逐个覆盖正在提供的入口和资源；不要把 Nginx `open_file_cache` 长时间缓存旧链接（本示例未启用）。核对入口返回新的 HTML、新哈希资源可读、旧哈希资源仍可读。
 4. 用旧入口 ETag 重新请求：更新后应得到 200 新入口，而不是旧 304；浏览器刷新有效详情仍可导航和看图。未变化的资源允许继续使用缓存。不要依赖强制刷新绕过缓存来掩盖错误策略。
+5. 回退同样只切前端：先把**新**发布目录的 `assets/` 中不冲突的哈希文件补进上一版目录，再原子把 `current` 指回上一版。这样回退前已经打开的页面仍能取到新哈希脚本/样式，旧入口重新请求得到旧 HTML 而不是新入口的 304。不要回退 SQLite、不重启 collector，也不要删除新发布目录——它仍是最新回退前的产物。
 
-本票脚本在临时源码副本中改变入口标题和一个执行标记，再实际构建 B、保留 A 的哈希资源并原子切换；不改真实源文件、`dist/` 的发布版本或真实部署目录。此演练验证交付机制，不等于提供自动发布平台或实施生产更新。
+本票脚本在临时源码副本中改变入口标题和一个执行标记，再实际构建 B、保留 A 的哈希资源并原子切换，随后把 `current` 指回 A 完成回退；同名脚本在生产构建上重复同一流程，并断言回退前后归档内容、数据库文件 inode 与 collector 进程未变。它不改真实源文件、`dist/` 的发布版本或真实部署目录。此演练验证交付机制，不等于提供自动发布平台或实施生产更新。
 
 ## 4. 可执行 Nginx 验证
 
-需要本地可执行的 Nginx、与其匹配的 `mime.types`、Playwright Chromium 和空闲的 `127.0.0.1:4173`。当前统一入口还需 `uv sync --locked` 安装 dev 依赖并运行上方 #31 生产阶段；API 使用临时空闲端口。以非 root 用户运行，不需要系统服务、Docker、云账号或凭据。
+需要本地可执行的 Nginx、与其匹配的 `mime.types`、Playwright Chromium 和空闲的 `127.0.0.1:4173`（被占用时用 `DELIVERY_PORT`）。当前统一入口还需 `uv sync --locked` 安装 dev 依赖并运行上方 #31 生产阶段；API 使用临时空闲端口。以非 root 用户运行，不需要系统服务、Docker、云账号或凭据。
 
 ```bash
 source ~/.nvm/nvm.sh
 nvm use
 pnpm exec playwright install chromium
+NGINX_BIN=/absolute/path/to/nginx \
+NGINX_MIME_TYPES=/absolute/path/to/mime.types \
+pnpm test:delivery
+
+# 4173 已被现有实例/隧道占用时换端口，不停止现有服务：
+DELIVERY_PORT=4273 \
 NGINX_BIN=/absolute/path/to/nginx \
 NGINX_MIME_TYPES=/absolute/path/to/mime.types \
 pnpm test:delivery
@@ -187,7 +194,7 @@ NGINX_MIME_TYPES=/absolute/path/to/mime.types \
 pnpm test:delivery tests/e2e/static-delivery.spec.ts
 ```
 
-系统已有 Nginx 时也可用 `NGINX_BIN=nginx NGINX_MIME_TYPES=/etc/nginx/mime.types`。脚本先检查端口空闲并构建；生成临时主配置，**直接包含交付示例**，替换 root 和临时 API 上游端口；验证配置、启动独立 Nginx、执行历史 mock 浏览器回归（桌面 Chromium / Pixel 7 模拟视口，不启动 Vite）、再核对相同输入重建和 `--mode fault` 的入口/bundle 字节一致，实际构建更新并验证条件请求和浏览器刷新。随后执行上方 #31 生产装配阶段。正常结束或测试失败均退出临时进程、删除临时目录并恢复生产构建；若被系统强制终止，需自行清理残留临时进程/目录。
+系统已有 Nginx 时也可用 `NGINX_BIN=nginx NGINX_MIME_TYPES=/etc/nginx/mime.types`。脚本先检查端口空闲并构建；生成临时主配置，**直接包含交付示例**，替换 root 和临时 API 上游端口；验证配置、启动独立 Nginx、执行历史 mock 浏览器回归（桌面 Chromium / Pixel 7 模拟视口，不启动 Vite）、再核对相同输入重建和 `--mode fault` 的入口/bundle 字节一致，实际构建更新并验证条件请求、浏览器刷新与回退。Playwright 的 Nginx 分支由脚本传入 `E2E_NGINX_BASE`，换端口不需要改配置。随后执行上方 #31 生产装配阶段。正常结束或测试失败均退出临时进程、删除临时目录并恢复生产构建；若被系统强制终止，需自行清理残留临时进程/目录。
 
 没有现成 Nginx、但已有编译器/make/PCRE2/zlib 时，可按以下方式在用户临时目录复现本票环境；不运行 `make install`，不修改系统设施。源码下载/编译失败应记录为环境限制，不能替换成 Vite 验收。
 

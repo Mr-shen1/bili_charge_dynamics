@@ -81,6 +81,10 @@
 
 ## Red → Green 证据
 
+> 下方表格保留迁移前 React 实现的 TDD 过程证据（`tests/*.test.tsx`）；票据 12 已删除该栈及对应路径，
+> 当前同等行为的单测在 `frontend/tests/unit/*.test.ts`，命令为 `cd frontend && pnpm test`。原文保留只为可追溯，
+> 不再代表现有文件位置。
+
 所有命令均先 `source ~/.nvm/nvm.sh && nvm use`，Node `24.21.0`、pnpm `10.34.6`。每次只执行一个测试文件。
 
 | 片段 | 命令 | Red | Green |

@@ -3,6 +3,7 @@
 //   pnpm build && pnpm build:mock && pnpm check:isolation
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { HASHED_ASSET, MIN_ROUTE_CHUNKS, routeChunkNames } from './lib/build-assets.mjs';
 
 const root = process.cwd();
 const productionDir = join(root, 'dist');
@@ -26,6 +27,35 @@ function collectFiles(dir) {
   };
   walk(dir);
   return files;
+}
+
+function checkAssets(dir, label) {
+  const entry = join(dir, 'index.html');
+  if (!existsSync(entry)) {
+    failures.push(`${label} 缺少 index.html 入口`);
+    return;
+  }
+  // 入口引用的资源必须真实存在；不再用“任意 index-*.js”这种过宽的名字猜测证明产物完整。
+  const html = readFileSync(entry, 'utf8');
+  const refs = [...new Set([...html.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map(match => match[1]))];
+  if (!refs.some(path => path.endsWith('.js'))) failures.push(`${label} 入口未引用哈希脚本`);
+  if (!refs.some(path => path.endsWith('.css'))) failures.push(`${label} 入口未引用哈希样式`);
+  for (const ref of refs) {
+    if (!existsSync(join(dir, ref.slice(1)))) failures.push(`${label} 入口引用的 ${ref} 不存在`);
+  }
+  const assetsDir = join(dir, 'assets');
+  if (!existsSync(assetsDir)) {
+    failures.push(`${label} 缺少 assets 目录`);
+    return;
+  }
+  const assets = readdirSync(assetsDir);
+  const unhashed = assets.filter(name => !HASHED_ASSET.test(name));
+  if (unhashed.length > 0) failures.push(`${label} /assets/ 含未内容哈希文件：${unhashed.join(', ')}`);
+  // 路由级 chunk 是入口之外的拆包资源，只查入口脚本会漏掉它们。
+  const routeChunks = routeChunkNames(assets);
+  if (routeChunks.length < MIN_ROUTE_CHUNKS) {
+    failures.push(`${label} 路由级 chunk 少于六条路由（${routeChunks.length}）`);
+  }
 }
 
 function check(dir, expectation) {
@@ -53,12 +83,12 @@ function check(dir, expectation) {
     if (!existsSync(join(dir, 'images', 'unavailable', 'placeholder.svg'))) {
       failures.push(`${label} 缺少应用自有图片占位资源`);
     }
-    if (!files.some(file => /index-.*\.js$/.test(relative(dir, file)))) failures.push(`${label} 缺少入口 chunk，产物可能不完整`);
   } else {
     if (mockChunks.length === 0) failures.push(`${label} 缺少 mock 自检页面 chunk，mock 装配可能未生效`);
     if (hitMarkers.size === 0) failures.push(`${label} 未包含夹具地址标记，自检数据可能未打进产物`);
     if (hitArchiveMarkers.size === 0) failures.push(`${label} 未包含 mock 归档读取数据，mock 装配可能未生效`);
   }
+  checkAssets(dir, label);
 }
 
 check(productionDir, 'production');

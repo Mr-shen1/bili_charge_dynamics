@@ -14,7 +14,7 @@
 // 用法：node scripts/verify-nginx-parity.mjs
 //       pnpm test:nginx-parity
 
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
@@ -141,6 +141,19 @@ for (const name of ['nginx-ecs-tunnel.conf', 'nginx-ecs-https.conf', 'nginx-loca
       `${name} 中 /api/archive 不得加 auth_basic，阅读页依赖它`,
     );
   }
+}
+
+// 7. 未版本化资源命名空间必须有显式规则；新增 public/ 目录却没有 location 时，
+// 缺失文件会落进 SPA 回退而不是 404，属于部署契约漂移。
+// 按完整规则匹配，避免 `/x/images/` 之类子路径误满足 `public/images`。
+for (const entry of await readdir(join(repo, 'frontend', 'public'), { withFileTypes: true })) {
+  const rule = entry.isDirectory()
+    ? `location ^~ /${entry.name}/`
+    : `location /${entry.name.replace(/\.[^.]+$/, '')}`;
+  assert(
+    [...baseline.locations.keys()].some(name => name === rule),
+    `frontend/public/${entry.name} 缺少对应的 location 规则（期望 ${rule}）`,
+  );
 }
 
 console.log('nginx 部署配置与隔离基准一致：');

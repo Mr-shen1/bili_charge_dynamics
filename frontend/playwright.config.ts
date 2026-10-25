@@ -7,7 +7,8 @@ const listPort = 4320;
 const preview = process.env.E2E_TARGET === 'preview';
 // 静态交付验证由 scripts/verify-static-delivery.mjs 管理 Nginx，不在这里另起服务。
 const nginx = process.env.E2E_TARGET === 'nginx';
-const nginxBase = 'http://127.0.0.1:4173';
+// 默认沿用交付示例的 4173；本机该端口被占用时由 verify-static-delivery.mjs 传入实际端口。
+const nginxBase = process.env.E2E_NGINX_BASE || 'http://127.0.0.1:4173';
 const mockBase = `http://127.0.0.1:${port}`;
 const listBase = `http://127.0.0.1:${listPort}`;
 // 列表与一级评论用例需要生产装配 + HTTP 传输替身；mock/fault 装配自带归档夹具。

@@ -22,6 +22,7 @@
 | 12 | 仅含 Vue 的候选产物：六条路由与完整阅读/管理流程均由 Vue 承载、删除 React 栈与重复实现、交付工具去掉框架耦合、默认真实 API 与 mock/fault 隔离保持 |
 | 13 | 协议与跨流程回归：mock、生产 Adapter/HTTP 替身、实际 API＋隔离 SQLite 分开取证，六路由/分页排序/恢复/图片/管理/竞态逐项回归，建立 AC-01–AC-34 台账 |
 | 14 | 新版视觉签收：63 张四宽度受控截图（含空态/错误态）、布局/触控/焦点审计、用户两轮反馈修正、黄金图与 `visual:compare` 基准 |
+| 16 | 隔离 Nginx 静态交付：本机临时编译 Nginx 1.28.0 下六路由直达/刷新、入口与全部哈希资源可达、管理 401 提示、生产/mock 原子切换与前端回退、SQLite 与 collector 不受影响 |
 
 对应规格与票据：[实施规格](../.scratch/frontend-vue-migration/spec.md) · [票据目录](../.scratch/frontend-vue-migration/issues/) ·
 [图片预览验证证据](../.scratch/frontend-vue-migration/evidence/01-native-image-preview.md) ·
@@ -36,7 +37,8 @@
 [10 监控模式与指定目标证据](../.scratch/frontend-vue-migration/evidence/10-monitoring-modes-targets.md) ·
 [11 检查与发现状态证据](../.scratch/frontend-vue-migration/evidence/11-monitoring-status-reading.md) ·
 [12 仅 Vue 候选产物证据](../.scratch/frontend-vue-migration/evidence/12-vue-only-release-candidate.md) ·
-[13 协议与跨流程回归证据](../.scratch/frontend-vue-migration/evidence/13-integrated-protocol-regression.md)。
+[13 协议与跨流程回归证据](../.scratch/frontend-vue-migration/evidence/13-integrated-protocol-regression.md) ·
+[16 静态交付与回退证据](../.scratch/frontend-vue-migration/evidence/16-static-delivery-rollback.md)。
 仓库根目录不再有第二套前端入口：`frontend/` 是唯一前端应用，`dist/`、`dist-mock/` 都相对本目录。
 
 ## 命令
@@ -64,8 +66,8 @@ pnpm visual:compare      # 与 tests/visual-baseline/ 的用户签收黄金图�
 pnpm visual:golden -- --reason "为什么是预期变化"
                        # 仅在确认视觉变化是预期的之后更新黄金图；必须写原因并进提交
 pnpm test:nginx-parity   # 只比对 deploy/nginx*.conf 的 location/server 指令一致性，无需 nginx 二进制
-pnpm test:delivery      # 临时真实 Nginx 交付演练（生产/mock/fault 构建、缓存/404、发布切换、实际 API）需
-                       # NGINX_BIN、NGINX_MIME_TYPES、uv 环境与 Chromium；本机未安装 nginx 时无法执行
+pnpm test:delivery      # 临时真实 Nginx 交付演练（生产/mock/fault 构建、缓存/404、发布切换与回退、实际 API）需
+                       # NGINX_BIN、NGINX_MIME_TYPES、uv 环境与 Chromium；4173 被占用时用 DELIVERY_PORT 换端口
 pnpm test:http          # 对已上线的局域网 mock 产物验证真实非 localhost HTTP：HTTP_ACCEPTANCE_URL=... 提供地址
 pnpm build               # 生产构建 → dist/（不含 mock 页面与夹具）
 pnpm build:mock          # 自检构建 → dist-mock/（回归与真机自检用）
@@ -152,15 +154,21 @@ mode 与自检构建中出现。
 后续视觉变更先跑 `pnpm visual:compare`；只有确认变化符合预期，才用 `pnpm visual:golden -- --reason "..."`
 更新黄金图并提交原因，不能用重跑截图掩盖退化。
 
-仍待执行的是 15（Linux Chrome / iPhone 真机）、16（静态交付、资源更新与前端回退）与
-17（上线就绪汇总）。13 只证明自动化与隔离集成；14 只证明 Linux Chromium 下的视觉基准，
-不代表真机、Nginx 交付、真实上游或持续运行通过。
+仍待执行的是 17（上线就绪汇总）。13 只证明自动化与隔离集成；14 只证明 Linux Chromium 下的视觉基准；
+15 只证明两类真机目标；16 只在本机隔离 Nginx 下验证静态交付、资源更新与前端回退，
+不代表目标机、云部署、持续运行或正式上线通过。
 
 票据 15 已完成真机验收（Linux Chrome 155.0.8059.39 与 iPhone 13 Pro / iOS 16.4），记录见
 [15 实际设备验收证据](../.scratch/frontend-vue-migration/evidence/15-real-device-acceptance.md)：候选登记与产物校验
 （`evidence/device-15/candidate.json`）、局域网启动脚本、环境 A/B 两份逐条清单与结论。真机暴露并已修复两处 iOS 缺陷：
 `AbortSignal.any` 在 iOS 16.4 缺失导致管理写锁卡死（F-15-01），以及输入框 13px 触发整页放大（F-15-02）；
 `tests/unit/browser-baseline.test.ts` 现在会挡住 iOS 16.4 缺失的 Web API 重新混进源码。
+
+票据 16 已完成（见[交付与回退证据](../.scratch/frontend-vue-migration/evidence/16-static-delivery-rollback.md)）：
+本机无系统 Nginx，按文档在临时目录编译 Nginx 1.28.0，用 `DELIVERY_PORT=4273` 避开已占用的 4173（现有实例未受影响）。
+`pnpm test:delivery` 三个阶段全绿：mock 产物阅读/缓存/404/构建复现与回退；生产构建六路由直达/刷新、
+产物内 28 个哈希资源逐个可达、受保护反代 401 只显示固定提示、原子更新与回退，且 SQLite 文件与 collector 未变。
+`check:isolation` 现在从入口 HTML 解析引用并要求 `/assets/` 全部为内容哈希文件、路由 chunk 不少于六个。
 
 ## iPhone 真机验证
 
