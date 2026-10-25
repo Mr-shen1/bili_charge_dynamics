@@ -34,6 +34,23 @@ from .selection import selection_matches
 # BILI_COLLECTOR_CADENCE_SECONDS 可覆盖为固定值（测试与临时运维）；无抖动便于复现。
 CADENCE_SECONDS = 2.7
 CADENCE_JITTER = 0.10
+# 页面信号（编辑时间、正文/图片版本、受限状态）按独立低频节拍采样；
+# 计数检查走主节拍，所以默认 2.7 秒只带来一次评论计数请求。
+PAGE_CHECK_SECONDS = 60.0
+PAGE_CHECK_JITTER_SECONDS = 2.0
+
+
+def page_interval_sample():
+    """本轮页面信号间隔：默认 60 秒 ±2 秒抖动；BILI_COLLECTOR_PAGE_CHECK_SECONDS 可覆盖为固定值。"""
+    override = os.environ.get("BILI_COLLECTOR_PAGE_CHECK_SECONDS")
+    if override is not None and override != "":
+        try:
+            value = float(override)
+        except ValueError:
+            value = -1.0
+        if value >= 0:
+            return value
+    return PAGE_CHECK_SECONDS + random.uniform(-PAGE_CHECK_JITTER_SECONDS, PAGE_CHECK_JITTER_SECONDS)
 
 
 def cadence_provider():
@@ -76,10 +93,16 @@ def collector_lock(path):
             fcntl.flock(lock, fcntl.LOCK_UN)
 
 
+def _timestamp(value):
+    """当前时钟产生的 ISO 字符串；容错处理带/不带时区与 'Z'。"""
+    text = value.replace("Z", "+00:00") if isinstance(value, str) else value
+    return datetime.fromisoformat(text).timestamp()
+
+
 class Collector:
     def __init__(self, store, client, downloader=None, uploader=None, *, clock=None,
                  max_checks=4, max_syncs=4, max_discoveries=2, comment_client_factory=None,
-                 cadence=None):
+                 cadence=None, page_check_seconds=None):
         if max_checks < 1 or max_syncs < 1 or max_discoveries < 1:
             raise ValueError("Invalid collector concurrency")
         self.store = store
@@ -92,6 +115,9 @@ class Collector:
         self.max_discoveries = max_discoveries
         self.comment_client_factory = comment_client_factory
         self.cadence = cadence if cadence is not None else cadence_provider()
+        # 默认每轮采样带抖动；显式传值时用于测试/运维固定间隔。
+        self.page_interval = ((lambda: float(page_check_seconds)) if page_check_seconds is not None
+                              else page_interval_sample)
 
     async def discover_once(self, uid):
         """一次按 UP 发现并发布可信窗口；首次工作仍经固定检查与独立归档阶段。"""
@@ -124,6 +150,15 @@ class Collector:
         collector_event("discovery_finished", accepted=accepted)
         return accepted
 
+    def _page_due(self, last_checked_at, now):
+        """页面信号是否到期：无记录或超过采样间隔。时间字符串无法解析时按到期处理。"""
+        if not last_checked_at:
+            return True
+        try:
+            return (_timestamp(now) - _timestamp(last_checked_at)) >= self.page_interval()
+        except ValueError:
+            return True
+
     async def check_once(self, uid, id, *, selection=None):
         current = await to_thread.run_sync(self.store.check_selection, uid, id)
         if not selection_matches(current, selection):
@@ -134,35 +169,42 @@ class Collector:
         async def still_selected():
             return await to_thread.run_sync(self.store.check_selection, uid, id) == selection
 
-        metadata, error = None, None
-        try:
-            metadata = page_metadata(await fetch_page(self.client, id), uid)
-            if metadata.get("edit_status") == "error":
-                error = "SIGNAL_INVALID"
-        except Exception as exception:
-            collector_failure("check_source_failed", exception, stage="page")
-            error = "SOURCE_UNAVAILABLE"
-        if not await still_selected():
-            return False
-        # 新定位策略上线时重新核对旧 locator，不能仅凭格式正确就永久复用。
         checks = await to_thread.run_sync(self.store.read_checks, uid)
         observed = next((item["observed"] for item in checks if item["id"] == id), {})
         locator = observed.get("comment_locator")
-        if (metadata is None or not valid_locator(locator)
-                or locator.get("policy_version") != COMMENT_LOCATOR_VERSION):
+        now = self.clock.now()
+        page_signal = self._page_due(await to_thread.run_sync(self.store.page_checked_at, uid, id), now)
+        metadata, page_error = None, None
+        if page_signal:
+            try:
+                metadata = page_metadata(await fetch_page(self.client, id), uid)
+                if metadata.get("edit_status") == "error":
+                    page_error = "SIGNAL_INVALID"
+            except Exception as exception:
+                collector_failure("check_source_failed", exception, stage="page")
+                page_error = "SOURCE_UNAVAILABLE"
             if not await still_selected():
                 return False
-            try:
-                detail, detail_status = await fetch_detail(self.client, id, uid)
-                locator = detail.get("comment_locator")
-                if metadata is None and detail_status == "restricted":
-                    # 已确认作者和目标的受限响应是有效元数据，不当成来源故障。
-                    # 没有 HTML 编辑信号仍是 unknown，不能伪造版本或正文成功。
-                    metadata = {**detail, "edit_status": "unknown", "content_visible": False}
-                    error = None
-                collector_event("comment_locator_refreshed", source=locator.get("source") if locator else None)
-            except Exception as exception:
-                collector_failure("check_source_failed", exception, stage="detail")
+            # 新定位策略上线时重新核对旧 locator，不能仅凭格式正确就永久复用。
+            if (metadata is None or not valid_locator(locator)
+                    or locator.get("policy_version") != COMMENT_LOCATOR_VERSION):
+                if not await still_selected():
+                    return False
+                try:
+                    detail, detail_status = await fetch_detail(self.client, id, uid)
+                    locator = detail.get("comment_locator")
+                    if metadata is None and detail_status == "restricted":
+                        # 已确认作者和目标的受限响应是有效元数据，不当成来源故障。
+                        # 没有 HTML 编辑信号仍是 unknown，不能伪造版本或正文成功。
+                        metadata = {**detail, "edit_status": "unknown", "content_visible": False}
+                        page_error = None
+                    collector_event("comment_locator_refreshed", source=locator.get("source") if locator else None)
+                except Exception as exception:
+                    collector_failure("check_source_failed", exception, stage="detail")
+        elif not valid_locator(locator) or locator.get("policy_version") != COMMENT_LOCATOR_VERSION:
+            # 页面信号未到期且没有可用定位：本轮无事可做，不重复打上游，也不落一条失败记录。
+            collector_event("check_skipped", reason="page_interval")
+            return True
         if not await still_selected():
             return False
         comments = {"comment_locator": locator, "comment_count_status": "failed"}
@@ -179,9 +221,10 @@ class Collector:
         # 网页计数不回退冒充独立计数读取成功；两项信号可各自失败。
         if metadata is not None:
             metadata.pop("source_comment_count", None)
+        # 记录时间取提交时刻：慢检查不能让 last_checked_at 回退到开始时间。
         accepted = await to_thread.run_sync(lambda: self.store.record_check(
-            uid, id, metadata, self.clock.now(), error, comment_observation=comments, selection=selection,
-            media_upload=self.uploader is not None))
+            uid, id, metadata, self.clock.now(), page_error, comment_observation=comments,
+            selection=selection, media_upload=self.uploader is not None, page_signal=page_signal))
         collector_event("check_finished", recorded=accepted,
                         edit_status=metadata.get("edit_status") if metadata else None,
                         comment_count_status=comments["comment_count_status"])
@@ -266,8 +309,10 @@ class Collector:
             await to_thread.run_sync(self.store.migrate)
             await to_thread.run_sync(self.store.recover_check_work)
             await to_thread.run_sync(self.store.recover_discoveries, self.clock.now())
-            collector_event("collector_started", cadence_seconds=CADENCE_SECONDS,
-                            cadence_jitter=CADENCE_JITTER,
+            collector_event("collector_started", cadence_ms=int(CADENCE_SECONDS * 1000),
+                            cadence_jitter_pct=int(round(CADENCE_JITTER * 100)),
+                            page_check_ms=int(PAGE_CHECK_SECONDS * 1000),
+                            page_check_jitter_ms=int(PAGE_CHECK_JITTER_SECONDS * 1000),
                             max_checks=self.max_checks, max_syncs=self.max_syncs,
                             max_discoveries=self.max_discoveries, recovery="complete")
             checks, executions, discoveries = {}, {}, {}

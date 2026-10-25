@@ -25,18 +25,18 @@ def test_empty_unversioned_database_migrates_and_reopens(tmp_path):
     with client_for(path) as client:
         assert client.get(BASE).json() == saved
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 14
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 15
 
 
 def test_future_database_refuses_startup_without_downgrading(tmp_path, caplog):
     path = tmp_path / "FICTIONAL_SECRET_FUTURE.sqlite"
     with sqlite3.connect(path) as database:
-        database.execute("PRAGMA user_version = 15")
+        database.execute("PRAGMA user_version = 16")
     with pytest.raises(RuntimeError, match="Unsupported database schema version"):
         with client_for(path):
             pytest.fail("A future schema must not serve requests")
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 15
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 16
     assert "FICTIONAL_SECRET" not in caplog.text
 
 
@@ -417,7 +417,7 @@ def test_real_v9_configuration_and_archive_migrate_to_checks_without_fabricating
         assert current["comment_sync"] == check
         assert archive_content(current) == saved
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 14
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 15
         assert database.execute("PRAGMA foreign_key_check").fetchall() == []
     reopened = Store(path)
     assert reopened.record_check(UID, "123", {}, CHECKED_AT, None)
@@ -487,4 +487,4 @@ def test_v9_check_migration_failure_rolls_back_version_and_can_retry(tmp_path):
     with client_for(path) as client:
         assert get_checks(client)[0]["check_status"] == "unchecked"
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 14
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 15

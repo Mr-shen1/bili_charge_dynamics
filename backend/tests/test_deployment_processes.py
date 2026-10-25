@@ -36,6 +36,9 @@ class Deployment:
             "DEPLOYMENT_FIXTURE_MEDIA_URL": "https://media.example.invalid/deployment.png",
             "PYTHONUNBUFFERED": "1",
             "BILI_DEPLOYMENT_SECRET": "FAKE_DEPLOYMENT_SECRET_31_NEVER_REAL",
+            # 部署回归按固定节拍与“每节拍采样页面”断言，不依赖生产默认值。
+            "BILI_COLLECTOR_CADENCE_SECONDS": "15",
+            "BILI_COLLECTOR_PAGE_CHECK_SECONDS": "0",
         })
         self.processes = []
         self.logs = []

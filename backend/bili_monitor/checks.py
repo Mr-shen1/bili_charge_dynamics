@@ -130,8 +130,15 @@ class CheckStore:
         with self.connection() as connection:
             return selection_token(connection, uid, id)
 
+    def page_checked_at(self, uid, id):
+        """上一次页面信号采样时间；没有记录时返回 None（本轮必须采样）。"""
+        with self.connection() as connection:
+            row = connection.execute(
+                "SELECT page_checked_at FROM target_checks WHERE uid = ? AND id = ?", (uid, id)).fetchone()
+        return row["page_checked_at"] if row is not None else None
+
     def record_check(self, uid, id, metadata, checked_at, error=None, *, comment_observation=None,
-                     selection=None, media_upload=True):
+                     selection=None, media_upload=True, page_signal=True):
         with transaction(self) as connection:
             current = selection_token(connection, uid, id)
             if not selection_matches(current, selection):
@@ -145,11 +152,12 @@ class CheckStore:
                 # 归档已保存的版本仍可信，即使最近一次 edit_status 为 unknown/error。
                 previous = {key: value for key, value in json.loads(archived[0]).items()
                             if value is not None} if archived else {}
-            failed = error is not None or metadata is None
-            readable = metadata is not None and (not failed or (
+            # page_signal=False 表示本轮只读计数（页面信号未到期）：不清旧信号、也不算失败。
+            failed = error is not None if not page_signal else (error is not None or metadata is None)
+            readable = page_signal and metadata is not None and (not failed or (
                 error == "SIGNAL_INVALID" and metadata.get("edit_status") == "error"))
             observed = merge_signals(previous, metadata) if readable else previous
-            version = None if failed else trusted_version(metadata)
+            version = None if failed or not page_signal else trusted_version(metadata)
             if comment_observation is not None:
                 observed = merge_signals(observed, comment_observation)
             # 可信总数是独立评论版本；失败/未知不清旧值，也不阻断其他可信信号。
@@ -178,13 +186,15 @@ class CheckStore:
                 work = "pending"
             status = "failed" if failed else ("checked" if changed else "unchanged")
             connection.execute("""INSERT INTO target_checks
-                (uid, id, last_checked_at, check_status, observed, revision, work, check_error)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (uid, id, last_checked_at, check_status, observed, revision, work, check_error, page_checked_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(uid, id) DO UPDATE SET last_checked_at = excluded.last_checked_at,
                 check_status = excluded.check_status, observed = excluded.observed,
-                revision = excluded.revision, work = excluded.work, check_error = excluded.check_error""",
+                revision = excluded.revision, work = excluded.work, check_error = excluded.check_error,
+                page_checked_at = COALESCE(excluded.page_checked_at, target_checks.page_checked_at)""",
                 (uid, id, checked_at, status, json.dumps(observed, ensure_ascii=False), revision,
-                 work, safe_error(error) if error is not None else ("SOURCE_UNAVAILABLE" if failed else None)))
+                 work, safe_error(error) if error is not None else ("SOURCE_UNAVAILABLE" if failed else None),
+                 checked_at if page_signal else None))
             return True
 
     def read_checks(self, uid):

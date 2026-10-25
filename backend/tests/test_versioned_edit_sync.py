@@ -503,7 +503,8 @@ def test_interrupted_stages_recover_without_new_edit_and_duplicate_execution_is_
 
 
 def test_committed_archive_survives_interruption_before_target_finish_and_run_recovers(tmp_path):
-    # Clock 是外部边界：依次记录检查、正文成功、根成功、回复成功，目标 finish 的第五次 now 中断。
+    # Clock 是外部边界：检查开始时先取一次 now（页面信号到期判定），随后记录检查、正文、根、回复，
+    # 目标 finish 的第六次 now 中断。
     # 覆盖所有分项已提交、目标尚未 finish 的窗口；模拟控制流中断，不宣称硬断电。
     class Interrupted(BaseException):
         pass
@@ -515,7 +516,7 @@ def test_committed_archive_survives_interruption_before_target_finish_and_run_re
 
         def now(self):
             self.calls += 1
-            if self.calls == 5:
+            if self.calls == 6:
                 raise Interrupted("Interrupted before target finish")
             return super().now()
 
@@ -535,7 +536,7 @@ def test_committed_archive_survives_interruption_before_target_finish_and_run_re
             await collector.check_once(UID, "123")
             with pytest.raises(Interrupted, match="Interrupted before target finish"):
                 await collector.execute_pending()
-            assert clock.calls == 5
+            assert clock.calls == 6
             assert requests.count("/x/v2/reply") == 1
 
             running, committed_archive = snapshot(path)

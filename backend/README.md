@@ -36,7 +36,7 @@ exec .venv/bin/python -m backend.bili_monitor.service --host 127.0.0.1 --port 80
 
 ## 23 独立采集进程
 
-也可按原方式让 API 和采集进程使用同一 SQLite 路径、分别启动，不能增加多个采集进程。处理持久启用的指定集合或近期可信窗口的检查/同步，以及近期 UP 发现，默认最多 4 个同时检查、4 个独立目标同步、2 个独立 UP 发现；同目标不叠加，慢分页期间其他目标仍可检查／同步。固定节拍检查（生产默认 2.7 秒 ±10%，可用 `BILI_COLLECTOR_CADENCE_SECONDS` 覆盖）与慢同步分离，状态从 `GET /api/manage/ups/{uid}/checks` 读取；完整节拍、重启与状态语义见 [采集契约](../docs/backend/api/collector-api.md)。API 不内嵌定时器。
+也可按原方式让 API 和采集进程使用同一 SQLite 路径、分别启动，不能增加多个采集进程。处理持久启用的指定集合或近期可信窗口的检查/同步，以及近期 UP 发现，默认最多 4 个同时检查、4 个独立目标同步、2 个独立 UP 发现；同目标不叠加，慢分页期间其他目标仍可检查／同步。固定节拍检查（生产默认 2.7 秒 ±10%，可用 `BILI_COLLECTOR_CADENCE_SECONDS` 覆盖）与慢同步分离：评论计数每节拍读取，页面信号（编辑时间/正文与图片版本/受限状态）默认每 60 秒 ±2 秒采样一次（`BILI_COLLECTOR_PAGE_CHECK_SECONDS` 可覆盖，0 表示每节拍），状态从 `GET /api/manage/ups/{uid}/checks` 读取；完整节拍、重启与状态语义见 [采集契约](../docs/backend/api/collector-api.md)。API 不内嵌定时器。
 
 ```sh
 # 独立终端、仓库根目录；使用与 API 相同的持久路径和服务端 OSS 环境

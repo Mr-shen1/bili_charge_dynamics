@@ -85,7 +85,7 @@ class Store(CheckStore, DiscoveryStore):
             connection.execute("BEGIN IMMEDIATE")
             try:
                 version = connection.execute("PRAGMA user_version").fetchone()[0]
-                if version > 14:
+                if version > 15:
                     raise RuntimeError("Unsupported database schema version")
                 if version == 0:
                     connection.execute("""CREATE TABLE identities (
@@ -218,7 +218,12 @@ class Store(CheckStore, DiscoveryStore):
                         connection.execute("ALTER TABLE reply_sync ADD COLUMN synced_at TEXT")
                     if "observed_reply_count" not in columns:
                         connection.execute("ALTER TABLE reply_sync ADD COLUMN observed_reply_count INTEGER")
-                connection.execute("PRAGMA user_version = 14")
+                if version < 15:
+                    # 页面信号（编辑时间/正文与图片版本）按独立低频节拍采样，计数检查仍走主节拍。
+                    columns = {row[1] for row in connection.execute("PRAGMA table_info(target_checks)")}
+                    if "page_checked_at" not in columns:
+                        connection.execute("ALTER TABLE target_checks ADD COLUMN page_checked_at TEXT")
+                connection.execute("PRAGMA user_version = 15")
                 connection.commit()
             except BaseException:
                 connection.rollback()
