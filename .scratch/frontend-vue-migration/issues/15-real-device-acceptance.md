@@ -29,5 +29,13 @@
 - 2026-10-25 代理准备（**未验收，不勾选任何条目**）：候选 `946ed66` 已登记为设备验收候选（`../evidence/device-15/candidate.json`：`dist` 31 个文件、`dist-mock` 34 个文件的逐文件 sha256 + 入口文件名，`--verify` 负向校验已实测）；同一候选上 `pnpm check`（21 文件 / 244 用例）、`pnpm check:dist`、`pnpm test:e2e`（173 通过 / 10 跳过，跳过全为桌面项目缺触摸环境、移动项目已覆盖）、`pnpm test:e2e:production`（3 通过）、`pnpm test:e2e:manage`（7 通过）全绿，日志在 `../evidence/device-15/logs/`。
 - 受控流程与取证规则已成文：[15 实际设备验收证据](../evidence/15-real-device-acceptance.md)。环境 A（mock 自检装配 + 图片夹具，4318/4319）与环境 B（生产装配 + 隔离 API + 本次独占临时 SQLite，4328/4327）各配一个局域网启动脚本，起服前强制校验产物属于已登记候选；两套环境均已实跑冒烟（页面与夹具探针、`/api` 代理与管理接口、种子采集后归档可读、`303` 返回 `PROFILE_UNAVAILABLE` 真实错误），回执在 `../evidence/device-15/logs/env-a-smoke.log` 与 `env-b-smoke.log`。
 - 清单自检 `../evidence/device-15/checklist-selftest.mjs` 对第 5 节里的 10 条（A1–A6、A8、A9、A12、A13）跑通；A7/A10/A11/A14 与整个第 7 节无人接自检，仍只能靠人工。它属于清单校对，**不构成设备证据**，但保证人工拿到的按钮名与页数对得上当前代码（本轮据此修正了三处措辞）。
-- **阻塞**：Linux Chrome（本机已装 `Google Chrome 155.0.8059.39`）与 iPhone Safari 的实测均未执行，设备信息、UA 与截图/录屏都未采集，第 5、7 节结果列全部为「未验证」。
+- **阻塞**：真机已实测第 1 轮，但设备版本与 UA、逐项截图/录屏都未采集；修复后的补验（B6/B7 与输入框行为）也未做。
 - 状态改为 `ready-for-human`：剩余工作只有人工设备操作取证，代理可预先完成的部分已交付，避免后续 AFK 代理重复准备；人工结果回填证据文件后按第 9 节判定与回流，失败项在此追加。
+- 2026-10-25 第 1 轮真机结果（候选 `946ed66`，人工口头确认，无逐项附件）：设备为 iPhone 13 Pro / iOS 16.4 / Safari 16.4（与 01 同机型，佐证 F-15-01 的 `AbortSignal.any` 缺失）；Linux Chrome 实际版本与视口、两台设备的 UA 仍待补。
+  - 环境 A（阅读/图片）：A1–A15 全部通过，Linux Chrome 与 iPhone Safari 两侧都确认；A14 键盘只测 Linux，A15 触摸只测 iPhone。
+  - 环境 B（管理与真实 API）：B1–B5 两台设备通过；**B6 在 Linux Chrome 通过、iPhone Safari 失败**；B7–B10 未测。
+  - 另报输入框聚焦后整页放大不还原（环境 B，iPhone Safari）。
+- **F-15-01 指定目标「校验并添加目标」永久停在「正在校验…」**（iPhone Safari）：根因是 `AbortSignal.any` 在 iOS 16.4 不存在导致同步抛错，而 `useManagementRequests.run` 的写锁释放不在 try 内，锁被永久占住，换 555 也被 `busy` 直接挡掉。修复：`run` 改 try/catch/finally 并转成可见失败；新增 `src/app/signals.ts` 的 `combineSignals` 替换三处用法；新增 `tests/unit/browser-baseline.test.ts` 守卫 iOS 16.4 缺失的 Web API。
+- **F-15-02 输入框聚焦后整页放大且不还原**（iPhone Safari）：输入框字号为 13px 触发 iOS 自动缩放。修复：`theme.css` 输入类控件统一 16px（不用 `maximum-scale`，以免禁掉双指缩放）；`manage.spec.ts` 四视口新增字号 ≥16px 断言。
+- 修复随候选 `32c9510` 重新登记（`../evidence/device-15/candidate.json`），`pnpm check`（23 文件 / 254 用例）、`check:dist`、`test:e2e`（173）、`test:e2e:production`（3）、`test:e2e:manage`（7）、`visual:compare`（63 张）全绿。
+- **待人工补验**（真机，候选 `32c9510`）：iPhone Safari 重跑 B6（202 成功 / 555 被拒 / 移除目标）与 B7（读取检查、发现状态），并确认输入框不再放大、预览双指缩放仍可用；Linux Chrome 复跑 B6。补齐第 3.1 节的设备版本与 UA 后才谈勾选本票条目。

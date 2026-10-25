@@ -1,0 +1,50 @@
+
+> bili-charge-dynamics-frontend@0.0.0 test:e2e:manage /home/kevin/Projects/PI/bili_charge_dynamics/frontend
+> playwright test --config playwright.manage.config.ts
+
+[2m[WebServer] [22mINFO:     Started server process [1749399]
+[2m[WebServer] [22mINFO:     Waiting for application startup.
+[2m[WebServer] [22mINFO:     Application startup complete.
+[2m[WebServer] [22mINFO:     Uvicorn running on http://127.0.0.1:4177 (Press CTRL+C to quit)
+
+Running 7 tests using 1 worker
+
+  ✓  1 tests/e2e-manage/management.spec.ts:15:3 › 管理页与实际 API › 新增 UP 只提交 UID，资料由后端取得并持久化到隔离 SQLite (808ms)
+  ✓  2 tests/e2e-manage/management.spec.ts:34:3 › 管理页与实际 API › 启停经实际 API 保存，刷新后仍是最后保存的状态 (1.7s)
+  ✓  3 tests/e2e-manage/management.spec.ts:58:3 › 管理页与实际 API › 重复添加同一 UID 显示后端固定提示并保留输入 (424ms)
+[2m[WebServer] [22mprofile_lookup_failed reason=network_error http_status=none
+  ✓  4 tests/e2e-manage/management.spec.ts:68:3 › 管理页与实际 API › 上游资料不可用时保留输入且不回显服务端诊断 (430ms)
+  ✓  5 tests/e2e-manage/management.spec.ts:80:3 › 管理页与实际 API › 未知 UP 地址可直达并回到列表 (527ms)
+[2m[WebServer] [22mINFO body_sync_finished outcome=success accepted=true
+[2m[WebServer] [22mINFO root_sync_started 
+[2m[WebServer] [22mINFO root_sync_finished pages=1 roots=0 pin_known=true
+[2m[WebServer] [22mINFO replies_sync_started roots=0
+[2m[WebServer] [22mINFO replies_sync_finished succeeded=true degraded=false roots=0 skipped=0
+  ✓  6 tests/e2e-manage/management.spec.ts:88:1 › 指定模式目标校验、停用/移除/删除配置后归档与阅读入口都保留 (4.1s)
+[2m[WebServer] [22mINFO discovery_started 
+[2m[WebServer] [22mINFO discovery_finished accepted=true
+[2m[WebServer] [22mINFO check_started 
+[2m[WebServer] [22mINFO comment_locator_refreshed source=basic
+[2m[WebServer] [22mINFO check_finished recorded=true edit_status=unknown comment_count_status=observed
+[2m[WebServer] [22mINFO check_started 
+[2m[WebServer] [22mINFO check_finished recorded=true edit_status=unknown comment_count_status=observed
+[2m[WebServer] [22mINFO sync_started attempt=1 revision=1
+[2m[WebServer] [22mINFO body_sync_finished attempt=1 outcome=success accepted=true
+[2m[WebServer] [22mINFO root_sync_started attempt=1
+[2m[WebServer] [22mWARNING root_sync_failed attempt=1 stage=page_fetch page=1 reason=network_error http_status=none
+[2m[WebServer] [22mINFO replies_sync_skipped attempt=1 reason=roots_unconfirmed
+[2m[WebServer] [22mWARNING sync_finished attempt=1 succeeded=false complete=false elapsed_ms=6 text=success comments=pending replies=pending media=success
+[2m[WebServer] [22mINFO check_started 
+[2m[WebServer] [22mINFO check_finished recorded=true edit_status=unknown comment_count_status=observed
+[2m[WebServer] [22mINFO sync_started attempt=2 revision=1
+[2m[WebServer] [22mINFO root_sync_started attempt=2
+[2m[WebServer] [22mINFO root_sync_finished attempt=2 pages=1 roots=0 pin_known=true
+[2m[WebServer] [22mINFO replies_sync_started attempt=2 roots=0
+[2m[WebServer] [22mINFO replies_sync_finished attempt=2 succeeded=true degraded=false roots=0 skipped=0
+[2m[WebServer] [22mINFO sync_finished attempt=2 succeeded=true complete=true elapsed_ms=6 text=success comments=success replies=success media=success
+[2m[WebServer] [22mINFO discovery_started 
+[2m[WebServer] [22mWARNING discovery_failed reason=internal_error http_status=none
+  ✓  7 tests/e2e-manage/management.spec.ts:197:1 › 检查、发现与窗口状态按真实记录读取，读取本身不触发采集 (2.6s)
+
+  7 passed (13.3s)
+manage exit=0
