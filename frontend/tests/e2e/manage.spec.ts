@@ -50,6 +50,26 @@ function upCard(page: Page, uid: string) {
   return page.getByRole('article', { name: `UP ${uid}`, exact: true });
 }
 
+/** 读取库默认字号：签收过的输入框字号就是它（票据 17 R1），不能靠局部覆盖来“修” iOS 放大。 */
+const SIGNED_FONT_SIZE = 14;
+async function readFontSizes(page: import('@playwright/test').Page) {
+  return page.evaluate(() => ({
+    base: Math.round(parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--el-font-size-base'))),
+    list: [...document.querySelectorAll<HTMLElement>('.manage-add input, .manage-add textarea')]
+      .filter(node => {
+        const field = node as HTMLInputElement;
+        return field.type !== 'radio' && field.type !== 'checkbox' && node.getBoundingClientRect().width > 0;
+      })
+      .map(node => Math.round(parseFloat(getComputedStyle(node).fontSize))),
+    up: [...document.querySelectorAll<HTMLElement>('.manage-up input')]
+      .filter(node => {
+        const field = node as HTMLInputElement;
+        return field.type !== 'radio' && field.type !== 'checkbox' && node.getBoundingClientRect().width > 0;
+      })
+      .map(node => Math.round(parseFloat(getComputedStyle(node).fontSize))),
+  }));
+}
+
 test.describe('UP 监控管理', () => {
   test('列表直达与刷新：按身份与监控状态展示卡片，进入单 UP 页再返回', async ({ page }) => {
     const calls = await manageApi(page, () => ({ body: { ups: [
@@ -251,16 +271,13 @@ test.describe('UP 监控管理', () => {
         };
       });
       expect(list.scrollWidth, `${width}px 管理列表不应横向溢出`).toBeLessThanOrEqual(list.clientWidth);
-      // 新增 UID 的输入框是 B1 报告 iOS 放大的现场，同样要 ≥16px。
-      const listInputFontSizes = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>(
-        '.manage-add input, .manage-add textarea',
-      )].filter(node => {
-        const field = node as HTMLInputElement;
-        return field.type !== 'radio' && field.type !== 'checkbox' && node.getBoundingClientRect().width > 0;
-      }).map(node => Math.round(parseFloat(getComputedStyle(node).fontSize))));
-      expect(listInputFontSizes.length).toBeGreaterThan(0);
-      for (const size of listInputFontSizes) {
-        expect(size, `${width}px 新增 UID 输入框字号不应小于 16px`).toBeGreaterThanOrEqual(16);
+      // 输入框字号是签收过的视觉基准的一部分（票据 17 R1 裁决）：等于库默认字号，且默认字号仍是签收时的 14px。
+      // 两段一起看才能同时挡住「局部 16px 覆盖」和「把 base 改成 16px」这两种绕过。
+      const listFonts = await readFontSizes(page);
+      expect(listFonts.base).toBe(SIGNED_FONT_SIZE);
+      expect(listFonts.list.length).toBeGreaterThan(0);
+      for (const size of listFonts.list) {
+        expect(size, `${width}px 新增 UID 输入框字号应为库默认字号`).toBe(listFonts.base);
       }
       expect(list.heights.length).toBeGreaterThan(0);
       for (const height of list.heights) {
@@ -321,11 +338,13 @@ test.describe('UP 监控管理', () => {
       for (const height of specified.heights) {
         expect(height, `${width}px 指定模式触控区域高度`).toBeGreaterThanOrEqual(44);
       }
-      // iOS Safari 对 font-size < 16px 的输入框聚焦时强制放大整页且失焦不还原（票据 15 F-15-02），
-      // 输入类控件因此统一不小于 16px。
+      // 保持库默认字号：iOS Safari 聚焦会放大整页（票据 15 F-15-02），但改成 16px 会改动签收过的视觉，
+      // 用户裁决以视觉一致为先（票据 17 R1），该放大作为已知限制记录。
+      const upFonts = await readFontSizes(page);
+      expect(upFonts.base).toBe(SIGNED_FONT_SIZE);
       expect(specified.inputFontSizes.length).toBeGreaterThan(0);
       for (const size of specified.inputFontSizes) {
-        expect(size, `${width}px 输入框字号不应小于 16px`).toBeGreaterThanOrEqual(16);
+        expect(size, `${width}px 输入框字号应为库默认字号`).toBe(upFonts.base);
       }
 
       // 检查与发现状态：读取按钮、折叠头与展开后的详情同样不横溢且可点按。

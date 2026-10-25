@@ -2,52 +2,25 @@
 // 日常比较：pnpm visual:compare
 // 有意更新：pnpm visual:golden -- --reason "说明为什么视觉变化是预期的"
 // 黄金图只允许在说明原因后更新；不能仅重跑基线掩盖意外变化。
-import { createHash } from 'node:crypto';
 import { copyFile, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join, basename } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import {
+  arg, conditionKeys, diffPixels, fuzz, goldenDir, hasFlag, imageSize, maxDiffRatio, sha256File,
+} from './lib/visual-baseline.mjs';
 
-const goldenDir = join(process.cwd(), 'tests', 'visual-baseline');
 const defaultCurrent = join(
   process.cwd(), '..', '.scratch', 'frontend-vue-migration', 'evidence', 'visual-14',
 );
 const manifestPath = join(goldenDir, 'manifest.json');
 const diffDir = join(process.cwd(), 'test-results', 'visual-diff');
-// 抗锯齿差异足以被 1% fuzz 吸收；真实视觉变化（字号、间距、对齐）远超 0.02% 像素。
-const fuzz = '1%';
-const maxDiffRatio = 0.0002;
-
-function arg(name) {
-  const index = process.argv.indexOf(name);
-  return index === -1 ? null : process.argv[index + 1] ?? null;
-}
 
 const currentDir = arg('--current') ?? defaultCurrent;
-const update = process.argv.includes('--update');
+const update = hasFlag('--update');
 const reason = arg('--reason');
 
-function magick(args) {
-  const result = spawnSync('magick', args, { encoding: 'utf8' });
-  if (result.error) throw new Error(`需要 ImageMagick（magick）: ${result.error.message}`);
-  return { stdout: result.stdout, stderr: result.stderr, status: result.status };
-}
 
-function imageSize(path) {
-  const { stdout, status } = magick(['identify', '-format', '%w %h', path]);
-  if (status !== 0) throw new Error(`无法读取图片尺寸：${path}`);
-  const [width, height] = stdout.trim().split(' ').map(Number);
-  return { width, height };
-}
 
-function diffPixels(golden, current) {
-  // compare 在发现差异时退出码为 1，度量值仍写在 stderr。
-  const { stdout, stderr } = magick(['compare', '-metric', 'AE', '-fuzz', fuzz, golden, current, 'null:']);
-  const value = Number.parseFloat(`${stderr} ${stdout}`.trim());
-  return Number.isFinite(value) ? value : 0;
-}
-
-const hash = async path =>
-  createHash('sha256').update(await readFile(path)).digest('hex');
+const hash = sha256File;
 
 async function writeManifest(files, conditions) {
   let previous = {};
@@ -147,7 +120,7 @@ async function compare() {
     const conditions = JSON.parse(await readFile(join(currentDir, 'conditions.json'), 'utf8'));
     const recorded = manifest.conditions?.environment ?? {};
     const actual = conditions.environment ?? {};
-    const keys = ['browser', 'deviceScaleFactor', 'widths', 'timezoneId', 'locale', 'fontFamily', 'resolvedFont'];
+    const keys = conditionKeys;
     const changed = keys.filter(key => JSON.stringify(recorded[key]) !== JSON.stringify(actual[key]));
     if (changed.length) {
       console.error(`截图条件与黄金图不一致，比较不可信：${changed.join(', ')}`);

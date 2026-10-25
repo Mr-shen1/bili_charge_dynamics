@@ -21,18 +21,13 @@
   --el-border-radius-base: 10px;
   /* Element Plus 的输入框等表单控件按该变量取高度；按钮由各自的 min-height 兜底。 */
   --el-component-size: var(--touch);
+  /*
+   * 输入类控件字号不覆盖，跟库默认走（`--el-font-size-base`，实测 14px）。
+   * 覆盖成 16px 能避开 iOS Safari 聚焦放大（票据 15 F-15-02），但会改动用户签收过的截图；
+   * 票据 17 按 R1 裁决以视觉一致为先，该放大作为已知限制记录（evidence/17-release-readiness.md §7）。
+   * manage.spec.ts 的断言锁的就是库默认值 14px：任何覆盖（含把 base 改成 16px）都会失败。
+   */
   --el-text-color-primary: var(--text);
-}
-
-/*
- * iOS Safari 对 font-size 小于 16px 的输入框在聚焦时会强制放大整页，失焦也不还原；
- * 票据 15 真机上「填完 UID 页面就放大」即此因（F-15-02）。输入类控件统一 16px，
- * 不用 `maximum-scale=1` 兜底（那会连带禁掉用户的双指缩放）。
- * 回归由 manage.spec.ts 的四视口字号断言守着。
- */
-.el-input__inner,
-.el-textarea__inner {
-  font-size: 16px;
 }
 
 * {
@@ -309,7 +304,7 @@ body {
   }
 
   /*
-   * 登记过的库内部类例外之三（另两处：预览层结构锚点、输入框字号）：窄屏改用
+   * 唯一一处库内部类覆盖（输入框字号不覆盖，见 `:root` 注释）：窄屏改用
    * 「左右滑动切图 + 双指/双击缩放」，因此隐藏库的切图箭头与图标工具栏。
    * 宽屏仍用库原生的图标工具栏。
    * 该覆盖失效时，preview-gestures.spec.ts 的“窄屏无切图箭头”断言会失败。
