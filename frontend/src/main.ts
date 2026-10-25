@@ -11,6 +11,7 @@ import 'element-plus/es/components/image-viewer/style/css';
 import 'element-plus/es/components/input/style/css';
 import 'element-plus/es/components/radio/style/css';
 import 'element-plus/es/components/radio-group/style/css';
+import 'element-plus/es/components/radio-button/style/css';
 import 'element-plus/es/components/tag/style/css';
 import App from './app/App.vue';
 import { createAppRouter } from './app/router';

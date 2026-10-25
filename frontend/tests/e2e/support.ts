@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 import { previewStateKey } from '../../src/app/historyState';
 
 export { previewStateKey };
@@ -13,6 +13,14 @@ export async function startFromOtherPage(page: Page): Promise<void> {
   await page.goto('/__preview-other');
   await page.getByRole('link', { name: '进入图片验证页' }).click();
   await expect(page).toHaveURL(/__preview-fixtures$/);
+}
+
+/**
+ * 评论排序按可见分段标签点击：Element Plus 隐藏原生 radio，用户点到的是 label 文本。
+ * 用 radiogroup 的可访问名称与文字定位，不依赖库内部 class。
+ */
+export function sortOption(region: Locator, name: '最热' | '最新'): Locator {
+  return region.getByRole('radiogroup', { name: '评论排序' }).getByText(name, { exact: true });
 }
 
 // Element Plus 没给预览根节点与预览图公开 role/可访问名，

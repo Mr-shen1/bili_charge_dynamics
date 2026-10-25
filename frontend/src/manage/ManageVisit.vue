@@ -119,23 +119,6 @@ function editUid(value: string): void {
   overflow-wrap: anywhere;
 }
 
-.manage-add {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 12px;
-  padding: 16px;
-  background: var(--card-bg);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-}
-
-.manage-add :deep(.el-form-item) {
-  flex: 1 1 220px;
-  min-width: 0;
-  margin-bottom: 0;
-}
-
 .manage-submit,
 .manage-retry {
   min-height: var(--touch);
@@ -197,11 +180,6 @@ function editUid(value: string): void {
 }
 
 @media (max-width: 640px) {
-  .manage-add {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
   .manage-submit {
     width: 100%;
   }

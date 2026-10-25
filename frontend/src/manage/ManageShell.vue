@@ -46,15 +46,23 @@ defineProps<{ listLink?: boolean }>();
 
 .manage-crumbs {
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
+  /* 三个入口始终同一行：空间不足时整组换行，不在组内折行。 */
+  flex-wrap: nowrap;
+  gap: 14px;
   margin-left: auto;
+  font-size: 13px;
 }
 
-.manage-crumbs a {
+/* 链接与当前页标签共用同一盒模型：文字都垂直居中，当前页不会比链接高。 */
+.manage-crumbs > * {
   display: inline-flex;
   align-items: center;
   min-height: var(--touch);
+  flex: none;
+  white-space: nowrap;
+}
+
+.manage-crumbs a {
   color: var(--brand-strong);
 }
 </style>

@@ -164,10 +164,25 @@ function restartReading(): void {
   outline-offset: 2px;
 }
 .comment-count {
+  margin-left: 2px;
   color: var(--brand);
 }
 .comment-sort {
   flex: 0 0 auto;
+}
+/* 视觉高度收小到 32px：点击区由 44px 的 label 承担，文字用 13px。 */
+.comment-sort :deep(.el-radio-button) {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--touch);
+}
+.comment-sort :deep(.el-radio-button__inner) {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
 }
 .comment-unarchived {
   margin: 0;

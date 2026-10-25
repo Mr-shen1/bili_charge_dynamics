@@ -2,7 +2,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import {
   closeViewer, counter, focusInsideViewer, historyLength, imageRequests, nextImage, pathsPrefixed,
-  previewState, resetImageRequests, scrollY, viewer, viewerClose, viewerImage, viewerToolbar,
+  previewState, resetImageRequests, scrollY, sortOption, viewer, viewerClose, viewerImage, viewerToolbar,
 } from './support';
 
 // mock 装配 25 条归档与 45 条一级评论的稳定业务 ID，来自 src/mock/archiveReader.ts 的生成规则。
@@ -102,7 +102,7 @@ test.describe('一级评论图片阅读', () => {
     await expect(viewer(page)).toHaveCount(0);
 
     // 最新排序下才出现的 12 图评论：展示前九张，末张进入完整组且索引正确。
-    await region.getByRole('radio', { name: '最新' }).click();
+    await sortOption(region, '最新').click();
     await expect(commentItems(page)).toHaveCount(20);
     const many = commentItem(page, 5);
     const tiles = many.getByRole('button', { name: /^预览评论图片 / });
@@ -127,7 +127,7 @@ test.describe('一级评论图片阅读', () => {
     await region.evaluate(element => element.setAttribute('data-mount-probe', 'kept'));
 
     // 先切到最新排序，再把评论正文展开：预览不能把这些阅读状态重置。
-    await region.getByRole('radio', { name: '最新' }).click();
+    await sortOption(region, '最新').click();
     await expect(commentItems(page)).toHaveCount(20);
     await commentItem(page, 0).getByRole('button', { name: '展开评论' }).click();
     await expect(commentItem(page, 0).getByRole('button', { name: '收起评论' })).toBeVisible();
@@ -178,7 +178,7 @@ test.describe('一级评论图片阅读', () => {
     await expect(viewer(page)).toHaveCount(0);
 
     // 排序切换让缩略图节点真正重建：前进恢复预览后关闭，仍按稳定 ID 找回新节点。
-    await region.getByRole('radio', { name: '最热' }).click();
+    await sortOption(region, '最热').click();
     await expect(commentItems(page)).toHaveCount(20);
     await page.goForward();
     await expect(viewer(page)).toBeVisible();
@@ -192,7 +192,7 @@ test.describe('一级评论图片阅读', () => {
     await openDetail(page);
     const region = page.getByRole('region', { name: '评论区' });
     // 12 图评论只在最新排序首批内：切换排序后它的缩略图会从页面消失。
-    await region.getByRole('radio', { name: '最新' }).click();
+    await sortOption(region, '最新').click();
     const many = commentItem(page, 5);
     const tile = many.getByRole('button', { name: '预览评论图片 3' });
     await tile.scrollIntoViewIfNeeded();
@@ -201,7 +201,7 @@ test.describe('一级评论图片阅读', () => {
 
     await page.goBack();
     await expect(viewer(page)).toHaveCount(0);
-    await region.getByRole('radio', { name: '最热' }).click();
+    await sortOption(region, '最热').click();
     await expect(commentItems(page)).toHaveCount(20);
     await expect(page.locator(`[data-image-group="${imageGroup(commentId(5))}"]`)).toHaveCount(0);
 

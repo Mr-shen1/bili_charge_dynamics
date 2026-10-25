@@ -52,15 +52,33 @@
   }
 }
 
+/* 新增 UP 表单与配置表单共用同一套字段布局；各 SFC 不再各写一份。 */
+.manage-add,
 .manage-fields {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
   gap: 12px;
+  min-width: 0;
+}
+
+.manage-add {
+  padding: 16px;
+  background: var(--card-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.manage-fields {
   margin: 0;
   padding: 0;
   border: 0;
+}
+
+.manage-add .el-form-item {
+  flex: 1 1 220px;
   min-width: 0;
+  margin-bottom: 0;
 }
 
 .manage-fields .el-form-item {
@@ -75,8 +93,17 @@
 }
 
 @media (max-width: 640px) {
+  /* 新增表单与配置表单共用同一条窄屏规则，避免两个文件各写一份。 */
+  .manage-add,
   .manage-fields {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  /* 列方向下 flex-basis 会被当成高度；必须改回按内容高度，避免表单项被撑到 200px。 */
+  .manage-add .el-form-item,
+  .manage-fields .el-form-item {
+    flex: none;
+    width: 100%;
   }
 }

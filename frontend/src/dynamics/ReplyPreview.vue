@@ -55,7 +55,7 @@ const bodyText = computed(() => {
   gap: 4px;
   min-width: 0;
   margin-top: 6px;
-  padding: 8px 10px;
+  padding: 4px 10px;
   background: var(--brand-soft, #e6f6f7);
   border-radius: 8px;
 }
@@ -99,7 +99,8 @@ const bodyText = computed(() => {
   color: var(--brand-strong);
 }
 .reply-preview__entry {
-  min-height: var(--touch);
+  /* 回复入口是次级操作：视觉行高 36px，整条背景块仍约 44px。 */
+  min-height: 36px;
   padding: 0;
   font-size: 13px;
 }

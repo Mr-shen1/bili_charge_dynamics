@@ -19,6 +19,8 @@
   --el-color-primary-light-9: #e9f7f7;
   --el-color-primary-dark-2: #0b7f88;
   --el-border-radius-base: 10px;
+  /* Element Plus 的输入框等表单控件按该变量取高度；按钮由各自的 min-height 兜底。 */
+  --el-component-size: var(--touch);
   --el-text-color-primary: var(--text);
 }
 
@@ -50,6 +52,14 @@ body {
   border-bottom: 1px solid var(--line);
 }
 
+/* 站点标题本身也是返回首页的链接，与导航项共用触控高度。 */
+.app-brand,
+.app-nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--touch);
+}
+
 .app-brand {
   font-weight: 700;
   color: var(--brand-strong);
@@ -63,9 +73,6 @@ body {
 }
 
 .app-nav a {
-  display: inline-flex;
-  align-items: center;
-  min-height: var(--touch);
   padding: 0 12px;
   border-radius: var(--radius);
   color: var(--brand-strong);

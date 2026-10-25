@@ -47,11 +47,13 @@ function openThread(): void {
   <li class="comment" :data-reading-id="`comment:${comment.id}`">
     <div class="comment__identity">
       <UserAvatar :user="comment.author" :size="40" class="comment__avatar" />
-      <span class="comment__nickname">{{ comment.author.nickname ?? '未知用户' }}</span>
-      <span v-if="isUpAuthor" class="comment__badge comment__badge--up">UP主</span>
-      <span v-if="comment.isPinned" class="comment__badge">置顶</span>
     </div>
     <div class="comment__body">
+      <div class="comment__meta">
+        <span class="comment__nickname">{{ comment.author.nickname ?? '未知用户' }}</span>
+        <span v-if="isUpAuthor" class="comment__badge comment__badge--up">UP主</span>
+        <span v-if="comment.isPinned" class="comment__badge">置顶</span>
+      </div>
       <FoldableText
         v-if="hasText || !hasMedia"
         :text="hasText ? comment.text : '暂无评论内容'"
@@ -108,21 +110,25 @@ function openThread(): void {
 .comment__identity {
   display: flex;
   flex: 0 0 40px;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
+  align-items: flex-start;
   min-width: 0;
 }
 .comment__avatar {
   flex: 0 0 40px;
 }
+/* 昵称与标记放在正文上方，长昵称不会在 40px 头像列里逐字换行。 */
+.comment__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
 .comment__nickname {
-  max-width: 100%;
   color: var(--author);
   font-size: 13px;
   line-height: 18px;
   font-weight: 600;
-  text-align: center;
   overflow-wrap: anywhere;
 }
 .comment__badge {

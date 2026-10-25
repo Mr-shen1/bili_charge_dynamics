@@ -1,6 +1,6 @@
 // @projects desktop-chromium-archive, mobile-chromium-archive
 import { expect, test, type Page } from '@playwright/test';
-import { closeViewer, counter, viewer } from './support';
+import { closeViewer, counter, sortOption, viewer } from './support';
 
 // 一级评论跑生产装配 + HTTP 传输替身：仍经过真实 Adapter 的 DTO 映射与页面读取，
 // 请求次数、排序与 cursor 可直接观察。折叠、锚点、布局变化必须真实浏览器。
@@ -177,7 +177,7 @@ test.describe('一级评论阅读与排序', () => {
     await page.evaluate(() => window.scrollTo(0, 1200));
     const before = await scrollY(page);
     expect(before).toBeGreaterThan(0);
-    await region.getByRole('radio', { name: '最新' }).click();
+    await sortOption(region, '最新').click();
     await expect(region.getByRole('radio', { name: '最新' })).toBeChecked();
     await expect.poll(() => region.evaluate(element => Math.round(element.getBoundingClientRect().top))).toBe(0);
 
@@ -201,7 +201,7 @@ test.describe('一级评论阅读与排序', () => {
     await expect(region.getByRole('listitem')).toHaveCount(20);
     await region.getByRole('button', { name: '加载更多评论' }).click();
     await expect(region.getByRole('listitem')).toHaveCount(40);
-    await region.getByRole('radio', { name: '最新' }).click();
+    await sortOption(region, '最新').click();
     await expect(region.getByRole('radio', { name: '最新' })).toBeChecked();
     await region.getByRole('button', { name: '加载更多评论' }).click();
     await expect(region.getByRole('listitem')).toHaveCount(40);
@@ -258,7 +258,7 @@ test.describe('一级评论阅读与排序', () => {
     await page.getByRole('button', { name: '来源评论 45' }).click();
     const region = page.getByRole('region', { name: '评论区' });
     await expect(region.getByText('最热评论加载中…')).toBeVisible();
-    await region.getByRole('radio', { name: '最新' }).click();
+    await sortOption(region, '最新').click();
     await expect(region.getByRole('listitem')).toHaveCount(20);
     await expect(region.getByRole('radio', { name: '最新' })).toBeChecked();
     const firstLatest = await region.getByRole('listitem').first().textContent();

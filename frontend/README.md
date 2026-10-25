@@ -56,6 +56,9 @@ E2E_TARGET=preview pnpm test:e2e   # 同一批用例跑 mock 装配的构建产�
 pnpm test:e2e:production # 生产装配（六路由/404/无自检入口）与 fault 装配冒烟
 pnpm test:e2e:manage    # 管理页 + 实际 API（backend/tests/live_app 虚构上游）+ 本次运行独占 SQLite
                        # 只用本机回环地址；如设置了 HTTP(S)_PROXY，需用 NO_PROXY=127.0.0.1,localhost 或清空代理变量
+pnpm visual:baseline     # 票据 14 视觉准备：pnpm build + 四宽度受控截图 + 布局/触控/焦点审计
+                       # 输出到 ../.scratch/frontend-vue-migration/evidence/visual-14/（未签收，不自建黄金图）
+                       # 配置自动补 NO_PROXY=127.0.0.1,localhost，无需手工设置
 pnpm test:nginx-parity   # 只比对 deploy/nginx*.conf 的 location/server 指令一致性，无需 nginx 二进制
 pnpm test:delivery      # 临时真实 Nginx 交付演练（生产/mock/fault 构建、缓存/404、发布切换、实际 API）需
                        # NGINX_BIN、NGINX_MIME_TYPES、uv 环境与 Chromium；本机未安装 nginx 时无法执行
@@ -113,7 +116,9 @@ pnpm playwright test --project=desktop-chromium-archive tests/e2e/replies.spec.t
 | `tests/e2e` | 骨架冒烟/预览/详情恢复/动态图片/评论图片（mock 装配）+ 列表、一级评论（含根评论 `media` 映射）、管理列表/启停/模式与目标、宽屏回复、窄屏楼中楼与图片读取（生产装配，HTTP 传输按用例替换）+ `static-delivery`（真实 Nginx 缓存/404/深链接，`E2E_TARGET=nginx` 单独跑） |
 | `tests/e2e-manage` | 管理页 + 实际 API（`backend/tests/live_app` 虚构上游，含动态页/detail/空根评论/独立评论计数/近期发现页 + **仅测试用**的 `POST /api/test/collect`、`/api/test/source-failure` 采集驱动端点）+ 本次运行独占 SQLite；覆盖模式保存、目标归属校验与停用/移除目标/删配置后的归档保留、检查无变化、根评论失败的分项失败与整轮成功、发现失败保留旧窗口、读取不触发采集 |
 | `tests/e2e-production` | 生产装配六路由/404/无自检入口 + fault 装配冒烟 |
+| `tests/e2e-visual` | 票据 14 视觉取证：受控归档 DTO/固定 SVG 图片替身、四宽度截图与布局审计（`visual-14/` 未签收） |
 | `playwright.manage.config.ts` | 隔离集成入口：自起 API 与 dev server，数据库在系统临时目录，不触发真实上游或 OSS |
+| `playwright.visual.config.ts` | 视觉基准入口：生产构建 + 实际管理 API + 临时 SQLite，自动绕过本机代理 |
 
 ## 装配隔离（确定性检查）
 
@@ -135,9 +140,13 @@ AC-01–AC-34 台账。阅读与管理行为本身没有新增或删减：窄屏
 回复图片与独立楼中楼根评论图片按范围不新增；生产装配默认连真实 API，mock/fault 装配的受控归档只在显式
 mode 与自检构建中出现。
 
-仍待执行的是票据 14（新版视觉签收）、15（Linux Chrome / iPhone 真机）、
-16（静态交付、资源更新与前端回退）与 17（上线就绪汇总）。13 只证明自动化与隔离集成，
-不代表视觉、真机、Nginx 交付、真实上游或持续运行通过。
+票据 14 的准备已完成：`pnpm visual:baseline` 生成四宽度受控截图与布局审计（见
+[14 视觉基准准备证据](../.scratch/frontend-vue-migration/evidence/14-visual-baseline-preparation.md)），
+并修正了本轮发现的排序分段样式、窄屏管理表单高度、触控尺寸、评论昵称排版与管理页头挤压。
+**视觉签收仍待用户明确确认**，确认前不建立黄金图，14 不得视为通过。
+
+仍待执行的是票据 14 的签收、15（Linux Chrome / iPhone 真机）、16（静态交付、资源更新与前端回退）
+与 17（上线就绪汇总）。13 只证明自动化与隔离集成，不代表视觉、真机、Nginx 交付、真实上游或持续运行通过。
 
 ## iPhone 真机验证
 
