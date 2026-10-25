@@ -85,6 +85,26 @@ def dynamic_changed(snapshot, base_url):
     return build(clipped + ELLIPSIS if clipped else dynamic_id)
 
 
+def heartbeat(snapshot):
+    """心跳模板：只陈述本地已记录的事实，不把进程存活说成采集成功。"""
+    label = safe_text(snapshot.get("label"), single_line=True)
+    selected = int(snapshot.get("selected") or 0)
+    checked = int(snapshot.get("checked") or 0)
+    failed = int(snapshot.get("failed") or 0)
+    pending = int(snapshot.get("pending") or 0)
+    last_checked = safe_text(snapshot.get("last_checked_at"), single_line=True) or "无记录"
+    if selected:
+        observed = f"采集观察：纳管 {selected} 个目标，已检查 {checked} 个，最近检查 {last_checked}"
+    else:
+        observed = f"采集观察：暂无纳管目标，最近检查 {last_checked}"
+    return post(
+        [text(f"心跳【{label}】通知进程存活")],
+        [text(observed)],
+        [text(f"最近一次检查：失败 {failed} 个，正文待同步 {pending} 个")],
+        [text("仅报告本地已记录状态，进程存活不等于采集成功")],
+    )
+
+
 @dataclass(frozen=True)
 class DeliveryOutcome:
     sent: bool

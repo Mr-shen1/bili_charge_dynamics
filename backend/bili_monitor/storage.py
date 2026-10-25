@@ -113,7 +113,7 @@ class Store(CheckStore, DiscoveryStore):
             connection.execute("BEGIN IMMEDIATE")
             try:
                 version = connection.execute("PRAGMA user_version").fetchone()[0]
-                if version > 16:
+                if version > 17:
                     raise RuntimeError("Unsupported database schema version")
                 if version == 0:
                     connection.execute("""CREATE TABLE identities (
@@ -251,9 +251,10 @@ class Store(CheckStore, DiscoveryStore):
                     columns = {row[1] for row in connection.execute("PRAGMA table_info(target_checks)")}
                     if "page_checked_at" not in columns:
                         connection.execute("ALTER TABLE target_checks ADD COLUMN page_checked_at TEXT")
-                if version < 16:
+                if version < 17:
+                    # 通知 schema 可重入：v15 重放与 v16 增量（心跳时段/有效期）走同一入口。
                     outbox.migrate(connection)
-                connection.execute("PRAGMA user_version = 16")
+                connection.execute("PRAGMA user_version = 17")
                 connection.commit()
             except BaseException:
                 connection.rollback()

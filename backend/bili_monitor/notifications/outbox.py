@@ -13,6 +13,8 @@
   跨重启、重复扫描与重新入选都有效。
 - 已入队的事件与目标投递记录不随监控配置级联删除。
 - 消息快照在取得资格时冻结；投递与重试不读取最新归档。
+- 心跳按北京时间小时时段（`notification_heartbeats.slot`）去重，有效期写到该投递
+  记录的 `expires_at`；领取前先丢弃过期心跳，业务记录的 `expires_at` 永远是 NULL。
 """
 
 import json
@@ -20,13 +22,16 @@ import time
 from uuid import uuid4
 
 DYNAMIC_CHANGED = "dynamic_changed"
+HEARTBEAT = "heartbeat"
 UP_ROLE = "up"
+SYSTEM_ROLE = "system"
 
-# 投递状态：等待配置、到期待投、已领取（带租约）、已成功。
+# 投递状态：等待配置、到期待投、已领取（带租约）、已成功、已过期（心跳专用）。
 WAITING_CONFIG = "waiting_config"
 PENDING = "pending"
 INFLIGHT = "inflight"
 SENT = "sent"
+EXPIRED = "expired"
 
 
 def migrate(connection):
@@ -69,8 +74,19 @@ def migrate(connection):
         sent_at REAL,
         UNIQUE(event_id, role)
     )""")
+    # 心跳有效期：只有心跳记录写入该列；业务消息保持 NULL，不套用过期丢弃规则。
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(notification_deliveries)")}
+    if "expires_at" not in columns:
+        connection.execute("ALTER TABLE notification_deliveries ADD COLUMN expires_at REAL")
     connection.execute("CREATE INDEX IF NOT EXISTS notification_due ON notification_deliveries(state, due_at)")
     connection.execute("CREATE INDEX IF NOT EXISTS notification_lease ON notification_deliveries(state, lease_until)")
+    # 心跳时段身份：`slot` 是北京时间的 `YYYY-MM-DDTHH`，主键即「每小时最多一次」的持久依据。
+    connection.execute("""CREATE TABLE IF NOT EXISTS notification_heartbeats (
+        slot TEXT PRIMARY KEY,
+        generated_at REAL NOT NULL,
+        expires_at REAL NOT NULL,
+        event_id INTEGER
+    )""")
     for row in connection.execute("SELECT uid, id, token FROM target_selections").fetchall():
         activate(connection, row["uid"], row["id"], row["token"])
 
@@ -158,14 +174,46 @@ def record_body(connection, id, generation, document, version):
     connection.execute("UPDATE notification_phases SET baseline_version = ? WHERE token = ?", (version, phase["token"]))
 
 
+def record_heartbeat(connection, slot, facts, now):
+    """登记本小时心跳：时段主键保证同一小时只生成一次。
+
+    时段已存在即返回 False（重复调度与进程重启都不会再生成）；新时段写事件、
+    快照与系统群投递记录，并写入有效期（不跨下一个心跳时段）。
+    """
+    created = connection.execute(
+        "INSERT OR IGNORE INTO notification_heartbeats(slot, generated_at, expires_at) VALUES (?, ?, ?)",
+        (slot.identity, now, slot.expires_at)).rowcount == 1
+    if not created:
+        return False
+    snapshot = {"slot": slot.identity, "label": slot.label, **facts}
+    # 心跳没有 UP 与动态：消息对象就是小时时段，`UNIQUE(kind, dynamic_id, version)` 再兜一层去重。
+    event = connection.execute("""INSERT INTO notification_events
+        (kind, uid, dynamic_id, version, snapshot, created_at) VALUES (?, '', ?, ?, ?, ?)""",
+        (HEARTBEAT, slot.identity, slot.identity, json.dumps(snapshot, ensure_ascii=False), now))
+    connection.execute("UPDATE notification_heartbeats SET event_id = ? WHERE slot = ?",
+                       (event.lastrowid, slot.identity))
+    connection.execute("""INSERT INTO notification_deliveries(event_id, role, state, due_at, expires_at)
+        VALUES (?, ?, ?, 0, ?)""", (event.lastrowid, SYSTEM_ROLE, PENDING, slot.expires_at))
+    return True
+
+
+def expire_overdue(connection, now):
+    """丢弃已过有效期的心跳：只影响带 `expires_at` 的记录，业务消息永不过期。"""
+    return connection.execute("""UPDATE notification_deliveries
+        SET state = ?, token = NULL, lease_until = NULL, due_at = ?, error = ?
+        WHERE expires_at IS NOT NULL AND expires_at <= ? AND state IN (?, ?, ?)""",
+        (EXPIRED, now, "expired", now, PENDING, WAITING_CONFIG, INFLIGHT)).rowcount
+
+
 def recheck_waiting_config(connection, now):
     """进程启动时重新核验等待配置的目标，使修复后的配置无需等待复检周期。"""
     connection.execute("UPDATE notification_deliveries SET due_at = ? WHERE state = ?", (now, WAITING_CONFIG))
 
 
 def claim_due(connection, now, limit, lease_seconds):
-    """短事务领取：到期待投、等待配置复检与过期租约；返回带领取凭证的载荷。"""
-    rows = connection.execute("""SELECT d.id AS delivery_id, d.role, d.attempts, e.kind, e.uid,
+    """短事务领取：先丢弃过期心跳，再领到期待投、等待配置复检与过期租约。"""
+    expire_overdue(connection, now)
+    rows = connection.execute("""SELECT d.id AS delivery_id, d.role, d.attempts, d.expires_at, e.kind, e.uid,
             e.dynamic_id, e.version, e.snapshot
         FROM notification_deliveries d JOIN notification_events e ON e.id = d.event_id
         WHERE (d.state IN (?, ?) AND d.due_at <= ?)

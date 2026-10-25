@@ -1,5 +1,8 @@
 """独立通知进程：单实例领取发件箱并按索引投递，默认每秒一轮。
 
+每轮还按当前北京时间登记本小时心跳（仅第 40 分钟窗口内、同小时一次、过期不投递），
+不为心跳另起时钟进程，也不把定时器放进 API。
+
     export BILI_DATABASE_PATH=/srv/bili-monitor/monitor.sqlite
     export BILI_NOTIFICATION_CONFIG=/srv/bili-monitor/notifications.json
     exec .venv/bin/python -m backend.bili_monitor.notifier

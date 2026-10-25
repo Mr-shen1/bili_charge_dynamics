@@ -107,8 +107,8 @@ class Receiver:
         return [item["payload"] for item in self.requests]
 
 
-def config_mapping(*, base_url=BASE_URL, up=WEBHOOK, full=None, overrides=None):
-    """服务端配置形状：UP 默认目标角色 → 目的地引用 → 凭据。"""
+def config_mapping(*, base_url=BASE_URL, up=WEBHOOK, full=None, overrides=None, system=None):
+    """服务端配置形状：UP 默认目标角色 → 目的地引用 → 凭据；系统群单独配置。"""
     ups = {UID: {}}
     destinations = {}
     if up is not None:
@@ -122,7 +122,11 @@ def config_mapping(*, base_url=BASE_URL, up=WEBHOOK, full=None, overrides=None):
         reference = f"up-{dynamic_id}"
         dynamics[dynamic_id] = {"up": reference}
         destinations[reference] = {"webhook": webhook}
-    return {"base_url": base_url, "ups": ups, "dynamics": dynamics, "destinations": destinations}
+    mapping = {"base_url": base_url, "ups": ups, "dynamics": dynamics, "destinations": destinations}
+    if system is not None:
+        destinations["system-room"] = {"webhook": system}
+        mapping["system"] = "system-room"
+    return mapping
 
 
 def config(**sections):

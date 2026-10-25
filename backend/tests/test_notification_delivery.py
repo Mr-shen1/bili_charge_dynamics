@@ -201,8 +201,10 @@ def test_transient_cycle_failure_does_not_stop_the_delivery_loop(tmp_path):
                 yield connection
 
     class StoppingClock(Clock):
+        # 停在本小时第 40 分钟之前（1970-01-12 13:34:40 +08:00）：本用例只验证
+        # 投递循环的瞬时故障，不应顺带生成小时心跳。
         def __init__(self):
-            super().__init__()
+            super().__init__(now=1_000_000.0 - 12 * 60)
             self.sleeps = 0
 
         async def sleep(self, seconds):

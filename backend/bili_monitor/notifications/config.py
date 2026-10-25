@@ -5,15 +5,19 @@
     {"base_url": "https://archive.example",
      "ups": {"<uid>": {"up": "up-room", "all": "all-room"}},
      "dynamics": {"<dynamic-id>": {"up": "up-room-123"}},
+     "system": "system-room",
      "destinations": {"up-room": {"webhook": "https://open.feishu.cn/open-apis/bot/v2/hook/<token>"}}}
 
 动态覆盖优先于所属 UP 的默认角色；两者都缺失时该目标进入等待配置，
-不会转投其他角色。`repr`、日志和发件箱都不复制 webhook。
+不会转投其他角色。系统群单独配置（顶层 `system`），告警与心跳只发这一个角色。
+`repr`、日志和发件箱都不复制 webhook。
 """
 
 import json
 from dataclasses import dataclass
 from urllib.parse import urlsplit
+
+from .outbox import SYSTEM_ROLE
 
 ENVIRONMENT_PATH = "BILI_NOTIFICATION_CONFIG"
 
@@ -58,6 +62,14 @@ def _section(value, name):
     return section
 
 
+def _reference(value):
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise NotificationConfigError("Invalid notification system role")
+    return value.strip()
+
+
 def _destinations(value):
     if not isinstance(value, dict):
         raise NotificationConfigError("Invalid notification destinations")
@@ -75,10 +87,12 @@ class NotificationConfig:
     ups: dict
     dynamics: dict
     destinations: dict
+    system: str | None = None
 
     def __repr__(self):
         return (f"NotificationConfig(base_url={self.base_url!r}, ups={sorted(self.ups)!r}, "
-                f"dynamics={sorted(self.dynamics)!r}, destinations=<{len(self.destinations)} hidden>)")
+                f"dynamics={sorted(self.dynamics)!r}, system={self.system!r}, "
+                f"destinations=<{len(self.destinations)} hidden>)")
 
     @classmethod
     def from_mapping(cls, value):
@@ -89,6 +103,7 @@ class NotificationConfig:
             _section(value.get("ups"), "ups"),
             _section(value.get("dynamics"), "dynamics"),
             _destinations(value.get("destinations") or {}),
+            _reference(value.get("system")),
         )
 
     @classmethod
@@ -101,7 +116,9 @@ class NotificationConfig:
         return cls.from_mapping(value)
 
     def reference(self, uid, dynamic_id, role):
-        """动态覆盖优先，其次所属 UP 默认值；不跨角色借用。"""
+        """系统群单独配置；业务角色动态覆盖优先，其次所属 UP 默认值。不跨角色借用。"""
+        if role == SYSTEM_ROLE:
+            return self.system
         return (self.dynamics.get(str(dynamic_id), {}).get(role)
                 or self.ups.get(str(uid), {}).get(role))
 

@@ -157,7 +157,9 @@ def test_notification_process_delivers_once_and_survives_restart(tmp_path):
             assert deliveries(path)[0]["state"] == "sent"
             assert "delivery_sent" not in restarted.text
         assert notifier_log_redacted(first_log, stub.url)
-        assert len(events(path)) == 1
+        # 真实进程也按墙钟登记小时心跳（本文件没有系统群路由，故只留待配置记录）；
+        # 事件数只对业务类型断言，避免结果依赖测试运行时刻。
+        assert len([event for event in events(path) if event["kind"] == "dynamic_changed"]) == 1
         saved = json.dumps(deliveries(path), ensure_ascii=False)
         assert "fake-process" not in saved
 
@@ -182,4 +184,4 @@ def test_process_keeps_message_waiting_for_missing_route_then_delivers(tmp_path)
         with Notifier(tmp_path, path, config_path) as repaired:
             wait(lambda: len(stub.requests) == 1, repaired)
             wait(lambda: deliveries(path)[0]["state"] == "sent", repaired)
-        assert len(events(path)) == 1
+        assert len([event for event in events(path) if event["kind"] == "dynamic_changed"]) == 1
