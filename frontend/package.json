@@ -17,6 +17,7 @@
     "test:e2e:production": "playwright test --config playwright.production.config.ts",
     "test:e2e:manage": "playwright test --config playwright.manage.config.ts",
     "test:e2e:location": "playwright test --config playwright.location.config.ts",
+    "test:e2e:notification": "playwright test --config playwright.notification.config.ts",
     "visual:baseline": "pnpm build && playwright test --config playwright.visual.config.ts",
     "visual:compare": "node scripts/compare-visual-baseline.mjs",
     "visual:diff-report": "node scripts/visual-diff-report.mjs",

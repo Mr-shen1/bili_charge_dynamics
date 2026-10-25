@@ -21,7 +21,6 @@ RETRY_BASE_SECONDS = 2.0
 RETRY_CAP_SECONDS = 300.0
 CONFIG_RECHECK_SECONDS = 60.0
 
-
 class SystemClock:
     def now(self):
         return time.time()
@@ -129,8 +128,11 @@ class Dispatcher:
                 raise
 
     def _payload(self, item):
+        """事件类型 → 载荷；每种已登记类型都必须有模板，未支持类型才走退避兜底。"""
         if item["kind"] == outbox.DYNAMIC_CHANGED:
             return message.dynamic_changed(item["snapshot"], self.config.base_url)
+        if item["kind"] == outbox.ROOT_COMMENT:
+            return message.root_comment(item["snapshot"], self.config.base_url)
         if item["kind"] == outbox.HEARTBEAT:
             return message.heartbeat(item["snapshot"])
         return None

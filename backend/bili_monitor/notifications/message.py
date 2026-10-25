@@ -15,12 +15,17 @@
 import json
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from urllib.parse import quote
 
 import httpx
 
+from ..source import BEIJING
+
 PAYLOAD_LIMIT_BYTES = 20 * 1024
 ELLIPSIS = "……"
+LONG_CONTENT = "……内容过长，点击链接查看全文"
+IMAGE_COMMENT = "【图片评论，点击链接查看】"
 RATE_LIMIT_CODES = frozenset({11232, 11233, 230020, 99991400})
 RETRY_AFTER_HEADER = "x-ogw-ratelimit-reset"
 RATE_LIMIT_FALLBACK_SECONDS = 60.0
@@ -78,11 +83,71 @@ def dynamic_changed(snapshot, base_url):
     payload = build(title)
     if len(encoded(payload)) <= PAYLOAD_LIMIT_BYTES:
         return payload
-    # 超长标题只截断标题，链接与其他字段保持完整。
-    clipped = title
-    while clipped and len(encoded(build(clipped + ELLIPSIS))) > PAYLOAD_LIMIT_BYTES:
+    # 超长标题只截断标题，链接与其他字段保持完整；裁到只剩标记时回退动态 ID。
+    clipped = _clip(build, title)
+    return build(dynamic_id if clipped == ELLIPSIS else clipped)
+
+
+def comment_href(base_url, dynamic_id, comment_id):
+    """一级评论精确入口（与 02 交付的浏览器路由一致，不用楼中楼页代替）。"""
+    return archive_href(base_url, "/dynamics/{}/comments/{}/locate".format(
+        quote(str(dynamic_id), safe=""), quote(str(comment_id), safe="")))
+
+
+def _clip(build, value, marker=ELLIPSIS):
+    """按序列化后 UTF-8 长度裁剪单个展示值；其他字段与链接保持完整。"""
+    if not value:
+        return ""
+    clipped = value
+    while clipped and len(encoded(build(clipped + marker))) > PAYLOAD_LIMIT_BYTES:
         clipped = clipped[: len(clipped) * 3 // 4]
-    return build(clipped + ELLIPSIS if clipped else dynamic_id)
+    # 即使整段被裁完也留下截断标记：调用方能看出“这里还有内容被略去”。
+    return clipped + marker
+
+
+def beijing_time(value):
+    """发表时间统一按北京时间显示到秒；不用采集或投递时间替代。"""
+    try:
+        return datetime.fromisoformat(value).astimezone(BEIJING).strftime("%Y-%m-%d %H:%M:%S")
+    except (TypeError, ValueError):
+        return ""
+
+
+def root_comment(snapshot, base_url):
+    """新增评论模板：动态、评论人、北京时间、正文与可点击的该条评论链接。
+
+    保留原始换行与“回复 @某人”等上下文；正文为空但有归档媒体时用纯图占位；
+    超长时只裁正文并追加热链接提示，其他字段与完整链接不被截掉。用完即弃的
+    局部变量都不回写归档原文。
+    """
+    dynamic_id = str(snapshot["dynamic_id"])
+    title = safe_text(snapshot.get("title"), single_line=True) or dynamic_id
+    author = snapshot.get("author") if isinstance(snapshot.get("author"), dict) else {}
+    nickname = (safe_text(author.get("nickname"), single_line=True)
+                or safe_text(author.get("id"), single_line=True))
+    published = beijing_time(snapshot.get("published_at"))
+    href = comment_href(base_url, dynamic_id, snapshot["comment_id"])
+    body = safe_text(snapshot.get("text")) or (IMAGE_COMMENT if snapshot.get("has_media") else "")
+
+    def build(content, title_value, nickname_value):
+        lines = content.split("\n")
+        paragraphs = [[text(f"动态：{title_value}")],
+                      [text(f"评论人：【{nickname_value}】")],
+                      [text(f"时间：{published}")],
+                      [text("内容：" + lines[0])]]
+        paragraphs += [[text(line)] for line in lines[1:]]
+        paragraphs.append([text("链接："), link("查看该条评论", href)])
+        return post(*paragraphs)
+
+    if len(encoded(build(body, title, nickname))) <= PAYLOAD_LIMIT_BYTES:
+        return build(body, title, nickname)
+    body = _clip(lambda value: build(value, title, nickname), body, LONG_CONTENT)
+    if len(encoded(build(body, title, nickname))) > PAYLOAD_LIMIT_BYTES:
+        nickname = _clip(lambda value: build(body, title, value), nickname)
+    if len(encoded(build(body, title, nickname))) > PAYLOAD_LIMIT_BYTES:
+        title = _clip(lambda value: build(body, value, nickname), title)
+        title = dynamic_id if title == ELLIPSIS else title
+    return build(body, title, nickname)
 
 
 def heartbeat(snapshot):

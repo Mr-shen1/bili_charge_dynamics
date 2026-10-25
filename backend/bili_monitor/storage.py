@@ -122,7 +122,7 @@ class Store(CheckStore, DiscoveryStore):
             connection.execute("BEGIN IMMEDIATE")
             try:
                 version = connection.execute("PRAGMA user_version").fetchone()[0]
-                if version > 17:
+                if version > 18:
                     raise RuntimeError("Unsupported database schema version")
                 if version == 0:
                     connection.execute("""CREATE TABLE identities (
@@ -263,7 +263,10 @@ class Store(CheckStore, DiscoveryStore):
                 if version < 17:
                     # 通知 schema 可重入：v15 重放与 v16 增量（心跳时段/有效期）走同一入口。
                     outbox.migrate(connection)
-                connection.execute("PRAGMA user_version = 17")
+                if version < 18:
+                    # 评论通知增量（事件身份、候选、评论起点）建在 09 的心跳 schema 之后。
+                    outbox.migrate_comments(connection)
+                connection.execute("PRAGMA user_version = 18")
                 connection.commit()
             except BaseException:
                 connection.rollback()
@@ -741,15 +744,17 @@ class Store(CheckStore, DiscoveryStore):
         with self.connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
-                row = connection.execute("SELECT document FROM archives WHERE id = ? AND generation = ?", (id, generation)).fetchone()
+                row = connection.execute("SELECT uid, document FROM archives WHERE id = ? AND generation = ?", (id, generation)).fetchone()
                 if row is None:
                     connection.commit()
                     return False
-                archive = json.loads(row[0])
+                archive = json.loads(row["document"])
                 for document in documents:
                     previous = connection.execute(
                         "SELECT document FROM root_comments WHERE dynamic_id = ? AND id = ?", (id, document["id"])
                     ).fetchone()
+                    # 首次插入才是新增；补字段/纯编辑/重复扫描交给候选转换判断。
+                    discovered = previous is None
                     sources = document["media_sources"]
                     if previous is not None:
                         document = _merge_comment(json.loads(previous[0]), document)
@@ -760,6 +765,9 @@ class Store(CheckStore, DiscoveryStore):
                     connection.execute("""INSERT INTO root_comments(dynamic_id, id, document) VALUES (?, ?, ?)
                         ON CONFLICT(dynamic_id, id) DO UPDATE SET document = excluded.document""",
                         (id, document["id"], json.dumps(document, ensure_ascii=False)))
+                    # 评论、事件与逐群投递记录同事务：单条就绪即可投递，不等整轮或媒体。
+                    outbox.record_root(connection, row["uid"], id, archive, document,
+                                       discovered=discovered)
                 archive["local_comment_count"] = connection.execute(
                     "SELECT count(*) FROM root_comments WHERE dynamic_id = ?", (id,)
                 ).fetchone()[0]

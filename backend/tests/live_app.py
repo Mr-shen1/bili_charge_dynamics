@@ -1,11 +1,13 @@
 """仅测试使用：固定虚构上游（UP 资料、动态正文、空根评论页、近期发现页），不绕过生产解析或持久化。
 
-除只读/既有写接口外，本模块额外提供**仅测试用**的采集驱动端点：
+除只读/既有写接口外，本模块额外提供**仅测试用**的采集与通知驱动端点：
 `POST /api/test/collect` 显式驱动一次真实 Collector 节拍、`POST /api/test/source-failure`
-切换固定上游失败、`POST /api/test/root-comments` 为指定动态启用 45 条虚构一级评论、
-`POST /api/test/replies` 为其中某个根评论启用 25 条虚构楼中楼回复、
-`GET /api/test/source-requests` 读取本进程累计的上游请求计数。它们不在生产应用里注册，
-也不访问真实上游或上传 OSS；默认根评论页与楼中楼页仍为空，未启用时既有用例行为不变。
+切换固定上游失败、`POST /api/test/root-comments` 为指定动态启用 45 条虚构一级评论
+（可用 `fresh` 指定“刚发表”的序号）、`POST /api/test/replies` 为其中某个根评论启用
+25 条虚构楼中楼回复、`GET /api/test/source-requests` 读取本进程累计的上游请求计数、
+`POST /api/test/notify-roots` 跑一轮真实通知投递并返回交给飞书替身的实际载荷。
+它们不在生产应用里注册，也不访问真实上游、真实飞书或上传 OSS；默认根评论页与楼中楼页
+仍为空，未启用时既有用例行为不变。
 
 BILI_DATABASE_PATH=/tmp/bili-e2e.sqlite uv run uvicorn \
     backend.tests.live_app:create_app --factory --host 127.0.0.1 --port 8765
@@ -14,6 +16,7 @@ BILI_DATABASE_PATH=/tmp/bili-e2e.sqlite uv run uvicorn \
 import copy
 import json
 import os
+import time
 from pathlib import Path
 
 import httpx
@@ -21,6 +24,7 @@ from fastapi import HTTPException
 
 from backend.bili_monitor.app import create_app as create_management_app
 from backend.bili_monitor.collector import Collector
+from backend.bili_monitor.notifications import Dispatcher, NotificationConfig
 from backend.bili_monitor.source_endpoints import FEED_URL
 from backend.bili_monitor.storage import Store
 
@@ -38,7 +42,9 @@ CARDS = {
 }
 
 # 一级评论定位夹具：默认关闭，只有显式启用后才给该动态下发 45 条虚构根评论。
-ROOT_FIXTURE = {"dynamic": None, "size": 45}
+# `fresh` 里的 1 基序号表示“刚发表”：发表时间取当前时间之后 60 秒（晚于通知起点），
+# 作者取该动态所属 UP，因此按真实路由同时进 UP 群和全员群。
+ROOT_FIXTURE = {"dynamic": None, "size": 45, "fresh": ()}
 # 楼中楼回复定位夹具：默认关闭，只有显式启用后才给指定根评论下发 25 条虚构回复。
 REPLY_FIXTURE = {"dynamic": None, "root": None, "size": 25}
 # 一级评论夹具里第一个根评论的来源回复数（rcount）：与 REPLY_FIXTURE 的条数一致。
@@ -51,15 +57,21 @@ def root_comments(dynamic):
     """45 条虚构一级评论：点赞递减，因此最热顺序即 860001…860045。"""
     template = json.loads((Path(__file__).parent / "fixtures/root-comments.json").read_text())
     root = template["data"]["replies"][0]
+    fresh = set(ROOT_FIXTURE["fresh"])
+    owner = CARDS.get(DYNAMICS.get(dynamic, ""), {})
     comments = []
     for index in range(ROOT_FIXTURE["size"]):
         item = copy.deepcopy(root)
+        ctime = int(time.time()) + 60 if index + 1 in fresh else 1791513496 - index
         item.update(rpid=860000 + index + 1, rpid_str=str(860000 + index + 1),
                     like=ROOT_FIXTURE["size"] - index,
                     # 第一个根评论带来源回复数，用于驱动楼中楼整楼同步。
                     rcount=ROOT_REPLY_COUNT if index == 0 else 0,
-                    ctime=1791513496 - index, root=0, root_str="0", parent=0, parent_str="0")
-        item["member"] = {"mid": "909001", "uname": "虚构楼主", "avatar": None}
+                    ctime=ctime, root=0, root_str="0", parent=0, parent_str="0")
+        if index + 1 in fresh and owner:
+            item["member"] = {"mid": owner["mid"], "uname": owner["name"], "avatar": None}
+        else:
+            item["member"] = {"mid": "909001", "uname": "虚构楼主", "avatar": None}
         item["content"] = {"message": f"虚构一级评论 {index + 1}\n第二行：换行与 emoji 🙂", "pictures": []}
         item["replies"] = None
         item["oid"], item["type"] = int("99" + dynamic), 17
@@ -263,7 +275,41 @@ def create_app():
     async def enable_root_comments(payload: dict):
         """仅测试夹具：为指定动态启用 45 条虚构一级评论；不写数据库，归档仍走 /api/sync/initial。"""
         ROOT_FIXTURE["dynamic"] = payload.get("dynamic")
-        return {"dynamic": ROOT_FIXTURE["dynamic"], "size": ROOT_FIXTURE["size"]}
+        ROOT_FIXTURE["fresh"] = tuple(payload.get("fresh") or ())
+        return {"dynamic": ROOT_FIXTURE["dynamic"], "size": ROOT_FIXTURE["size"],
+                "fresh": list(ROOT_FIXTURE["fresh"])}
+
+    @app.post("/api/test/notify-roots", include_in_schema=False)
+    async def notify_roots():
+        """仅测试夹具：对当前归档跑一轮真实通知投递，返回交给飞书替身的实际载荷。
+
+        `BILI_TEST_NOTIFICATION_BASE` 给出本站基址（浏览器可达的前端源），因此消息里的
+        评论链接就是投递产物本身；这里不拼装第二套入口，也不请求真实飞书。
+        """
+        base = os.environ.get("BILI_TEST_NOTIFICATION_BASE")
+        if not base:
+            raise HTTPException(status_code=500, detail="BILI_TEST_NOTIFICATION_BASE is required")
+        config = NotificationConfig.from_mapping({
+            "base_url": base,
+            "ups": {uid: {"up": "up-room", "all": "all-room"} for uid in CARDS},
+            "destinations": {
+                "up-room": {"webhook": "https://open.feishu.cn/open-apis/bot/v2/hook/fake-live-up"},
+                "all-room": {"webhook": "https://open.feishu.cn/open-apis/bot/v2/hook/fake-live-all"},
+            },
+        })
+        delivered = []
+
+        def feishu(request):
+            delivered.append({"url": str(request.url), "payload": json.loads(request.content)})
+            return httpx.Response(200, json={"code": 0, "msg": "success"})
+
+        notifier = Dispatcher(Store(path), config, transport=httpx.MockTransport(feishu))
+        try:
+            while await notifier.run_once():
+                pass
+        finally:
+            await notifier.aclose()
+        return {"delivered": delivered}
 
     @app.post("/api/test/replies", include_in_schema=False)
     async def enable_replies(payload: dict):

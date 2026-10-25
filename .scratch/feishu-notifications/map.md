@@ -20,14 +20,18 @@
 - 09 修复已 `--no-ff` 合并进集成分支（合并 tip `0ba443c`，源 `cfd10a1`）：无冲突，改动只涉心跳生成窗口与相关文档；合并后心跳专项 `13 passed`、心跳＋迁移 `17 passed`、通知六套 `58 passed`、全量后端回归 `884 passed`。
 - 03 已 `resolved`：楼中楼回复精确链接贯通只读定位读取契约（`GET /api/archive/dynamics/{id}/comments/{root_id}/replies/{reply_id}/location`）与生产前端入口 `/dynamics/{dynamicId}/comments/{rootId}/replies/{replyId}/locate`；宽屏复用动态详情原回复区（先按 02 契约取含所属根评论的批次，再取目标所在页），窄屏复用原独立楼中楼页直接显示目标页；回复页切片抽为共享 `_reply_reading`/`_reply_page_document`，不改变既有 `page` 模式、冻结快照与计数口径；证据见 [evidence/03-reply-deep-link.md](evidence/03-reply-deep-link.md)。
 - 03 已用 `--no-ff` 合并进集成分支（合并 tip `880d235`，源 `68842aa`，合并前 `4e3b611`）：无冲突，保留双方文档改动（`docs/README.md` 索引同列 01/02/03/09，并顺带修正索引行残留断行碎片）；存储 schema 保持 v17，`backend/bili_monitor/notifications/` 与 09 心跳/告警 hook 未被改动，02 的 `Store.locate_root` 与 `/comments/{root_id}/location` 端点保持。合并后在集成分支跑专项：`test_root_comment_location`＋`test_reply_location`＋`test_dynamic_notifications`＋`test_notification_heartbeat`＋`test_notification_migration` 合计 `29 passed`，相邻回复读取回归 `test_replies`＋`test_comment_sync_status` `42 passed`，`git diff --check` 通过（全量回归留 10 统一执行）。
-- 当前实施：03 已合并收口，只剩 **04** 在独立工作树 `/tmp/feishu-worktrees/04` 实施；主工作树只做集成，不在主工作树开 04 的实现；05 因 03 已 resolved 现只待 04，06 待 04，07 待 05＋06，08 待 06，10 待 07＋08＋09。09 的修复已合入集成分支，不再占用独立工作树。各票完成后只由合并代理操作集成分支；其余依赖边与 11 人工授权门槛不变。
+- 04 已 `resolved`：一级评论闭环落地「写事务内登记事件或候选 → 独立通知进程按角色投递 → 本站精确阅读」；评论起点独立成 `notification_phases.comment_started_at`（与 01 的正文基线分开，升级只回填 NULL，历史静默），事件身份 `(kind, dynamic_id, root_id, comment_id)` 预留 05 的所属根，候选单独成表并按原阶段起点转换，schema 顺延到 v18（09 占用 v17，链为 `<17` 心跳 → `<18` 评论 → `PRAGMA 18`）；证据见 [evidence/04-root-comment-notification.md](evidence/04-root-comment-notification.md)。
+- 04 已用 `--no-ff` 合并进集成分支（合并 tip `be8dfa5`，源 `9aaa92f`，合并前 `4e855dd`）：无冲突，19 个文件、+1461/−66，`docs/README.md` 索引同列 01/02/03/04/09。合并后在集成分支只跑专项：`test_root_comment_notifications`＋`test_notification_heartbeat`＋`test_notification_migration`＋`test_reply_location` 合计 `31 passed`，迁移链 `test_migrations` `27 passed`，`git diff --check` 通过；09 的 v17 心跳与 04 的 v18 评论增量共存，`<17`→`<18` 两段结构与既有断言两侧保留（全量回归留 10 统一执行；04 分支上的记录为后端 `909 passed`、`pnpm check` 271、`pnpm test:e2e` 198/10 skipped、`test:e2e:notification` 2、`test:e2e:location` 4、`test:e2e:manage` 7、`check:dist` 通过）。证据核验：主链用例真存在（`test_root_comment_notifications.py` 12 例，驱动真实归档事务、临时 SQLite 与进程内受控接收端）；浏览器产物链在 `frontend/tests/e2e-notification/delivery-link.spec.ts` 里确实“从投递载荷取 `href` 再去生产装配打开”，而 `message.comment_href` 生成的形状 `/dynamics/{id}/comments/{commentId}/locate` 与 02 合约一致；但传输仍为 `httpx.MockTransport`、`POST /api/test/notify-roots` 仅测试夹具，spec 额外断言了一个期望 URL，真实飞书与真机未验（属 11）。
+- 当前实施：**04 已合并收口**，下一批可派发 **06**（唯一直接阻塞 04 已 resolved，票据 `ready-for-agent`）；主工作树只做集成，不在主工作树开实现。**05 的 04 依赖已满足，但 03 仍有提前 Spec 审查发现的「精确入口返回恢复」缺陷在 `/tmp/feishu-worktrees/03` 独立工作树修复中，该修复合并前不启动 05**；07 待 05＋06，08 待 06，10 待 07＋08＋09。各票完成后只由合并代理操作集成分支；其余依赖边与 11 人工授权门槛不变。
 
 - 起始可并行票为 01、02，分别在 `/tmp/feishu-worktrees/01`、`/tmp/feishu-worktrees/02` 实施。
+- 已合并的 01/02/09 工作树不再用于实施；`04` 工作树随本票合并收口（保留备查，不重开）。`/tmp/feishu-worktrees/03` 另用于 Fog 中精确入口返回恢复缺陷的修复，修复件按 03 原规格验收后合并。
 - 本轮接续 01、02 已存在的未提交工作，保留其内容并由各实施代理核验、完成；不重置工作树。
 - 本轮共享探索笔记放仓库外 `/tmp/feishu-notifications-research/implementation-notes.md`，供后续实现者参考；笔记不替代活文件及官方协议核验。
 - 真实验收票 11 保持 `ready-for-human`；01–10 的隔离准备即使完成，也不自动关闭父规格或 11。
 
 ## Fog
 
+- **未消除**：提前 Spec 审查发现 02/03 精确定位入口未进入原详情快照/楼中楼来源体系，可能在返回时丢失阅读位置并重复主动定位（`4e855dd` 记录该缺陷）。修复在 `/tmp/feishu-worktrees/03` 独立工作树以红→绿补测进行；修复件合并前，03 不作为 05 的已完成依赖，**05 不启动**。链接契约（`/dynamics/{id}/comments/{rootId}[/replies/{replyId}]/locate`）不变，不需新业务决策。
 - 真实飞书显示、内置浏览器、手机、代理可达性、授权目标环境三进程及资源证据均未取得，归票据 11。
 - 各票隔离验证与最终双轴审查结果尚待形成。
