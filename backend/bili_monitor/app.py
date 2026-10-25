@@ -74,6 +74,9 @@ def create_app(
                 try:
                     yield
                 finally:
+                    # 自建工厂按 UP 复用会话，退出时统一关闭；外部注入的工厂由调用方管理。
+                    if comment_client_factory is None and comments is not None:
+                        await comments.aclose()
                     if media_uploader is None and uploader is not None:
                         await to_thread.run_sync(uploader.close)
         except Exception:

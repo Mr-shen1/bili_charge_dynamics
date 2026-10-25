@@ -36,7 +36,7 @@ exec .venv/bin/python -m backend.bili_monitor.service --host 127.0.0.1 --port 80
 
 ## 23 独立采集进程
 
-也可按原方式让 API 和采集进程使用同一 SQLite 路径、分别启动，不能增加多个采集进程。处理持久启用的指定集合或近期可信窗口的检查/同步，以及近期 UP 发现，默认最多 4 个同时检查、4 个独立目标同步、2 个独立 UP 发现；同目标不叠加，慢分页期间其他目标仍可检查／同步。固定 15 秒检查与慢同步分离，状态从 `GET /api/manage/ups/{uid}/checks` 读取；完整节拍、重启与状态语义见 [采集契约](../docs/backend/api/collector-api.md)。API 不内嵌定时器。
+也可按原方式让 API 和采集进程使用同一 SQLite 路径、分别启动，不能增加多个采集进程。处理持久启用的指定集合或近期可信窗口的检查/同步，以及近期 UP 发现，默认最多 4 个同时检查、4 个独立目标同步、2 个独立 UP 发现；同目标不叠加，慢分页期间其他目标仍可检查／同步。固定节拍检查（生产默认 2.7 秒 ±10%，可用 `BILI_COLLECTOR_CADENCE_SECONDS` 覆盖）与慢同步分离，状态从 `GET /api/manage/ups/{uid}/checks` 读取；完整节拍、重启与状态语义见 [采集契约](../docs/backend/api/collector-api.md)。API 不内嵌定时器。
 
 ```sh
 # 独立终端、仓库根目录；使用与 API 相同的持久路径和服务端 OSS 环境
@@ -73,7 +73,7 @@ journalctl --user -u bili-charge-live-34.service -n 100 --no-pager
 journalctl --user -u bili-charge-live-34.service -f
 ```
 
-每 15 秒的 `collector_tick` 会显示入选目标、待处理数、在途数和本轮新调度数；真正领取后输出 `sync_started`，完成时输出 `sync_finished`。同一同步尝试通过进程内 `attempt` 关联根评论、回复、正文和媒体阶段；失败包含固定分类、页号及 HTTP 状态（如有），不含 URL、业务 ID、来源原文或凭据。详细字段及如何区分空闲、在途、失败重试和进程退出见[采集日志契约](../docs/backend/api/collector-api.md#调度与失败日志)。正常失败仍按原固定节拍重试，日志本身不触发额外采集。本次日志增补按用户要求未经测试或运行验证。
+每个节拍的 `collector_tick` 会显示入选目标、待处理数、在途数和本轮新调度数；真正领取后输出 `sync_started`，完成时输出 `sync_finished`。同一同步尝试通过进程内 `attempt` 关联根评论、回复、正文和媒体阶段；失败包含固定分类、页号及 HTTP 状态（如有），不含 URL、业务 ID、来源原文或凭据。详细字段及如何区分空闲、在途、失败重试和进程退出见[采集日志契约](../docs/backend/api/collector-api.md#调度与失败日志)。正常失败仍按原固定节拍重试，日志本身不触发额外采集。本次日志增补按用户要求未经测试或运行验证。
 
 ## 24 编辑同步与版本提交
 
@@ -109,7 +109,7 @@ checks HTTP 增量返回 `observed.comment_count_status`、`synced_comment_count
 
 API 的显式同步和正式采集进程使用共享 `PacedSourceTransport`：每次动态 feed 请求前异步等待随机 **0.8–1.5 秒**，每次根评论／楼中楼页请求前等待 **0.3–0.4 秒**，包括首页、翻页和空尾页复查。范围参考 ignored 示例脚本，但运行不导入该脚本，也不接入飞书。
 
-同一来源客户端的分页共享等待锁，避免多 UP／目标同时突发；仅串行化发送前的等待，不锁网络响应或 SQLite。独立 HTML／detail／评论计数等信号请求不排这个队，固定 15 秒调度、busy-skip 与有限并发规则不变；它不是自动退避、重试策略或不再限流的保证。API 和采集进程各有独立节奏，不提供跨进程／跨主机限速保证，手工写接口与采集进程并行使用仍可能触发上游限制。
+同一来源客户端的分页共享等待锁，避免多 UP／目标同时突发；仅串行化发送前的等待，不锁网络响应或 SQLite。独立 HTML／detail／评论计数等信号请求不排这个队，固定节拍调度、busy-skip 与有限并发规则不变；它不是自动退避、重试策略或不再限流的保证。API 和采集进程各有独立节奏，不提供跨进程／跨主机限速保证，手工写接口与采集进程并行使用仍可能触发上游限制。
 
 测试注入的 transport 由调用方管理时间；可用 `PacedSourceTransport(httpx.MockTransport(...), sleep=...)` 保留节奏逻辑并替换外部时间，不让现有 fixture 等待真实秒数。专项验证包括正式 API／采集入口装配、完整分页与空尾页复查、并发信号读取及取消：`uv run pytest backend/tests/test_source_pacing.py -q`。这只是无凭据自动化，不证明真实上游长期可用。
 
@@ -133,7 +133,7 @@ API 与 collector 的来源 `AsyncClient` 共用 `source_client.py` 中的普通
 - 按用户要求采用参考脚本中相同的固定普通 `User-Agent`，不复制脚本的 Cookie 或其他凭据；这不是接口可用或访问权限的保证。
 - `Accept-Language: zh-CN,zh;q=0.9,en;q=0.8`；API 的 `Accept: application/json, text/plain, */*`，`Origin: https://space.bilibili.com`。普通页面仍使用 HTML 内容协商。
 - 根评论、楼中楼及独立计数请求逐次设置 `Referer: https://space.bilibili.com/{uid}/dynamic`，UID 由本轮归档/检查的 UP 传递，不把脚本的单一 UP 固定到共享客户端。
-- 正式评论链路使用 `RequestsCommentClientFactory`：每次独立计数检查或根＋回复采集尝试创建 Requests Session，结束关闭，不跨尝试保留可变会话。同步网络 I/O 在线程池执行，同一 Session 串行使用，不阻塞固定调度时钟。endpoint、主要参数和 15 秒超时对照参考脚本，解析逻辑不分叉。
+- 正式评论链路使用 `RequestsCommentClientFactory`：会话按 UP 复用（Cookie 变化或超过 30 分钟会话 TTL 才重建），预热（B站首页 + 该 UP 空间页）按 `(UP, Cookie 指纹)` 缓存 5 分钟、过期后后台刷新、失败冷却 60 秒，命中缓存时本轮零预热请求。同步网络 I/O 在线程池执行，同一 Session 串行使用，不阻塞固定调度时钟。endpoint、主要参数和 15 秒超时对照参考脚本，解析逻辑不分叉。
 - 每个 Session 按 `create_session` 顺序预热 `https://www.bilibili.com/`、`https://space.bilibili.com/{uid}/dynamic`，各自 timeout 10 秒、成功取得响应后异步等 1–3 秒；每个 URL 独立 best-effort，异常不阻止下一个 URL。预热只记录 HTTP 成功，不宣称已登录；不再用 nav 预热。工厂创建时不发请求，空闲 API 启动不访问来源。
 - 私有 Cookie 文件每个进程启动读一次；名称和值分别 strip、不 URL 编解码。每轮从该不可变输入重建 Session CookieJar，域 `.bilibili.com`、path `/`；仅本轮保留正常来源 `Set-Cookie` 更新/删除。API、collector、不同尝试和媒体/OSS 不共享可变 jar。
 - Requests 使用环境代理、TLS 验证和默认 GET 重定向行为；实际发送（包括跳转）只允许 HTTPS 默认端口的 `api.bilibili.com`、`www.bilibili.com`、`space.bilibili.com`，其他域/明文/非 GET 在发送前拒绝。此范围约束有意严于参考脚本，Cookie 不会随任意跳转泄露。HTTPX 正文/detail/feed 和独立媒体仍保持各自原有代理策略。

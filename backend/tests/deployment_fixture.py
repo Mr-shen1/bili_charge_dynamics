@@ -129,7 +129,7 @@ def create_app():
 async def serve(database):
     async with httpx.AsyncClient(transport=httpx.MockTransport(FixtureSource()), trust_env=False) as source, \
             httpx.AsyncClient(transport=httpx.MockTransport(download), trust_env=False) as media:
-        # 使用生产 run() 的真实锁、恢复和固定 15 秒调度，不手动驱动内部阶段。
+        # 使用生产 run() 的真实锁、恢复和固定节拍调度（测试内由环境变量固定为 15 秒便于断言），不手动驱动内部阶段。
         collector = Collector(Store(database), source, ImageDownloader(media), FixtureUploader())
         task = asyncio.create_task(collector.run())
         loop = asyncio.get_running_loop()

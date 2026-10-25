@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import os
+import random
 import signal
 
 import httpx
@@ -29,7 +30,23 @@ from .storage import Store
 from .selection import selection_matches
 
 
-CADENCE_SECONDS = 15
+# 检查节拍：生产默认 2.7 秒 ±10% 抖动，与参考脚本 3 目标 2.4–3.0 秒一轮相当。
+# BILI_COLLECTOR_CADENCE_SECONDS 可覆盖为固定值（测试与临时运维）；无抖动便于复现。
+CADENCE_SECONDS = 2.7
+CADENCE_JITTER = 0.10
+
+
+def cadence_provider():
+    """返回本轮节拍提供者：环境变量固定值优先，否则基数 ±抖动。"""
+    override = os.environ.get("BILI_COLLECTOR_CADENCE_SECONDS")
+    if override:
+        try:
+            fixed = float(override)
+        except ValueError:
+            fixed = 0.0
+        if fixed > 0:
+            return lambda: fixed
+    return lambda: CADENCE_SECONDS * random.uniform(1 - CADENCE_JITTER, 1 + CADENCE_JITTER)
 
 
 class SystemClock:
@@ -61,7 +78,8 @@ def collector_lock(path):
 
 class Collector:
     def __init__(self, store, client, downloader=None, uploader=None, *, clock=None,
-                 max_checks=4, max_syncs=4, max_discoveries=2, comment_client_factory=None):
+                 max_checks=4, max_syncs=4, max_discoveries=2, comment_client_factory=None,
+                 cadence=None):
         if max_checks < 1 or max_syncs < 1 or max_discoveries < 1:
             raise ValueError("Invalid collector concurrency")
         self.store = store
@@ -73,6 +91,7 @@ class Collector:
         self.max_syncs = max_syncs
         self.max_discoveries = max_discoveries
         self.comment_client_factory = comment_client_factory
+        self.cadence = cadence if cadence is not None else cadence_provider()
 
     async def discover_once(self, uid):
         """一次按 UP 发现并发布可信窗口；首次工作仍经固定检查与独立归档阶段。"""
@@ -248,6 +267,7 @@ class Collector:
             await to_thread.run_sync(self.store.recover_check_work)
             await to_thread.run_sync(self.store.recover_discoveries, self.clock.now())
             collector_event("collector_started", cadence_seconds=CADENCE_SECONDS,
+                            cadence_jitter=CADENCE_JITTER,
                             max_checks=self.max_checks, max_syncs=self.max_syncs,
                             max_discoveries=self.max_discoveries, recovery="complete")
             checks, executions, discoveries = {}, {}, {}
@@ -302,12 +322,13 @@ class Collector:
                                 launched += 1
                         sync_offset = (sync_offset + max(1, launched)) % len(pending)
                         syncs_started = launched
-                    deadline += CADENCE_SECONDS
+                    cadence = self.cadence()
+                    deadline += cadence
                     # 进程/事件循环停顿越过节拍时跳过错过的槽，绝不补发积压。
                     now = self.clock.monotonic()
                     if deadline < now:
-                        skipped = int((now - deadline) // CADENCE_SECONDS) + 1
-                        deadline += skipped * CADENCE_SECONDS
+                        skipped = int((now - deadline) // cadence) + 1
+                        deadline += skipped * cadence
                         collector_event("collector_ticks_skipped", skipped=skipped)
                     collector_event("collector_tick", targets=len(targets), recent_ups=len(recent_ups),
                                     pending=len(pending), checks_in_flight=len(checks),
@@ -333,6 +354,7 @@ async def serve(database, *, once=False):
     configure_safe_logging()
     collector_event("collector_initializing")
     uploader = None
+    comment_factory = None
     try:
         cookie_pairs = load_source_cookie_pairs()
         source_hooks = source_client_event_hooks(cookie_pairs=cookie_pairs)
@@ -373,6 +395,8 @@ async def serve(database, *, once=False):
         collector_failure("collector_failed", error)
         raise
     finally:
+        if comment_factory is not None:
+            await comment_factory.aclose()
         if uploader is not None:
             await to_thread.run_sync(uploader.close)
 

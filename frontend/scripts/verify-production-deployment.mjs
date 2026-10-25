@@ -74,7 +74,7 @@ export async function verifyProductionDeployment({
     await write('PATCH', '/api/manage/ups/202/monitor', { enabled: true, mode: 'specified', recent_n: 10 }, 200);
     await write('POST', '/api/manage/ups/202/targets', { id: '91001' }, 201);
     collector = start(['python', '-m', 'backend.tests.deployment_fixture', '--database', database]);
-    // collector 按生产固定 15 秒节拍运行，首次检查与随后同步可能跨两个节拍；
+    // collector 按固定节拍运行（生产默认 2.7 秒；测试环境由环境变量固定为 15 秒），首次检查与随后同步可能跨两个节拍；
     // 只放宽这一处到 60 秒，API 启动等其它等待保持原有上限。
     await waitFor(async () => {
       const response = await request('/api/archive/dynamics/91001');

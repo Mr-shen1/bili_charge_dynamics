@@ -1,8 +1,10 @@
-"""参考脚本式评论会话：每次尝试独立 Requests Session，网络在线程池运行。"""
+"""参考脚本式评论会话：按 UP 复用session，预热按 TTL 缓存，网络在线程池运行。"""
 
 import asyncio
 from contextlib import asynccontextmanager
+import hashlib
 import random
+import time
 from urllib.parse import urlsplit
 
 import httpx
@@ -17,6 +19,18 @@ from .source_transport import SourcePacer
 
 
 _COMMENT_HOSTS = frozenset({"api.bilibili.com", "www.bilibili.com", "space.bilibili.com"})
+# 会话与预热都按 UP 复用：固定节拍下每次尝试都重开会话会把连接和预热请求放大数倍。
+SESSION_TTL_SECONDS = 30 * 60
+WARMUP_TTL_SECONDS = 5 * 60
+WARMUP_RETRY_SECONDS = 60
+
+
+def cookie_fingerprint(cookie_pairs):
+    """只用于判断 Cookie 是否换过，不可逆、不进日志。"""
+    digest = hashlib.sha256()
+    for name, value in cookie_pairs:
+        digest.update(f"{name}={value};".encode())
+    return digest.hexdigest()
 # requests 已按 Content-Encoding 解压；这些头描述的是线上字节，不能带到解压后的协议层。
 _TRANSPORT_HEADERS = frozenset({"content-encoding", "content-length", "transfer-encoding"})
 
@@ -92,21 +106,113 @@ class RequestsCommentClient:
         await to_thread.run_sync(self.session.close)
 
 
+class WarmupCache:
+    """按 (UP, Cookie 指纹) 缓存预热结果：有效期内不访问首页/空间页，过期后后台刷新。"""
+
+    def __init__(self, *, ttl=WARMUP_TTL_SECONDS, retry=WARMUP_RETRY_SECONDS, clock=time.monotonic):
+        self.ttl, self.retry, self.clock = ttl, retry, clock
+        self._warmed = {}
+        self._attempted = {}
+        self._tasks = {}
+
+    def fresh(self, key):
+        warmed = self._warmed.get(key)
+        return warmed is not None and self.clock() - warmed < self.ttl
+
+    def cooling(self, key):
+        attempted = self._attempted.get(key)
+        return attempted is not None and self.clock() - attempted < self.retry
+
+    async def ensure(self, key, prepare):
+        """首次使用同步预热；过期且不在冷却期时后台刷新；其余立即返回。"""
+        if self.fresh(key):
+            return
+        if self._attempted.get(key) is None:
+            # 首次没有任何预热记录：先完成再发业务请求，保持与既有初始化顺序一致。
+            await self._run(key, prepare)
+            return
+        if self.cooling(key) or key in self._tasks:
+            return
+        self._tasks[key] = asyncio.create_task(self._run(key, prepare))
+
+    async def _run(self, key, prepare):
+        self._attempted[key] = self.clock()
+        try:
+            await prepare()
+            self._warmed[key] = self.clock()
+            collector_event("comment_session_warmup_cached", ttl_seconds=self.ttl)
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            # 预热本来就是 best-effort；冷却窗口限制重试频率，不打断业务请求。
+            collector_failure("comment_session_warmup_failed", error, stage="cached")
+        finally:
+            self._tasks.pop(key, None)
+
+    async def aclose(self):
+        tasks = [task for task in self._tasks.values() if not task.done()]
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self._tasks.clear()
+
+
 class RequestsCommentClientFactory:
-    def __init__(self, *, cookie_pairs=None, pacer=None):
+    """按 UP 复用会话：Cookie 变化或超过 session TTL 才重建，预热由 WarmupCache 控制。"""
+
+    def __init__(self, *, cookie_pairs=None, pacer=None, client_factory=None,
+                 session_ttl=SESSION_TTL_SECONDS, warmup=None, clock=time.monotonic):
         self.cookie_pairs = load_source_cookie_pairs() if cookie_pairs is None else cookie_pairs
         self.pacer = pacer if pacer is not None else SourcePacer()
+        self._new_client = client_factory or (
+            lambda uid, pairs, pacer: RequestsCommentClient(uid, pairs, pacer))
+        self.session_ttl = session_ttl
+        self.warmup = warmup if warmup is not None else WarmupCache(clock=clock)
+        self.clock = clock
+        self._entries = {}
+        self._lock = asyncio.Lock()
+
+    def _fingerprint(self):
+        return cookie_fingerprint(self.cookie_pairs)
+
+    async def _entry(self, uid):
+        fingerprint = self._fingerprint()
+        async with self._lock:
+            entry = self._entries.get(uid)
+            expired = entry is not None and (
+                entry["fingerprint"] != fingerprint
+                or self.clock() - entry["created"] >= self.session_ttl)
+            if entry is None or expired:
+                if entry is not None:
+                    await self._close(entry["client"])
+                client = self._new_client(uid, self.cookie_pairs, self.pacer)
+                entry = {"client": client, "created": self.clock(), "fingerprint": fingerprint}
+                self._entries[uid] = entry
+                collector_event("comment_session_started", engine="requests")
+            return entry
 
     @asynccontextmanager
     async def __call__(self, uid):
-        client = RequestsCommentClient(uid, self.cookie_pairs, self.pacer)
-        collector_event("comment_session_started", engine="requests")
+        entry = await self._entry(uid)
+        # 预热结果按 (UP, Cookie) 缓存：命中时本轮零预热请求，过期时才后台刷新。
+        await self.warmup.ensure((uid, entry["fingerprint"]), entry["client"].prepare)
+        yield entry["client"]
+
+    async def aclose(self):
+        await self.warmup.aclose()
+        async with self._lock:
+            entries = list(self._entries.values())
+            self._entries.clear()
+        for entry in entries:
+            await self._close(entry["client"])
+
+    async def _close(self, client):
         try:
-            await client.prepare()
-            yield client
-        finally:
             await client.aclose()
-            collector_event("comment_session_closed")
+        except Exception as error:
+            collector_failure("comment_session_close_failed", error)
+        collector_event("comment_session_closed")
 
 
 @asynccontextmanager
