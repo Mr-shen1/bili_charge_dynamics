@@ -18,7 +18,9 @@ from backend.bili_monitor.notifications import Dispatcher, NotificationConfig
 from backend.bili_monitor.storage import Store
 from backend.tests.archive_support import archive_client
 from backend.tests.management_support import BASE, UID
-from backend.tests.notification_support import ALL_WEBHOOK, BASE_URL, WEBHOOK, Receiver, message_text
+from backend.tests.notification_support import (
+    ALL_WEBHOOK, BASE_URL, WEBHOOK, Clock, Receiver, drain, message_text,
+)
 from backend.tests.root_notification_support import (
     DYNAMIC, FUTURE_CTIME, OTHER_ALL_WEBHOOK, OTHER_UID, OTHER_UP_WEBHOOK, SYSTEM_WEBHOOK, Source,
     configure, deliveries, delivered_replies, dispatcher, events, query, reply_documents, reply_item,
@@ -246,8 +248,14 @@ def test_routing_uses_the_reply_author_not_the_replied_to_identity(tmp_path):
     archive(path, source)
 
     received = Receiver()
-    asyncio.run(Dispatcher(Store(path), NotificationConfig.from_mapping(two_up_mapping()),
-                           transport=httpx.MockTransport(received)).run_once())
+    clock = Clock()
+
+    async def deliver_all():
+        notifier = Dispatcher(Store(path), NotificationConfig.from_mapping(two_up_mapping()),
+                              transport=httpx.MockTransport(received), clock=clock)
+        await drain(notifier, clock)
+
+    asyncio.run(deliver_all())
 
     assert delivered_replies(received) == sorted([
         ((plain, "970301"), WEBHOOK), ((plain, "970301"), ALL_WEBHOOK),
@@ -354,17 +362,12 @@ def test_stopped_phase_reply_candidate_cannot_be_completed_in_the_new_phase(tmp_
     assert reply_documents(path)["970601"]["author"]["id"] == UID
 
 
-async def _drain(notifier):
-    """单轮批量有限：多轮领取把已就绪的回复逐条发完。"""
-    while await notifier.run_once():
-        pass
-
-
 def deliver(path):
     """跑完所有待发记录，返回受控飞书接收端。"""
     received = Receiver()
-    notifier = dispatcher(path, transport=httpx.MockTransport(received), full=ALL_WEBHOOK)
-    asyncio.run(_drain(notifier))
+    clock = Clock()
+    notifier = dispatcher(path, transport=httpx.MockTransport(received), clock=clock, full=ALL_WEBHOOK)
+    asyncio.run(drain(notifier, clock))
     return received
 
 

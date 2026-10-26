@@ -191,6 +191,18 @@ class Clock:
         self.advance(seconds)
 
 
+async def drain(notifier, clock, *, rounds=100):
+    """按 1 秒轮询节拍发完队列：主动限速把超预算记录顺延到下一轮（票据 13）。
+
+    单轮批量与每秒额度都有限，所以“跑完”不是一次 `run_once`，而是让受控时钟跟着
+    轮询往前走，直到没有可领取的记录。`rounds` 只是防呆上界，正常队列远用不到。
+    """
+    for _ in range(rounds):
+        if not await notifier.run_once():
+            return
+        clock.advance(notifier.poll_seconds)
+
+
 BEIJING = timezone(timedelta(hours=8))
 
 

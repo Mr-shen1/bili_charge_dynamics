@@ -34,21 +34,24 @@ exec .venv/bin/python -m backend.bili_monitor.service --host 127.0.0.1 --port 80
 
 当前本机 `live-34/run-api.sh` 已改用该入口，仍保留原端口、数据库和 Cookie 文件路径；需要维护者重启原服务才会生效。它仍清除 OSS 配置，因此有图目标的媒体会保持待归档，不能把文本完成视为全项完成。本次未启动、重启服务，也未做测试或运行验证。
 
-## 飞书通知进程（01、04、05、06、08、09）
+## 飞书通知进程（01、04、05、06、08、09、13）
 
 动态可信新版本正文成功归档后登记通知事件，由独立进程按索引领取并投递到 UP 群；首次正文只建立基线，通知失败不回写归档成功状态。一级评论在根评论写事务里、楼中楼回复在回复写事务里与内容同事务登记：作者等于该动态所属 UP 时同时发 UP 群和全员群，其他人只发全员群，身份/时间不全时留候选等补齐，评论起点之前的评论静默；单条就绪即投递，不等整轮分页或媒体。回复消息链接直达该条回复（`/dynamics/{id}/comments/{rootId}/replies/{replyId}/locate`），根不可定位或身份不全时不伪造字段（详情见契约）。阶段有效性按领取时绑定的阶段核验，停用后重新启用的旧在途执行不能借新阶段发通知。
 
-逐目标投递相互隔离：某个群缺路由、目的地写错、超时、限流或业务失败只让该目标保留待发并退避重试，其他群照常发送；修复配置的方式是**编辑配置文件后重启通知进程**，记录、阶段与基线保留，已成功目标不重发、不补历史。真实失败次数记在 `notification_deliveries.failures`/`last_failed_at`（`attempts` 含等待配置复检，不能当失败次数用）。同一进程每轮轮询还负责北京时间每小时第 40 分钟的系统群心跳（仅在 `:40:00`–`:40:59` 窗口内生成，同小时只生成一次、过期不投递、停机错过与 `:41` 之后首次启动都不补发，已生成待发的仍可在有效期前重试），状态文本只报告本地已记录的采集事实。系统群同时接收**运行告警**：可信凭据失效（只认上游业务码 `-101` 且本次确实配置了来源凭据）、采集异常、主循环捕获异常、飞书持续投递失败（同一业务目标真实失败 ≥3 次且仍在待投递）与路由缺失/错误；同一对象同一类别首次立即提醒，此后每 30 分钟最多一次（节流状态存在 `notification_alerts`，跨重启保留，未投递的同类提醒合并），系统群自身失败不递归告警，也不发故障恢复消息。启动与配置见[通知进程与投递契约](../docs/backend/api/notification-process.md)：
+逐目标投递相互隔离：某个群缺路由、目的地写错、超时、限流或业务失败只让该目标保留待发并退避重试，其他群照常发送；修复配置的方式是**编辑配置文件后重启通知进程**，记录、阶段与基线保留，已成功目标不重发、不补历史。发送前还会按目的地做**主动限速**（票据 13：每个群 5 次/秒、100 次/分钟，对应飞书自定义机器人官方额度；系统群角色独立额度且领取优先）：超预算不等待也不计失败，只把 `due_at` 顺延约 1 秒，记录留在 `pending` 由下一轮重领。真实失败次数记在 `notification_deliveries.failures`/`last_failed_at`（`attempts` 含等待配置复检，不能当失败次数用）。同一进程每轮轮询还负责北京时间每小时第 40 分钟的系统群心跳（仅在 `:40:00`–`:40:59` 窗口内生成，同小时只生成一次、过期不投递、停机错过与 `:41` 之后首次启动都不补发，已生成待发的仍可在有效期前重试），状态文本只报告本地已记录的采集事实。系统群同时接收**运行告警**：可信凭据失效（只认上游业务码 `-101` 且本次确实配置了来源凭据）、采集异常、主循环捕获异常、飞书持续投递失败（同一业务目标真实失败 ≥3 次且仍在待投递）与路由缺失/错误；同一对象同一类别首次立即提醒，此后每 30 分钟最多一次（节流状态存在 `notification_alerts`，跨重启保留，未投递的同类提醒合并），系统群自身失败不递归告警，也不发故障恢复消息。启动与配置见[通知进程与投递契约](../docs/backend/api/notification-process.md)：
 
 ```sh
 export BILI_DATABASE_PATH=/srv/bili-monitor/monitor.sqlite
 export BILI_NOTIFICATION_CONFIG=/srv/bili-monitor/notifications.json
 # 可选：调大租约（秒），仅在外部网络比默认 30 秒还慢时需要；必须大于请求超时 10 秒。
 # export BILI_NOTIFIER_LEASE_SECONDS=60
+# 可选：主动限速额度，默认 5 次/秒、100 次/分钟；只能调小（写大不会放宽），用于隔离测试或保守运维。
+# export BILI_NOTIFIER_SENDS_PER_SECOND=2
+# export BILI_NOTIFIER_SENDS_PER_MINUTE=30
 exec .venv/bin/python -m backend.bili_monitor.notifier
 ```
 
-通知进程与 API/collector 使用同一 SQLite，但有独立 `.notifier.lock`，同一库只能运行一个投递实例。统一托管入口 `python -m backend.bili_monitor.service` 已支持三进程：设置 `BILI_NOTIFICATION_CONFIG` 时先等 API 完成迁移并监听，再启动 collector 与通知进程；未设置时保持两进程形态（不投递）。启动顺序、启停、迁移与路由修复见[静态交付运行说明](../docs/deployment/static-delivery.md#单-api单-collector单通知进程启动停止升级)与[三进程集成证据](../.scratch/feishu-notifications/evidence/10-integrated-delivery-readiness.md)；真实飞书群与目标环境仍未验证。配置与凭据只在服务端文件，不进入浏览器、日志或发件箱；可选签名密钥也只用于发送时组装 `timestamp`/`sign`。最小隔离演示（不访问网络、不读取真实凭据）：
+通知进程与 API/collector 使用同一 SQLite，但有独立 `.notifier.lock`，同一库只能运行一个投递实例。主动限速的窗口状态在进程内存里，重启会重新计数；它降低但不消除 429，被动退避（`x-ogw-ratelimit-reset`）保留。统一托管入口 `python -m backend.bili_monitor.service` 已支持三进程：设置 `BILI_NOTIFICATION_CONFIG` 时先等 API 完成迁移并监听，再启动 collector 与通知进程；未设置时保持两进程形态（不投递）。启动顺序、启停、迁移与路由修复见[静态交付运行说明](../docs/deployment/static-delivery.md#单-api单-collector单通知进程启动停止升级)与[三进程集成证据](../.scratch/feishu-notifications/evidence/10-integrated-delivery-readiness.md)；真实飞书群与目标环境仍未验证。配置与凭据只在服务端文件，不进入浏览器、日志或发件箱；可选签名密钥也只用于发送时组装 `timestamp`/`sign`。最小隔离演示（不访问网络、不读取真实凭据）：
 
 ```sh
 demo_dir=$(mktemp -d)

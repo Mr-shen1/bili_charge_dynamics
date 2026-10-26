@@ -21,6 +21,7 @@ from pathlib import Path
 from .notifications import Dispatcher, NotificationConfig, NotificationConfigError
 from .notifications.config import ENVIRONMENT_PATH
 from .notifications.log import notifier_event
+from .notifications.ratelimit import PER_MINUTE, PER_SECOND, RateLimiter
 from .safety import configure_safe_logging
 from .storage import Store
 
@@ -41,7 +42,8 @@ def notifier_lock(path):
             fcntl.flock(lock, fcntl.LOCK_UN)
 
 
-async def serve(database, config, *, transport=None, poll_seconds=None, once=False, lease_seconds=None):
+async def serve(database, config, *, transport=None, poll_seconds=None, once=False, lease_seconds=None,
+                limiter=None):
     store = Store(database)
     configure_safe_logging()
     with notifier_lock(store.path):
@@ -51,6 +53,8 @@ async def serve(database, config, *, transport=None, poll_seconds=None, once=Fal
             options["poll_seconds"] = poll_seconds
         if lease_seconds is not None:
             options["lease_seconds"] = lease_seconds
+        if limiter is not None:
+            options["limiter"] = limiter
         dispatcher = Dispatcher(store, config, transport=transport, **options)
         notifier_event("notifier_started", destinations=len(config.destinations))
         try:
@@ -76,6 +80,29 @@ def seconds(name):
     return parsed
 
 
+def quota(name, maximum):
+    """可调的限速额度：只接受正整数，且只能调小（默认值是飞书官方额度，不得被放宽）。"""
+    value = os.environ.get(name)
+    if value is None:
+        return maximum
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        raise SystemExit(f"{name} must be a whole number") from None
+    if parsed <= 0:
+        raise SystemExit(f"{name} must be a positive whole number")
+    return min(parsed, maximum)
+
+
+def limiter_from_environment():
+    """主动限速额度：默认 5 次/秒、100 次/分钟；环境变量只能调小，写错拒绝启动。"""
+    per_second = quota("BILI_NOTIFIER_SENDS_PER_SECOND", PER_SECOND)
+    per_minute = quota("BILI_NOTIFIER_SENDS_PER_MINUTE", PER_MINUTE)
+    if per_second > per_minute:
+        raise SystemExit("BILI_NOTIFIER_SENDS_PER_SECOND must not exceed BILI_NOTIFIER_SENDS_PER_MINUTE")
+    return RateLimiter(per_second=per_second, per_minute=per_minute)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Independent Feishu notification process")
     parser.add_argument("--database", default=os.environ.get("BILI_DATABASE_PATH"))
@@ -93,7 +120,8 @@ def main():
 
     async def run():
         task = asyncio.create_task(serve(arguments.database, config, once=arguments.once,
-                                         lease_seconds=seconds("BILI_NOTIFIER_LEASE_SECONDS")))
+                                         lease_seconds=seconds("BILI_NOTIFIER_LEASE_SECONDS"),
+                                         limiter=limiter_from_environment()))
         loop = asyncio.get_running_loop()
         for signum in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(signum, task.cancel)

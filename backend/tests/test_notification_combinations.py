@@ -14,9 +14,10 @@ from backend.bili_monitor.storage import Store
 from backend.tests.archive_support import archive_client
 from backend.tests.management_support import BASE, UID
 from backend.tests.notification_support import (
-    ALL_WEBHOOK, WEBHOOK, Receiver, message_text, query,
+    ALL_WEBHOOK, WEBHOOK, Receiver, deliveries, message_text, query,
 )
 from backend.tests.root_notification_support import Source, root_comment, root_documents
+from backend.tests.test_notification_delivery import archived_changes
 from backend.tests.test_notification_alerts import (
     SYSTEM_WEBHOOK, Clock, alert_events, alerts, business_event, categories, dispatcher, run_check,
 )
@@ -131,3 +132,44 @@ def test_alerts_heartbeat_expiry_and_phase_switch_do_not_suppress_each_other(tmp
     assert len(alert_texts) == 1
     assert message_text(receiver2.payloads[0]).splitlines()[0].startswith("心跳【") is False
     assert categories(path) == [("delivery", "up:root_comment")]
+
+
+def test_same_group_burst_is_rate_limited_while_the_heartbeat_keeps_its_own_budget(tmp_path):
+    """13：同群 20 条按 5 次/秒摊开，系统群心跳不被业务积压挤掉。"""
+    path = tmp_path / "archive.sqlite"
+    archived_changes(path, [f"13:{minute:02d}" for minute in range(2, 22)])  # 20 条同群业务消息
+    clock = Clock.start(13, 40, 5)  # 心跳窗口内：同一轮还要发一条系统群心跳
+    calls = []
+
+    def recorder(request):
+        calls.append((str(request.url), clock.now()))
+        return httpx.Response(200, json={"code": 0, "msg": "success"})
+
+    async def scenario():
+        notifier = dispatcher(path, recorder, clock)
+        try:
+            for _ in range(12):
+                await notifier.tick()
+                if all(row["state"] != "pending" for row in deliveries(path)):
+                    break
+                clock.advance(1.0)
+        finally:
+            await notifier.aclose()
+
+    asyncio.run(scenario())
+    assert all(row["state"] == "sent" for row in deliveries(path))
+    # 心跳没有被业务积压挤到有效期之后，也没有被顺延成 expired。
+    heartbeat = [row for row in deliveries(path) if row["kind"] == "heartbeat"]
+    assert [(row["state"], row["attempts"]) for row in heartbeat] == [("sent", 1)]
+
+    business_times = [moment for url, moment in calls if url == WEBHOOK]
+    assert len(business_times) == 20
+    # 任意 1 秒窗口内不超过 5 次。
+    for moment in business_times:
+        assert sum(1 for other in business_times if moment - 1.0 < other <= moment) <= 5
+    # 20 条按 5 次/秒摊开：最坏等待 = ceil(20/5) = 4 秒，有上界。
+    assert max(business_times) - min(business_times) <= 4.0
+    system_times = [moment for url, moment in calls if url == SYSTEM_WEBHOOK]
+    assert len(system_times) == 1
+    # 系统角色优先且额度独立：业务积压不会把心跳排到后面，它在第一轮就送出。
+    assert system_times[0] == min(business_times)

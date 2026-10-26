@@ -60,8 +60,9 @@ def run_notifier(database, config):
     """
     try:
         from .notifications.config import NotificationConfig
-        from .notifier import serve as notifier_serve
-        asyncio.run(notifier_serve(database, NotificationConfig.load(config)))
+        from .notifier import limiter_from_environment, serve as notifier_serve
+        asyncio.run(notifier_serve(database, NotificationConfig.load(config),
+                                  limiter=limiter_from_environment()))
     except KeyboardInterrupt:
         pass
     except Exception:

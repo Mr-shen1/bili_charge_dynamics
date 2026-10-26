@@ -162,16 +162,21 @@ def test_waiting_config_rechecks_never_count_as_delivery_failures(tmp_path):
 
 
 def test_claim_uses_due_and_lease_indexes_with_a_bounded_batch(tmp_path):
-    """默认领取走「到期」与「租约」两条索引并受批量限制，不全表扫描队列。"""
+    """默认领取走「到期」「系统到期」「租约」三条索引并受批量限制，不全表扫描队列。"""
     path = tmp_path / "monitor.sqlite"
     archive_up_comment(path)
     with Store(path).connection() as connection:
         due_plan = " ".join(str(row["detail"]) for row in connection.execute(
-            "EXPLAIN QUERY PLAN " + outbox.DUE_QUERY, (outbox.PENDING, outbox.WAITING_CONFIG, 1_000_000.0, 8)))
+            "EXPLAIN QUERY PLAN " + outbox.DUE_QUERY,
+            (outbox.PENDING, outbox.WAITING_CONFIG, 1_000_000.0, outbox.SYSTEM_ROLE, 8)))
+        system_plan = " ".join(str(row["detail"]) for row in connection.execute(
+            "EXPLAIN QUERY PLAN " + outbox.SYSTEM_DUE_QUERY,
+            (outbox.PENDING, outbox.WAITING_CONFIG, 1_000_000.0, outbox.SYSTEM_ROLE, 8)))
         lease_plan = " ".join(str(row["detail"]) for row in connection.execute(
             "EXPLAIN QUERY PLAN " + outbox.LEASE_QUERY, (outbox.INFLIGHT, 1_000_000.0, 8)))
         claimed = outbox.claim_due(connection, 1_000_000.0, 2, 30.0)
-    assert "notification_due" in due_plan and "notification_lease" in lease_plan
+    assert "notification_due" in due_plan and "notification_due" in system_plan
+    assert "notification_lease" in lease_plan
     assert len(claimed) == 2
     assert {(item["role"], item["token"] is not None) for item in claimed} == {("up", True), ("all", True)}
 

@@ -53,6 +53,8 @@
 
 - **最终独立复核已完成**：代码合并点 `158116d`；两轴复核 Standards 硬性 0、Spec 确认违背 0，三处附带小修已收尾。主线程在最终代码点 `158116d` 后端首次全量 `1030 passed`（185.52s，此前 `166d706` 另有首次独立全绿）；同一代码点前端 `275` 单测、203 常规 e2e、production/manage/location/notification/delivery 各项目、`check:dist` 与本机隔离 Nginx 全部首次通过。完整门槛、原始输出位置、11 未验与清理/安全核验见 [final-independent-verification.md](evidence/final-independent-verification.md)。结论只到“隔离交付准备完成，可申请真实验收”。
 
+- 13 已 `resolved`：飞书投递在「领取之后、发送之前」加主动限速。限速键是目的地（业务按实际 webhook，系统角色用固定键 `system`），每键 5 次/秒 + 100 次/分钟的滑动窗口（`notifications/ratelimit.py`）；超预算走 `outbox.defer_delivery` 只顺延 `due_at` 并放回 `pending`（不消耗 `attempts`、不动 `error`/`failures`），下一轮轮询自然重领。领取拆成 `DUE_QUERY`（业务）+ `SYSTEM_DUE_QUERY`（系统角色）+ `LEASE_QUERY`，合并按「系统角色优先」排序，心跳/告警不再排在业务积压后面。调参入口 `BILI_NOTIFIER_SENDS_PER_SECOND` / `BILI_NOTIFIER_SENDS_PER_MINUTE` 只允许调小，默认值即官方额度且不得被放宽；额度矛盾或非法值拒绝启动。429 被动退避（`x-ogw-ratelimit-reset`）保留。新增 10 例（含组合文件与托管入口接线），全量后端 `1041 passed`（基线 1031），双轴复核缺陷已整改；证据见 [evidence/13-notification-rate-limit.md](evidence/13-notification-rate-limit.md)。边界：降低但不消除 429，窗口在进程内存（重启重新计数），未做真实群压测。
+
 ## Fog
 
 - **已消除（本轮，保留历史）**：08 系统告警已按票据五类窄口径闭环并合并（合并 tip `a23b804`，源 tip `71fcff2`），告警节流表顺延为 v21 与 05 的 v20 候选根键共存；09 心跳仍独立。当时剩余未完成项为 07（当时实施中）、10（当时待 07）与 11（人工授权）；其中 07 现已 `resolved` 并合并（合并 tip `18b177c`，源 tip `c1da3cf`），10 因此解锁，只剩 11 的人工授权门槛未取得。

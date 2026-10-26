@@ -156,9 +156,10 @@ def test_notifier_entry_uses_the_published_process_module(monkeypatch, tmp_path)
         def __init__(self, *arguments, **keywords):
             calls["served"] = True
 
-    async def fake_serve(database, config):
+    async def fake_serve(database, config, **options):
         calls["database"] = database
         calls["config"] = config
+        calls["options"] = options
 
     import backend.bili_monitor.notifier as notifier_module
     from backend.bili_monitor.notifications import config as config_module
@@ -171,7 +172,12 @@ def test_notifier_entry_uses_the_published_process_module(monkeypatch, tmp_path)
 
     monkeypatch.setattr(config_module, "NotificationConfig", Config)
     monkeypatch.setattr(notifier_module, "serve", fake_serve)
+    monkeypatch.delenv("BILI_NOTIFIER_SENDS_PER_SECOND", raising=False)
+    monkeypatch.delenv("BILI_NOTIFIER_SENDS_PER_MINUTE", raising=False)
     service.run_notifier(str(tmp_path / "monitor.sqlite"), str(tmp_path / "notifications.json"))
     assert calls["database"].endswith("monitor.sqlite")
     assert calls["path"].endswith("notifications.json")
     assert calls["config"] == "config-object"
+    # 票据 13：托管入口同样注入主动限速额度，默认值即官方额度。
+    limiter = calls["options"]["limiter"]
+    assert (limiter.per_second, limiter.per_minute) == (5, 100)

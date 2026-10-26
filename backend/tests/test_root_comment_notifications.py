@@ -16,7 +16,9 @@ from backend.bili_monitor.notifications import Dispatcher, NotificationConfig
 from backend.bili_monitor.storage import Store
 from backend.tests.management_support import UID
 from backend.tests.archive_support import archive_client
-from backend.tests.notification_support import ALL_WEBHOOK, BASE_URL, WEBHOOK, Receiver, message_text
+from backend.tests.notification_support import (
+    ALL_WEBHOOK, BASE_URL, WEBHOOK, Receiver, drain, message_text,
+)
 from backend.tests.root_notification_support import (
     DYNAMIC, FUTURE_CTIME, OTHER_DYNAMIC, OTHER_UID, OTHER_ALL_WEBHOOK, OTHER_UP_WEBHOOK, SYSTEM_WEBHOOK,
     Clock, Source, comment_id, configure, deliveries, delivered, dispatcher, events, query, root_comment,
@@ -260,9 +262,9 @@ def test_ready_page_delivers_even_when_a_later_page_fails(tmp_path):
             await collector.check_once(UID, DYNAMIC)
             await collector.execute_pending()
         receiver = Receiver()
-        notifier = dispatcher(path, transport=httpx.MockTransport(receiver), full=ALL_WEBHOOK)
-        while await notifier.run_once():
-            pass  # 单轮批量有限：多轮领取把 20 条逐条发完
+        clock = Clock()
+        notifier = dispatcher(path, transport=httpx.MockTransport(receiver), clock=clock, full=ALL_WEBHOOK)
+        await drain(notifier, clock)  # 单轮批量与每秒额度都有限：按轮询节拍把 20 条发完
         assert len(root_documents(path)) == 20
         assert Store(path).read_archive(DYNAMIC)["root_comments_error"] == "ROOT_COMMENTS_FAILED"
         assert len(events(path)) == 20

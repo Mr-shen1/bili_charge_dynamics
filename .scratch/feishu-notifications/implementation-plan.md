@@ -26,6 +26,7 @@
 | 10 | [三进程集成与交付准备](issues/10-integrated-delivery-readiness.md)（**resolved，仅隔离部分**） | 07、08、09（均已 `resolved`） | 真实业务组合、隔离进程与浏览器验证、运行说明及 FS-AC-01–14 台账（真实列留 11） |
 | 11 | [真实飞书与设备验收](issues/11-real-feishu-device-acceptance.md)（**resolved，受限范围**） | 10；另须明确授权 | 实际群、内置浏览器/手机、代理访问及授权环境验证证据 |
 | 12 | [定位视图补齐目标之前的评论](issues/12-locate-earlier-comments.md)（**resolved**） | 11 真机验收派生 | 定位窗口的 `prev_cursor`/`earlier_count` 向前分页 + 页面「以上还有 N 条更早评论」/「加载更早评论」，插入不跳动，≤4px 视口位移断言 |
+| 13 | [飞书发送主动限速](issues/13-notification-send-rate-limit.md)（**resolved**） | 无（只改投递调度） | 按目的地键控的 5 次/秒 + 100 次/分钟预算，超预算顺延 `due_at`（不算失败），不持写事务；系统角色独立额度且领取优先；429 被动退避保留 |
 
 ## 2. 就绪任务与执行方式
 

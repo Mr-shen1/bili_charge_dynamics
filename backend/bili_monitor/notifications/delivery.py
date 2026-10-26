@@ -1,6 +1,7 @@
 """独立投递：短事务领取 → 事务外请求飞书 → 按领取凭证短事务回写。
 
 默认每秒轮询到期记录、有限批量；网络等待、限流与退避都不持有 SQLite 写事务。
+发送前先按目的地过一遍主动限速（票据 13）：超预算只顺延 `due_at`，不算失败。
 投递结果不回写归档成功 checkpoint。
 """
 
@@ -14,6 +15,7 @@ from anyio import to_thread
 from ..transaction import write
 from . import heartbeat, message, outbox
 from .log import notifier_event
+from .ratelimit import RateLimiter
 
 POLL_SECONDS = 1.0
 BATCH = 8
@@ -25,6 +27,17 @@ CONFIG_RECHECK_SECONDS = 60.0
 # “飞书持续投递失败”的判定：同一业务目标真实失败至少 3 次且当前仍在待投递。
 # 成功恢复（sent）、等待配置与过期都不算；心跳与告警自身不参与，避免递归告警。
 DELIVERY_FAILURE_THRESHOLD = 3
+# 限速键：系统角色（心跳与告警）走独立额度，业务角色按实际 webhook 共用一份。
+SYSTEM_RATE_KEY = ("system",)
+
+
+def rate_key(role, webhook):
+    """限速键是目的地：同群共用额度，跨群互不占用；系统角色独立成一键。
+
+    用元组区分两种身份，避免业务 webhook 字符串与系统键在同一个字典里混用。
+    """
+    return SYSTEM_RATE_KEY if role == outbox.SYSTEM_ROLE else ("webhook", webhook)
+
 
 class SystemClock:
     def now(self):
@@ -42,13 +55,15 @@ class Dispatcher:
     """一个正式投递实例：领取、发送与回写各自独立事务。"""
 
     def __init__(self, store, config, *, transport=None, clock=None, batch=BATCH,
-                 poll_seconds=POLL_SECONDS, lease_seconds=LEASE_SECONDS):
+                 poll_seconds=POLL_SECONDS, lease_seconds=LEASE_SECONDS, limiter=None):
         self.store = store
         self.config = config
         self.clock = clock or SystemClock()
         self.batch = batch
         self.poll_seconds = poll_seconds
         self.lease_seconds = lease_seconds
+        # 预算窗口随进程存活（单实例 flock 保证同库只有一个投递进程）。
+        self.limiter = limiter if limiter is not None else RateLimiter()
         self.client = httpx.AsyncClient(transport=transport, timeout=REQUEST_TIMEOUT_SECONDS, trust_env=False)
 
     async def aclose(self):
@@ -180,6 +195,16 @@ class Dispatcher:
             self._finish(item, state=outbox.PENDING, due_at=self.clock.now() + RETRY_CAP_SECONDS,
                          error="unsupported_kind", failure=True)
             return
+        # 主动限速在请求之前、事务之外：超预算只顺延，不等 429 也不占写事务。
+        key = rate_key(item["role"], webhook)
+        now = self.clock.now()
+        delay = self.limiter.defer_seconds(key, now)
+        if delay:
+            if self._defer(item, now + delay):
+                notifier_event("delivery_deferred", role=item["role"], kind=item["kind"],
+                               reason="rate_limited")
+            return
+        self.limiter.record(key, now)
         if secret is not None:
             # 可选签名只在外发组装：时间戳与签名不进队列、快照或日志。
             payload = message.signed(payload, secret, self.clock.now())
@@ -197,6 +222,18 @@ class Dispatcher:
         self._finish(item, state=outbox.PENDING, due_at=self.clock.now() + (delay or _backoff(item["attempts"])),
                      error=result.error, failure=True)
         notifier_event("delivery_failed", warning=True, reason=result.error, role=item["role"])
+
+    def _defer(self, item, due_at):
+        """超预算顺延：留在 `pending`，下一轮轮询自然重领；不计失败也不消耗 attempts。
+
+        返回 False 表示领取凭证已失效（记录已被新领取结果接管），不再另外记日志。
+        """
+        with write(self.store) as connection:
+            accepted = outbox.defer_delivery(connection, item["delivery_id"], item["token"],
+                                            due_at=due_at)
+        if not accepted:
+            notifier_event("delivery_lease_expired", warning=True, role=item["role"])
+        return accepted
 
     def _finish(self, item, *, state, due_at, error=None, failure=False, alert=None):
         accepted = False

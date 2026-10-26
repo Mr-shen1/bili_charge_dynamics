@@ -410,13 +410,16 @@ def recheck_waiting_config(connection, now):
     connection.execute("UPDATE notification_deliveries SET due_at = ? WHERE state = ?", (now, WAITING_CONFIG))
 
 
-# 领取查询拆成两条：到期记录走 (state, due_at) 索引，过期租约走 (state, lease_until)
-# 索引。合成一个带 OR 的语句会让计划退化成扫描。
-DUE_QUERY = """SELECT d.id AS delivery_id, d.role, d.attempts, d.expires_at, d.due_at, e.kind, e.uid,
+# 领取查询拆成三条：业务到期、系统角色到期、过期租约。业务与系统分开取是为了让
+# 心跳/告警不排在业务积压后面（系统角色另有独立限速额度）；三者各自命中索引。
+# 两条到期查询只差角色谓词，用同一段模板生成，避免复制整条 SQL。
+_DUE_TEMPLATE = """SELECT d.id AS delivery_id, d.role, d.attempts, d.expires_at, d.due_at, e.kind, e.uid,
         e.dynamic_id, e.version, e.snapshot
     FROM notification_deliveries d JOIN notification_events e ON e.id = d.event_id
-    WHERE d.state IN (?, ?) AND d.due_at <= ?
+    WHERE d.state IN (?, ?) AND d.due_at <= ? AND d.role {comparison} ?
     ORDER BY d.due_at, d.id LIMIT ?"""
+DUE_QUERY = _DUE_TEMPLATE.format(comparison="<>")
+SYSTEM_DUE_QUERY = _DUE_TEMPLATE.format(comparison="=")
 LEASE_QUERY = """SELECT d.id AS delivery_id, d.role, d.attempts, d.expires_at, d.due_at, e.kind, e.uid,
         e.dynamic_id, e.version, e.snapshot
     FROM notification_deliveries d JOIN notification_events e ON e.id = d.event_id
@@ -427,13 +430,17 @@ LEASE_QUERY = """SELECT d.id AS delivery_id, d.role, d.attempts, d.expires_at, d
 def claim_due(connection, now, limit, lease_seconds):
     """短事务领取：先丢弃过期心跳，再领到期待投、等待配置复检与过期租约。
 
-    两条查询各自命中一条索引，结果合并后仍按到期时间排序并限制批量，避免全表扫描
-    和一次性抢光同一秒内堆积的记录。
+    三条查询各自命中索引，结果合并后按「系统角色优先 + 到期时间」排序并限批量，
+    避免全表扫描、避免一次性抢光同一秒内堆积的记录，也避免大批业务积压把心跳
+    挤到有效期之后。`limit` 是每类查询的上限，合并后再截断到 `limit`。
     """
     expire_overdue(connection, now)
-    rows = connection.execute(DUE_QUERY, (PENDING, WAITING_CONFIG, now, limit)).fetchall()
-    rows = list(rows) + connection.execute(LEASE_QUERY, (INFLIGHT, now, limit)).fetchall()
-    rows = sorted(rows, key=lambda row: (row["due_at"], row["delivery_id"]))[:limit]
+    rows = list(connection.execute(DUE_QUERY, (PENDING, WAITING_CONFIG, now, SYSTEM_ROLE, limit)))
+    rows += connection.execute(SYSTEM_DUE_QUERY,
+                               (PENDING, WAITING_CONFIG, now, SYSTEM_ROLE, limit)).fetchall()
+    rows += connection.execute(LEASE_QUERY, (INFLIGHT, now, limit)).fetchall()
+    rows = sorted(rows, key=lambda row: (row["role"] != SYSTEM_ROLE, row["due_at"],
+                                         row["delivery_id"]))[:limit]
     claimed = []
     for row in rows:
         token = uuid4().hex
@@ -466,6 +473,19 @@ def finish_delivery(connection, delivery_id, token, *, state, now, due_at=None, 
         WHERE id = ? AND token = ? AND state = ?""",
         (state, error, now if due_at is None else due_at, sent_at, int(bool(failure)),
          int(bool(failure)), now, delivery_id, token, INFLIGHT)).rowcount == 1
+
+
+def defer_delivery(connection, delivery_id, token, *, due_at):
+    """超预算顺延：只改 `due_at` 并放回 `pending`，记录下一轮被自然重领。
+
+    顺延不是失败：不消耗 `attempts`（否则会放大后续退避）、不改 `error`、
+    不增长 `failures`（否则 08 会把限速噪音当成持续投递失败）。
+    凭证失效时返回 False，与 `finish_delivery` 的 stale 语义一致。
+    """
+    return connection.execute("""UPDATE notification_deliveries
+        SET state = ?, token = NULL, lease_until = NULL, due_at = ?
+        WHERE id = ? AND token = ? AND state = ?""",
+        (PENDING, due_at, delivery_id, token, INFLIGHT)).rowcount == 1
 
 
 def delivery_failures(connection, limit=50):
