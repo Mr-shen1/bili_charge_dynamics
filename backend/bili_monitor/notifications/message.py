@@ -105,6 +105,27 @@ def dynamic_changed(snapshot, base_url):
     return build(dynamic_id if clipped == ELLIPSIS else clipped)
 
 
+def dynamic_restricted(snapshot, base_url):
+    """受限提示模板：来源把动态标记为受限时也要说清楚，而不是静默不发。"""
+    dynamic_id = str(snapshot["dynamic_id"])
+    title = safe_text(snapshot.get("title"), single_line=True) or dynamic_id
+    href = dynamic_href(base_url, dynamic_id)
+
+    def build(candidate):
+        return post(
+            [text(f"动态【{candidate}】暂时受限，读不到正文")],
+            [text("原因：来源把该动态标记为受限（充电专属、仅粉丝可见或已下架等），"
+                  "本站这段时间拿不到正文与图片。")],
+            [text("链接："), link("查看动态", href)],
+        )
+
+    payload = build(title)
+    if len(encoded(payload)) <= PAYLOAD_LIMIT_BYTES:
+        return payload
+    clipped = _clip(build, title)
+    return build(dynamic_id if clipped == ELLIPSIS else clipped)
+
+
 def comment_href(base_url, dynamic_id, comment_id):
     """一级评论精确入口（与 02 交付的浏览器路由一致，不用楼中楼页代替）。"""
     return archive_href(base_url, "/dynamics/{}/comments/{}/locate".format(

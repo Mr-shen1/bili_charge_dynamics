@@ -47,13 +47,14 @@ from typing import NamedTuple
 from uuid import uuid4
 
 DYNAMIC_CHANGED = "dynamic_changed"
+DYNAMIC_RESTRICTED = "dynamic_restricted"
 ROOT_COMMENT = "root_comment"
 REPLY_COMMENT = "reply_comment"
 HEARTBEAT = "heartbeat"
 ALERT = "alert"
 
 # 业务事件类型：告警阈值只统计这些类型的投递失败；心跳与告警本身不参与，避免递归告警。
-BUSINESS_KINDS = frozenset({DYNAMIC_CHANGED, ROOT_COMMENT, REPLY_COMMENT})
+BUSINESS_KINDS = frozenset({DYNAMIC_CHANGED, DYNAMIC_RESTRICTED, ROOT_COMMENT, REPLY_COMMENT})
 
 # 告警节流：同一对象、同一类别首次立即提醒，此后每 30 分钟最多提醒一次；
 # 未投递的同类提醒合并到上一条，不按轮询/重试次数堆积。
@@ -508,6 +509,33 @@ def record_body(connection, id, generation, document, version):
         connection.execute("""INSERT INTO notification_deliveries(event_id, role, state, due_at)
             VALUES (?, ?, ?, 0)""", (event.lastrowid, UP_ROLE, PENDING))
     connection.execute("UPDATE notification_phases SET baseline_version = ? WHERE token = ?", (version, phase["token"]))
+
+
+def record_restricted(connection, id, generation, document):
+    """正文受限时登记一条提示：让「读不到正文」本身可见，而不是静默。
+
+    受限不是成功归档，所以不建基线、不推进版本；事件身份用阶段令牌去重，
+    每个监控阶段最多一条受限提示，重复的每 60 秒页面检查不会刷屏。
+    受限期间的新评论照旧按评论规则登记，不受这里影响；恢复可读后按正常
+    规则发「发生变化」。
+    """
+    if not _registration_open(connection, system=False):
+        return
+    phase = _active_phase(connection, id, generation)
+    if phase is None:
+        return
+    row = connection.execute("SELECT uid FROM archives WHERE id = ?", (id,)).fetchone()
+    if row is None:
+        return
+    snapshot = {"dynamic_id": id, "title": document.get("title")}
+    event = connection.execute("""INSERT OR IGNORE INTO notification_events
+        (kind, uid, dynamic_id, version, snapshot, created_at) VALUES (?, ?, ?, ?, ?, ?)""",
+        (DYNAMIC_RESTRICTED, row["uid"], id, phase["token"],
+         json.dumps(snapshot, ensure_ascii=False), time.time()))
+    if event.rowcount != 1:
+        return
+    connection.execute("""INSERT INTO notification_deliveries(event_id, role, state, due_at)
+        VALUES (?, ?, ?, 0)""", (event.lastrowid, UP_ROLE, PENDING))
 
 
 def record_heartbeat(connection, slot, facts, now):

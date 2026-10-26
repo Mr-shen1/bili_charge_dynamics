@@ -200,6 +200,8 @@ class Dispatcher:
         """事件类型 → 载荷；每种已登记类型都必须有模板，未支持类型才走退避兜底。"""
         if item["kind"] == outbox.DYNAMIC_CHANGED:
             return message.dynamic_changed(item["snapshot"], self.config.base_url)
+        if item["kind"] == outbox.DYNAMIC_RESTRICTED:
+            return message.dynamic_restricted(item["snapshot"], self.config.base_url)
         if item["kind"] == outbox.ROOT_COMMENT:
             return message.root_comment(item["snapshot"], self.config.base_url)
         if item["kind"] == outbox.REPLY_COMMENT:

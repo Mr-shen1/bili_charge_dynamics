@@ -666,6 +666,8 @@ class Store(CheckStore, DiscoveryStore):
                         document["work"]["text"] = "restricted"
                         if document["work"]["media"] != "success":
                             document["work"]["media"] = "restricted"
+                        # 受限本身要可见：每个阶段发一条提示（去重由阶段令牌保证）。
+                        outbox.record_restricted(connection, id, generation, document)
                     else:
                         document["work"]["text"] = "pending"
                 connection.execute("UPDATE archives SET document = ? WHERE id = ? AND generation = ?",
