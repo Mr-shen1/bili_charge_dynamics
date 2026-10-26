@@ -6,7 +6,7 @@ from .identifiers import is_valid_id
 from .source import media_sources, published_time, safe_url
 from .source_endpoints import ROOT_COMMENTS_URL
 from .source_client import comment_request_headers
-from .collector_logging import collector_event, collector_failure
+from .collector_logging import SourceRejected, collector_event, collector_failure
 
 
 def nonnegative(value):
@@ -85,7 +85,7 @@ async def fetch_comment_count(client, locator, *, uid=None):
     response.raise_for_status()
     payload = response.json()
     if type(payload.get("code")) is not int or payload["code"] != 0:
-        raise ValueError("Comment count source rejected request")
+        raise SourceRejected("Comment count source rejected request", payload.get("code"))
     count = nonnegative(payload["data"].get("count"))
     if count is None:
         raise ValueError("Unknown comment count")
@@ -99,7 +99,7 @@ async def fetch_root_page(client, dynamic_id, locator, number, *, on_pin=None, u
     response.raise_for_status()
     payload = response.json()
     if type(payload.get("code")) is not int or payload["code"] != 0:
-        raise ValueError("Comment source rejected request")
+        raise SourceRejected("Comment source rejected request", payload.get("code"))
     data = payload["data"]
     page = data["page"]
     if type(page.get("num")) is not int or page["num"] != number or type(page.get("size")) is not int or page["size"] != 20:
@@ -147,7 +147,7 @@ async def fetch_root_page(client, dynamic_id, locator, number, *, on_pin=None, u
     return list(documents.values()), [source_id(reply.get("rpid_str", reply.get("rpid"))) for reply in replies], counts
 
 
-async def sync_roots(store, client, id, generation, *, now=None, uid=None):
+async def sync_roots(store, client, id, generation, *, now=None, uid=None, on_failure=None):
     archive = await to_thread.run_sync(store.read_archive, id)
     if uid is None:
         uid = archive["author"]["id"]
@@ -210,6 +210,9 @@ async def sync_roots(store, client, id, generation, *, now=None, uid=None):
             raise ValueError("Unconfirmed empty comment resource")
     except Exception as error:
         collector_failure("root_sync_failed", error, stage=phase, page=number)
+        if on_failure is not None:
+            # 采集侧只上报固定分类（含唯一可信的凭据信号），不把异常文本或正文带出去。
+            on_failure(error)
         await to_thread.run_sync(store.finish_roots, id, generation, "failed", None)
         return
     if await to_thread.run_sync(lambda: store.finish_roots(

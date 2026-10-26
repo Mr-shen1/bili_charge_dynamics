@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from .comment_status import utc_now
 
+from .checks import alert_epoch, record_alerts
 from .contracts import APIError
 from .selection import refresh_selections
 
@@ -60,7 +61,7 @@ class DiscoveryStore:
                                (json.dumps(attempt), uid))
             return True
 
-    def finish_discovery(self, uid, token, result, now, error=None):
+    def finish_discovery(self, uid, token, result, now, error=None, alerts=()):
         with self.connection() as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
             row = self._active_discovery(connection, uid, token)
@@ -79,6 +80,10 @@ class DiscoveryStore:
             )
             if trusted is not None:
                 refresh_selections(connection, uid)
+            # 发现阶段的真实失败与尝试结果同事务登记告警；成功耗尽不告警。
+            epoch = alert_epoch(now) if alerts else None
+            if epoch is not None:
+                record_alerts(connection, alerts, epoch)
             return True
 
     def stop_discovery(self, connection, uid):

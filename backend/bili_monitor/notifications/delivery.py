@@ -5,6 +5,7 @@
 """
 
 import asyncio
+import sqlite3
 import time
 
 import httpx
@@ -20,6 +21,9 @@ REQUEST_TIMEOUT_SECONDS = 10.0
 RETRY_BASE_SECONDS = 2.0
 RETRY_CAP_SECONDS = 300.0
 CONFIG_RECHECK_SECONDS = 60.0
+# “飞书持续投递失败”的判定：同一业务目标真实失败至少 3 次且当前仍在待投递。
+# 成功恢复（sent）、等待配置与过期都不算；心跳与告警自身不参与，避免递归告警。
+DELIVERY_FAILURE_THRESHOLD = 3
 
 class SystemClock:
     def now(self):
@@ -72,7 +76,36 @@ class Dispatcher:
         except Exception:
             # 心跳登记失败只丢本小时的一轮尝试，不能连带停掉业务投递。
             notifier_event("heartbeat_cycle_failed", warning=True, reason="internal_error")
-        return await self.run_once()
+        delivered = await self.run_once()
+        try:
+            await to_thread.run_sync(self._scan_delivery_alerts)
+        except Exception:
+            # 告警扫描失败不能停掉投递；原因固定分类，不含地址或凭据。
+            notifier_event("alert_cycle_failed", warning=True, reason="internal_error")
+        return delivered
+
+    def _scan_delivery_alerts(self):
+        """消费 06 的持久失败事实：持续投递失败 → 一条系统告警（节流由发件箱合并）。"""
+        now = self.clock.now()
+        with self.store.connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                created = 0
+                for row in outbox.delivery_failures(connection, limit=max(self.batch * 8, 50)):
+                    if row["kind"] not in outbox.BUSINESS_KINDS or row["role"] == outbox.SYSTEM_ROLE:
+                        continue
+                    if row["state"] != outbox.PENDING or row["failures"] < DELIVERY_FAILURE_THRESHOLD:
+                        continue
+                    if outbox.record_alert(connection, "delivery", f"{row['role']}:{row['kind']}",
+                                           row["error"] or "internal_error", now):
+                        created += 1
+                connection.commit()
+            except BaseException:
+                connection.rollback()
+                raise
+        if created:
+            notifier_event("delivery_alert_registered", count=created)
+        return created
 
     def _publish_heartbeat(self):
         now = self.clock.now()
@@ -137,6 +170,8 @@ class Dispatcher:
             return message.reply_comment(item["snapshot"], self.config.base_url)
         if item["kind"] == outbox.HEARTBEAT:
             return message.heartbeat(item["snapshot"])
+        if item["kind"] == outbox.ALERT:
+            return message.alert(item["snapshot"])
         return None
 
     async def _deliver(self, item):
@@ -150,8 +185,13 @@ class Dispatcher:
         if route_error is not None:
             # 缺目标/目的地不可用时保留记录并周期性复检，不每秒执行无效 HTTP，也不转投其他角色。
             # 单条目写错只影响该目标：其他群仍在同一轮投递。
+            # 业务目标的缺失/错误路由是独立可观察事实：与“等待配置”回写同事务登记告警，
+            # 只标识受影响的目标角色与动态，不回显 webhook 或签名。系统群自身不登记（不递归）。
+            alert = None
+            if item["role"] != outbox.SYSTEM_ROLE:
+                alert = ("route", f"{item['role']}:{item['uid']}:{item['dynamic_id']}", route_error)
             self._finish(item, state=outbox.WAITING_CONFIG,
-                         due_at=self.clock.now() + CONFIG_RECHECK_SECONDS, error=route_error)
+                         due_at=self.clock.now() + CONFIG_RECHECK_SECONDS, error=route_error, alert=alert)
             notifier_event("delivery_waiting_config", warning=True, role=item["role"], kind=item["kind"],
                            reason=route_error)
             return
@@ -181,13 +221,21 @@ class Dispatcher:
                      error=result.error, failure=True)
         notifier_event("delivery_failed", warning=True, reason=result.error, role=item["role"])
 
-    def _finish(self, item, *, state, due_at, error=None, failure=False):
+    def _finish(self, item, *, state, due_at, error=None, failure=False, alert=None):
         with self.store.connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 accepted = outbox.finish_delivery(
                     connection, item["delivery_id"], item["token"], state=state, now=self.clock.now(),
                     due_at=due_at, error=error, failure=failure)
+                # 告警登记与失败事实同事务：失败事实被接受才登记，回滚则一起丢弃。
+                # 单条告警写不进去不牵连投递结果（SAVEPOINT 隔离），只留固定分类日志。
+                if accepted and alert is not None:
+                    try:
+                        with outbox.alert_guard(connection):
+                            outbox.record_alert(connection, alert[0], alert[1], alert[2], self.clock.now())
+                    except sqlite3.Error:
+                        notifier_event("alert_registration_failed", warning=True, reason="storage_error")
                 connection.commit()
             except BaseException:
                 connection.rollback()

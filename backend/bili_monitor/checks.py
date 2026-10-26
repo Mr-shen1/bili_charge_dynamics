@@ -1,11 +1,14 @@
 """持久检查与工作状态；网络读取由独立采集进程负责。"""
 
 import json
+import sqlite3
 from contextlib import contextmanager
+from datetime import datetime
 from uuid import uuid4
 
 from .contracts import APIError
 from .comment_status import COMMENT_STATUS_FIELDS, ROOT_METADATA_VERSION
+from .notifications import outbox
 from .selection import SELECTED_TARGETS, selection_token, selection_matches
 
 
@@ -27,6 +30,30 @@ def safe_error(error):
     if error is None:
         return None
     return error if error in ("SIGNAL_INVALID", "SYNC_INCOMPLETE") else "SOURCE_UNAVAILABLE"
+
+
+def alert_epoch(value):
+    """把采集写入的 ISO 时间换成告警发生时间；解析不了就不登记，不编造时刻。"""
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError):
+        return None
+
+
+def record_alerts(connection, alerts, now):
+    """在同一事务里登记告警事实；调用者只给固定类别/对象/原因，不存在自动扫描。
+
+    每条告警用 SAVEPOINT 隔离：本地存储写不进一条告警时只丢该告警并留固定分类
+    日志，不让检查/同步结果与工作状态跟着回滚。
+    """
+    from .collector_logging import collector_event
+
+    for category, object, reason in alerts or ():
+        try:
+            with outbox.alert_guard(connection):
+                outbox.record_alert(connection, category, object, reason, now)
+        except sqlite3.Error:
+            collector_event("alert_registration_failed", warning=True, reason="storage_error")
 
 
 def trusted_version(metadata):
@@ -138,7 +165,7 @@ class CheckStore:
         return row["page_checked_at"] if row is not None else None
 
     def record_check(self, uid, id, metadata, checked_at, error=None, *, comment_observation=None,
-                     selection=None, media_upload=True, page_signal=True):
+                     selection=None, media_upload=True, page_signal=True, alerts=()):
         with transaction(self) as connection:
             current = selection_token(connection, uid, id)
             if not selection_matches(current, selection):
@@ -195,6 +222,10 @@ class CheckStore:
                 (uid, id, checked_at, status, json.dumps(observed, ensure_ascii=False), revision,
                  work, safe_error(error) if error is not None else ("SOURCE_UNAVAILABLE" if failed else None),
                  checked_at if page_signal else None))
+            # 告警登记与检查结果同一事务：合则同提交，回滚则同丢弃；正常计数变化无 error，不会告警。
+            epoch = alert_epoch(checked_at) if alerts else None
+            if epoch is not None:
+                record_alerts(connection, alerts, epoch)
             return True
 
     def read_checks(self, uid):
@@ -296,7 +327,7 @@ class CheckStore:
                     "selection": current}
 
     def finish_check_work(self, uid, id, revision, succeeded, finished_at, error=None, *, token,
-                          selection=None, record_success=True):
+                          selection=None, record_success=True, alerts=()):
         # 旧 Store 的 finish(None) 可释放失活目标的领取，跳过代次校验；不同于
         # selection_matches(None) 仍要求当前入选。Collector 必传领取资格，不能省略。
         with transaction(self) as connection:
@@ -310,6 +341,10 @@ class CheckStore:
                 sync_error = ? WHERE uid = ? AND id = ?""",
                 ("complete" if complete else "pending", complete and record_success, finished_at,
                  None if succeeded else (safe_error(error) or "SOURCE_UNAVAILABLE"), uid, id))
+            # 同步阶段的真实失败与工作回写同事务登记；普通的未完成/待重试不算故障。
+            epoch = alert_epoch(finished_at) if alerts else None
+            if epoch is not None:
+                record_alerts(connection, alerts, epoch)
             return bool(complete)
 
     def recover_check_work(self):

@@ -466,7 +466,9 @@ def test_heartbeat_reports_observable_collection_facts_without_claiming_success(
             await notifier.aclose()
 
     asyncio.run(scenario())
-    text = message_text(receiver.payloads[0])
+    # 124 的页面读取失败在 08 之后还会产生一条系统告警：这里只取心跳那一条载荷。
+    text = next(message_text(payload) for payload in receiver.payloads
+                if message_text(payload).startswith("心跳【"))
     assert text.splitlines() == [
         "心跳【2026-10-09 13:40】通知进程存活",
         "采集观察：纳管 3 个目标，已检查 3 个，最近检查 2026-10-09 13:39:50",

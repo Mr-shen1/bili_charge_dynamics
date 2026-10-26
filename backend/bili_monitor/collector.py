@@ -25,7 +25,9 @@ from .sync import sync_target
 from .media import ImageDownloader
 from .oss import OSSUploader
 from .safety import configure_safe_logging
-from .collector_logging import collector_attempt, collector_event, collector_failure
+from .collector_logging import (
+    collector_attempt, collector_event, collector_failure, credential_signal, failure_fields,
+)
 from .storage import Store
 from .selection import selection_matches
 
@@ -102,7 +104,7 @@ def _timestamp(value):
 class Collector:
     def __init__(self, store, client, downloader=None, uploader=None, *, clock=None,
                  max_checks=4, max_syncs=4, max_discoveries=2, comment_client_factory=None,
-                 cadence=None, page_check_seconds=None):
+                 cadence=None, page_check_seconds=None, credentials_configured=False):
         if max_checks < 1 or max_syncs < 1 or max_discoveries < 1:
             raise ValueError("Invalid collector concurrency")
         self.store = store
@@ -114,10 +116,25 @@ class Collector:
         self.max_syncs = max_syncs
         self.max_discoveries = max_discoveries
         self.comment_client_factory = comment_client_factory
+        # 启动时一次性读取的来源凭据是否存在；判定处不再读文件，也不为了告警额外访问来源。
+        self.credentials_configured = bool(credentials_configured)
         self.cadence = cadence if cadence is not None else cadence_provider()
         # 默认每轮采样带抖动；显式传值时用于测试/运维固定间隔。
         self.page_interval = ((lambda: float(page_check_seconds)) if page_check_seconds is not None
                               else page_interval_sample)
+
+    def _failure_alerts(self, error, object, category="collection"):
+        """一次真实失败 → 告警登记项（不读日志、不扫描、不访问上游）。
+
+        可信凭据失效只认「来源业务码 -101 + 本次确实配置了凭据」，对象是全局来源凭据；
+        其余仍按原分类归入本阶段类别（采集异常／主循环异常），不让普通网络/风控/HTTP
+        错误冒充登录失效。
+        """
+        signal = credential_signal(error, credentials_configured=self.credentials_configured)
+        if signal == "credential_rejected":
+            return [("credential", "source_credential", signal)]
+        reason = signal or failure_fields(error)["reason"]
+        return [(category, object, reason)]
 
     async def discover_once(self, uid):
         """一次按 UP 发现并发布可信窗口；首次工作仍经固定检查与独立归档阶段。"""
@@ -142,9 +159,12 @@ class Collector:
             collector_event("discovery_stopped", reason="selection_changed")
             return False
         except Exception as error:
-            collector_failure("discovery_failed", error)
+            collector_failure("discovery_failed", error, credentials_configured=self.credentials_configured)
             code = error.code if isinstance(error, DiscoveryError) else "SOURCE_UNAVAILABLE"
-            await to_thread.run_sync(self.store.finish_discovery, uid, token, None, self.clock.now(), code)
+            await to_thread.run_sync(
+                lambda: self.store.finish_discovery(
+                    uid, token, None, self.clock.now(), code,
+                    alerts=(("collection", uid, code.lower()),)))
             return False
         accepted = await to_thread.run_sync(self.store.finish_discovery, uid, token, result, self.clock.now())
         collector_event("discovery_finished", accepted=accepted)
@@ -175,14 +195,19 @@ class Collector:
         now = self.clock.now()
         page_signal = self._page_due(await to_thread.run_sync(self.store.page_checked_at, uid, id), now)
         metadata, page_error = None, None
+        alerts = []
+        target_object = f"{uid}:{id}"
         if page_signal:
             try:
                 metadata = page_metadata(await fetch_page(self.client, id), uid)
                 if metadata.get("edit_status") == "error":
                     page_error = "SIGNAL_INVALID"
+                    alerts.append(("collection", target_object, "signal_invalid"))
             except Exception as exception:
-                collector_failure("check_source_failed", exception, stage="page")
+                collector_failure("check_source_failed", exception, stage="page",
+                                  credentials_configured=self.credentials_configured)
                 page_error = "SOURCE_UNAVAILABLE"
+                alerts.extend(self._failure_alerts(exception, target_object))
             if not await still_selected():
                 return False
             # 新定位策略上线时重新核对旧 locator，不能仅凭格式正确就永久复用。
@@ -200,7 +225,9 @@ class Collector:
                         page_error = None
                     collector_event("comment_locator_refreshed", source=locator.get("source") if locator else None)
                 except Exception as exception:
-                    collector_failure("check_source_failed", exception, stage="detail")
+                    collector_failure("check_source_failed", exception, stage="detail",
+                                      credentials_configured=self.credentials_configured)
+                    alerts.extend(self._failure_alerts(exception, target_object))
         elif not valid_locator(locator) or locator.get("policy_version") != COMMENT_LOCATOR_VERSION:
             # 页面信号未到期且没有可用定位：本轮无事可做，不重复打上游，也不落一条失败记录。
             collector_event("check_skipped", reason="page_interval")
@@ -217,14 +244,17 @@ class Collector:
                 comments["source_comment_count"] = await fetch_comment_count(comments_client, locator, uid=uid)
             comments["comment_count_status"] = "observed"
         except Exception as exception:
-            collector_failure("check_source_failed", exception, stage="comment_count")
+            collector_failure("check_source_failed", exception, stage="comment_count",
+                              credentials_configured=self.credentials_configured)
+            alerts.extend(self._failure_alerts(exception, target_object))
         # 网页计数不回退冒充独立计数读取成功；两项信号可各自失败。
         if metadata is not None:
             metadata.pop("source_comment_count", None)
         # 记录时间取提交时刻：慢检查不能让 last_checked_at 回退到开始时间。
         accepted = await to_thread.run_sync(lambda: self.store.record_check(
             uid, id, metadata, self.clock.now(), page_error, comment_observation=comments,
-            selection=selection, media_upload=self.uploader is not None, page_signal=page_signal))
+            selection=selection, media_upload=self.uploader is not None, page_signal=page_signal,
+            alerts=alerts))
         collector_event("check_finished", recorded=accepted,
                         edit_status=metadata.get("edit_status") if metadata else None,
                         comment_count_status=comments["comment_count_status"])
@@ -253,6 +283,7 @@ class Collector:
                     return
                 collector_event("sync_started", revision=claim["revision"])
                 succeeded, archive = False, None
+                alerts = []
                 try:
                     generation = await to_thread.run_sync(lambda: self.store.claim_archive(
                         uid, id, selection=claim["selection"]))
@@ -260,7 +291,9 @@ class Collector:
                         text_succeeded = await sync_target(
                             self.store, self.client, uid, id, generation, self.downloader, self.uploader,
                             pending_comments_only=True, comment_observation=claim["observed"], now=self.clock.now,
-                            comment_client_factory=self.comment_client_factory)
+                            comment_client_factory=self.comment_client_factory,
+                            on_failure=lambda error: alerts.extend(
+                                self._failure_alerts(error, f"{uid}:{id}")))
                         archive = await to_thread.run_sync(self.store.read_archive, id)
                         version = claim["observed"].get("observed_version")
                         restricted_current = (archive["work"]["text"] == "restricted"
@@ -285,13 +318,23 @@ class Collector:
                                 succeeded = succeeded and root["work"]["media"] == "success"
                 except Exception as error:
                     # 仅固定分类；取消仍保留 running 供持锁重启恢复。
-                    collector_failure("sync_execution_failed", error)
+                    collector_failure("sync_execution_failed", error,
+                                      credentials_configured=self.credentials_configured)
+                    alerts.extend(self._failure_alerts(error, f"{uid}:{id}"))
+                # 同步阶段的显式失败事实（正文读取失败、根／回复分页失败）也登记告警；
+                # 普通的“待同步／媒体待完成”不是故障，不据此告警。
+                if archive is not None and not alerts:
+                    if archive["work"].get("text") == "failed":
+                        alerts.append(("collection", f"{uid}:{id}", "body_failed"))
+                    elif archive.get("comments_error"):
+                        alerts.append(("collection", f"{uid}:{id}", "comments_failed"))
                 complete = await to_thread.run_sync(
                     lambda: self.store.finish_check_work(uid, id, claim["revision"], succeeded, self.clock.now(),
                                                        None if succeeded else "SYNC_INCOMPLETE", token=claim["token"],
                                                        selection=claim["selection"], record_success=(
                                                            archive is not None
-                                                           and archive["work"]["text"] in ("success", "restricted"))))
+                                                           and archive["work"]["text"] in ("success", "restricted")),
+                                                       alerts=alerts))
                 parts = archive["work"] if archive else {}
                 collector_event("sync_finished", warning=not complete, succeeded=succeeded, complete=complete,
                                 elapsed_ms=max(0, int((self.clock.monotonic() - started) * 1000)),
@@ -301,6 +344,26 @@ class Collector:
                 # 领取或完成写入失败不会静默消失，随后由调度循环明确报错退出。
                 collector_failure("sync_task_failed", error)
                 raise
+
+    def _record_loop_alert(self, error):
+        """独立连接短事务登记主循环故障；写失败只留固定分类日志，不掩盖原异常。"""
+        from .notifications import outbox
+
+        try:
+            now = _timestamp(self.clock.now())
+            with self.store.connection() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                try:
+                    for category, object, reason in self._failure_alerts(
+                            error, "collector_loop", category="loop"):
+                        outbox.record_alert(connection, category, object, reason, now)
+                    connection.commit()
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except Exception as failure:
+            collector_failure("alert_registration_failed", failure,
+                              credentials_configured=self.credentials_configured)
 
     async def run(self):
         """从启动时刻起固定节拍；有限并发、忙即跳过，没有检查队列。"""
@@ -385,7 +448,11 @@ class Collector:
                 collector_event("collector_stopping", reason="cancelled")
                 raise
             except Exception as error:
-                collector_failure("collector_loop_failed", error)
+                collector_failure("collector_loop_failed", error,
+                                  credentials_configured=self.credentials_configured)
+                # 主循环可捕获异常：先在独立短事务里登记告警，再退出；数据库本身不可写时
+                # 只能留脱敏日志，不承诺即时外发（强杀/整机离线同样无法登记）。
+                self._record_loop_alert(error)
                 raise
             finally:
                 tasks = list(checks.values()) + list(executions.values()) + list(discoveries.values())
@@ -416,7 +483,8 @@ async def serve(database, *, once=False):
             timeout=30, trust_env=False
         ) as media_client:
             collector = Collector(Store(database), source_client, ImageDownloader(media_client), uploader,
-                                  comment_client_factory=comment_factory)
+                                  comment_client_factory=comment_factory,
+                                  credentials_configured=bool(cookie_pairs))
             if once:
                 with collector_lock(database):
                     await to_thread.run_sync(collector.store.migrate)

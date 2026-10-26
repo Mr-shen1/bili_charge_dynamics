@@ -77,7 +77,7 @@ async def sync_body(store, client, uid, id, generation, comment_observation, now
 
 async def sync_target(store, client, uid, id, generation, downloader=None, uploader=None, *,
                       pending_comments_only=False, comment_observation=None, now=None, comment_client_factory=None,
-                      full_replies=False):
+                      full_replies=False, on_failure=None):
     """复用同一归档链；已完成正文不因独立评论工作重新访问来源。"""
     archive = await to_thread.run_sync(store.read_archive, id)
     previous_locator = archive.get("comment_locator") or {}
@@ -102,11 +102,12 @@ async def sync_target(store, client, uid, id, generation, downloader=None, uploa
             or archive.get("synced_root_metadata_version", 0) < ROOT_METADATA_VERSION
             or any(archive["work"][part] != "success" for part in ("comments", "replies"))):
         async with open_comment_client(client, uid, comment_client_factory) as comments_client:
-            roots_result = await sync_roots(store, comments_client, id, generation, now=now, uid=uid)
+            roots_result = await sync_roots(store, comments_client, id, generation, now=now, uid=uid,
+                                            on_failure=on_failure)
             # 增量基准完全由 replies.scan_due 决定（新楼、rcount 变化、上次失败、校准到期）；
             # 不让重试触发 full=True，否则热帖会陷入「全量重扫 → 期间计数变化 → 再全量重扫」。
             await sync_replies(store, comments_client, id, generation, roots_result, now=now, uid=uid,
-                               full=full_replies)
+                               full=full_replies, on_failure=on_failure)
     await sync_media(store, downloader, uploader, id, current_only=True, now=now)
     for root_id in await to_thread.run_sync(store.media_root_ids, id):
         await sync_media(store, downloader, uploader, id, current_only=True, root_id=root_id, now=now)

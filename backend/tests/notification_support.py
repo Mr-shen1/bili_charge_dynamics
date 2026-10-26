@@ -145,11 +145,13 @@ def query(path, sql, parameters=()):
 
 
 def deliveries(path):
+    """业务与心跳的逐目标记录；08 之后系统告警与它们共用队列，此处按类型分开读。"""
     rows = query(path, """SELECT d.id AS delivery_id, d.role, d.state, d.attempts, d.due_at,
         d.lease_until, d.token, d.error, d.sent_at, d.failures, d.last_failed_at,
         e.id AS event_id, e.kind, e.uid, e.dynamic_id, e.version, e.root_id, e.comment_id,
         e.snapshot
         FROM notification_deliveries d JOIN notification_events e ON e.id = d.event_id
+        WHERE e.kind <> 'alert'
         ORDER BY d.id""")
     for row in rows:
         row["snapshot"] = json.loads(row["snapshot"])
@@ -157,7 +159,8 @@ def deliveries(path):
 
 
 def events(path):
-    return query(path, "SELECT * FROM notification_events ORDER BY id")
+    """业务与心跳事件；系统告警事件（08）另行读取，避免混进业务断言。"""
+    return query(path, "SELECT * FROM notification_events WHERE kind <> 'alert' ORDER BY id")
 
 
 def assert_no_credentials(path, *secrets):

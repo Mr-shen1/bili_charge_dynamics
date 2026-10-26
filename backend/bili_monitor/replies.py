@@ -13,7 +13,7 @@ from .source import media_sources
 from .comment_status import utc_now
 from .source_endpoints import REPLIES_URL
 from .source_client import comment_request_headers
-from .collector_logging import collector_event, collector_failure
+from .collector_logging import SourceRejected, collector_event, collector_failure
 
 
 # 与参考脚本 FULL_SCAN_INTERVAL 一致：每根每天至少完整校准一次，补偿增删抵消。
@@ -73,7 +73,7 @@ async def fetch_reply_page(client, dynamic_id, root_id, locator, number, *, uid=
     response.raise_for_status()
     payload = response.json()
     if type(payload.get("code")) is not int or payload["code"] != 0:
-        raise ValueError("Reply source rejected request")
+        raise SourceRejected("Reply source rejected request", payload.get("code"))
     data = payload["data"]
     page = data["page"]
     if type(page.get("num")) is not int or page["num"] != number or type(page.get("size")) is not int or page["size"] != 20:
@@ -96,7 +96,8 @@ async def fetch_reply_page(client, dynamic_id, root_id, locator, number, *, uid=
     return documents, ids, count
 
 
-async def sync_replies(store, client, id, generation, roots_result, *, now=None, uid=None, full=False):
+async def sync_replies(store, client, id, generation, roots_result, *, now=None, uid=None, full=False,
+                       on_failure=None):
     degraded = roots_result is None
     if degraded:
         # 根扫描失败时降级：用已存根评论及其上次基准继续，只重扫到期/失败的楼，不整轮跳过。
@@ -193,6 +194,8 @@ async def sync_replies(store, client, id, generation, roots_result, *, now=None,
         except Exception as error:
             # 单根失败不阻止其他根的可读回复，也不暴露来源异常文本。
             collector_failure("reply_sync_failed", error, stage=phase, page=number, root_index=root_index)
+            if on_failure is not None:
+                on_failure(error)
             failed = True
             if not await to_thread.run_sync(store.change_reply_root, id, generation, root["id"], "failed"):
                 return

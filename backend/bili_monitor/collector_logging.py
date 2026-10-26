@@ -67,6 +67,33 @@ _FAILURE_FIELDS = {
     "reply_sync_failed": frozenset({"data", "page", "root", "replies", "content"}),
 }
 
+# 上游业务码里唯一可当“凭据失效”的一个值：-101 账号未登录。
+NOT_LOGGED_IN = -101
+
+
+class SourceRejected(ValueError):
+    """来源业务拒绝：只保留受控的上游 `code` 整数，不携带响应正文或 message。
+
+    文案保持不变，便于既有 `_KNOWN_REASONS` 继续映射成 `source_rejected`；
+    唯一多出来的是一个整数，供分类层判定是否是可信的凭据失效信号。
+    """
+
+    def __init__(self, message, code=None):
+        super().__init__(message)
+        self.code = code if type(code) is int else None
+
+
+def credential_signal(error, *, credentials_configured=False):
+    """最窄可信的凭据判定：上游业务码 -101，且本次确实配置了来源凭据。
+
+    只比对整数，不读上游 message；`-111/-352/-401/-403/-412/-799` 等风控/频控/
+    权限码、HTTP 401/403、超时与网络异常都不参与判定。未配置凭据时 -101 说明来源
+    要求登录、本地是匿名访问，属配置问题，归入 `login_required`（采集异常）。
+    """
+    if getattr(error, "code", None) != NOT_LOGGED_IN:
+        return None
+    return "credential_rejected" if credentials_configured else "login_required"
+
 
 def configure_collector_logging():
     global _HANDLER
@@ -99,7 +126,7 @@ def collector_event(event, *, warning=False, **fields):
     _LOGGER.log(logging.WARNING if warning else logging.INFO, "%s %s", event, values)
 
 
-def failure_fields(error, *, allowed_fields=()):
+def failure_fields(error, *, allowed_fields=(), credentials_configured=False):
     status = None
     details = {}
     if isinstance(error, httpx.TimeoutException):
@@ -125,7 +152,10 @@ def failure_fields(error, *, allowed_fields=()):
         reason = "encoding_invalid"
     elif isinstance(error, ValueError):
         reason = "value_invalid"
-        if error.args and isinstance(error.args[0], str):
+        signal = credential_signal(error, credentials_configured=credentials_configured)
+        if signal is not None:
+            reason = signal
+        elif error.args and isinstance(error.args[0], str):
             reason = _KNOWN_REASONS.get(error.args[0], reason)
     elif isinstance(error, TypeError):
         reason = "type_invalid"
@@ -138,8 +168,9 @@ def failure_fields(error, *, allowed_fields=()):
     return {"reason": reason, "http_status": status, **details}
 
 
-def collector_failure(event, error, **fields):
-    diagnostics = failure_fields(error, allowed_fields=_FAILURE_FIELDS.get(event, ()))
+def collector_failure(event, error, *, credentials_configured=False, **fields):
+    diagnostics = failure_fields(error, allowed_fields=_FAILURE_FIELDS.get(event, ()),
+                                 credentials_configured=credentials_configured)
     collector_event(event, warning=True, **fields, **diagnostics)
 
 

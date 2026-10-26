@@ -39,7 +39,9 @@
 
 import json
 import math
+import sqlite3
 import time
+from contextlib import contextmanager
 from datetime import datetime
 from uuid import uuid4
 
@@ -47,6 +49,14 @@ DYNAMIC_CHANGED = "dynamic_changed"
 ROOT_COMMENT = "root_comment"
 REPLY_COMMENT = "reply_comment"
 HEARTBEAT = "heartbeat"
+ALERT = "alert"
+
+# 业务事件类型：告警阈值只统计这些类型的投递失败；心跳与告警本身不参与，避免递归告警。
+BUSINESS_KINDS = frozenset({DYNAMIC_CHANGED, ROOT_COMMENT, REPLY_COMMENT})
+
+# 告警节流：同一对象、同一类别首次立即提醒，此后每 30 分钟最多提醒一次；
+# 未投递的同类提醒合并到上一条，不按轮询/重试次数堆积。
+ALERT_COOLDOWN_SECONDS = 1800.0
 UP_ROLE = "up"
 ALL_ROLE = "all"
 SYSTEM_ROLE = "system"
@@ -115,6 +125,76 @@ def migrate(connection):
     )""")
     for row in connection.execute("SELECT uid, id, token FROM target_selections").fetchall():
         activate(connection, row["uid"], row["id"], row["token"])
+
+
+def migrate_alerts(connection):
+    """v21 告警节流状态：`(category, object)` 是节流键，`event_id` 指向最近一条提醒。
+
+    只保存类别、对象身份、最近提醒时间与最近事件；不保存凭据、响应正文或异常原文。
+    旧库降级副本可能已带该表，建表必须可重入。
+    """
+    connection.execute("""CREATE TABLE IF NOT EXISTS notification_alerts (
+        category TEXT NOT NULL,
+        object TEXT NOT NULL,
+        last_alert_at REAL NOT NULL,
+        event_id INTEGER,
+        PRIMARY KEY(category, object)
+    )""")
+
+
+def record_alert(connection, category, object, reason, now, cooldown=ALERT_COOLDOWN_SECONDS):
+    """在同一事务里登记一条系统告警；被节流或合并时返回 False。
+
+    判定顺序：同一 `(category, object)` 距上次提醒不足一个节流窗口 → 合并；
+    上一条提醒仍未投递完成（非 `sent`/`expired`）→ 也合并，保证任何时刻最多只有
+    一条未投递的同类提醒，系统群长期失败时不会按故障次数堆积告警。
+    新建事件时写系统群投递记录，`expires_at` 为空：告警不套用心跳的过期丢弃规则。
+    """
+    row = connection.execute(
+        "SELECT last_alert_at, event_id FROM notification_alerts WHERE category = ? AND object = ?",
+        (category, object)).fetchone()
+    if row is not None:
+        if now - row["last_alert_at"] < cooldown:
+            return False
+        if row["event_id"] is not None:
+            previous = connection.execute(
+                "SELECT state FROM notification_deliveries WHERE event_id = ? AND role = ?",
+                (row["event_id"], SYSTEM_ROLE)).fetchone()
+            if previous is not None and previous["state"] not in (SENT, EXPIRED):
+                return False
+    snapshot = {"category": category, "object": object, "occurred_at": now, "reason": reason}
+    # 事件身份按「类别 + 节流窗口」去重：重启或并发写入不会在同一窗口内重复登记。
+    event = connection.execute("""INSERT OR IGNORE INTO notification_events
+        (kind, uid, dynamic_id, version, snapshot, created_at) VALUES (?, '', ?, ?, ?, ?)""",
+        (ALERT, object, f"{category}:{int(now // cooldown)}",
+         json.dumps(snapshot, ensure_ascii=False), now))
+    if event.rowcount != 1:
+        return False
+    connection.execute("""INSERT INTO notification_deliveries(event_id, role, state, due_at)
+        VALUES (?, ?, ?, 0)""", (event.lastrowid, SYSTEM_ROLE, PENDING))
+    connection.execute("""INSERT INTO notification_alerts(category, object, last_alert_at, event_id)
+        VALUES (?, ?, ?, ?) ON CONFLICT(category, object) DO UPDATE SET
+        last_alert_at = excluded.last_alert_at, event_id = excluded.event_id""",
+        (category, object, now, event.lastrowid))
+    return True
+
+
+@contextmanager
+def alert_guard(connection):
+    """把单条告警登记包进 SAVEPOINT：写不进去时只丢这条告警，不牵连父事务。
+
+    告警登记总是搭在别的事务里（检查结果、同步完成、投递回写）。如果一条告警
+    因为本地存储问题写不进去就让父事务整体回滚，会把采集/投递主链拖垮；用
+    SAVEPOINT 回滚到告警之前，父事务照常提交，由调用方留固定分类日志。
+    """
+    connection.execute("SAVEPOINT notification_alert")
+    try:
+        yield
+    except sqlite3.Error:
+        connection.execute("ROLLBACK TO notification_alert")
+        connection.execute("RELEASE notification_alert")
+        raise
+    connection.execute("RELEASE notification_alert")
 
 
 def migrate_delivery_facts(connection):

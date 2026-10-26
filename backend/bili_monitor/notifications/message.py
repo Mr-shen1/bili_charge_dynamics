@@ -137,6 +137,79 @@ def beijing_time(value):
         return ""
 
 
+# 告警只用固定枚举：类别、原因都是白名单，对象只接受不含空白的稳定身份。
+# 这里没有任何自由文本入口，上游响应正文、异常原文与凭据都不会进入消息。
+ALERT_LABELS = {
+    "credential": "来源凭据失效",
+    "collection": "采集异常",
+    "loop": "主循环异常",
+    "delivery": "飞书投递持续失败",
+    "route": "路由缺失或错误",
+}
+ALERT_REASONS = {
+    "credential_rejected": "来源凭据被拒绝",
+    "login_required": "来源要求登录且未配置凭据",
+    "timeout": "请求超时",
+    "network_error": "网络错误",
+    "http_status": "HTTP 状态异常",
+    "decode_invalid": "来源响应无法解码",
+    "json_invalid": "来源响应不是合法 JSON",
+    "storage_error": "本地数据库读写失败",
+    "source_rejected": "来源拒绝请求",
+    "source_unavailable": "来源不可用",
+    "signal_invalid": "来源信号无效",
+    "pagination_invalid": "来源分页无效",
+    "body_failed": "正文读取失败",
+    "comments_failed": "评论分页失败",
+    "route_missing": "目标群未配置",
+    "route_invalid": "目标群配置无效",
+    "internal_error": "内部异常",
+    "unsupported_kind": "事件类型缺少模板",
+    "platform_rejected": "飞书拒绝消息",
+    "rate_limited": "飞书限流",
+}
+_ALERT_TOKEN = re.compile(r"[a-z][a-z0-9_]{0,63}")
+_ALERT_OBJECT = re.compile(r"[A-Za-z0-9_:.\-]{1,80}")
+
+
+def alert_object(value):
+    return value if isinstance(value, str) and _ALERT_OBJECT.fullmatch(value) else "unknown"
+
+
+def alert_reason(value):
+    """固定脱敏原因：优先中文短语，其次仍受限的固定 token，其余一律未分类。"""
+    if not isinstance(value, str):
+        return "未分类"
+    if value in ALERT_REASONS:
+        return ALERT_REASONS[value]
+    return value if _ALERT_TOKEN.fullmatch(value) else "未分类"
+
+
+def alert_time(value):
+    """发生时间按北京时间到秒；不用投递时间替代，解析不了就如实留未知。"""
+    if type(value) not in (int, float):
+        return "未知"
+    try:
+        return datetime.fromtimestamp(value, BEIJING).strftime("%Y-%m-%d %H:%M:%S")
+    except (ValueError, OSError, OverflowError):
+        return "未知"
+
+
+def alert(snapshot):
+    """告警模板：类别、对象、发生时间与固定脱敏原因。
+
+    不带链接与业务内容：系统群不混入评论正文，也不因缺本站基址而无法提醒。
+    """
+    label = ALERT_LABELS.get(snapshot.get("category"), "运行故障")
+    return post(
+        [text(f"告警【{label}】")],
+        [text(f"对象：{alert_object(snapshot.get('object'))}")],
+        [text(f"发生时间：{alert_time(snapshot.get('occurred_at'))}")],
+        [text(f"原因：{alert_reason(snapshot.get('reason'))}")],
+        [text("同类同对象 30 分钟内最多提醒一次")],
+    )
+
+
 def root_comment(snapshot, base_url):
     """新增评论模板：动态、评论人、北京时间、正文与可点击的该条评论链接。
 
