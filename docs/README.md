@@ -60,6 +60,6 @@
 - `docs/backend/api/`：后端/客户端接口契约；`docs/backend/evidence/`：协议来源与可行性证据。
 - `docs/deployment/`：可复用的交付运行说明；一次执行的结果放对应 `.scratch/<feature>/`，专项附件放其 `evidence/`。
 - 根目录和模块 `README.md` 保留为就近入口（前端命令与结构见 [frontend/README.md](../frontend/README.md)）；与素材或代码紧密相关的说明留在原目录。
-- `docs/agents/` 保留[工单约定](agents/issue-tracker.md)、[分诊标签](agents/triage-labels.md)和[领域文档约定](agents/domain.md)；代理入口仍为根 [AGENTS.md](../AGENTS.md)，技能和代理配置保持工具要求的位置。
+- `docs/agents/` 保留[工单约定](agents/issue-tracker.md)、[分诊标签](agents/triage-labels.md)、[领域文档约定](agents/domain.md)、[implement-spec 工作流覆盖](agents/implement-spec.md)与 [CodeGraph 使用约定](agents/codegraph.md)；提交或执行 spec 工作流、定位代码或派发探索任务时阅读对应约定。代理入口仍为根 [AGENTS.md](../AGENTS.md)，技能和代理配置保持工具要求的位置。
 - 新增文档按职责归位并补本页入口；移动文档时同步修复相对链接、图片和正文中的路径引用。保留已有需求和历史证据内容，不为整理目录重写验收结果。
 - `docs/assets/ui-reference/` 是 ignored 本地参考素材，当前整理不移动或强制纳入版本；跨机器使用 UI 文字规范，确需图片时另行提供。
