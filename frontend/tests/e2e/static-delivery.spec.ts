@@ -9,7 +9,11 @@ const immutable = 'public, max-age=31536000, immutable';
 
 test('六类页面深链接和带扩展名的页面仍返回重新验证的入口，资源按明确路径分类', async ({ request }) => {
   for (const path of ['/', '/index.html', '/ups/202', '/manage', '/manage/ups/202', '/dynamics/90071992547409934',
-    '/dynamics/90071992547409934/comments/root-1', '/dynamics/id.with.dot', '/unknown.page']) {
+    '/dynamics/90071992547409934/comments/root-1',
+    // 飞书通知的两条精确入口也必须由静态托管回入口，而不是 404 或 API 代理页。
+    '/dynamics/90071992547409934/comments/860001/locate',
+    '/dynamics/90071992547409934/comments/860001/replies/960022/locate',
+    '/dynamics/id.with.dot', '/unknown.page']) {
     const response = await request.get(path);
     expect(response.status()).toBe(200);
     expect(response.headers()['content-type']).toContain('text/html');
@@ -90,4 +94,15 @@ test('正常产物深链接刷新可看图和返回；页面不存在和内容�
   const missing = await page.goto('/dynamics/id.with.dot');
   expect(missing?.status()).toBe(200);
   await expect(page.getByText('动态不存在或不可用')).toBeVisible();
+  // 精确入口的“目标不存在”与“评论列表顶部”不同：明确提示并保留返回动态入口。
+  const locateMissing = await page.goto('/dynamics/90071992547409934/comments/999999/locate');
+  expect(locateMissing?.status()).toBe(200);
+  await expect(page.getByRole('status').filter({ hasText: '目标评论不存在或未归档' })).toBeVisible();
+  await page.getByRole('button', { name: '返回动态' }).click();
+  await expect(page).toHaveURL('/dynamics/90071992547409934');
+  // 用 mock 归档里带 45 条评论、首个根评论有 25 条回复的动态，验证“回复不存在”而不是“根不存在”。
+  const replyMissing = await page.goto(
+    '/dynamics/90071992547409931/comments/90071992547401001/replies/999999/locate');
+  expect(replyMissing?.status()).toBe(200);
+  await expect(page.getByRole('status').filter({ hasText: '目标回复不存在或未归档' })).toBeVisible();
 });

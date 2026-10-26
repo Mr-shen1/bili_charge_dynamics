@@ -564,6 +564,85 @@ def test_registered_reply_keeps_its_frozen_has_media_across_rescan(tmp_path):
             for row in events(path) if row["comment_id"] == "970704"] == [False]
 
 
+@pytest.mark.parametrize("pictures", [
+    [{"img_width": 640}],
+    {"img_src": "https://reply-pictures.invalid/not-a-list.png"},
+    [{"img_src": "javascript:alert(1)"}],
+    [None],
+], ids=["missing-img-src", "not-a-list", "invalid-url", "non-object-entry"])
+def test_unreadable_reply_picture_metadata_never_rejects_the_legal_page(tmp_path, pictures):
+    """来源图片元信息无法可靠解释时只降级为“未知”，不否决整页合法文字回复。
+
+    回归背景：05 的纯图占位补丁曾用与根评论相同的严格校验解析回复图片，
+    缺 `img_src`、非 list 或非法 URL 都会抛错并让整页失败，导致同页合法文字回复
+    既不归档也不通知。未知存在性也不能被当成“无图”，更不能抹掉已观察到的已知值。
+    """
+    path = tmp_path / "monitor.sqlite"
+    source = Source().add(DYNAMIC, [root_comment(ROOT, author="303", nickname="虚构路人")])
+    malformed = reply_item("970708", root=ROOT, author=UID, nickname="虚构星海", text="第一条合法文字")
+    malformed["content"]["pictures"] = pictures
+    source.replies(DYNAMIC, ROOT, [
+        malformed,
+        reply_item("970709", root=ROOT, author="303", nickname="虚构路人", text="第二条合法文字"),
+    ])
+    configure(path, source)
+    archive(path, source)
+
+    documents = reply_documents(path)
+    assert documents["970708"]["text"] == "第一条合法文字"
+    assert documents["970708"]["has_pictures"] is None  # 未知，不是“确认无图”
+    assert documents["970709"]["text"] == "第二条合法文字"
+    received = deliver(path)
+    assert delivered_replies(received) == sorted([
+        ((ROOT, "970708"), WEBHOOK), ((ROOT, "970708"), ALL_WEBHOOK),
+        ((ROOT, "970709"), ALL_WEBHOOK)])
+    assert "图片评论" not in "\n".join(message_text(payload) for payload in received.payloads)
+
+
+def test_unknown_reply_picture_metadata_keeps_an_already_known_presence(tmp_path):
+    """重扫只剩无法解释的图片元信息时保留已知有图，不把占位改成空正文。"""
+    path = tmp_path / "monitor.sqlite"
+    source = Source().add(DYNAMIC, [root_comment(ROOT, author="303", nickname="虚构路人")])
+    configure(path, source)
+    source.replies(DYNAMIC, ROOT, [reply_item(
+        "970710", root=ROOT, author=UID, nickname="虚构星海", text="",
+        pictures=["https://reply-pictures.invalid/known.png"])])
+    archive(path, source)
+    assert reply_documents(path)["970710"]["has_pictures"] is True
+    first = deliver(path)
+    assert sorted(delivered_replies(first)) == sorted([
+        ((ROOT, "970710"), WEBHOOK), ((ROOT, "970710"), ALL_WEBHOOK)])
+
+    before_start = math.floor(comment_start(path)) - 600
+    unknown = reply_item("970710", root=ROOT, author=UID, nickname="虚构星海", text="")
+    unknown["content"]["pictures"] = [{"img_width": 640}]
+    source.replies(DYNAMIC, ROOT, [
+        unknown,
+        reply_item("970711", root=ROOT, author="303", nickname="虚构路人", ctime=before_start,
+                   text="起点前的旧回复")])
+    source.spec(DYNAMIC)["count"] = 2
+    archive(path, source)
+
+    assert reply_documents(path)["970710"]["has_pictures"] is True
+    assert [json.loads(row["snapshot"])["has_media"]
+            for row in events(path) if row["comment_id"] == "970710"] == [True]
+    assert delivered_replies(deliver(path)) == []
+
+
+def test_root_comment_picture_validation_stays_strict(tmp_path):
+    """根评论的既有严格图片校验不因回复降级而放宽：非法元信息仍整页失败。"""
+    path = tmp_path / "monitor.sqlite"
+    root = root_comment(ROOT, author="303", nickname="虚构路人", text="合法文字")
+    root["content"]["pictures"] = [{"img_width": 640}]
+    source = Source().add(DYNAMIC, [root])
+    configure(path, source)
+    archive(path, source)
+
+    assert root_documents(path) == {}
+    assert Store(path).read_archive(DYNAMIC)["root_comments_error"] == "ROOT_COMMENTS_FAILED"
+    assert [row for row in events(path) if row["kind"] != "dynamic_changed"] == []
+
+
 def test_candidate_completion_keeps_known_picture_presence_for_the_placeholder(tmp_path):
     """候选补齐沿用元信息合并语义：先已知有图，后来来源缺键也不抹成“无图”。"""
     path = tmp_path / "monitor.sqlite"

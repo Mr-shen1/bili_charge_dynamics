@@ -57,6 +57,8 @@ export async function verifyProductionDelivery(baseURL, buildDir, secret, { auth
     for (const [path, status] of [
       ['/api/manage/ups', 200], ['/api', 404], ['/api/no-such-route', 404],
       ['/api/archive/dynamics/99999', 404], ['/api/archive/dynamics?limit=0', 422],
+      // 通知精确入口的只读定位接口同样不走 SPA 回退：错误保持 JSON 与 no-store。
+      ['/api/archive/dynamics/91001/comments/999999/location', 404],
       ['/assets/missing.js', 404], ['/assets/no-extension', 404],
     ]) {
       const response = await fetch(`${baseURL}${path}`);

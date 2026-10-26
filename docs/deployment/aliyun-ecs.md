@@ -289,7 +289,9 @@ curl --fail --silent --show-error http://127.0.0.1:8000/api/manage/ups >/dev/nul
 
 前端同步发布见第 4 节。前后端版本不匹配时，前端会按 API 契约拿到错误响应，不会崩溃，但应当同批发布。
 
-`schema` 版本在 API lifespan 自动迁移（当前代码为 **v16**；目标机实测 v14 是包含通知表之前的版本，升级后应等于 16，以活文件为准）。**没有独立迁移 CLI、没有自动降级。** 迁移失败时停下排查，不要改 `user_version`、不要删库、不要用旧版本强开新库。
+`schema` 版本在 API lifespan 自动迁移（本节目标机执行时为 **v16**；票据 08/10 之后当前代码已到 **v21**，包含告警与心跳对应的通知表，以活文件为准）。**没有独立迁移 CLI、没有自动降级。** 迁移失败时停下排查，不要改 `user_version`、不要删库、不要用旧版本强开新库。
+
+> 票据 10 后统一入口可在设置 `BILI_NOTIFICATION_CONFIG` 时托管第三个通知进程（API → collector → notifier，停止按反向顺序）；目标机实际三进程运行、真实飞书路由与资源容量**尚未验证**，本节的执行记录保持当时的两进程状态。当前命令、迁移顺序与路由修复流程见[静态交付说明](static-delivery.md#单-api单-collector单通知进程启动停止升级)，证据见[票据 10](../../.scratch/feishu-notifications/evidence/10-integrated-delivery-readiness.md)。
 
 ## 10. 回滚
 

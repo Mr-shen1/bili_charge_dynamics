@@ -1,6 +1,6 @@
 # 通知进程与事件投递契约
 
-状态：**01、04、05、06、07、08、09 票据已交付**（01：动态变化通知首条闭环；04：一级评论通知闭环；05：楼中楼回复通知闭环；06：双群独立投递与故障恢复；07：停用/重纳入/在途生命周期矩阵；08：五类系统告警闭环；09：小时心跳）。本文描述当前代码已实现的服务端契约：进程启动、配置、事件资格、持久状态、消息模板、投递参数与恢复语义。自动化只使用虚构凭据、临时 SQLite、受控接收端与本地替身，故障恢复另用真实子进程与本机 HTTP 接收端；**真实飞书群投递、三进程托管与目标环境运行尚未验证**，见[票据 01 证据](../../../.scratch/feishu-notifications/evidence/01-dynamic-change-notification.md)、[票据 04 证据](../../../.scratch/feishu-notifications/evidence/04-root-comment-notification.md)、[票据 05 证据](../../../.scratch/feishu-notifications/evidence/05-reply-notification.md)、[票据 06 证据](../../../.scratch/feishu-notifications/evidence/06-delivery-routing-recovery.md)、[票据 07 证据](../../../.scratch/feishu-notifications/evidence/07-notification-lifecycle.md)、[票据 08 证据](../../../.scratch/feishu-notifications/evidence/08-system-alerts.md)与[票据 09 证据](../../../.scratch/feishu-notifications/evidence/09-hourly-heartbeat.md)。
+状态：**01、04、05、06、07、08、09 票据已交付**（01：动态变化通知首条闭环；04：一级评论通知闭环；05：楼中楼回复通知闭环；06：双群独立投递与故障恢复；07：停用/重纳入/在途生命周期矩阵；08：五类系统告警闭环；09：小时心跳）；**10 已完成三进程隔离组合回归与交付准备**（实际 API＋独立采集＋独立通知共享临时 SQLite、消息实际链接到生产前端、统一托管入口、迁移演练与 FS-AC 台账），真实飞书投递与目标环境运行仍留待 11。本文描述当前代码已实现的服务端契约：进程启动、配置、事件资格、持久状态、消息模板、投递参数与恢复语义。自动化只使用虚构凭据、临时 SQLite、受控接收端与本地替身，故障恢复另用真实子进程与本机 HTTP 接收端；**真实飞书群投递与目标部署尚未验证**，见[票据 01 证据](../../../.scratch/feishu-notifications/evidence/01-dynamic-change-notification.md)、[票据 04 证据](../../../.scratch/feishu-notifications/evidence/04-root-comment-notification.md)、[票据 05 证据](../../../.scratch/feishu-notifications/evidence/05-reply-notification.md)、[票据 06 证据](../../../.scratch/feishu-notifications/evidence/06-delivery-routing-recovery.md)、[票据 07 证据](../../../.scratch/feishu-notifications/evidence/07-notification-lifecycle.md)、[票据 08 证据](../../../.scratch/feishu-notifications/evidence/08-system-alerts.md)、[票据 09 证据](../../../.scratch/feishu-notifications/evidence/09-hourly-heartbeat.md)与[票据 10 证据](../../../.scratch/feishu-notifications/evidence/10-integrated-delivery-readiness.md)。
 
 业务规则以[飞书通知需求与设计](../../design/feishu-notifications.md)为准，本文只写实现契约。锁定的模块接口：
 
@@ -31,7 +31,7 @@ exec .venv/bin/python -m backend.bili_monitor.notifier
 - 单轮领取/回写失败（如 SQLite 写锁竞争）只记录固定分类并继续下一轮，不停掉投递进程；心跳登记失败与告警扫描失败同理（`heartbeat_cycle_failed`／`alert_cycle_failed`），不连带停掉业务投递。
 - 等待配置的记录每 60 秒复检一次，每次回写都会累加 `attempts`；心跳在系统群未配置时也会这样累积。这只是“未配置”的诊断计数，**不是**投递失败次数。真实失败次数另记在 `failures`/`last_failed_at`（见 §4），告警阈值只读它们（见 §3.3），不能拿 `attempts`。心跳过期后该记录转为 `expired`，不再增长。
 - 同一数据库只允许一个投递实例（`.notifier.lock`）；第二个进程启动即以固定错误退出，崩溃后锁由内核释放，不靠租约猜活。
-- 当前 `backend.bili_monitor.service` 仍只托管 API 与 collector；三进程托管与启停编排属于票据 10。
+- 统一托管入口（`python -m backend.bili_monitor.service`）已支持三个进程：先等 API 完成迁移并监听，再启动独立 collector，最后启动通知进程；设置 `BILI_NOTIFICATION_CONFIG` 时才有第三个进程，未设置时保持原两进程形态（不投递飞书）。任一子进程退出都会停止其余进程并以固定错误退出；TERM 按“通知 → 采集 → API”反向顺序逐个等待退出。启动顺序、迁移顺序、启停与路由修复步骤见[静态交付运行说明](../../deployment/static-delivery.md#单-api单-collector单通知进程启动停止升级)；systemd 示例见 `deploy/bili-monitor.service` 与 `deploy/bili-monitor.env.example`。API 仍不内嵌任何通知定时器。
 
 ## 2. 配置
 
@@ -207,11 +207,13 @@ exec .venv/bin/python -m backend.bili_monitor.notifier
 - v19 → v20（05）：重建 `notification_candidates`，主键从 `(dynamic_id, comment_id)` 改为 `(dynamic_id, root_id, comment_id)`；旧候选都是一级评论，`root_id` 按自身回填，不丢等待记录。重建在迁移事务内完成，失败随版本号一起回滚。
 - v20 → v21（08）：新增 `notification_alerts` 告警节流表；已有事件、投递记录与状态不动，节流状态从空开始（不凭空补历史告警）。
 - 旧库保留归档、观察、checkpoint、入选令牌与近期窗口状态；已成功归档的已选目标以现有可信版本作基线，不补发历史；升级不会凭空生成历史时段的心跳。
+- 迁移在 API lifespan、collector 取得锁后与通知进程启动时都有入口，重复执行幂等；三进程接管同一库时以 API 先完成迁移、其余进程再启动为约定。10 的隔离演练在真实三进程写出的库副本上停掉进程后重复迁移两次，归档正文/检查时间/监控配置/通知阶段与队列均保持不变（见票据 10 证据）。不支持自动降级，也不承诺旧版本打开更新 schema 的库；回退只能是前滚到同一或更高兼容版本。
 - 迁移失败整体回滚（含版本号），可修复后重试；未来版本仍拒绝启动。
 
 ## 8. 当前未覆盖
 
-- 投递管理 UI：未实施。生命周期组合验证（07）已交付自动化与真实通知子进程证据，但真实飞书群、目标环境三进程与浏览器/手机实机仍未验证；组合回归与三进程托管归票据 10。
+- 投递管理 UI：未实施。生命周期组合验证（07）已交付自动化与真实通知子进程证据；三进程隔离组合回归与消息链接到生产前端的验证已由 10 交付（见[票据 10 证据](../../../.scratch/feishu-notifications/evidence/10-integrated-delivery-readiness.md)），但**真实飞书群投递、飞书内置浏览器/手机、目标环境三进程运行与资源承诺仍未验证**，留给 11（另需授权）。
+- 真实飞书凭据失效、真实网络限流与代理可达性未验证；本机三进程资源测量只是一次隔离运行的实际值，不构成 2 核 2 GB 容量结论。
 - 心跳与告警在同一进程内的组合隔离已由 08 的自动化覆盖（告警节流不抑制心跳、心跳失败不生成告警）；三进程统一托管、真实飞书群投递、飞书内置浏览器/手机链接验证：票据 10、11（另需授权）。
 - 心跳只在通知进程存活时生成：进程被强杀或整机离线期间错过的时段不补发，也不承诺离线期间的告警/心跳可达性；主循环异常的告警同样要能写库才能登记，整机离线、进程被强杀或数据库完全不可写时只有本地脱敏日志。
 - 秒级送达、跨群同时送达、飞书端绝对一次送达均不承诺；飞书已接收但响应丢失（超时/连接中断）时按失败重试，重试可能在群里形成重复消息。1 秒轮询与第 40 分钟偏移都是调度节拍，不是精准送达时刻。

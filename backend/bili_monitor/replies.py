@@ -58,12 +58,26 @@ def reply_pictures(content):
 
     缺失或 null 都不是来源确认无图：保持未知（`None`），由现有元信息合并语义保留
     已观察到的存在性。这里既不新增上游请求，也不扩大回复图片的采集与上传范围。
+
+    回复的图片元信息只是“是否存在”的可选提示，不是归档前置条件：非 list、条目缺
+    `img_src`、非法 URL 或条目不是对象时无法可靠解释，按未知（`None`）降级，绝不让
+    整页合法文字回复因图片字段失败；只要列表里有一个可可靠解释的图片条目即已知有图。
+    根评论的严格图片校验保持不变，不在此处复用降级规则。
     """
     pictures = content.get("pictures")
     if pictures is None:
         return None
-    # 复用与根评论同一条形状/URL 校验，避免未校验的键被当成“有图”。
-    return bool(media_sources(pictures, "img_src", "img_"))
+    if not isinstance(pictures, list):
+        return None
+    if not pictures:
+        return False
+    for picture in pictures:
+        try:
+            if media_sources([picture], "img_src", "img_"):
+                return True
+        except (KeyError, TypeError, ValueError):
+            continue
+    return None
 
 
 async def fetch_reply_page(client, dynamic_id, root_id, locator, number, *, uid=None):

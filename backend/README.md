@@ -48,7 +48,7 @@ export BILI_NOTIFICATION_CONFIG=/srv/bili-monitor/notifications.json
 exec .venv/bin/python -m backend.bili_monitor.notifier
 ```
 
-通知进程与 API/collector 使用同一 SQLite，但有独立 `.notifier.lock`，同一库只能运行一个投递实例；`service.py` 目前仍只托管 API 与 collector，三进程托管属票据 10。配置与凭据只在服务端文件，不进入浏览器、日志或发件箱；可选签名密钥也只用于发送时组装 `timestamp`/`sign`。最小隔离演示（不访问网络、不读取真实凭据）：
+通知进程与 API/collector 使用同一 SQLite，但有独立 `.notifier.lock`，同一库只能运行一个投递实例。统一托管入口 `python -m backend.bili_monitor.service` 已支持三进程：设置 `BILI_NOTIFICATION_CONFIG` 时先等 API 完成迁移并监听，再启动 collector 与通知进程；未设置时保持两进程形态（不投递）。启动顺序、启停、迁移与路由修复见[静态交付运行说明](../docs/deployment/static-delivery.md#单-api单-collector单通知进程启动停止升级)与[三进程集成证据](../.scratch/feishu-notifications/evidence/10-integrated-delivery-readiness.md)；真实飞书群与目标环境仍未验证。配置与凭据只在服务端文件，不进入浏览器、日志或发件箱；可选签名密钥也只用于发送时组装 `timestamp`/`sign`。最小隔离演示（不访问网络、不读取真实凭据）：
 
 ```sh
 demo_dir=$(mktemp -d)

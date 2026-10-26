@@ -35,6 +35,12 @@
 [03](../docs/backend/api/archive-api-client.md#飞书通知-03-增量楼中楼回复精确入口)；
 两票不属于上表 02–17 的迁移范围，也不改变其验收结论。
 
+飞书通知票据 10 另增三进程浏览器入口 `tests/e2e-delivery`（`pnpm test:e2e:delivery`）：
+实际 API＋独立采集＋独立通知共享临时 SQLite，测试只打开真实投递消息里的链接，
+在生产前端装配中验证动态、后续批一级评论与后续页回复在宽窄屏/刷新/返回/目标不存在
+及代理语义下的表现；它是 10 的隔离证据，不替代真实飞书客户端或真机验收。
+证据见[票据 10](../.scratch/feishu-notifications/evidence/10-integrated-delivery-readiness.md)。
+
 对应规格与票据：[实施规格](../.scratch/frontend-vue-migration/spec.md) · [票据目录](../.scratch/frontend-vue-migration/issues/) ·
 [图片预览验证证据](../.scratch/frontend-vue-migration/evidence/01-native-image-preview.md) ·
 [02 归档列表证据](../.scratch/frontend-vue-migration/evidence/02-archive-scope-browsing.md) ·
@@ -72,6 +78,9 @@ pnpm test:e2e:manage    # 管理页 + 实际 API（backend/tests/live_app 虚构
                        # 只用本机回环地址；如设置了 HTTP(S)_PROXY，需用 NO_PROXY=127.0.0.1,localhost 或清空代理变量
 pnpm test:e2e:location  # 一级评论与楼中楼回复精确入口 + 实际归档 API（同一虚构上游，另建独占 SQLite 与端口）
                        # 同样的代理变量要求；与 test:e2e-manage 分开，避免跨文件顺序依赖
+pnpm test:e2e:delivery  # 票据 10：实际 API＋独立采集＋独立通知三进程共享临时 SQLite，取真实投递消息里的链接
+                       # 在生产前端装配里验证宽窄屏/刷新/返回/目标不存在/代理语义；需 uv 环境与 .venv
+                       # 同样要求 NO_PROXY=127.0.0.1,localhost；与其它 e2e 端口分开（4181/4328）
 pnpm visual:baseline     # 票据 14：pnpm build + 四宽度受控截图 + 布局/触控/焦点审计
                        # 输出到 ../.scratch/frontend-vue-migration/evidence/visual-14/
                        # 想复核另一份候选而不覆盖签收记录：VISUAL_OUT_DIR=<其他目录> pnpm visual:baseline
@@ -139,6 +148,7 @@ pnpm playwright test --project=desktop-chromium-archive tests/e2e/replies.spec.t
 | `tests/fixtures` / `tests/support` | 生产 DTO 夹具、可注入读取与管理接口替身、预览探针、窄屏视口桩与 jsdom 排版/滚动替身 |
 | `tests/e2e` | 骨架冒烟/预览/详情恢复/动态图片/评论图片（mock 装配）+ 列表、一级评论（含根评论 `media` 映射）、管理列表/启停/模式与目标、宽屏回复、宽屏/窄屏回复精确入口、窄屏楼中楼与图片读取（生产装配，HTTP 传输按用例替换）+ `static-delivery`（真实 Nginx 缓存/404/深链接，`E2E_TARGET=nginx` 单独跑） |
 | `tests/e2e-location` | 一级评论与楼中楼回复精确入口 + 实际归档 API（`backend/tests/live_app` 虚构上游，仅测试用的 45 条虚构根评论与 25 条虚构楼中楼夹具）+ 本次运行独占 SQLite：后续批/页目标直开定位、窄屏刷新、目标不存在提示，读取不触发上游采集 |
+| `tests/e2e-delivery` | 票据 10 三进程完整链：用例自起实际 API（`backend/tests/delivery_fixture`）＋独立 collector＋生产通知进程，共享本次运行独占 SQLite，通知发到用例内本机接收端；只打开消息里的实际链接，验证动态/后续批一级评论/后续页回复的宽窄屏定位、刷新、返回、目标不存在、路由分群与代理语义，读取不触发采集 |
 | `tests/e2e-manage` | 管理页 + 实际 API（`backend/tests/live_app` 虚构上游，含动态页/detail/空根评论/独立评论计数/近期发现页 + **仅测试用**的 `POST /api/test/collect`、`/api/test/source-failure` 采集驱动端点）+ 本次运行独占 SQLite；覆盖模式保存、目标归属校验与停用/移除目标/删配置后的归档保留、检查无变化、根评论失败的分项失败与整轮成功、发现失败保留旧窗口、读取不触发采集 |
 | `tests/e2e-production` | 生产装配六路由/404/无自检入口 + fault 装配冒烟 |
 | `tests/e2e-visual` | 票据 14 视觉取证：受控归档 DTO/固定 SVG 图片替身、四宽度截图与布局审计 |
@@ -146,6 +156,7 @@ pnpm playwright test --project=desktop-chromium-archive tests/e2e/replies.spec.t
 | `scripts/compare-visual-baseline.mjs` | 黄金图比较/更新：AE + 1% fuzz + 0.02% 阈值，环境条件不一致时拒绝比较 |
 | `playwright.manage.config.ts` | 隔离集成入口：自起 API 与 dev server，数据库在系统临时目录，不触发真实上游或 OSS |
 | `playwright.location.config.ts` | 精确评论入口的隔离集成：独立端口与临时 SQLite，其余同上 |
+| `playwright.delivery.config.ts` | 票据 10 三进程投递链：用例自起 API/collector/notifier 与本机接收端，页面走生产装配与真实 `/api` 代理 |
 | `playwright.visual.config.ts` | 视觉基准入口：生产构建 + 实际管理 API + 临时 SQLite，自动绕过本机代理 |
 
 ## 装配隔离（确定性检查）

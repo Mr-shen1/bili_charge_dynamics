@@ -22,18 +22,23 @@ uv sync --locked
 
 Node.js `24.21.0`（`.nvmrc`）、pnpm `10.34.6`（`frontend/package.json`）、Python `3.12`（`.python-version`）；直接依赖和传递依赖分别由清单及 `frontend/pnpm-lock.yaml` / `uv.lock` 固定。Python 仅固定到 3.12 系列，记录实跑补丁版本及 uv/Nginx 版本，不声称跨补丁环境字节一致。纯生产 Python 环境可用 `uv sync --locked --no-dev`；测试前须重新 `uv sync --locked` 安装 pytest。前端在本地/CI 构建后仅交付 `frontend/dist/`，不用常驻 Node 或 SSR。生产 `pnpm build` 使用归档 Adapter；`build:mock` / `dev:mock` 与 `dev:fault` 仅用于独立回归，输出到 `frontend/dist-mock/`，不得发布。
 
-### 单 API、单 collector：启动、停止、升级
+### 单 API、单 collector、单通知进程：启动、停止、升级
 
-选择**仓库外、持久卷上的同一个绝对 SQLite 文件路径**；以下 `/srv/bili-monitor/monitor.sqlite` 只是示例，目录需运行用户可写，不放在临时目录或发布目录中。默认 `backend/data/monitor.sqlite` 只适合本地开发。API 与 collector 必须使用同一路径和同一代码版本，勿用硬链接别名；运行一个 API、一个 collector，不设 `--workers`、`--reload` 或 `WEB_CONCURRENCY`，无 Redis/Celery/额外任务服务。
+选择**仓库外、持久卷上的同一个绝对 SQLite 文件路径**；以下 `/srv/bili-monitor/monitor.sqlite` 只是示例，目录需运行用户可写，不放在临时目录或发布目录中。默认 `backend/data/monitor.sqlite` 只适合本地开发。API、collector 与通知进程必须使用同一路径和同一代码版本，勿用硬链接别名；运行一个 API、一个 collector、一个通知进程，不设 `--workers`、`--reload` 或 `WEB_CONCURRENCY`，无 Redis/Celery/额外任务服务。
 
-推荐使用统一托管入口，避免漏启动 collector。先停止旧 API 和 collector 并等待退出，在仓库根目录、已同步依赖和配置好服务端环境的专用终端运行：
+通知路由与本站基址来自仓库外的服务端配置文件（示例见[通知进程契约](../backend/api/notification-process.md#2-配置)，webhook/签名只用虚构占位）：
 
 ```bash
 export BILI_DATABASE_PATH=/srv/bili-monitor/monitor.sqlite
+export BILI_NOTIFICATION_CONFIG=/srv/bili-monitor/notifications.json
 exec .venv/bin/python -m backend.bili_monitor.service --host 127.0.0.1 --port 8000
 ```
 
-此入口只负责进程托管：等待 API 完成迁移并监听，再启动一个独立 collector；数据库路径规范化为绝对路径，Cookie/OSS 环境由两个子进程共同继承。API 仍不内嵌采集调度器。父进程收到 Ctrl-C/TERM 后先等 collector 清理退出，再停 API；任一子进程异常退出会停止另一进程，并以固定错误退出供外部托管处理。不要与下面的手动双进程方式并用。该新增入口本次按用户要求未运行验证，历史 #31 证据不覆盖本次修改。
+统一入口负责三个进程的托管，顺序固定为 **API → collector → 通知进程**：先等 API 完成 `Store.migrate` 并监听成功，再启动独立 collector 与独立通知进程；三者共享同一继承环境与绝对数据库路径。API 与 collector 都不内嵌通知定时器。通知进程仍以数据库旁 `.notifier.lock` 的排他锁保证同一库只有一个投递实例，重复启动会以固定错误退出；托管层不为它做第二套去重。
+
+未设置 `BILI_NOTIFICATION_CONFIG` 时该入口保持原两进程形态（只托管 API＋collector），此时不会投递任何飞书消息；这是兼容旧部署的降级，不是“已接入通知”的证据。
+
+父进程收到 Ctrl-C/TERM 后按 **通知进程 → collector → API** 的顺序停止并逐个等待真正退出：先停止发起外部投递的进程，再让 collector 清理在途工作，最后停 API。任一子进程异常退出都会停止其余进程，并以固定错误（不输出路径、凭据或上游原文）退出，交由 systemd/外部托管处理；不要靠删除锁文件“恢复”。不要与下面的手动方式混用同一数据库。前端仍由 Nginx 单独托管。
 
 如需手动分别托管，各开一个独立终端，均先进入实际仓库根目录。依赖同步完成后直接执行 uv 创建的解释器，`exec` 将该终端 shell 替换成真正的 Python 进程，避免只终止 `uv run` 父进程却留下 Python：
 
@@ -53,29 +58,42 @@ printf 'collector PID=%s\n' "$$"
 exec .venv/bin/python -m backend.bili_monitor.collector
 ```
 
-两端的服务端 OSS 环境须一致，配置名与未配置行为见[后端说明](../../backend/README.md#19-oss-服务端配置)；凭据由维护者在仓库外受限环境注入，应用不自动加载 `.env`。勿输出环境、使用命令行传秘密或交给前端构建环境。来源默认匿名；可选 `BILI_COOKIE_FILE` 只指向仓库外、属主为运行用户的 0600 文件及 0700 直属目录，启动时读取一次。API/collector 启动环境分别配置路径，秘密不放命令参数；当前不新增前端/API 凭据输入。隐藏输入与限制见[后端 Cookie 配置](../../backend/README.md#可选-b站登录-cookie仅服务端)，未配置不变，无效配置拒绝启动。新增配置与手动验证由维护者执行；不自动续期或绕过限制。API/collector 的普通来源请求头采用同一套[初始化配置](../../backend/README.md#来源-client-初始化)，不改变代理、跳转或重试策略，启动不新增上游请求。
-
-停止可在各前台终端 Ctrl-C；或第三个 Bash 终端按已记录并核实的 Python PID 发 TERM，**先 collector 后 API，分别等待真正退出**：
+三端的服务端 OSS 环境须一致，配置名与未配置行为见[后端说明](../../backend/README.md#19-oss-服务端配置)；凭据由维护者在仓库外受限环境注入，应用不自动加载 `.env`。勿输出环境、使用命令行传秘密或交给前端构建环境。来源默认匿名；可选 `BILI_COOKIE_FILE` 只指向仓库外、属主为运行用户的 0600 文件及 0700 直属目录，启动时读取一次。API/collector/通知进程启动环境分别配置路径，秘密不放命令参数；当前不新增前端/API 凭据输入。隐藏输入与限制见[后端 Cookie 配置](../../backend/README.md#可选-b站登录-cookie仅服务端)，未配置不变，无效配置拒绝启动。新增配置与手动验证由维护者执行；不自动续期或绕过限制。三个进程的普通来源请求头采用同一套[初始化配置](../../backend/README.md#来源-client-初始化)，不改变代理、跳转或重试策略，启动不新增上游请求。
 
 ```bash
+# 终端 C：同样在 API 就绪后启动单通知进程；配置必须已在仓库外就绪
+export BILI_DATABASE_PATH=/srv/bili-monitor/monitor.sqlite
+export BILI_NOTIFICATION_CONFIG=/srv/bili-monitor/notifications.json
+printf 'notifier PID=%s\n' "$$"
+exec .venv/bin/python -m backend.bili_monitor.notifier
+```
+
+停止可在各前台终端 Ctrl-C；或最后一个 Bash 终端按已记录并核实的 Python PID 发 TERM，**先通知进程、再 collector、最后 API，分别等待真正退出**：
+
+```bash
+read -r -p 'notifier Python PID: ' notifier_pid
 read -r -p 'collector Python PID: ' collector_pid
 read -r -p 'API Python PID: ' api_pid
-[[ $collector_pid =~ ^[1-9][0-9]*$ && $api_pid =~ ^[1-9][0-9]*$ ]] || exit 1
-ps -p "$collector_pid,$api_pid" -o pid=,comm=
-# 核实为本次启动的两个 Python 进程后执行：
-for pid in "$collector_pid" "$api_pid"; do
+[[ $notifier_pid =~ ^[1-9][0-9]*$ && $collector_pid =~ ^[1-9][0-9]*$ && $api_pid =~ ^[1-9][0-9]*$ ]] || exit 1
+ps -p "$notifier_pid,$collector_pid,$api_pid" -o pid=,comm=
+# 核实为本次启动的三个 Python 进程后执行：
+for pid in "$notifier_pid" "$collector_pid" "$api_pid"; do
   kill -TERM "$pid"
   while kill -0 "$pid" 2>/dev/null; do sleep 0.2; done
 done
 ```
 
-第三终端不是进程父级，不能用 `wait PID`；用退出检测并确认两个前台终端已结束。不要在旧进程尚存时重启、删除锁文件或强制复制覆盖数据库。collector 在退出时取消在途任务并等待清理；内核释放数据库旁 `.collector.lock` 的排他锁，持久未完成工作由下次取得锁的正常 collector 恢复；API 启动不恢复 running。`--once` 仅检查/发现登记，不执行同步，也不恢复中断工作，不是迁移工具或常驻运行替代品。
+控制终端不是进程父级，不能用 `wait PID`；用退出检测并确认三个前台终端已结束。不要在旧进程尚存时重启、删除锁文件或强制复制覆盖数据库。collector 在退出时取消在途任务并等待清理；内核释放数据库旁 `.collector.lock` 的排他锁，持久未完成工作由下次取得锁的正常 collector 恢复；通知进程终止时可能已发出的外部请求不会撤回，租约由下次正常实例按有效期恢复，失效的迟到回写被拒绝；API 启动不恢复 running，也不启动通知定时器。`--once` 仅检查/发现登记或处理一轮到期投递，不执行同步，也不恢复中断工作，不是迁移工具或常驻运行替代品。
 
-`Store.migrate` 在 API 的 ASGI lifespan、collector 启动取得锁后（以及独立通知进程启动时）自动执行，当前 schema 为 v16；空库创建、旧库按序事务升级，失败回滚，未来版本拒绝启动。**升级必须先停两个进程并等退出，再切换到同一新版本、同步锁定依赖，先启动 API 完成迁移并确认 HTTP 就绪，再启动 collector**。普通重启也重用原绝对数据库路径。没有独立迁移 CLI、自动降级或备份能力；迁移失败时停止排查，不改 `user_version`、删库或用旧版本强开新库。
+`Store.migrate` 在 API 的 ASGI lifespan、collector 启动取得锁后（以及独立通知进程启动时）自动执行，当前 schema 为 v21；空库创建、旧库按序事务升级，失败回滚，未来版本拒绝启动。**升级必须先停三个进程并等退出，再切换到同一新版本、同步锁定依赖，先启动 API 完成迁移并确认 HTTP 就绪，再启动 collector 与通知进程**。普通重启重用原绝对数据库路径；通知阶段、起点、基线、事件队列与逐目标成功状态不因重启重建；已成功归档、检查状态、目标入选与近期窗口在迁移中保留。隔离演练（真实三进程写出的库 → 停机 → 副本上重复迁移）见[票据 10 证据](../../.scratch/feishu-notifications/evidence/10-integrated-delivery-readiness.md)。
+
+升级/回退边界：不做自动降级，也不承诺旧版本打开新 schema 的库；回退只允许“前滚恢复”为同一或更高兼容版本。迁移失败时停止排查，不改 `user_version`、删库、用旧版本强开新库或手工删通知表。没有独立迁移 CLI、自动备份或容量治理；维护者应在升级前按现有备份流程自行保留数据库副本（本仓库不执行备份）。
+
+路由修复流程：通知进程启动时读取配置，**运行中改文件不会生效**。编辑仓库外配置修复缺失/错误目标后，只重启通知进程（或按统一入口整体重启），记录保留、阶段与起点不重设、已成功目标不重发、历史不补发；重启后的第一轮会立即复检等待配置的待投递记录。整份配置不可解析时通知进程按启动错误退出，此时没有告警通道，只能由进程托管与日志发现。
 
 ### Nginx、发布和排障
 
-当前 [deploy/nginx.conf](../../deploy/nginx.conf) 放在 `http` 上下文，主配置加载匹配的 `mime.types`；默认 `root /srv/dynamics-viewer/current`、监听 `127.0.0.1:4173`、API 上游 `127.0.0.1:8000`。维护者将 root 改为可读的完整生产发布目录或 `current` 链接；`/`、`/ups/:upId`、`/dynamics/:dynamicId`、`/manage`、`/manage/ups/:upId` 直达/刷新回入口。`/api`、`/api/…` 原样转发 API，不拦截其错误；API 200/404/422、API 不可达的 Nginx 502 都不得成为 SPA 入口（代理 502 可是 Nginx 错误 HTML，不能是应用入口）。缺失资源 404 + `no-store`；其余缓存与资源命名空间规则见下方第 2 节。
+当前 [deploy/nginx.conf](../../deploy/nginx.conf) 放在 `http` 上下文，主配置加载匹配的 `mime.types`；默认 `root /srv/dynamics-viewer/current`、监听 `127.0.0.1:4173`、API 上游 `127.0.0.1:8000`。维护者将 root 改为可读的完整生产发布目录或 `current` 链接；`/`、`/ups/:upId`、`/dynamics/:dynamicId`、`/manage`、`/manage/ups/:upId` 以及飞书消息用到的 `.../comments/:rootId/locate` 与 `.../comments/:rootId/replies/:replyId/locate` 均直达/刷新回入口。`/api`、`/api/…` 原样转发 API，不拦截其错误；API 200/404/422、API 不可达的 Nginx 502 都不得成为 SPA 入口（代理 502 可是 Nginx 错误 HTML，不能是应用入口）。缺失资源 404 + `no-store`；其余缓存与资源命名空间规则见下方第 2 节。
 
 路径/端口不是自动发现：改 API `--port` 须同步改两处 `proxy_pass`；模板不会展开 `BILI_DATABASE_PATH` 或 shell 环境变量。开发 Vite 的 `/api` 代理另见 `vite.config.ts`，不是生产代理。发布按第 3 节保留旧哈希资源，在同一文件系统原子切换入口；不可就地逐个覆盖 `dist/`，或发布 mock/fault 服务。
 
@@ -83,7 +101,7 @@ done
 
 - `nginx -t -c /absolute/path/to/nginx.conf` 失败：核对配置上下文、mime.types、root 可读性、监听端口及权限；启用/停止独立 Nginx 由维护者按实际主配置执行（前台可用 `nginx -c /absolute/path/to/nginx.conf -g 'daemon off;'`）。不 reload 不属于本次运行的系统服务。
 - `/api/manage/ups` 直连 8000 成功而 4173 失败：核对上游端口/地址和生效配置；502 时确认 API 仍在运行及启动是否失败，不用 SPA 回退掩盖。
-- HTTP 200 但空归档：核对两个进程的绝对数据库路径、管理启用配置与 checks/discovery 状态；只有 API 不会自动采集。`Collector failed` 时检查是否已有 collector、目录可写、版本及 OSS 配置完整性，勿删除运行中的锁。
+- HTTP 200 但空归档：核对三个进程的绝对数据库路径、管理启用配置与 checks/discovery 状态；只有 API 不会自动采集。`Collector failed` 时检查是否已有 collector、目录可写、版本及 OSS 配置完整性，勿删除运行中的锁。
 - 页面可用但资源 404：核对 root/current、入口所引用哈希与旧资源保留；失败状态只用脱敏错误码排查，不打印环境或上游响应。
 
 **风险边界**：管理页、写 API、初始化/媒体重试均无鉴权，公网可被读取归档或修改配置；隐藏入口不是保护。公开 OSS URL 可被直接访问/外链，未来登录也不会自动保护图片。秘密仅留服务端仓库外，不进版本库、产物、HTTP/UI/日志。本交付不新增鉴权、服务、云采购、备份或容量治理；损坏、误操作和磁盘/OSS 增长可能丢数据或停止写入。2 核 2GB 只是评估目标，不保证容量、并发或单个节拍内同步完成。
@@ -94,8 +112,11 @@ done
 # 仓库根目录；已完成上面的 nvm/pnpm frozen 安装
 uv sync --locked
 ( cd frontend && pnpm exec playwright install chromium )
-uv run --no-sync pytest backend/tests/test_deployment_processes.py -q
+uv run --no-sync pytest backend/tests/test_deployment_processes.py backend/tests/test_service_processes.py \
+  backend/tests/test_three_process_delivery.py -q
 cd frontend
+# 三进程（实际 API＋独立采集＋独立通知）→ 消息实际链接 → 生产前端装配
+pnpm test:e2e:delivery
 NGINX_BIN=/absolute/path/to/nginx \
 NGINX_MIME_TYPES=/absolute/path/to/mime.types \
 pnpm test:delivery
@@ -104,7 +125,9 @@ cd ..
 
 需要 uv 的 dev 依赖、可执行 Nginx/mime.types、Chromium 及其系统库，且 Nginx `127.0.0.1:4173` 空闲。脚本选择临时空闲 API 端口并仅在临时配置替换上游，不占用维护者的 8000、不修改系统服务；`4173` 已被现有实例或隧道占用时用 `DELIVERY_PORT=<空闲端口>` 换端口，**不要停掉现有实例**。`frontend/scripts/verify-static-delivery.mjs` 托管显式 mock 构建（`frontend/dist-mock`）做阅读/缓存/更新与构建重现/fault 隔离，再通过 `verify-production-deployment.mjs`、`verify-production-delivery.mjs` 启动实际 API/独立 collector 共享临时 SQLite，验证生产六条路由直达/刷新、未知页、只读浏览、API 200/404/422/502、资源 404/cache、入口引用的全部哈希资源、生产构建真实更新与回退、旧哈希保留及 HTTP/UI/产物/日志的虚构秘密扫描。第二个临时 server 只给 `/api/manage/` 加 Basic 保护，用来确认反代 401 不回退 SPA 且前端仍显示固定身份验证提示。生产 `frontend/dist` 不再被 mock 构建覆盖；fault 构建输出到 `dist-mock`，脚本断言它不影响生产产物。给 `test:delivery` 传 Playwright 文件只筛选历史 mock 部分，不跳过生产阶段。
 
-隔离 API 是 `backend.tests.deployment_fixture:create_app --factory`，必须指定 `BILI_DATABASE_PATH`；独立采集入口为 `python -m backend.tests.deployment_fixture --database PATH`，PATH 与 API 相同（均用 uv 环境）。它们复用生产实现，只替换外部来源/下载/上传，不访问真实上游/OSS；上传返回 `https://media.example.invalid/deployment.png`，浏览器仅 route 外部图片传输，不替换 API/Adapter/SQLite。`test_deployment_processes.py` 负责两进程持久化、检查/同步和重启/恢复边界。实际结果见 #31 验收记录；本文不替代执行证据，不把 fixture 公开图当真实 OSS 或真机证据。
+隔离 API 是 `backend.tests.deployment_fixture:create_app --factory`，必须指定 `BILI_DATABASE_PATH`；独立采集入口为 `python -m backend.tests.deployment_fixture --database PATH`，PATH 与 API 相同（均用 uv 环境）。它们复用生产实现，只替换外部来源/下载/上传，不访问真实上游/OSS；上传返回 `https://media.example.invalid/deployment.png`，浏览器仅 route 外部图片传输，不替换 API/Adapter/SQLite。`test_deployment_processes.py` 负责两进程持久化、检查/同步和重启/恢复边界。
+
+三进程组合入口是 `backend.tests.delivery_fixture`：API 为 `create_app --factory`，独立采集为 `python -m backend.tests.delivery_fixture --database PATH`，通知进程仍是生产 `python -m backend.bili_monitor.notifier`，三者共享同一临时 SQLite；受控状态文件可在采集节拍之间切换正文版本、评论/回复集合与分页失败，测试从不直接写归档表。`test_three_process_delivery.py` 覆盖正文/一级评论/后续页回复三链、双 UP 路由、路由修复、阻塞飞书时其他进程写入、真实强杀后的租约恢复与重复实例拒绝；`test_service_processes.py` 覆盖统一入口的启动顺序与收尾。`frontend/tests/e2e-delivery/` 取实际投递消息里的链接，在生产前端装配中验证宽窄屏、刷新、返回、目标不存在与代理语义。实际结果与资源测量见[票据 10 证据](../../.scratch/feishu-notifications/evidence/10-integrated-delivery-readiness.md)；本文不替代执行证据，不把 fixture 文件当真实上游、真实群或真实 OSS 证据。
 
 ## 历史任务 08：静态基线与复现说明
 
