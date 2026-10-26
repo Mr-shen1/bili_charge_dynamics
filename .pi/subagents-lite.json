@@ -1,6 +1,7 @@
 {
   "agent": {
-    "review": "openai-codex/gpt-6.1-sol",
-    "Explore": "opencode-go/deepseek-v4.1-flash"
+    "review": "opencode-go/deepseek-v4.1-flash",
+    "Explore": "opencode-go/deepseek-v4.1-flash",
+    "general-purpose": "opencode-go/deepseek-v4.1-flash"
   }
 }
