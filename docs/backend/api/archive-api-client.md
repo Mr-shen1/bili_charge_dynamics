@@ -246,8 +246,9 @@
 - 结果语义：`{status:'not-found'}` 只表示目标回复不存在或未归档（HTTP 404、非法身份）；传输异常、非 200、DTO 不合法、页码缺失或**目标不在这一页**都是 `{status:'error'}`（可重试）；取消优先返回 `cancelled`。绝不把楼层第一页或页首当作定位成功。
 - 宽屏行为：先用 02 的一级评论定位读取取“含所属根评论”的批次（因此目标根评论在后续批也能显示），再由该根的回复区以目标身份读一次定位；不先读 3 条预览，也不先读第 1 页。目标正文默认展开，加高亮标记（`data-located`／`aria-current`）并定位到该条；分页停在目标页，后续翻页仍是原页内替换；收起回到 3 条预览首屏（按需补读预览）并把所属根评论定位到开头。所属根评论在回复精确定位时只作上下文，不单独高亮或抢占滚动。
 - 窄屏行为：独立楼中楼页的首个读取改为定位，直接显示目标所在页与高亮条目，不再先读第 1 页也不先滚到页面顶部；页头数量、根评论上下文、分页与返回规则不变。
+- 返回与历史恢复：与 02 同属详情族访问。宽屏按访问身份保存含所属根批次、回复区展开、保存页码与阅读位置；返回或历史恢复时按该快照还原（回复区按保存页码实时重读，不重新按目标身份定位），只有新访问才重新定位。窄屏精确根入口进入独立楼中楼时该访问即为其详情来源，返回回到原精确访问而不是替换成普通详情顶部；直达/刷新进入的楼中楼仍无来源，返回仍 replace 到对应动态详情。
 - 异常：目标不存在显示固定提示与“返回动态”入口（替换为对应详情，不留下不可用地址）；临时失败显示既有读取失败与局部重试（重试重发定位，不猜页码）。用户已滚动或离开后迟到的定位结果不抢滚动、不污染新的目标或详情。
-- 证据：前端单元测试 `tests/unit/archive-reader-replies.test.ts`、`tests/unit/reply-reading.test.ts`、`tests/unit/thread-reading.test.ts`；生产装配 + 归档 HTTP 替身 `tests/e2e/reply-location.spec.ts`（桌面）与 `tests/e2e/reply-location-thread.spec.ts`（Pixel 7 视口）；实际 API + 隔离 SQLite `tests/e2e-location/reply-location.spec.ts`（`pnpm test:e2e:location`）。汇总见 [03 证据](../../../.scratch/feishu-notifications/evidence/03-reply-deep-link.md)。
+- 证据：前端单元测试 `tests/unit/archive-reader-replies.test.ts`、`tests/unit/reply-reading.test.ts`、`tests/unit/thread-reading.test.ts`、`tests/unit/locate-return.test.ts`；生产装配 + 归档 HTTP 替身 `tests/e2e/reply-location.spec.ts`（桌面）、`tests/e2e/reply-location-thread.spec.ts`（Pixel 7 视口）与 `tests/e2e/locate-return*.spec.ts`（返回/恢复、图片预览返回、排序切换受控延迟）；实际 API + 隔离 SQLite `tests/e2e-location/reply-location.spec.ts`（`pnpm test:e2e:location`）。汇总见 [03 证据](../../../.scratch/feishu-notifications/evidence/03-reply-deep-link.md)。
 
 ## 飞书通知 02 增量：精确一级评论入口
 
@@ -255,5 +256,6 @@
 - 读取：`DynamicReader.locateComment({dynamicId, rootId, sort, signal})` → `GET /api/archive/dynamics/{id}/comments/{root_id}/location?sort=hot|latest`（批量固定 20，不带 cursor/limit）。返回 `{items, nextCursor}`，第一项必须是目标评论。
 - 结果语义：`{status:'not-found'}` 只表示目标不存在或未归档（HTTP 404、非法身份）；传输异常、非 200 其他状态、DTO 不合法或响应窗口里没有目标都是 `{status:'error'}`（可重试）；取消优先返回 `cancelled`。绝不把页首或邻近评论当作定位成功。
 - 页面行为：首批直接使用定位批次（不先读首批、不渲染全部评论），目标正文默认展开、加高亮标记（`data-located`／`aria-current`）并定位到该条；后续“加载更多评论”沿用定位批次的 `next_cursor`。目标不存在显示固定提示与“返回动态”入口（替换为对应详情，不留下不可用地址）；临时失败显示既有读取失败与重试。用户已滚动后迟到的定位结果仍高亮目标但不抢滚动，定位意图只消费一次。
-- 排序切换仍以同一目标为首批锚点重新定位；普通详情入口与评论区入口行为不变（无锚点时不请求定位端点、不高亮）。该页不保存自己的阅读快照，重新进入按链接重新定位。
-- 证据：前端单元测试 `tests/unit/comment-reading.test.ts`、`tests/unit/archive-reader-comments.test.ts`；生产装配 + 归档 HTTP 替身 `tests/e2e/comment-location.spec.ts`（桌面与 Pixel 7）；实际 API + 隔离 SQLite `tests/e2e-location/comment-location.spec.ts`（`pnpm test:e2e:location`）。汇总见 [02 证据](../../../.scratch/feishu-notifications/evidence/02-root-comment-deep-link.md)。
+- 排序切换仍以同一目标为首批锚点重新定位；普通详情入口与评论区入口行为不变（无锚点时不请求定位端点、不高亮）。
+- 返回与历史恢复：精确入口是同一次详情阅读的访问，不是另一种页面。应用导航把 `/dynamics/{id}`、`/comments/{rootId}/locate`、`/replies/{replyId}/locate` 视为同一详情族，按访问身份保存详情快照（已读批次、排序、展开与阅读位置）并记录楼中楼来源；因此从精确入口进入独立楼中楼再返回、前进后退回到该访问、以及同 URL 的图片预览关闭，都沿用原快照还原并保持位置，不再重新执行主动定位。只有直开、刷新与同一链接的新访问没有快照，才按 URL 主动加载、定位并高亮。
+- 证据：前端单元测试 `tests/unit/comment-reading.test.ts`、`tests/unit/archive-reader-comments.test.ts`、`tests/unit/locate-return.test.ts`；生产装配 + 归档 HTTP 替身 `tests/e2e/comment-location.spec.ts`（桌面与 Pixel 7）与 `tests/e2e/locate-return*.spec.ts`（返回/历史恢复、图片预览返回）；实际 API + 隔离 SQLite `tests/e2e-location/comment-location.spec.ts`（`pnpm test:e2e:location`）。汇总见 [02 证据](../../../.scratch/feishu-notifications/evidence/02-root-comment-deep-link.md)。

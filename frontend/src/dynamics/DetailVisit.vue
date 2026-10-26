@@ -27,6 +27,8 @@ const content = shallowRef<Dynamic | null>(initial?.dynamic ?? null);
 const comments = shallowRef<CommentSnapshot>(initial?.comments ?? emptyCommentSnapshot());
 // 只有新访问才消费评论入口意图；历史恢复按快照位置还原，不再抢到评论区。
 const target = initial ? 'top' : navigation.detailTarget;
+// 精确入口的主动定位同理：只属于新访问；返回/历史恢复按快照位置与已读批次还原。
+const locateOnEntry = !initial;
 const entryAllowed = ref(true);
 const { state, retry } = useDetailRead(reader, props.dynamicId, initial?.dynamic ?? null);
 const noticeStatus = computed(() => state.value.status === 'not-found' ? null : state.value.status);
@@ -68,6 +70,7 @@ const canLocate = computed(() => entryAllowed.value);
       :can-locate="canLocate"
       :locate-root-id="commentTargetId ?? null"
       :locate-reply-id="replyTargetId ?? null"
+      :locate-on-entry="locateOnEntry"
       @update:snapshot="comments = $event"
     />
   </div>

@@ -14,12 +14,15 @@ const listBase = `http://127.0.0.1:${listPort}`;
 // 列表与一级评论用例需要生产装配 + HTTP 传输替身；mock/fault 装配自带归档夹具。
 const archiveSpecs = ['**/list.spec.ts', '**/comments.spec.ts', '**/comment-location.spec.ts', '**/manage.spec.ts'];
 // 宽屏回复只在桌面项目跑；窄屏楼中楼只在移动项目跑（入口按 640px 分支）。
-const desktopArchiveSpecs = [...archiveSpecs, '**/replies.spec.ts', '**/reply-location.spec.ts'];
-const mobileArchiveSpecs = [...archiveSpecs, '**/thread.spec.ts', '**/reply-location-thread.spec.ts'];
+const desktopArchiveSpecs = [...archiveSpecs, '**/replies.spec.ts', '**/reply-location.spec.ts',
+  '**/locate-return.spec.ts'];
+const mobileArchiveSpecs = [...archiveSpecs, '**/thread.spec.ts', '**/reply-location-thread.spec.ts',
+  '**/locate-return-thread.spec.ts'];
 // mock/fault 装配不覆试生产装配的回复与楼中楼用例（它自带夹具且无 HTTP 替身）；
 // static-delivery 只验证真实 Nginx 交付路径，由 E2E_TARGET=nginx 单独跑。
 const mockIgnore = [...archiveSpecs, '**/replies.spec.ts', '**/thread.spec.ts',
-  '**/reply-location.spec.ts', '**/reply-location-thread.spec.ts', '**/static-delivery.spec.ts'];
+  '**/reply-location.spec.ts', '**/reply-location-thread.spec.ts',
+  '**/locate-return.spec.ts', '**/locate-return-thread.spec.ts', '**/static-delivery.spec.ts'];
 
 // mock 装配 + 图片夹具；默认 Linux Chromium，iPhone Safari 必须人工在真机执行。
 export default defineConfig({

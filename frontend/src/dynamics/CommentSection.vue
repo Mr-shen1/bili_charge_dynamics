@@ -23,6 +23,8 @@ const props = defineProps<{
   locateRootId?: string | null;
   /** 精确入口的目标楼中楼回复：根评论只作定位上下文，滚动交给目标回复本身。 */
   locateReplyId?: string | null;
+  /** 本次访问是否仍待执行主动入口定位；历史恢复（已有快照）为 false，按位置还原。 */
+  locateOnEntry?: boolean;
 }>();
 const emit = defineEmits<{ 'update:snapshot': [CommentSnapshot] }>();
 const { reader } = useSession();
@@ -38,7 +40,8 @@ const root = ref<HTMLElement | null>(null);
 // 主动入口/切换排序的定位意图只消费一次：失败/取消后不反复抢用户滚动。
 // 回复精确入口先定位到目标回复，根评论不再单独抢占滚动。
 const locateRootOnly = computed(() => Boolean(props.locateRootId) && !props.locateReplyId);
-let entryPending = props.target === 'comments' || locateRootOnly.value;
+let entryPending = (props.locateOnEntry ?? true)
+  && (props.target === 'comments' || locateRootOnly.value);
 let sortPending = false;
 let releaseSortCancel = (): void => undefined;
 const listKey = computed(() => `${sort.value}:${reloadKey.value}`);

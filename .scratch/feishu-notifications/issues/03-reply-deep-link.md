@@ -6,6 +6,8 @@
 
 **Status:** resolved
 
+> 重开记录（2026-10-26，提前 Spec 审查）：精确入口未进入原详情快照与楼中楼来源体系，返回/历史恢复会丢位置、重复主动定位。已修复并回归，红绿与结果见 [03 证据](../evidence/03-reply-deep-link.md) §8；链接、读取契约与后端行为未改变。
+
 ## 上下文与范围
 
 依据：[实施规格](../spec.md)、[正式需求与设计](../../../docs/design/feishu-notifications.md)、[领域词汇](../../../GLOSSARY.md)。对应用户故事 46–50、57；验收关联 FS-AC-11。
@@ -38,7 +40,11 @@
 已交付楼中楼回复精确链接的完整纵向切片：只读回复定位读取 + 生产前端入口
 `/dynamics/{dynamicId}/comments/{rootId}/replies/{replyId}/locate`。同一条链接在宽屏走动态详情内的原回复区
 （先按 02 契约取含所属根评论的批次，再取目标所在页），在窄屏走原独立楼中楼页直接显示目标所在页；
-两者都不先读首批/第 1 页，展开折叠正文、定位到该条并高亮，分页停在目标页。目标不存在给固定提示与返回动态入口，
+两者都不先读首批/第 1 页，展开折叠正文、定位到该条并高亮，分页停在目标页。
+
+返回与历史恢复（审查重开后补齐）：精确入口与普通详情同属详情族访问，应用导航按访问身份保存详情快照（含所属根批次、回复区展开、保存页码与阅读位置）并记录楼中楼来源；从窄屏精确根页进入独立楼中楼再返回、前进后退回到该访问、同 URL 图片预览关闭，都按快照还原并保持位置，回复区按保存页码实时重读而不再按目标身份重新定位；只有直开、刷新与同链接的新访问才按 URL 主动定位。直达/刷新进入的楼中楼仍无详情来源，返回仍替换为对应动态详情。
+
+目标不存在给固定提示与返回动态入口，
 临时失败可局部重试（重试重发定位，成功后仍把目标带回视口）；用户已滚动后迟到结果不再抢占，
 收起回到 3 条预览并把所属根评论定位到开头。定位读取不访问上游、不写归档、不冻结分页快照；链接只含字符串身份，无凭据。
 
@@ -51,9 +57,11 @@
   窄屏 `frontend/src/pages/CommentThreadPage.vue:31`。
 - 正式契约文档：[归档 API](../../../docs/backend/api/archive-api.md#飞书通知-03-增量楼中楼回复定位读取) ·
   [客户端契约](../../../docs/backend/api/archive-api-client.md#飞书通知-03-增量楼中楼回复精确入口)。
-- 测试与证据：[03 证据](../evidence/03-reply-deep-link.md)（后端定位用例 1 passed、后端全量 885 passed、
+- 测试与证据：[03 证据](../evidence/03-reply-deep-link.md)（首交付：后端定位用例 1 passed、后端全量 885 passed、
   `pnpm check` 271 passed、`pnpm test:e2e` 198 passed、`pnpm test:e2e:location` 4 passed、`test:e2e:manage` 7 passed、
-  `test:e2e:production` 3 passed、`pnpm check:dist` 通过）。
+  `test:e2e:production` 3 passed、`pnpm check:dist` 通过；重开修复后（见证据 §8）：`pnpm check` 275 passed、
+  `pnpm test:e2e` 203 passed、`pnpm test:e2e:location` 4 passed、`pnpm test:e2e:notification` 2 passed、`test:e2e:manage` 7 passed、
+  `test:e2e:production` 3 passed 3 skipped、`pnpm check:dist` 通过）。
 
 ## Comments
 
@@ -71,3 +79,9 @@
   也未为本地并发新增专用端口；与 04/09 同时需要浏览器端口时应由主线程协调。
 - 未覆盖（不属本票或未授权）：真实飞书内置浏览器/手机实机/目标环境运行（11，需授权）；消息模板、群路由与真实投递（04）；
   回复删除提示与视觉基准补充。
+- 提前 Spec 审查（重开）发现并修复的真实回归：详情路径判定只认 `/dynamics/{id}`，精确入口因此不带详情快照与楼中楼来源关系——
+  窄屏精确根页进入楼中楼后返回被替换成普通详情顶部（已读批次、滚动丢失），历史恢复到精确访问又没有快照而重新主动定位；
+  与 spec §7「主动定位完成后…原返回与历史恢复保持」冲突。修复统一详情族判定、按动态核对来源关系、历史恢复不再消费主动定位，
+  并让回复区恢复按保存页码重读（`ReplySection` 的 `activeLocate` 只在 setup 无快照时成立）。
+- 「切换根排序时 CommentSection 根锚滚动与 ReplySection 回复滚动竞争」的未证实风险已用受控延迟浏览器用例验证：
+  根评论定位批次晚到 600ms 与回复页晚到 600ms 两个方向都保持目标回复在视口顶部、页码停在第 2 页，未复现竞争，故未改动排序定位代码。

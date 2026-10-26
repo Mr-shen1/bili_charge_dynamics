@@ -6,6 +6,8 @@
 
 **Status:** resolved
 
+> 重开记录（2026-10-26，提前 Spec 审查）：精确入口未进入原详情快照与楼中楼来源体系，返回/历史恢复会丢位置并重复主动定位。已修复并回归，红绿与结果见 [02 证据](../evidence/02-root-comment-deep-link.md) §7；链接与读取契约未改变。
+
 ## 上下文与范围
 
 依据：[实施规格](../spec.md)、[正式需求与设计](../../../docs/design/feishu-notifications.md)、[领域词汇](../../../GLOSSARY.md)。对应用户故事 45、47–50、57；验收关联 FS-AC-11。
@@ -37,10 +39,11 @@
 
 已交付一级评论精确链接的完整纵向切片：只读定位读取契约 + 生产前端入口 `/dynamics/{dynamicId}/comments/{rootId}/locate`。直达时不先读首批，而是按动态与目标身份取“以目标开头”的 20 条批次，展开折叠正文、定位到该条并高亮；续读沿用定位窗口的游标，目标不存在给固定提示与返回动态入口，临时失败可局部重试，用户已滚动后迟到结果不再抢占。定位读取不访问上游、不写归档、不冻结快照；链接只含字符串身份，无凭据。
 
+- 返回与历史恢复（审查重开后补齐）：精确入口与普通详情同属详情族访问。应用导航按访问身份保存详情快照（已读批次、排序、展开、位置）并记录楼中楼来源；从精确入口进入独立楼中楼再返回、前进后退回到该访问、同 URL 图片预览关闭，都按快照还原并保持位置，不再重复主动定位；只有直开、刷新与同链接的新访问才按 URL 主动定位。
 - 读取契约：`GET /api/archive/dynamics/{id}/comments/{root_id}/location?sort=hot|latest` → `{items[≤20], next_cursor}`（首项即目标；404 不存在、422 非法输入）。实现 `backend/bili_monitor/app.py:233`、`backend/bili_monitor/storage.py:821`。
 - 前端契约：`DynamicReader.locateComment`（`frontend/src/data/contracts.ts:134`、`frontend/src/data/archiveReader.ts:257`）、路由 `frontend/src/app/router.ts:18`、读取挂载 `frontend/src/dynamics/useCommentsRead.ts:32`、高亮 `frontend/src/dynamics/CommentItem.vue:53`、目标定位 `frontend/src/dynamics/CommentSection.vue:51`、返回兜底 `frontend/src/app/navigation.ts:225`。
 - 正式契约文档：[归档 API](../../../docs/backend/api/archive-api.md#飞书通知-02-增量精确一级评论定位读取) · [客户端契约](../../../docs/backend/api/archive-api-client.md#飞书通知-02-增量精确一级评论入口)。
-- 测试与证据：[02 证据](../evidence/02-root-comment-deep-link.md)（后端定位用例 1 passed、后端全量 870 passed、`pnpm check` 263 passed、`pnpm test:e2e` 185 passed、`pnpm test:e2e:location` 2 passed、`test:e2e:manage` 7 passed、`test:e2e:production` 3 passed、`pnpm check:dist` 通过）。
+- 测试与证据：[02 证据](../evidence/02-root-comment-deep-link.md)（首交付：后端定位用例 1 passed、后端全量 870 passed、`pnpm check` 263 passed、`pnpm test:e2e` 185 passed、`pnpm test:e2e:location` 2 passed、`test:e2e:manage` 7 passed、`test:e2e:production` 3 passed、`pnpm check:dist` 通过；重开修复后（见证据 §7）：`pnpm check` 275 passed、`pnpm test:e2e` 203 passed、`pnpm test:e2e:location` 4 passed、`pnpm test:e2e:notification` 2 passed、`test:e2e:manage` 7 passed、`test:e2e:production` 3 passed 3 skipped、`pnpm check:dist` 通过）。
 
 ## Comments
 
@@ -51,3 +54,4 @@
 - 被既有测试纠正的回归：给 `.comment` 加 `scroll-margin-top` 会让宽屏回复“收起后定位根评论开头 = 0”偏移 12px；已移除，说明高亮样式不得改写既有定位语义。另：`live_app` 的新夹具动态最初占用管理用例的未归属动态 `800200`，改为 `800300` 后两侧全绿。
 - 测试项目声明：`tests/e2e/comment-location.spec.ts` 首行声明 `desktop-chromium-archive, mobile-chromium-archive` 并登记进 `archiveSpecs`，由 `pnpm check:e2e-projects` 校验；实际 API 场景另建 `playwright.location.config.ts` + `tests/e2e-location`（独立端口与独占 SQLite，`pnpm test:e2e:location`），这是本票新增的唯一浏览器项目。
 - 未覆盖（不属本票或未授权）：楼中楼回复精确定位（03）、一级评论消息模板与投递（04）；真实飞书内置浏览器/手机实机/目标环境运行（11，需授权）。本票自动化只代表 Linux Chromium 桌面与 Pixel 7 视口模拟。
+- 提前 Spec 审查（重开）发现并修复的真实回归：`frontend/src/app/navigation.ts` 的详情路径判定只认 `/dynamics/{id}`，两个精确入口被当成“无快照、无来源”的页面——`saveDetailSnapshot` 直接丢弃精确页快照、`openThread` 不记来源、`returnFromThread` 只认普通详情路径，于是窄屏精确根页进入楼中楼后返回被替换成普通详情顶部（已读批次与滚动丢失），历史恢复到精确页又因无快照重新主动定位。修复把 `/dynamics/{id}`、`/comments/{rootId}/locate`、`/replies/{replyId}/locate` 统一成详情族：保存快照、按动态核对来源关系、历史恢复不再消费主动定位（`DetailVisit` 的 `locateOnEntry`）。不新建状态系统，仍复用原导航协调器与快照体系；链接、读取契约与后端行为均未改变。

@@ -32,6 +32,11 @@ const emit = defineEmits<{ update: [ReplySnapshot] }>();
 const { reader } = useSession();
 const navigation = useArchiveNavigation();
 const located = computed(() => props.locateReplyId ?? null);
+// 历史恢复已有本回复区的快照（含页码）：按保存页码实时重读即可，
+// 按目标身份重新定位只属于主动入口，恢复时不再重跑。
+// 快照只在 setup 时存在才算恢复：本回复区自己的 update 回写也会让同一个 prop 变成已定义。
+const restored = props.initial !== undefined;
+const activeLocate = restored ? null : located.value;
 // 定位进来的回复区没有读过预览：首个读取走定位，预览等收起时再按需读取。
 const preview = useReplyPreview(
   reader, { dynamicId: props.dynamicId, rootId: props.rootId }, props.initial?.read,
@@ -39,15 +44,15 @@ const preview = useReplyPreview(
 const expanded = ref(Boolean(located.value) || (props.initial?.expanded ?? false));
 const expandedTexts = ref<Record<string, boolean>>({ ...props.initial?.expandedTexts });
 // 已展开的历史恢复按保存页码实时重读；未展开时不启用页码读取。
-// 精确入口首个请求是定位读取（页码由服务端给出），不先读第 1 页。
+// 精确入口新访问的首个请求是定位读取（页码由服务端给出），不先读第 1 页。
 const live = useReplyPage(
   (page, signal) => reader.readReplies({
     dynamicId: props.dynamicId, rootId: props.rootId, page, limit: replyPageSize, signal,
   }),
-  expanded.value && !located.value ? props.initial?.page ?? 1 : null,
-  located.value
+  expanded.value && !activeLocate ? props.initial?.page ?? 1 : null,
+  activeLocate
     ? signal => reader.locateReply({
-      dynamicId: props.dynamicId, rootId: props.rootId, replyId: located.value!, signal,
+      dynamicId: props.dynamicId, rootId: props.rootId, replyId: activeLocate, signal,
     })
     : undefined,
 );
@@ -124,7 +129,7 @@ async function collapse(): Promise<void> {
  * 精确定位：目标正文默认展开，并在 DOM 更新后把目标回复定位到视口。
  * 定位意图只消费一次；成功、失败与「不存在」都会落到目标回复或本区提示上。
  */
-let locatePending = Boolean(props.locateReplyId);
+let locatePending = Boolean(activeLocate);
 let releaseLocate = (): void => undefined;
 
 function locateTarget(): void {

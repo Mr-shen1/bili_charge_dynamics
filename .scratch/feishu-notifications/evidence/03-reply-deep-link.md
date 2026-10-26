@@ -82,6 +82,7 @@ pnpm check:dist          # 两次构建 + 产物隔离通过
 | 直开/刷新 | 分段读取：宽屏先取含所属根评论的一级评论批次（02 契约），再取目标所在回复页；窄屏只读一次目标所在页。两者都不先读首批/第 1 页 |
 | 定位 | 目标正文默认展开、加 `data-located="true"`/`aria-current` 高亮并定位到该条；分页停在目标页；定位意图一次性消费，用户已滚动后迟到结果只高亮不抢滚动 |
 | 异常 | 目标不存在/未归档：固定提示 + “返回动态”（替换为对应详情）；临时失败：既有读取失败提示 + 局部重试（重试重发定位，成功后仍把目标带回视口） |
+| 返回与历史恢复 | 精确入口与普通详情同属详情族访问（`navigation.ts` `detailFamily`）：按访问身份保存含所属根批次、回复区展开、保存页码与位置的详情快照并记楼中楼来源；从窄屏精确根页进入独立楼中楼再返回、前进后退回到该访问、同 URL 图片预览关闭都按快照还原，回复区按保存页码实时重读而不重新按目标身份定位；只有新访问才按 URL 主动定位（见 §8） |
 | 04 用法 | 消息链接按可信服务端基址拼 `{base}/dynamics/{dynamicId}/comments/{rootId}/replies/{replyId}/locate`；只读、无凭据、保留既有代理鉴权 |
 | 05 用法 | 回复事件已带 `(dynamic_id, root_id, reply_id)`，可直接拼上述链接；根/回复任一未就绪时按 04 的等待条件处理，不需要额外参数 |
 
@@ -123,7 +124,7 @@ pnpm check:dist          # 两次构建 + 产物隔离通过
 | 窄屏独立楼中楼入口直接显示指定回复所在页并高亮，不强制重置为第一页 | `reply-location-thread.spec.ts`（直达只读 1 次定位、10 条、`aria-current`、目标在视口顶部、分页 `aria-current=2`）；`thread-reading.test.ts` 同口径单测 |
 | 首次打开、直开、刷新均不依赖旧内存或用户先读过根评论；回复正文在定位时可阅读、不被折叠隐藏 | 两个浏览器用例都含 `reload` 后仍定位；宽屏断言目标正文“收起回复正文”可见（即已展开）与最后一行可见；窄屏楼中楼正文不折叠 |
 | 定位不一次渲染全部回复，原页内替换、后续翻页、收起及普通无精确目标的首屏行为保持 | 定位响应固定 10 条；翻页断言 `page=3` 仍替换；收起回到 3 条预览并定位根评论开头；`replies.spec.ts`/`thread.spec.ts`/`comments.spec.ts` 全量回归通过 |
-| 正常返回与历史恢复符合原有访问规则；定位完成后不持续拉回目标；迟到响应不污染新的动态或楼层 | “刷新后仍从链接定位，完成后不再抢占滚动”（滚动后 300ms 位置不变）；`reply-reading.test.ts` 切换目标链接的迟到结果不覆盖；`reply-location-thread.spec.ts` 定位在途离开后详情无错误、无高亮；窄屏返回仍按无来源规则 replace 为动态详情 |
+| 正常返回与历史恢复符合原有访问规则；定位完成后不持续拉回目标；迟到响应不污染新的动态或楼层 | “刷新后仍从链接定位，完成后不再抢占滚动”（滚动后 300ms 位置不变）；`reply-reading.test.ts` 切换目标链接的迟到结果不覆盖；`reply-location-thread.spec.ts` 定位在途离开后详情无错误、无高亮；直达/刷新进入的楼中楼仍按无来源规则 replace 为动态详情，而从精确根页进入的楼中楼记有来源、返回回到该精确访问（§8） |
 | 目标删除/缺失、归属错误与暂时读取失败有区分；明确提示并提供返回动态入口或局部重试，不静默显示楼层顶部冒充成功 | 单测与浏览器用例各有“不存在 → 提示 + 返回动态”和“503 → 读取失败 + 重试后高亮（并回到目标）”两组；Adapter 层把“窗口里没有目标”判为错误而不是成功 |
 | 归档定位不请求 B 站；链接不含凭据，保持代理保护，不增加回复图片采集或额外上游查询 | `test_reply_location.py` 断言重启后不提供来源 handler 仍成功且数据库字节、冻结页数不变；`e2e-location/reply-location.spec.ts` 断言读取前后 `/api/test/source-requests` 与归档文档完全相等；链接无 query/凭据 |
 | 生产前端＋HTTP 替身覆盖宽窄屏及后续页，真实 API＋隔离数据库证明任意归档回复可定位；回归 02 的一级评论入口 | `reply-location.spec.ts`（桌面）与 `reply-location-thread.spec.ts`（Pixel 7 视口）为替身证据；`e2e-location/reply-location.spec.ts` 为实际 API + 独占 SQLite（首/末页目标、渲染顺序与定位响应一致、窄屏刷新、404 返回）；`comment-location.spec.ts`、`e2e-location/comment-location.spec.ts` 同批通过 |
@@ -148,6 +149,91 @@ cd frontend && pnpm vitest run tests/unit/archive-reader-replies.test.ts \
 # 只跑本票的浏览器场景（单个项目，自动起服务）
 NO_PROXY=127.0.0.1,localhost pnpm playwright test --project=desktop-chromium-archive tests/e2e/reply-location.spec.ts
 NO_PROXY=127.0.0.1,localhost pnpm playwright test --project=mobile-chromium-archive tests/e2e/reply-location-thread.spec.ts
+# 返回与历史恢复（§8）
+pnpm vitest run tests/unit/locate-return.test.ts
+NO_PROXY=127.0.0.1,localhost pnpm playwright test --project=desktop-chromium-archive tests/e2e/locate-return.spec.ts
+NO_PROXY=127.0.0.1,localhost pnpm playwright test --project=mobile-chromium-archive tests/e2e/locate-return-thread.spec.ts
 # 实际 API + 隔离 SQLite
 NO_PROXY=127.0.0.1,localhost pnpm test:e2e:location
 ```
+
+## 8. 重开修复：精确入口的返回与历史恢复（2026-10-26）
+
+提前 Spec 审查发现的真实回归：楼中楼回复精确入口（及同源的一级评论精确入口）没有进入原详情快照与楼中楼来源体系，返回/历史恢复会丢阅读位置、重复主动定位，与 spec §7「主动定位完成后不持续抢占滚动，原返回与历史恢复行为保持」冲突。票据重开后补齐，链接、读取契约与后端行为未改变。
+
+### 8.1 缺陷
+
+- `frontend/src/app/navigation.ts` 的详情路径判定只认 `/dynamics/{id}`：`saveDetailSnapshot` 对精确页直接返回（快照被丢弃）、`openThread` 不记来源、`returnFromThread` 只认普通详情路径。
+- 窄屏精确根页 → 查看楼中楼 → 返回因此走 `replaceWith('/dynamics/{id}')`，替换成普通详情顶部，已读批次与滚动丢失。
+- 历史回到精确访问时没有快照：`DetailVisit` 重新消费入口定位（`detailTarget`）抢回目标；宽屏回复区在恢复时重新按目标身份定位（多一次定位读取）并强制把目标滚到顶部。
+
+### 8.2 修复（复用原导航协调器与快照体系，不新建状态系统）
+
+| 位置 | 改动 |
+| --- | --- |
+| `frontend/src/app/navigation.ts` | 新增 `detailFamily(path)` 统一详情族判定（普通详情 + 两个精确入口）；`isDetailPath` 改用其判定；`returnFromThread` 按动态核对详情族来源 |
+| `frontend/src/dynamics/DetailVisit.vue` | `locateOnEntry = !initial`：主动定位只属于新访问 |
+| `frontend/src/dynamics/CommentSection.vue` | 入口定位是否仍待执行由 `locateOnEntry` 决定，历史恢复按位置还原 |
+| `frontend/src/dynamics/ReplySection.vue` | 快照存在即按保存页码实时重读（不再按目标身份定位），`activeLocate` 只在 setup 无快照时成立，恢复不抢滚动 |
+
+直达/刷新进入的楼中楼仍无详情来源，返回仍 replace；目标不存在/临时失败/显式重试的语义不变（用户点重试仍把目标带回视口，不算抢滚动）。
+
+### 8.3 红 → 绿（TDD，红测跑在修复前的工作树上）
+
+```sh
+# 红：只留新测试、把 src 修复暂存
+cd frontend && pnpm vitest run tests/unit/locate-return.test.ts
+# 3 failed | 1 passed
+# - expected 'detail' to be 'comment-locate'
+# - expected [ '9014', '9014' ] to deeply equal [ '9014' ]（恢复时重新按目标身份定位）
+# - expected [ '5025', '5030', '5025' ] to deeply equal [ '5025', '5030' ]（历史返回重新定位）
+
+NO_PROXY=127.0.0.1,localhost pnpm playwright test --project=mobile-chromium-archive \
+  tests/e2e/locate-return-thread.spec.ts      # 1 failed | 1 passed
+# 红：toHaveURL 期望 /comments/7025/locate$，实际 /dynamics/1001
+
+# 绿
+pnpm vitest run tests/unit/locate-return.test.ts                                  # 4 passed
+NO_PROXY=… pnpm playwright test --project=mobile-chromium-archive \
+  tests/e2e/locate-return-thread.spec.ts                                          # 2 passed
+NO_PROXY=… pnpm playwright test --project=desktop-chromium-archive \
+  tests/e2e/locate-return.spec.ts                                                 # 3 passed
+```
+
+被测试纠正的一处写法：`ReplySection` 不能用 `props.initial === undefined` 判断“是否历史恢复”——本回复区自己的 `update` 回写会让同一个 prop 立刻变成已定义，导致恢复时仍走定位读取（首测红在 `expected [ null ]`）；改为 setup 时一次性判定 `restored`。
+
+### 8.4 浏览器覆盖（生产装配 + 归档 HTTP 替身）
+
+| 用例 | 观察结果 |
+| --- | --- |
+| `locate-return-thread.spec.ts`（Pixel 7）“定位后继续追加并滚动，进入独立楼中楼再返回” | 返回后 URL 仍是精确访问、21 条已读批次、唯一 `data-located`、`scrollY` 等于离开前，定位端点请求数仍为 1 |
+| `locate-return-thread.spec.ts` “刷新精确根入口仍是新访问” | 刷新后重新按 URL 定位：20 条定位批次、目标回到视口顶部、无普通分页请求 |
+| `locate-return.spec.ts`（桌面）“精确入口的图片预览打开再返回” | 关闭同 URL 预览后 20 条批次、唯一高亮与 `scrollY` 都不变，没有新的定位或分页请求 |
+| `locate-return.spec.ts` “切换排序时根评论定位批次晚到 / 目标回复页晚到” | 受控 600ms 延迟的两个方向都保持目标回复在视口顶部、高亮唯一、分页停在第 2 页 |
+| `tests/unit/locate-return.test.ts`（4 条） | 窄屏精确根页进楼中楼返回；历史返回回复精确访问按保存页码（`page=2`）重读且只请求一次；同一动态两个精确访问前进后退各取自己的批次与位置；同链接新访问重新定位 |
+
+### 8.5 未证实风险的验证结论：排序切换时的滚动竞争
+
+“宽屏回复精确入口切换根排序时，`CommentSection` 根锚 `scrollIntoView` 与 `ReplySection` 回复 `scrollIntoView` 可能竞争”在受控延迟下未复现：排序切换会先重建评论列表，回复区的定位读取在列表落地后才挂载并落点，因此两个方向（根批次晚到 600ms、回复页晚到 600ms）都是目标回复最后落点。已补两条浏览器用例作为回归守卫，**未改动**排序定位代码。
+
+### 8.6 重跑结果（合并集成 tip `be8dfa5`（04 通知闭环）后的工作树 `af81252`；其后并入的 `a4c9530` 只改地图/计划/票据文档，代码等价）
+
+```sh
+cd frontend && pnpm check        # typecheck + 275 passed + e2e 项目覆盖一致
+pnpm test:e2e                    # 203 passed（本票新增 5 例：桌面 3 + Pixel 7 2）
+pnpm test:e2e:location           # 4 passed
+pnpm test:e2e:notification       # 2 passed（04 投递产物链接在窄屏刷新后仍定位）
+pnpm test:e2e:manage             # 7 passed
+pnpm test:e2e:production         # 3 passed, 3 skipped
+pnpm check:dist                  # 两次构建 + 产物隔离通过
+uv run --no-sync python -m pytest backend/tests/test_reply_location.py -q   # 1 passed（后端未改动）
+```
+
+合并入集成分支后在合并 tip `894a253`（`--no-ff`，源 `e86ad73`）上只重跑了 `git diff --check`（通过）与 `cd frontend && pnpm check`（typecheck + `275 passed`）；全量 e2e 按计划留票据 10 统一执行，分支内上述结果未被改写。后端零改动（合并 diff 不含后端文件）。
+
+### 8.7 未覆盖与限制
+
+- 宽屏回复精确访问无法在浏览器里经应用内导航产生历史记录（详情页没有指向精确入口的链接；直达只能整页加载，按刷新语义重建内存快照），其返回恢复由 memory-history 单测覆盖；浏览器覆盖真实可达的窄屏“精确根页 → 独立楼中楼 → 返回”。
+- 历史恢复时不重新定位的前提是上次离开前首批读取已完成；若上次仍在 loading/cancelled，恢复会继续读取但不抢滚动，这一边界未单独建立浏览器用例。
+- 恢复按保存页码重读：期间新增/删除回复会让“页码含义”漂移（与 §4.2 既有取舍一致），本期不承诺页码稳定，也不扩展回复删除提示。
+- 未重跑视觉基准；未验证真实飞书客户端、手机实机与目标环境运行（归票据 11）。

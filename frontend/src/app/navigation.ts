@@ -53,8 +53,18 @@ function isListPath(path: string): boolean {
   return path === '/' || /^\/ups\/[^/]+$/.test(path);
 }
 
+/**
+ * 详情族：普通详情与两个精确入口都是同一次动态/评论阅读，共用同一套快照与返回关系。
+ * 精确入口只是这次阅读的主动定位入口，不是另一种页面；楼中楼不在详情族内。
+ * 返回命中的动态 ID 段落，供返回关系核对同一动态。
+ */
+function detailFamily(path: string): string | null {
+  const match = /^\/dynamics\/([^/]+)(?:\/comments\/[^/]+\/locate|\/comments\/[^/]+\/replies\/[^/]+\/locate)?$/.exec(path);
+  return match ? match[1]! : null;
+}
+
 function isDetailPath(path: string): boolean {
-  return /^\/dynamics\/[^/]+$/.test(path);
+  return detailFamily(path) !== null;
 }
 
 function isThreadPath(path: string): boolean {
@@ -207,7 +217,7 @@ export function createArchiveNavigation(): ArchiveNavigation {
   }
 
   /**
-   * 进入独立楼中楼：只有当前记录确实是动态详情时才记来源关系，
+   * 进入独立楼中楼：只有当前记录确实是详情族访问（普通详情或精确入口）时才记来源关系，
    * 因此直达/刷新进入的楼中楼没有可后退的详情来源。
    */
   function openThread(dynamicId: string, rootId: string): void {
@@ -230,8 +240,8 @@ export function createArchiveNavigation(): ArchiveNavigation {
     const entry = current.value;
     const expected = router.resolve({ name: 'detail', params: { dynamicId } }).path;
     const source = entry.sourcePageEntryId ? entries.value.get(entry.sourcePageEntryId) : undefined;
-    // 有有效详情来源时真实后退，保留详情自己的快照、滚动与展开状态。
-    if (source && source.path === expected && isThreadPath(entry.path)) {
+    // 有有效详情来源（普通详情或精确入口访问）时真实后退，保留详情自己的快照、滚动与展开状态。
+    if (source && isThreadPath(entry.path) && detailFamily(source.path) === detailFamily(expected)) {
       void afterPendingPersistence(() => router.back());
       return;
     }
@@ -277,7 +287,7 @@ export function createArchiveNavigation(): ArchiveNavigation {
 
   function saveDetailSnapshot(pageEntryId: string, snapshot: DetailSnapshot): void {
     const entry = entries.value.get(pageEntryId);
-    // 楼中楼不保存自己的阅读快照：每次重新挂载都从第 1 页/顶部开始。
+    // 精确入口与普通详情共用快照；楼中楼另有自己的读取规则，不保存详情快照。
     if (!entry || !isDetailPath(entry.path)) return;
     update(pageEntryId, { detailSnapshot: snapshot });
   }
