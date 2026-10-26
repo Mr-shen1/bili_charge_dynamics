@@ -144,18 +144,26 @@ class Dispatcher:
             self._finish(item, state=outbox.EXPIRED, due_at=self.clock.now(), error="expired")
             notifier_event("delivery_expired", warning=True, role=item["role"], kind=item["kind"])
             return
-        webhook = self.config.webhook(item["uid"], item["dynamic_id"], item["role"])
-        if webhook is None:
-            # 缺目标时保留记录并周期性复检，不每秒执行无效 HTTP，也不转投其他角色。
+        route_error = self.config.route_error(item["uid"], item["dynamic_id"], item["role"])
+        if route_error is not None:
+            # 缺目标/目的地不可用时保留记录并周期性复检，不每秒执行无效 HTTP，也不转投其他角色。
+            # 单条目写错只影响该目标：其他群仍在同一轮投递。
             self._finish(item, state=outbox.WAITING_CONFIG,
-                         due_at=self.clock.now() + CONFIG_RECHECK_SECONDS, error="route_missing")
-            notifier_event("delivery_waiting_config", warning=True, role=item["role"], kind=item["kind"])
+                         due_at=self.clock.now() + CONFIG_RECHECK_SECONDS, error=route_error)
+            notifier_event("delivery_waiting_config", warning=True, role=item["role"], kind=item["kind"],
+                           reason=route_error)
             return
+        webhook = self.config.webhook(item["uid"], item["dynamic_id"], item["role"])
         payload = self._payload(item)
         if payload is None:
+            # 已登记的事件缺模板属于实现缺陷：保留记录并计一次投递失败事实。
             self._finish(item, state=outbox.PENDING, due_at=self.clock.now() + RETRY_CAP_SECONDS,
-                         error="unsupported_kind")
+                         error="unsupported_kind", failure=True)
             return
+        secret = self.config.secret(item["uid"], item["dynamic_id"], item["role"])
+        if secret is not None:
+            # 可选签名只在外发组装：时间戳与签名不进队列、快照或日志。
+            payload = message.signed(payload, secret, self.clock.now())
         try:
             response = await self.client.post(webhook, json=payload)
         except Exception as error:
@@ -168,16 +176,16 @@ class Dispatcher:
             return
         delay = result.retry_after if result.error == "rate_limited" else None
         self._finish(item, state=outbox.PENDING, due_at=self.clock.now() + (delay or _backoff(item["attempts"])),
-                     error=result.error)
+                     error=result.error, failure=True)
         notifier_event("delivery_failed", warning=True, reason=result.error, role=item["role"])
 
-    def _finish(self, item, *, state, due_at, error=None):
+    def _finish(self, item, *, state, due_at, error=None, failure=False):
         with self.store.connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 accepted = outbox.finish_delivery(
                     connection, item["delivery_id"], item["token"], state=state, now=self.clock.now(),
-                    due_at=due_at, error=error)
+                    due_at=due_at, error=error, failure=failure)
                 connection.commit()
             except BaseException:
                 connection.rollback()

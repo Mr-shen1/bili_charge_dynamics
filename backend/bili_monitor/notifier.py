@@ -41,12 +41,16 @@ def notifier_lock(path):
             fcntl.flock(lock, fcntl.LOCK_UN)
 
 
-async def serve(database, config, *, transport=None, poll_seconds=None, once=False):
+async def serve(database, config, *, transport=None, poll_seconds=None, once=False, lease_seconds=None):
     store = Store(database)
     configure_safe_logging()
     with notifier_lock(store.path):
         store.migrate()
-        options = {} if poll_seconds is None else {"poll_seconds": poll_seconds}
+        options = {}
+        if poll_seconds is not None:
+            options["poll_seconds"] = poll_seconds
+        if lease_seconds is not None:
+            options["lease_seconds"] = lease_seconds
         dispatcher = Dispatcher(store, config, transport=transport, **options)
         notifier_event("notifier_started", destinations=len(config.destinations))
         try:
@@ -56,6 +60,20 @@ async def serve(database, config, *, transport=None, poll_seconds=None, once=Fal
                 await dispatcher.run()
         finally:
             await dispatcher.aclose()
+
+
+def seconds(name):
+    """可调的投递时间参数：只接受正数秒，写错直接拒绝启动，不回显原值。"""
+    value = os.environ.get(name)
+    if value is None:
+        return None
+    try:
+        parsed = float(value)
+    except ValueError:
+        raise SystemExit(f"{name} must be a number of seconds") from None
+    if not parsed > 0:
+        raise SystemExit(f"{name} must be a positive number of seconds")
+    return parsed
 
 
 def main():
@@ -74,7 +92,8 @@ def main():
         raise SystemExit(str(error)) from None
 
     async def run():
-        task = asyncio.create_task(serve(arguments.database, config, once=arguments.once))
+        task = asyncio.create_task(serve(arguments.database, config, once=arguments.once,
+                                         lease_seconds=seconds("BILI_NOTIFIER_LEASE_SECONDS")))
         loop = asyncio.get_running_loop()
         for signum in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(signum, task.cancel)

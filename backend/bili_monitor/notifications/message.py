@@ -8,10 +8,16 @@
   仅 HTTP 200 不能判定成功（`{"code": 9499}` 仍是失败）。
 - 自定义机器人请求体不超过 20 KB；单租户单机器人 100 次/分钟、5 次/秒，
   超限可能返回 HTTP 429 或 `11232` 等限流业务码。
+- 可选签名校验：`timestamp`（秒）与密钥拼成 `"{timestamp}\n{secret}"` 作为 HMAC
+  key，对空字符串做 HmacSHA256 后 Base64；`timestamp`/`sign` 加在请求体外层。
+  时间戳需距发送时不超过 1 小时，校验失败返回 `19021`。
 
-本模块只负责快照 → 载荷、序列化大小与响应分类，不打开连接、不读写数据库。
+本模块只负责快照 → 载荷、签名组装、序列化大小与响应分类，不打开连接、不读写数据库。
 """
 
+import base64
+import hashlib
+import hmac
 import json
 import re
 from dataclasses import dataclass
@@ -65,6 +71,17 @@ def encoded(payload):
 
 def archive_href(base_url, path):
     return base_url.rstrip("/") + path
+
+
+def signature(secret, timestamp):
+    """官方签名：`base64(HMAC-SHA256(key="{timestamp}\n{secret}", msg=""))`。"""
+    key = f"{int(timestamp)}\n{secret}".encode("utf-8")
+    return base64.b64encode(hmac.new(key, b"", digestmod=hashlib.sha256).digest()).decode("ascii")
+
+
+def signed(payload, secret, timestamp):
+    """只在外发组装时签名：签名与密钥不进消息快照、队列或日志。"""
+    return {**payload, "timestamp": str(int(timestamp)), "sign": signature(secret, timestamp)}
 
 
 def dynamic_href(base_url, dynamic_id):

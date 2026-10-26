@@ -146,8 +146,8 @@ def query(path, sql, parameters=()):
 
 def deliveries(path):
     rows = query(path, """SELECT d.id AS delivery_id, d.role, d.state, d.attempts, d.due_at,
-        d.lease_until, d.token, d.error, d.sent_at, e.id AS event_id, e.kind, e.uid,
-        e.dynamic_id, e.version, e.snapshot
+        d.lease_until, d.token, d.error, d.sent_at, d.failures, d.last_failed_at,
+        e.id AS event_id, e.kind, e.uid, e.dynamic_id, e.version, e.snapshot
         FROM notification_deliveries d JOIN notification_events e ON e.id = d.event_id
         ORDER BY d.id""")
     for row in rows:

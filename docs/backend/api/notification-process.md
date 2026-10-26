@@ -1,13 +1,13 @@
 # 通知进程与事件投递契约
 
-状态：**01、04、09 票据已交付**（01：动态变化通知首条闭环；04：一级评论通知闭环；09：小时心跳）。本文描述当前代码已实现的服务端契约：进程启动、配置、事件资格、持久状态、消息模板、投递参数与恢复语义。自动化只使用虚构凭据、临时 SQLite、受控接收端与本地替身；**真实飞书群投递、三进程托管与目标环境运行尚未验证**，见[票据 01 证据](../../../.scratch/feishu-notifications/evidence/01-dynamic-change-notification.md)、[票据 04 证据](../../../.scratch/feishu-notifications/evidence/04-root-comment-notification.md)与[票据 09 证据](../../../.scratch/feishu-notifications/evidence/09-hourly-heartbeat.md)。
+状态：**01、04、06、09 票据已交付**（01：动态变化通知首条闭环；04：一级评论通知闭环；06：双群独立投递与故障恢复；09：小时心跳）。本文描述当前代码已实现的服务端契约：进程启动、配置、事件资格、持久状态、消息模板、投递参数与恢复语义。自动化只使用虚构凭据、临时 SQLite、受控接收端与本地替身，故障恢复另用真实子进程与本机 HTTP 接收端；**真实飞书群投递、三进程托管与目标环境运行尚未验证**，见[票据 01 证据](../../../.scratch/feishu-notifications/evidence/01-dynamic-change-notification.md)、[票据 04 证据](../../../.scratch/feishu-notifications/evidence/04-root-comment-notification.md)、[票据 06 证据](../../../.scratch/feishu-notifications/evidence/06-delivery-routing-recovery.md)与[票据 09 证据](../../../.scratch/feishu-notifications/evidence/09-hourly-heartbeat.md)。
 
 业务规则以[飞书通知需求与设计](../../design/feishu-notifications.md)为准，本文只写实现契约。锁定的模块接口：
 
 | 模块 | 职责 |
 | --- | --- |
-| `backend/bili_monitor/notifications/config.py` | 读取路由配置与本站基址；`repr`、日志、队列都不复制 webhook |
-| `notifications/message.py` | 快照 → 飞书富文本载荷（动态变化/新增评论/心跳）、载荷大小预算、业务响应判定 |
+| `backend/bili_monitor/notifications/config.py` | 读取路由配置、本站基址与可选签名密钥；单条目写错只让该目标等待配置；`repr`、日志、队列都不复制 webhook 与密钥 |
+| `notifications/message.py` | 快照 → 飞书富文本载荷（动态变化/新增评论/心跳）、载荷大小预算、可选签名组装、业务响应判定 |
 | `notifications/outbox.py` | 事务发件箱：阶段与评论起点、正文写领取、版本与评论身份去重、候选、事件、目标投递、领取/回写、心跳时段与有效期 |
 | `notifications/delivery.py` | 独立投递：短事务领取 → 事务外请求 → 按领取凭证回写；事件类型 → 模板分派；每轮登记小时心跳 |
 | `notifications/heartbeat.py` | 北京时间时段身份、有效期与本机可观察状态 |
@@ -25,11 +25,12 @@ exec .venv/bin/python -m backend.bili_monitor.notifier
 
 - 独立进程，与 API、collector 使用同一 SQLite；API 与 collector 不内嵌通知定时器，只读 HTTP 不产生事件。
 - 启动时取得数据库旁 `.notifier.lock` 排他锁，重复启动直接失败（`Notifier already running`）；崩溃后锁由内核释放。
-- 启动时执行 `Store.migrate`（当前 schema v18），并重新核验“等待配置”的待投递记录，使修复后的配置无需等待复检周期。
+- 启动时执行 `Store.migrate`（当前 schema v19），并重新核验“等待配置”的待投递记录，使修复后的配置无需等待复检周期（`--once` 只跑一轮到期记录，不做这次复检）。
 - 默认每 **1 秒**领取一轮，单轮有限批量（8）；网络等待、限流与退避都在数据库事务之外。
 - 每轮轮询先按当前时间登记本小时心跳（见 §3.1），再投递到期记录；心跳不单独起时钟进程，也不进 API。
 - 单轮领取/回写失败（如 SQLite 写锁竞争）只记录固定分类并继续下一轮，不停掉投递进程；心跳登记失败同理，不连带停掉业务投递。持续失败告警属票据 08。
-- 等待配置的记录每 60 秒复检一次，每次回写都会累加 `attempts`；心跳在系统群未配置时也会这样累积。这只是“未配置”的诊断计数，**不是**投递失败次数，告警阈值（票据 08）必须按 `state`/`error` 分流，不能直接拿 `attempts` 判“飞书持续投递失败”。心跳过期后该记录转为 `expired`，不再增长。
+- 等待配置的记录每 60 秒复检一次，每次回写都会累加 `attempts`；心跳在系统群未配置时也会这样累积。这只是“未配置”的诊断计数，**不是**投递失败次数。真实失败次数另记在 `failures`/`last_failed_at`（见 §4），票据 08 只能用它们判“飞书持续投递失败”，不能拿 `attempts`。心跳过期后该记录转为 `expired`，不再增长。
+- 同一数据库只允许一个投递实例（`.notifier.lock`）；第二个进程启动即以固定错误退出，崩溃后锁由内核释放，不靠租约猜活。
 - 当前 `backend.bili_monitor.service` 仍只托管 API 与 collector；三进程托管与启停编排属于票据 10。
 
 ## 2. 配置
@@ -44,17 +45,22 @@ exec .venv/bin/python -m backend.bili_monitor.notifier
   "system": "system-room",
   "destinations": {
     "up-room": {"webhook": "https://open.feishu.cn/open-apis/bot/v2/hook/<fictional-token>"},
-    "all-room": {"webhook": "https://open.feishu.cn/open-apis/bot/v2/hook/<fictional-token>"},
+    "all-room": {"webhook": "https://open.feishu.cn/open-apis/bot/v2/hook/<fictional-token>",
+                 "secret": "<fictional-signing-secret>"},
     "system-room": {"webhook": "https://open.feishu.cn/open-apis/bot/v2/hook/<fictional-token>"}
   }
 }
 ```
 
+`secret` 可选：机器人在飞书侧开启“签名校验”时才需要。它只在发送时参与组装 `timestamp`/`sign`，不写入发件箱、消息快照、错误或日志。
+
 - 业务角色是 `up`（UP 群）与 `all`（全员群），两者都按“动态覆盖 → 所属 UP 默认值”解析；某个角色缺失就只为该角色进入“等待配置”，**不跨角色补位**（不会把全员群或系统群当 UP 群，也不会反过来用 UP 群顶全员群）。
 - 系统群是顶层 `system` 单独配置的目标角色：心跳与后续告警只发这一个角色，不按 UP 或动态覆盖解析。`system` 缺失时心跳保留待配置记录，不转投 UP 群或全员群。
 - `base_url` 只接受无凭据、无查询串的 `http(s)` 地址（服务器配置，不从请求头推导）；链接为 `{base_url}/dynamics/{id}`。
-- 目的地只保存引用标识；发件箱、日志、错误与消息快照都不含 webhook。
-- 修复流程：编辑配置文件 → 重启通知进程。记录保留、阶段与基线不重设、已成功目标不重发。
+- 目的地只保存引用标识；发件箱、日志、错误与消息快照都不含 webhook 或签名密钥。队列只记录目标角色（`up`/`all`/`system`），实际地址与密钥在发送时由服务端配置解析——不把凭据副本写进队列。
+- 单条目写错（`webhook` 不是 `http(s)` 地址、`secret` 不是非空字符串、条目不是对象）只把该目的地标成不可用：对应目标进入 `waiting_config` 且错误码为 `route_invalid`，其他群照常投递。引用指向不存在的目的地同样是 `route_invalid`；角色本身没配置才是 `route_missing`。
+- 整份文件不可解析、`base_url` 非法或路由表结构非法仍按启动错误处理（通知进程直接退出，不自动降级）。此时没有告警通道，属票据 08/10 的边界。
+- 修复流程：编辑配置文件 → 重启通知进程。记录保留（`waiting_config` 在启动时立即复检，不用等 60 秒）、阶段与基线不重设、历史不补发、已成功目标不重发。没有热更新：运行中改文件不会生效，也不需要为修复另做 UI。
 - 新增目标角色只在同一 `ups`/`dynamics` 角色表里加键，不新增第二套凭据入口；系统群仍是唯一顶层例外。
 
 ## 3. 事件资格与去重
@@ -106,14 +112,15 @@ exec .venv/bin/python -m backend.bili_monitor.notifier
 | `notification_versions` | 已取得的可信版本，事件去重 |
 | `notification_events` | 稳定事件身份：正文按 `(kind, dynamic_id, version)`，评论按 `(kind, dynamic_id, root_id, comment_id)`；所属 UP、消息快照、生成时间；心跳事件的 `dynamic_id`/`version` 就是小时时段身份，`uid` 为空 |
 | `notification_candidates` | 待补身份/时间的评论：动态、评论、**原阶段令牌**、发现时间；补齐后原子转事件，阶段结束即作废 |
-| `notification_deliveries` | 每目标状态 `waiting_config`/`pending`/`inflight`/`sent`/`expired`、重试时间、领取凭证与租约、脱敏错误、成功时间、`expires_at`（只有心跳写入） |
+| `notification_deliveries` | 每目标状态 `waiting_config`/`pending`/`inflight`/`sent`/`expired`、重试时间、领取凭证与租约、脱敏错误、成功时间、`expires_at`（只有心跳写入）、`failures`（真实投递失败次数）与 `last_failed_at` |
 | `notification_heartbeats` | 心跳时段身份、生成时间、有效期与对应事件；主键即“每小时最多一条” |
 
 - 正文、事件与 UP 群投递记录在**同一事务**提交或回滚；正文失败或未知信号只保留待同步状态。
 - 根评论、评论事件/候选与逐群投递记录同样**同一事务**提交或回滚；一处失败整体回滚，内容与通知不会只留一半。
 - 心跳时段、心跳事件与系统群投递记录同样**同一事务**提交或回滚：时段已存在则什么都不写。
 - 投递结果不回写归档成功 checkpoint；已入队记录不随监控配置删除而级联（新表不引用 `monitors`/`targets`）。
-- 到期领取走 `(state, due_at)` 索引，过期租约走 `(state, lease_until)` 索引；不扫描评论表推断新增。
+- 到期领取走 `(state, due_at)` 索引，过期租约走 `(state, lease_until)` 索引，两条查询各自命中一条索引后再合并排序、限批量（`DUE_QUERY`/`LEASE_QUERY`）；不扫描评论表推断新增。
+- `attempts` 每次回写都 +1（含等待配置复检、过期、租约恢复后的回写），只用于诊断。`failures`/`last_failed_at` 只在外部投递真的失败时增长（网络异常、超时、HTTP/业务失败、限流、缺模板），并与 `state`/`error` 一起构成票据 08 的持久可判定事实：`outbox.delivery_failures(connection)` 只读返回 `role`/`kind`/`uid`/`dynamic_id`/`state`/`error`/`failures`/`last_failed_at`，不含地址、密钥或快照。成功不抹掉历史失败事实，等待配置复检不会伪造失败。
 - 每条领取事务先丢弃已过有效期的心跳（置 `expired`、错误 `expired`），再领到期记录；`expires_at IS NULL` 的业务记录不受影响，因此共用队列不会误删待发业务消息，也没有过期心跳积压。
 
 ## 5. 投递与恢复参数
@@ -122,11 +129,11 @@ exec .venv/bin/python -m backend.bili_monitor.notifier
 | --- | --- | --- |
 | 轮询间隔 | 1 秒 | 提交后通常在下一轮开始投递，不承诺一秒送达 |
 | 单轮批量 | 8 | 有限批量，短事务领取 |
-| 租约 | 30 秒 | 过期可被重新领取；失效凭证不能覆盖新领取结果 |
+| 租约 | 30 秒（`BILI_NOTIFIER_LEASE_SECONDS` 可覆盖） | 过期可被重新领取；失效凭证不能覆盖新领取结果；必须大于请求超时，异常慢网络才需要调大 |
 | 重试退避 | 2 秒起，指数增长，上限 300 秒 | 网络异常、超时、HTTP 失败、平台业务失败都保留记录 |
 | 限流 | 优先使用 `x-ogw-ratelimit-reset`，否则 60 秒 | 官方自定义机器人 100 次/分、5 次/秒，可能返回 HTTP 429 或 `11232` |
 | 请求超时 | 10 秒 | 事务外执行，慢请求不阻塞采集与数据库写入 |
-| 等待配置复检 | 60 秒，且进程启动时立即复检 | 缺目标时不做无效 HTTP |
+| 等待配置复检 | 60 秒，且进程启动时立即复检 | 缺目标或目的地不可用时不做无效 HTTP，记录与快照保留 |
 | 心跳时段 | 每小时第 40 分钟窗口（Asia/Shanghai `:40:00`–`:40:59`） | 时段 `YYYY-MM-DDTHH` 主键去重，同小时不重复；窗口外不生成（`:41`–`:59` 冷启动不补本小时） |
 | 心跳有效期 | 至下一个 `:40`（1 小时） | 过期置 `expired`，不发 HTTP；业务消息无有效期 |
 
@@ -135,14 +142,17 @@ exec .venv/bin/python -m backend.bili_monitor.notifier
 - 载荷：`POST {webhook}`，`{"msg_type": "post", "content": {"post": {"zh_cn": {"content": [[...]]}}}}`；只使用 `text` 与 `a` 节点，不使用 `at`/`img` 标签，来源文本不会变成提及或图片。
 - 动态变化：两段文本 + `{"tag": "a", "text": "查看动态", "href": {base}/dynamics/{id}}`。
 - 新增评论（一级评论，05 的回复共用同一模板）：`动态：{标题或动态 ID}` / `评论人：【{昵称或作者 UID}】` / `时间：{北京时间到秒}` / `内容：{原文，按来源换行分段}` / `链接：查看该条评论` → `{base}/dynamics/{id}/comments/{rootId}/locate`（与 02 交付的精确入口一致，不是楼中楼页）。正文为空但有归档媒体时显示 `【图片评论，点击链接查看】`；不附父评论全文、不上传图片。
-- 成功判定：HTTP 200 **且**响应体业务码 `code == 0`（旧版 webhook 兼容 `StatusCode == 0`）；`{"code": 9499}`、非 JSON、HTTP 500 都算失败并保留重试。
+- 成功判定：HTTP 200 **且**响应体业务码 `code == 0`（旧版 webhook 兼容 `StatusCode == 0`）；`{"code": 9499}`、非 JSON、HTTP 500 都算失败并保留重试。HTTP 200 也可能只是限流（`11232`/`11233`/`230020`/`99991400`）或签名不匹配（`19021`），都不标成功。
+- 可选签名：`timestamp`（秒）与密钥拼成 `"{timestamp}\n{secret}"` 作为 HMAC-SHA256 的 key，对空字符串计算后 Base64；`timestamp`/`sign` 加在请求体外层，消息结构不变。时间戳需距发送时不超过 1 小时，因此每次重试都重新计算。
+- 限流：优先使用响应头 `x-ogw-ratelimit-reset`（秒），缺失时退避 60 秒；官方频控为单租户单机器人 100 次/分钟、5 次/秒，超限返回 HTTP 429 或 `11232` 等业务码。
 - 载荷上限：自定义机器人请求体 20 KB，按序列化后的 UTF-8 长度计算，标题与昵称等字段都计入预算。超限时评论先只裁正文并追加 `……内容过长，点击链接查看全文`，仍超限才依次收窄昵称与标题；链接与时间不被截掉，也不拆多条消息。裁掉的只是展示值，不回写归档原文。
 
 ## 7. 迁移
 
-- 空库与旧库都迁移到 `user_version = 18`；通知表与索引可重入（`IF NOT EXISTS` 与列存在性检查），已是 v18 的库重复执行不变。
+- 空库与旧库都迁移到 `user_version = 19`；通知表与索引可重入（`IF NOT EXISTS` 与列存在性检查），已是 v19 的库重复执行不变。
 - v16（01 交付形态）库原地升级：发件箱里已入队的事件与投递记录、状态、快照全部保留；业务记录升级后 `expires_at` 为 `NULL`，仍按原规则重试。
 - v17（09 交付形态）库原地升级到 v18：补 `notification_events.root_id/comment_id` 与评论事件唯一索引、`notification_candidates`、`notification_phases.comment_started_at`；已有阶段以升级时刻填 `comment_started_at`（历史评论静默），不会重复迁移时重设（只补 `NULL`）。
+- v18（04 交付形态）库原地升级到 v19：补 `notification_deliveries.failures/last_failed_at`，旧记录默认 0 次失败、无失败时间（不倒推历史 `attempts`），并确保到期/租约两条索引存在。
 - 旧库保留归档、观察、checkpoint、入选令牌与近期窗口状态；已成功归档的已选目标以现有可信版本作基线，不补发历史；升级不会凭空生成历史时段的心跳。
 - 迁移失败整体回滚（含版本号），可修复后重试；未来版本仍拒绝启动。
 
@@ -151,4 +161,5 @@ exec .venv/bin/python -m backend.bili_monitor.notifier
 - 楼中楼回复事件（05）、告警与 30 分钟节流（08）、投递管理 UI：未实施。
 - 心跳与告警共存的节流隔离、三进程统一托管、真实飞书群投递、飞书内置浏览器/手机链接验证：票据 10、11（另需授权）。
 - 心跳只在通知进程存活时生成：进程被强杀或整机离线期间错过的时段不补发，也不承诺离线期间的告警/心跳可达性。
-- 秒级送达、跨群同时送达、飞书端绝对一次送达均不承诺；飞书已接收但响应丢失时可能重复。1 秒轮询与第 40 分钟偏移都是调度节拍，不是精准送达时刻。
+- 秒级送达、跨群同时送达、飞书端绝对一次送达均不承诺；飞书已接收但响应丢失（超时/连接中断）时按失败重试，重试可能在群里形成重复消息。1 秒轮询与第 40 分钟偏移都是调度节拍，不是精准送达时刻。
+- 告警阈值与 30 分钟节流（08）只消费 `failures`/`last_failed_at`/`state`/`error`，本契约不实现告警策略；整份配置非法时的启动失败也没有告警通道。

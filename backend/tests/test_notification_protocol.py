@@ -12,6 +12,7 @@ import pytest
 
 from backend.bili_monitor.notifications import Dispatcher, NotificationConfig, NotificationConfigError
 from backend.bili_monitor.notifications import delivery, message
+from backend.tests.management_support import UID
 from backend.tests.notification_support import BASE_URL, DYNAMIC, WEBHOOK, config_mapping, message_text
 
 
@@ -86,12 +87,26 @@ def test_config_rejects_credential_bearing_or_malformed_values_without_echo():
     for mapping in (
         {"base_url": "https://user:secret@archive.example", "destinations": {}},
         {"base_url": "archive.example", "destinations": {}},
-        {"base_url": BASE_URL, "destinations": {"up-room": {"webhook": "file:///secret"}}},
-        {"base_url": BASE_URL, "destinations": {"up-room": {}}},
+        {"base_url": BASE_URL, "destinations": []},
+        {"base_url": BASE_URL, "ups": {"900719925474099312345": "up-room"}, "destinations": {}},
     ):
         with pytest.raises(NotificationConfigError) as failure:
             NotificationConfig.from_mapping(mapping)
         assert "secret" not in str(failure.value)
+
+
+def test_single_malformed_destination_only_pauses_that_target():
+    """整份配置可用，只有写错的目的地等修复：其他群不受牵连。"""
+    for entry in ({"webhook": "file:///secret"}, {}, "up-room", {"webhook": WEBHOOK, "secret": 5}):
+        loaded = NotificationConfig.from_mapping(
+            {"base_url": BASE_URL, "ups": {UID: {"up": "up-room"}}, "destinations": {"up-room": entry}})
+        assert (loaded.webhook(UID, DYNAMIC, "up"), loaded.route_error(UID, DYNAMIC, "up")) == (
+            None, "route_invalid")
+    loaded = NotificationConfig.from_mapping({"base_url": BASE_URL, "ups": {UID: {"up": "nope"}}})
+    assert loaded.route_error(UID, DYNAMIC, "up") == "route_invalid"
+    loaded = NotificationConfig.from_mapping({"base_url": BASE_URL, "ups": {UID: {}}})
+    assert (loaded.webhook(UID, DYNAMIC, "up"), loaded.route_error(UID, DYNAMIC, "up")) == (
+        None, "route_missing")
 
 
 def test_documented_runtime_defaults_are_finite_and_one_second_polling():
@@ -184,3 +199,37 @@ def test_over_long_comment_clips_only_the_body_and_keeps_the_link():
     assert message.LONG_CONTENT in text
     # 一条消息内截断，不拆多条刷屏；其余字段与链接保持存在。
     assert text.startswith("动态：") and "评论人：【" in text and "时间：2027-01-01 00:00:00" in text
+
+
+def test_signature_follows_the_official_hmac_construction():
+    """官方签名校验：`base64(HMAC-SHA256(key="{timestamp}\\n{secret}", msg=""))`，秒级时间戳。"""
+    import base64
+    import hashlib
+    import hmac
+
+    expected = base64.b64encode(hmac.new(b"1599360473\nfake-signing-secret", b"",
+                                         digestmod=hashlib.sha256).digest()).decode()
+    assert message.signature("fake-signing-secret", 1599360473) == expected
+
+    signed = message.signed({"msg_type": "text", "content": {"text": "虚构"}}, "fake-signing-secret", 1599360473)
+    assert signed["timestamp"] == "1599360473"
+    assert signed["sign"] == expected
+    # 只在请求体外层追加两个字段，消息结构不变。
+    assert signed["msg_type"] == "text" and signed["content"] == {"text": "虚构"}
+
+
+def test_config_without_secret_never_adds_signature_fields():
+    loaded = NotificationConfig.from_mapping(config_mapping(up=WEBHOOK))
+    assert loaded.secret("900719925474099312345", DYNAMIC, "up") is None
+    assert "fake-signing-secret" not in repr(loaded)
+
+
+def test_business_rate_limit_code_and_signature_failure_are_classified():
+    """HTTP 200 也可能被限流（业务码 11232）；签名校验失败（19021）不是成功。"""
+    limited = message.outcome(200, None, json.dumps({"code": 11232, "msg": "rate limited"}).encode())
+    assert (limited.sent, limited.error, limited.retry_after) == (False, "rate_limited", 60.0)
+    rejected = message.outcome(200, None, json.dumps(
+        {"code": 19021, "msg": "sign match fail or timestamp is not within one hour from current time"}).encode())
+    assert (rejected.sent, rejected.error) == (False, "platform_rejected")
+    assert message.outcome(200, None, b"{}").sent is False
+    assert message.outcome(200, None, json.dumps({"StatusCode": 0}).encode()).sent is True

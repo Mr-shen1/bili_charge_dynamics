@@ -106,6 +106,20 @@ def migrate(connection):
         activate(connection, row["uid"], row["id"], row["token"])
 
 
+def migrate_delivery_facts(connection):
+    """v19 投递失败事实：`failures` 只统计真实失败，供 08 判定“飞书持续投递失败”。
+
+    旧库降级副本可能已带这些列（既有测试会重放旧迁移号），因此按「缺失才建」。
+    旧记录默认为 0 次失败、没有失败时间：不把历史 `attempts`（含等待配置复检）
+    倒推成失败次数。
+    """
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(notification_deliveries)")}
+    if "failures" not in columns:
+        connection.execute("ALTER TABLE notification_deliveries ADD COLUMN failures INTEGER NOT NULL DEFAULT 0")
+    if "last_failed_at" not in columns:
+        connection.execute("ALTER TABLE notification_deliveries ADD COLUMN last_failed_at REAL")
+
+
 def has_schema(connection):
     return connection.execute(
         "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'notification_phases'").fetchone() is not None
@@ -261,16 +275,30 @@ def recheck_waiting_config(connection, now):
     connection.execute("UPDATE notification_deliveries SET due_at = ? WHERE state = ?", (now, WAITING_CONFIG))
 
 
+# 领取查询拆成两条：到期记录走 (state, due_at) 索引，过期租约走 (state, lease_until)
+# 索引。合成一个带 OR 的语句会让计划退化成扫描。
+DUE_QUERY = """SELECT d.id AS delivery_id, d.role, d.attempts, d.expires_at, d.due_at, e.kind, e.uid,
+        e.dynamic_id, e.version, e.snapshot
+    FROM notification_deliveries d JOIN notification_events e ON e.id = d.event_id
+    WHERE d.state IN (?, ?) AND d.due_at <= ?
+    ORDER BY d.due_at, d.id LIMIT ?"""
+LEASE_QUERY = """SELECT d.id AS delivery_id, d.role, d.attempts, d.expires_at, d.due_at, e.kind, e.uid,
+        e.dynamic_id, e.version, e.snapshot
+    FROM notification_deliveries d JOIN notification_events e ON e.id = d.event_id
+    WHERE d.state = ? AND d.lease_until <= ?
+    ORDER BY d.lease_until, d.id LIMIT ?"""
+
+
 def claim_due(connection, now, limit, lease_seconds):
-    """短事务领取：先丢弃过期心跳，再领到期待投、等待配置复检与过期租约。"""
+    """短事务领取：先丢弃过期心跳，再领到期待投、等待配置复检与过期租约。
+
+    两条查询各自命中一条索引，结果合并后仍按到期时间排序并限制批量，避免全表扫描
+    和一次性抢光同一秒内堆积的记录。
+    """
     expire_overdue(connection, now)
-    rows = connection.execute("""SELECT d.id AS delivery_id, d.role, d.attempts, d.expires_at, e.kind, e.uid,
-            e.dynamic_id, e.version, e.snapshot
-        FROM notification_deliveries d JOIN notification_events e ON e.id = d.event_id
-        WHERE (d.state IN (?, ?) AND d.due_at <= ?)
-           OR (d.state = ? AND d.lease_until <= ?)
-        ORDER BY d.due_at, d.id LIMIT ?""",
-        (PENDING, WAITING_CONFIG, now, INFLIGHT, now, limit)).fetchall()
+    rows = connection.execute(DUE_QUERY, (PENDING, WAITING_CONFIG, now, limit)).fetchall()
+    rows = list(rows) + connection.execute(LEASE_QUERY, (INFLIGHT, now, limit)).fetchall()
+    rows = sorted(rows, key=lambda row: (row["due_at"], row["delivery_id"]))[:limit]
     claimed = []
     for row in rows:
         token = uuid4().hex
@@ -288,15 +316,35 @@ def claim_due(connection, now, limit, lease_seconds):
     return claimed
 
 
-def finish_delivery(connection, delivery_id, token, *, state, now, due_at=None, error=None):
-    """按领取凭证回写；失效凭证不能覆盖新领取结果。"""
+def finish_delivery(connection, delivery_id, token, *, state, now, due_at=None, error=None, failure=False):
+    """按领取凭证回写；失效凭证不能覆盖新领取结果。
+
+    `failures` 与 `attempts` 分开记：`attempts` 每次回写都 +1（包括等待配置的周期性
+    复检），`failures` 只在外部投递真的失败时 +1，并留下最后一次失败时间。票据 08
+    只能用后者判定“飞书持续投递失败”，不能用 `attempts`。
+    """
     sent_at = now if state == SENT else None
     return connection.execute("""UPDATE notification_deliveries
         SET state = ?, token = NULL, lease_until = NULL, error = ?, due_at = ?, sent_at = ?,
-            attempts = attempts + 1
+            attempts = attempts + 1, failures = failures + ?,
+            last_failed_at = CASE WHEN ? THEN ? ELSE last_failed_at END
         WHERE id = ? AND token = ? AND state = ?""",
-        (state, error, now if due_at is None else due_at, sent_at,
-         delivery_id, token, INFLIGHT)).rowcount == 1
+        (state, error, now if due_at is None else due_at, sent_at, int(bool(failure)),
+         int(bool(failure)), now, delivery_id, token, INFLIGHT)).rowcount == 1
+
+
+def delivery_failures(connection, limit=50):
+    """只读失败事实：给票据 08 的最小接口，本模块不实现告警阈值与节流。
+
+    只返回真实失败过的逐目标记录（`failures > 0`），不包含 webhook、签名或消息快照。
+    已成功目标也保留历史失败次数与最后失败时间，成功不被用来抹掉故障事实。
+    """
+    return connection.execute("""SELECT d.role AS role, e.kind AS kind, e.uid AS uid,
+            e.dynamic_id AS dynamic_id, d.state AS state, d.error AS error,
+            d.failures AS failures, d.last_failed_at AS last_failed_at
+        FROM notification_deliveries d JOIN notification_events e ON e.id = d.event_id
+        WHERE d.failures > 0
+        ORDER BY d.last_failed_at DESC, d.id LIMIT ?""", (limit,)).fetchall()
 
 
 def _epoch(value):

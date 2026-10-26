@@ -122,7 +122,7 @@ class Store(CheckStore, DiscoveryStore):
             connection.execute("BEGIN IMMEDIATE")
             try:
                 version = connection.execute("PRAGMA user_version").fetchone()[0]
-                if version > 18:
+                if version > 19:
                     raise RuntimeError("Unsupported database schema version")
                 if version == 0:
                     connection.execute("""CREATE TABLE identities (
@@ -266,7 +266,10 @@ class Store(CheckStore, DiscoveryStore):
                 if version < 18:
                     # 评论通知增量（事件身份、候选、评论起点）建在 09 的心跳 schema 之后。
                     outbox.migrate_comments(connection)
-                connection.execute("PRAGMA user_version = 18")
+                if version < 19:
+                    # 06 投递失败事实：failures/last_failed_at 与到期/租约索引。
+                    outbox.migrate_delivery_facts(connection)
+                connection.execute("PRAGMA user_version = 19")
                 connection.commit()
             except BaseException:
                 connection.rollback()

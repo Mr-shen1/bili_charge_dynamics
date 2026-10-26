@@ -10,7 +10,12 @@
 
 动态覆盖优先于所属 UP 的默认角色；两者都缺失时该目标进入等待配置，
 不会转投其他角色。系统群单独配置（顶层 `system`），告警与心跳只发这一个角色。
-`repr`、日志和发件箱都不复制 webhook。
+`repr`、日志和发件箱都不复制 webhook 或签名密钥。
+
+单条目写错（webhook 不是 http 地址、`secret` 不是非空字符串、条目不是对象）只把
+该目的地标成不可用：对应目标进入等待配置（`route_invalid`），其他群照常投递。
+整份文件不可解析、`base_url` 或路由表结构非法仍按配置错误处理——此时通知进程
+不启动，也没有告警通道（属票据 08/10 的边界）。
 """
 
 import json
@@ -37,12 +42,36 @@ def _base_url(value):
 
 
 def _webhook(value):
+    """目的地地址不可用时返回 None（单条目错误），由目标自己等待配置。"""
     if not isinstance(value, str) or not value.strip():
-        raise NotificationConfigError("Invalid notification destination")
+        return None
     parsed = urlsplit(value.strip())
     if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username is not None:
-        raise NotificationConfigError("Invalid notification destination")
+        return None
     return value.strip()
+
+
+def _secret(value):
+    """可选的签名密钥：只在外发时组装签名，不进入队列、日志或消息快照。
+
+    非空字符串以外的东西算写错，由调用方把该目的地标成不可用。
+    """
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return value.strip()
+
+
+def _destination(entry):
+    """单个目的地条目：地址或密钥写错都只标成不可用，不影响其他目的地。"""
+    if not isinstance(entry, dict):
+        return {"webhook": None, "secret": None}
+    webhook = _webhook(entry.get("webhook"))
+    secret = None
+    if entry.get("secret") is not None:
+        secret = _secret(entry.get("secret"))
+        if secret is None:
+            webhook = None
+    return {"webhook": webhook, "secret": secret}
 
 
 def _section(value, name):
@@ -75,9 +104,9 @@ def _destinations(value):
         raise NotificationConfigError("Invalid notification destinations")
     destinations = {}
     for reference, entry in value.items():
-        if not isinstance(reference, str) or not reference or not isinstance(entry, dict):
+        if not isinstance(reference, str) or not reference:
             raise NotificationConfigError("Invalid notification destinations")
-        destinations[reference] = {"webhook": _webhook(entry.get("webhook"))}
+        destinations[reference] = _destination(entry)
     return destinations
 
 
@@ -98,11 +127,12 @@ class NotificationConfig:
     def from_mapping(cls, value):
         if not isinstance(value, dict):
             raise NotificationConfigError("Invalid notification config")
+        destinations = value.get("destinations")
         return cls(
             _base_url(value.get("base_url")),
             _section(value.get("ups"), "ups"),
             _section(value.get("dynamics"), "dynamics"),
-            _destinations(value.get("destinations") or {}),
+            _destinations({} if destinations is None else destinations),
             _reference(value.get("system")),
         )
 
@@ -126,6 +156,24 @@ class NotificationConfig:
         reference = self.reference(uid, dynamic_id, role)
         return self.destinations.get(reference) if reference is not None else None
 
+    def route_error(self, uid, dynamic_id, role):
+        """该目标为什么不能投递：缺路由（`route_missing`）或目的地不可用（`route_invalid`）。
+
+        不跨角色补位：角色自身缺失只让这一目标等待配置，其他目标不受影响。
+        """
+        reference = self.reference(uid, dynamic_id, role)
+        if reference is None:
+            return "route_missing"
+        destination = self.destinations.get(reference)
+        if destination is None or destination.get("webhook") is None:
+            return "route_invalid"
+        return None
+
     def webhook(self, uid, dynamic_id, role):
         destination = self.destination(uid, dynamic_id, role)
         return destination["webhook"] if destination is not None else None
+
+    def secret(self, uid, dynamic_id, role):
+        """签名密钥只在发送时读取，绝不写入发件箱或消息快照。"""
+        destination = self.destination(uid, dynamic_id, role)
+        return destination.get("secret") if destination is not None else None

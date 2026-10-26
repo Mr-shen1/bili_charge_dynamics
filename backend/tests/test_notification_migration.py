@@ -56,7 +56,7 @@ def test_existing_database_keeps_archive_and_checks_and_reuses_trusted_baseline(
 
     Store(path).migrate()
 
-    assert version(path) == 18
+    assert version(path) == 19
     assert set(NOTIFICATION_TABLES) <= tables(path)
     assert Store(path).read_archive(DYNAMIC) == before["archive"]
     assert Store(path).read_checks(UID) == before["checks"]
@@ -67,7 +67,7 @@ def test_existing_database_keeps_archive_and_checks_and_reuses_trusted_baseline(
     assert events(path) == [] and deliveries(path) == []
 
     Store(path).migrate()
-    assert version(path) == 18
+    assert version(path) == 19
     assert len(query(path, "SELECT token FROM notification_phases")) == 1
     assert events(path) == []
 
@@ -88,7 +88,7 @@ def test_failed_notification_migration_rolls_back_and_can_retry(tmp_path):
     with sqlite3.connect(path) as connection:
         connection.execute("DROP TABLE notification_phases")
     Store(path).migrate()
-    assert version(path) == 18
+    assert version(path) == 19
     assert set(NOTIFICATION_TABLES) <= tables(path)
     assert Store(path).read_archive(DYNAMIC) == before["archive"]
 
@@ -96,7 +96,7 @@ def test_failed_notification_migration_rolls_back_and_can_retry(tmp_path):
 def test_fresh_database_migrates_without_phases_or_events(tmp_path):
     path = tmp_path / "fresh.sqlite"
     Store(path).migrate()
-    assert version(path) == 18
+    assert version(path) == 19
     assert set(NOTIFICATION_TABLES) <= tables(path)
     assert query(path, "SELECT * FROM notification_phases") == []
     assert query(path, "SELECT * FROM notification_deliveries") == []
@@ -139,7 +139,7 @@ def test_upgrade_never_backfills_already_archived_comments(tmp_path):
         connection.execute("PRAGMA user_version = 16")
 
     Store(path).migrate()
-    assert version(path) == 18
+    assert version(path) == 19
     phase = query(path, "SELECT started_at, comment_started_at FROM notification_phases")[0]
     # 已有的 01 起点保留为正文基线，但评论起点从升级时刻重新建立。
     assert phase["comment_started_at"] > phase["started_at"]
@@ -191,7 +191,7 @@ def test_v16_outbox_is_upgraded_in_place_with_heartbeat_state(tmp_path):
     heartbeat_database(path)
     before_deliveries = deliveries(path)
     assert [(row["kind"], row["state"]) for row in before_deliveries] == [("dynamic_changed", "pending")]
-    assert version(path) == 18
+    assert version(path) == 19
 
     # 退回 01 交付时的 v16 形状：没有心跳时段表，投递表也没有有效期列。
     with sqlite3.connect(path) as connection:
@@ -201,7 +201,7 @@ def test_v16_outbox_is_upgraded_in_place_with_heartbeat_state(tmp_path):
 
     Store(path).migrate()
 
-    assert version(path) == 18
+    assert version(path) == 19
     assert "notification_heartbeats" in tables(path)
     with sqlite3.connect(path) as connection:
         columns = {row[1] for row in connection.execute("PRAGMA table_info(notification_deliveries)")}
@@ -213,3 +213,32 @@ def test_v16_outbox_is_upgraded_in_place_with_heartbeat_state(tmp_path):
         ("dynamic_changed", "pending", None)]
     assert len(events(path)) == 1
     assert query(path, "SELECT * FROM notification_heartbeats") == []
+
+
+def test_v18_outbox_gains_failure_facts_without_backfilling_attempts(tmp_path):
+    """v18 → v19：旧记录默认 0 次失败，不把历史 attempts（含等待配置复检）当失败次数。"""
+    path = tmp_path / "v18.sqlite"
+    heartbeat_database(path)
+    with sqlite3.connect(path) as connection:
+        connection.execute("ALTER TABLE notification_deliveries DROP COLUMN failures")
+        connection.execute("ALTER TABLE notification_deliveries DROP COLUMN last_failed_at")
+        connection.execute("PRAGMA user_version = 18")
+        # 旧库里的记录已有 attempts 计数（含等待配置复检）。
+        connection.execute("UPDATE notification_deliveries SET attempts = 7, state = 'waiting_config',"
+                           " error = 'route_missing'")
+
+    Store(path).migrate()
+
+    assert version(path) == 19
+    rows = query(path, "SELECT state, attempts, failures, last_failed_at FROM notification_deliveries")
+    assert rows == [{"state": "waiting_config", "attempts": 7, "failures": 0, "last_failed_at": None}]
+    index_names = {row["name"] for row in query(
+        path, "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'notification_deliveries'")}
+    assert {"notification_due", "notification_lease"} <= index_names
+    # 重放同一个迁移号不重置已有失败事实。
+    with sqlite3.connect(path) as connection:
+        connection.execute("UPDATE notification_deliveries SET failures = 3, last_failed_at = 42.0")
+        connection.execute("PRAGMA user_version = 18")
+    Store(path).migrate()
+    assert query(path, "SELECT attempts, failures, last_failed_at FROM notification_deliveries") == [
+        {"attempts": 7, "failures": 3, "last_failed_at": 42.0}]
