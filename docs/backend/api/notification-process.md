@@ -1,6 +1,6 @@
 # 通知进程与事件投递契约
 
-状态：**01、04、05、06、08、09 票据已交付**（01：动态变化通知首条闭环；04：一级评论通知闭环；05：楼中楼回复通知闭环；06：双群独立投递与故障恢复；08：五类系统告警闭环；09：小时心跳）。本文描述当前代码已实现的服务端契约：进程启动、配置、事件资格、持久状态、消息模板、投递参数与恢复语义。自动化只使用虚构凭据、临时 SQLite、受控接收端与本地替身，故障恢复另用真实子进程与本机 HTTP 接收端；**真实飞书群投递、三进程托管与目标环境运行尚未验证**，见[票据 01 证据](../../../.scratch/feishu-notifications/evidence/01-dynamic-change-notification.md)、[票据 04 证据](../../../.scratch/feishu-notifications/evidence/04-root-comment-notification.md)、[票据 05 证据](../../../.scratch/feishu-notifications/evidence/05-reply-notification.md)、[票据 06 证据](../../../.scratch/feishu-notifications/evidence/06-delivery-routing-recovery.md)、[票据 08 证据](../../../.scratch/feishu-notifications/evidence/08-system-alerts.md)与[票据 09 证据](../../../.scratch/feishu-notifications/evidence/09-hourly-heartbeat.md)。
+状态：**01、04、05、06、07、08、09 票据已交付**（01：动态变化通知首条闭环；04：一级评论通知闭环；05：楼中楼回复通知闭环；06：双群独立投递与故障恢复；07：停用/重纳入/在途生命周期矩阵；08：五类系统告警闭环；09：小时心跳）。本文描述当前代码已实现的服务端契约：进程启动、配置、事件资格、持久状态、消息模板、投递参数与恢复语义。自动化只使用虚构凭据、临时 SQLite、受控接收端与本地替身，故障恢复另用真实子进程与本机 HTTP 接收端；**真实飞书群投递、三进程托管与目标环境运行尚未验证**，见[票据 01 证据](../../../.scratch/feishu-notifications/evidence/01-dynamic-change-notification.md)、[票据 04 证据](../../../.scratch/feishu-notifications/evidence/04-root-comment-notification.md)、[票据 05 证据](../../../.scratch/feishu-notifications/evidence/05-reply-notification.md)、[票据 06 证据](../../../.scratch/feishu-notifications/evidence/06-delivery-routing-recovery.md)、[票据 07 证据](../../../.scratch/feishu-notifications/evidence/07-notification-lifecycle.md)、[票据 08 证据](../../../.scratch/feishu-notifications/evidence/08-system-alerts.md)与[票据 09 证据](../../../.scratch/feishu-notifications/evidence/09-hourly-heartbeat.md)。
 
 业务规则以[飞书通知需求与设计](../../design/feishu-notifications.md)为准，本文只写实现契约。锁定的模块接口：
 
@@ -136,6 +136,19 @@ exec .venv/bin/python -m backend.bili_monitor.notifier
 
 配置整体不可解析、`base_url` 非法或路由表结构非法时通知进程仍按启动错误退出（见 §2），此时**没有可用告警通道**：这类故障只能由进程托管与日志发现，不由本能力外发。
 
+## 3.4 生命周期：停用、移出、删除、模式切换与重启（07）
+
+本节把“何时结束通知阶段、何时开始新阶段、什么只是重启”写成实现契约；矩阵与逐项证据见[票据 07 证据](../../../.scratch/feishu-notifications/evidence/07-notification-lifecycle.md)。
+
+- **结束阶段（五种真实入口）**：停用 UP（`enabled=0`）、近期窗口重发后目标移出、删除指定目标、删除监控配置、模式切换后不再入选，都由 `selection.refresh_selections` 的“真正离开入选”集合调用 `outbox.retire`，把该目标当前未封存阶段置 `sealed = 1`。`reset=True`（启用开关、模式、`recent_n` 变化）只轮换入选令牌，**持续入选的目标沿用原阶段、原起点与原基线**。
+- **封存只结束通知阶段**：归档正文/评论/回复、`archives.generation`、分项 checkpoint 与目标入选令牌都不因此被删除或回退；只读归档 HTTP 仍可读。
+- **提交处核验领取时绑定的阶段**：`notification_body_claims` 在 `claim_archive` 时写入 generation → phase，`outbox._active_phase` 同时要求“同一写代次 + 绑定阶段未封存 + 目标此刻仍入选”。正文、一级评论、回复共用这一判定，因此停用/删除后迟到的在途提交**可以保存内容，但不生成事件、不写候选**；旧阶段封存后即使重新入选，旧执行也拿不到新阶段。
+- **候选不是队列**：`notification_candidates` 只在原阶段未封存时原子转事件，阶段结束即作废（补齐时被消费，不进投递）；旧候选不因当前已重新入选而生成新阶段通知。
+- **已入队不随监控配置级联**：`notification_events`/`notification_deliveries` 不引用 `monitors`/`targets`。停用、删除目标或删除配置后，`waiting_config`、退避中的 `pending`、已领取的 `inflight` 记录继续按 §5 规则投递，成功目标不重发；投递结果只改该目标行，不回写阶段起点、评论起点、正文基线或归档 checkpoint。
+- **重新启用/重新入选建立新阶段**：新的 `started_at` 与 `comment_started_at`，`baseline_version = NULL`，以恢复后第一份可信正文重建基线（不追补暂停期间编辑）；评论按新起点过滤（不补暂停期间发表的评论），新起点同秒发表的一级评论/回复仍属“起点及之后”（`math.floor(comment_started_at)` 比较）。新阶段初始化期间（如 `POST /api/sync/initial`）发表的新评论同样有资格；过滤只用来源发表时间，不用采集/扫描时间。
+- **普通重启不是新阶段**：`Store.migrate`、新的 API/采集/通知进程实例都不触碰阶段、起点、基线与队列；只有 `refresh_selections` 的真实增删才开/封阶段。未完成领取的恢复按 §5 租约与采集侧恢复规则处理，不重建启用时间。
+- **重复保存等价配置 / 重复发布相同窗口**：不轮换入选令牌、不重设起点；真实移出再入选才建立新阶段（令牌、起点都变）。
+
 ## 4. 持久状态
 
 | 表 | 语义 |
@@ -198,7 +211,7 @@ exec .venv/bin/python -m backend.bili_monitor.notifier
 
 ## 8. 当前未覆盖
 
-- 生命周期组合验证（07）、投递管理 UI：未实施。
+- 投递管理 UI：未实施。生命周期组合验证（07）已交付自动化与真实通知子进程证据，但真实飞书群、目标环境三进程与浏览器/手机实机仍未验证；组合回归与三进程托管归票据 10。
 - 心跳与告警在同一进程内的组合隔离已由 08 的自动化覆盖（告警节流不抑制心跳、心跳失败不生成告警）；三进程统一托管、真实飞书群投递、飞书内置浏览器/手机链接验证：票据 10、11（另需授权）。
 - 心跳只在通知进程存活时生成：进程被强杀或整机离线期间错过的时段不补发，也不承诺离线期间的告警/心跳可达性；主循环异常的告警同样要能写库才能登记，整机离线、进程被强杀或数据库完全不可写时只有本地脱敏日志。
 - 秒级送达、跨群同时送达、飞书端绝对一次送达均不承诺；飞书已接收但响应丢失（超时/连接中断）时按失败重试，重试可能在群里形成重复消息。1 秒轮询与第 40 分钟偏移都是调度节拍，不是精准送达时刻。
