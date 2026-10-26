@@ -111,6 +111,13 @@ def comment_href(base_url, dynamic_id, comment_id):
         quote(str(dynamic_id), safe=""), quote(str(comment_id), safe="")))
 
 
+def reply_href(base_url, dynamic_id, root_id, reply_id):
+    """楼中楼回复精确入口（与 03 交付的浏览器路由一致，携带所属根与目标回复）。"""
+    return archive_href(base_url, "/dynamics/{}/comments/{}/replies/{}/locate".format(
+        quote(str(dynamic_id), safe=""), quote(str(root_id), safe=""),
+        quote(str(reply_id), safe="")))
+
+
 def _clip(build, value, marker=ELLIPSIS):
     """按序列化后 UTF-8 长度裁剪单个展示值；其他字段与链接保持完整。"""
     if not value:
@@ -137,13 +144,28 @@ def root_comment(snapshot, base_url):
     超长时只裁正文并追加热链接提示，其他字段与完整链接不被截掉。用完即弃的
     局部变量都不回写归档原文。
     """
+    return _new_comment(snapshot, comment_href(
+        base_url, str(snapshot["dynamic_id"]), snapshot["comment_id"]))
+
+
+def reply_comment(snapshot, base_url):
+    """楼中楼回复：与一级评论共用模板，只把链接换成该条回复的精确入口。
+
+    正文保留来源的“回复 @某人”前缀与换行，不附加父评论全文；不采集也不上传回复
+    图片，只按来源已知的图片存在性给纯图占位（与一级评论同一规则）。
+    """
+    return _new_comment(snapshot, reply_href(
+        base_url, str(snapshot["dynamic_id"]), snapshot["root_id"], snapshot["comment_id"]))
+
+
+def _new_comment(snapshot, href):
+    """新增评论（一级评论与楼中楼共用同一模板，一条评论一条消息）。"""
     dynamic_id = str(snapshot["dynamic_id"])
     title = safe_text(snapshot.get("title"), single_line=True) or dynamic_id
     author = snapshot.get("author") if isinstance(snapshot.get("author"), dict) else {}
     nickname = (safe_text(author.get("nickname"), single_line=True)
                 or safe_text(author.get("id"), single_line=True))
     published = beijing_time(snapshot.get("published_at"))
-    href = comment_href(base_url, dynamic_id, snapshot["comment_id"])
     body = safe_text(snapshot.get("text")) or (IMAGE_COMMENT if snapshot.get("has_media") else "")
 
     def build(content, title_value, nickname_value):

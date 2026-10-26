@@ -101,11 +101,28 @@ class Source:
             item["oid"], item["type"] = int("99" + dynamic), 17
         self.dynamics[dynamic] = {
             "uid": uid, "roots": list(roots),
-            "count": len(roots) if count is None else count, "fail_pages": set()}
+            "count": len(roots) if count is None else count, "fail_pages": set(),
+            "reply_threads": {}}
         return self
 
     def replace(self, dynamic, roots):
         return self.add(dynamic, roots, uid=self.dynamics[dynamic]["uid"])
+
+    def replies(self, dynamic, root_id, items, *, fail_pages=()):
+        """登记某楼完整回复集合；根页 rcount 与楼中楼 count 都按登记条数下发。"""
+        spec = self.dynamics[dynamic]
+        items = list(items)
+        for item in items:
+            # 来源按请求回显资源身份；不一致的条目会被生产解析器当作其它资源拒绝。
+            item["oid"], item["type"] = int("99" + dynamic), 17
+        spec["reply_threads"][root_id] = {"items": items, "fail_pages": set(fail_pages)}
+        root = next((item for item in spec["roots"] if item["rpid_str"] == root_id), None)
+        if root is not None:
+            root["rcount"] = len(items)
+        return self
+
+    def replace_replies(self, dynamic, root_id, items, *, fail_pages=()):
+        return self.replies(dynamic, root_id, items, fail_pages=fail_pages)
 
     def spec(self, dynamic):
         return self.dynamics[dynamic]
@@ -146,14 +163,25 @@ class Source:
                 "replies": copy.deepcopy(roots[(page - 1) * 20:page * 20]) or None,
             }})
         if path == "/x/v2/reply/reply":
-            # 本票只覆盖一级评论：楼层回复保持空页，但根身份按请求回显。
+            # 楼中楼页：未登记回复的楼回确认空页，仍回显同根身份。
             spec = self.by_oid(request.url.params["oid"])
+            if spec is None:
+                raise AssertionError("Unexpected reply resource")
             root_id = request.url.params["root"]
             root = next((item for item in spec["roots"] if item["rpid_str"] == root_id), None)
+            if root is None:
+                return httpx.Response(404)
             page = int(request.url.params["pn"])
+            thread = spec["reply_threads"].get(root_id) or {"items": [], "fail_pages": set()}
+            if page in thread["fail_pages"]:
+                raise httpx.ReadError("FICTIONAL_SECRET_REPLY_PAGE")
+            items = thread["items"]
+            payload_root = copy.deepcopy(root)
+            payload_root["rcount"] = len(items)
             return httpx.Response(200, json={"code": 0, "data": {
-                "page": {"num": page, "size": 20, "count": 0},
-                "root": copy.deepcopy(root), "replies": [],
+                "page": {"num": page, "size": 20, "count": len(items)},
+                "root": payload_root,
+                "replies": copy.deepcopy(items[(page - 1) * 20:page * 20]) or None,
             }})
         raise AssertionError("Unexpected upstream request")
 
@@ -168,9 +196,58 @@ def root_documents(path, dynamic=DYNAMIC):
         path, "SELECT id, document FROM root_comments WHERE dynamic_id = ? ORDER BY id", (dynamic,))}
 
 
+def reply_documents(path, dynamic=DYNAMIC):
+    return {row["id"]: json.loads(row["document"]) for row in query(
+        path, "SELECT id, document FROM replies WHERE dynamic_id = ? ORDER BY id", (dynamic,))}
+
+
 def phase_start_epoch(path, uid=UID, dynamic_id=DYNAMIC):
     return time.time() if not query(path, "SELECT 1 FROM notification_phases") else started_at(
         path, uid, dynamic_id)
+
+
+def reply_item(id, *, root=None, author=UID, nickname="虚构回复者", ctime=FUTURE_CTIME,
+               text="虚构回复", parent=None, pictures=()):
+    """来源格式的楼中楼回复；缺字段时保持缺失（不伪造），由归档链照常处理。
+
+    `root` 是所属根评论；`parent` 缺省即直接回根（不附带父评论正文）。
+    """
+    member = {} if author is None else {"mid": author}
+    if nickname is not None:
+        member["uname"] = nickname
+    item = {
+        "rpid_str": str(id), "root": 0, "root_str": str(root), "parent": 0,
+        "parent_str": str(root if parent is None else parent),
+        "ctime": ctime, "like": 0, "rcount": 0, "member": member,
+        "content": {"message": text}, "replies": None,
+    }
+    if ctime is None:
+        item.pop("ctime")
+    pictures = list(pictures)
+    if pictures is not None:
+        item["content"]["pictures"] = [
+            {"img_src": url, "img_width": 640, "img_height": 480} for url in pictures]
+    return item
+
+
+def reply_locate(payload):
+    """从富文本载荷的链接节点取实际生成的回复入口身份（所属根，目标回复）。"""
+    for paragraph in payload["content"]["post"]["zh_cn"]["content"]:
+        for node in paragraph:
+            if node.get("tag") != "a":
+                continue
+            path = node["href"].split("://", 1)[-1].split("/", 1)[-1].split("/")
+            if (len(path) == 7 and path[0] == "dynamics" and path[2] == "comments"
+                    and path[4] == "replies" and path[6] == "locate"):
+                return path[3], path[5]
+    return None
+
+
+def delivered_replies(receiver):
+    """实际发往哪个目的地、携带哪条回复：只统计回复消息，一级评论不计入。"""
+    located = ((reply_locate(payload), request["url"])
+               for request, payload in zip(receiver.requests, receiver.payloads))
+    return sorted(item for item in located if item[0] is not None)
 
 
 OTHER_UID = "202"

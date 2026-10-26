@@ -133,6 +133,8 @@ class Dispatcher:
             return message.dynamic_changed(item["snapshot"], self.config.base_url)
         if item["kind"] == outbox.ROOT_COMMENT:
             return message.root_comment(item["snapshot"], self.config.base_url)
+        if item["kind"] == outbox.REPLY_COMMENT:
+            return message.reply_comment(item["snapshot"], self.config.base_url)
         if item["kind"] == outbox.HEARTBEAT:
             return message.heartbeat(item["snapshot"])
         return None

@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from anyio import to_thread
 
 from .root_comments import comment_fields, nonnegative, root_document, source_id
+from .source import media_sources
 from .comment_status import utc_now
 from .source_endpoints import REPLIES_URL
 from .source_client import comment_request_headers
@@ -48,7 +49,21 @@ def reply_document(reply, dynamic_id, root_id, locator):
     document = comment_fields(reply, dynamic_id, locator)
     if document["id"] in (root_id, parent):
         raise ValueError("Invalid reply relation")
-    return {**document, "root_id": root_id, "parent_id": parent}
+    return {**document, "root_id": root_id, "parent_id": parent,
+            "has_pictures": reply_pictures(reply.get("content") or {})}
+
+
+def reply_pictures(content):
+    """只记下来源已经给出的图片存在性（布尔），不保存回复图片 URL。
+
+    缺失或 null 都不是来源确认无图：保持未知（`None`），由现有元信息合并语义保留
+    已观察到的存在性。这里既不新增上游请求，也不扩大回复图片的采集与上传范围。
+    """
+    pictures = content.get("pictures")
+    if pictures is None:
+        return None
+    # 复用与根评论同一条形状/URL 校验，避免未校验的键被当成“有图”。
+    return bool(media_sources(pictures, "img_src", "img_"))
 
 
 async def fetch_reply_page(client, dynamic_id, root_id, locator, number, *, uid=None):

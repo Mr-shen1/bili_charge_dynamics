@@ -122,7 +122,7 @@ class Store(CheckStore, DiscoveryStore):
             connection.execute("BEGIN IMMEDIATE")
             try:
                 version = connection.execute("PRAGMA user_version").fetchone()[0]
-                if version > 19:
+                if version > 20:
                     raise RuntimeError("Unsupported database schema version")
                 if version == 0:
                     connection.execute("""CREATE TABLE identities (
@@ -269,7 +269,10 @@ class Store(CheckStore, DiscoveryStore):
                 if version < 19:
                     # 06 投递失败事实：failures/last_failed_at 与到期/租约索引。
                     outbox.migrate_delivery_facts(connection)
-                connection.execute("PRAGMA user_version = 19")
+                if version < 20:
+                    # 05 候选身份补所属根（回复与一级评论共用一张候选表）。
+                    outbox.migrate_candidate_roots(connection)
+                connection.execute("PRAGMA user_version = 20")
                 connection.commit()
             except BaseException:
                 connection.rollback()
@@ -770,7 +773,7 @@ class Store(CheckStore, DiscoveryStore):
                         (id, document["id"], json.dumps(document, ensure_ascii=False)))
                     # 评论、事件与逐群投递记录同事务：单条就绪即可投递，不等整轮或媒体。
                     outbox.record_root(connection, row["uid"], id, archive, document,
-                                       discovered=discovered)
+                                       discovered=discovered, generation=generation)
                 archive["local_comment_count"] = connection.execute(
                     "SELECT count(*) FROM root_comments WHERE dynamic_id = ?", (id,)
                 ).fetchone()[0]
@@ -945,21 +948,26 @@ class Store(CheckStore, DiscoveryStore):
         with self.connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
-                row = connection.execute("SELECT document FROM archives WHERE id = ? AND generation = ?", (id, generation)).fetchone()
+                row = connection.execute("SELECT uid, document FROM archives WHERE id = ? AND generation = ?", (id, generation)).fetchone()
                 if row is None:
                     connection.commit()
                     return False
-                archive = json.loads(row[0])
+                archive = json.loads(row["document"])
                 for document in documents:
                     previous = connection.execute(
                         "SELECT document FROM replies WHERE dynamic_id = ? AND root_id = ? AND id = ?",
                         (id, root_id, document["id"])
                     ).fetchone()
+                    # 首次插入才是新增；补字段/纯编辑/重新分页交给候选转换判断。
+                    discovered = previous is None
                     if previous is not None:
                         document = _merge_comment(json.loads(previous[0]), document)
                     connection.execute("""INSERT INTO replies VALUES (?, ?, ?, ?)
                         ON CONFLICT(dynamic_id, root_id, id) DO UPDATE SET document = excluded.document""",
                         (id, root_id, document["id"], json.dumps(document, ensure_ascii=False)))
+                    # 回复、事件（或候选）与逐群投递记录同事务：单条就绪即可投递。
+                    outbox.record_reply(connection, row["uid"], id, archive, root_id, document,
+                                        discovered=discovered, generation=generation)
                 if root_id is not None and count is not None:
                     root = json.loads(connection.execute(
                         "SELECT document FROM root_comments WHERE dynamic_id = ? AND id = ?", (id, root_id)
@@ -1072,6 +1080,8 @@ class Store(CheckStore, DiscoveryStore):
         for document in documents:
             author = authors.get(document["parent_id"])
             document["reply_to"] = author if author and author.get("id") is not None else None
+            # 图片存在性只供纯图通知占位，不在阅读接口发布：回复阅读契约与前端图片范围不变。
+            document.pop("has_pictures", None)
         progress = connection.execute("SELECT status, synced_source_reply_count FROM reply_sync WHERE dynamic_id = ? AND root_id = ?",
                                      (id, root_id)).fetchone()
         metadata = {"source_reply_count": root.get("source_reply_count"), "local_reply_count": len(documents),

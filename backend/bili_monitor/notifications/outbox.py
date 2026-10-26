@@ -25,6 +25,16 @@
   的 root_id 是所属根，因此同一源评论 ID 属于不同根时不会撞键。
 - 作者 UID 或发表时间缺失时只保存候选（保留原阶段），补齐后原子转成事件；
   已结束阶段的候选作废，不越阶段生成通知。
+
+楼中楼回复（05）额外约束：
+- 接入位置是回复的实际写事务（`Store._change_replies`，逐页/逐楼提交），与一级
+  评论共用同一阶段、评论起点、候选与模板，不另建身份规则或通知时钟。
+- 定位条件由归档本身保证：回复只能指向已归档的所属根（`replies` 外键），
+  且回复与根的 ID 都是本站可用的十进制身份，因此“根或站点不可定位”只表现为
+  回复根本无法合法归档，本模块不为通知放宽外键或来源校验。
+- 回复不采图片也不上传：只把来源响应已给出的 `content.pictures` 记成布尔存在性
+  （`replies.reply_document` 的 `has_pictures`，不保存回复图片 URL），供纯图占位使用；
+  未知（来源缺键或 null）不当成无图，快照也不会把未知媒体说成纯图。
 """
 
 import json
@@ -35,6 +45,7 @@ from uuid import uuid4
 
 DYNAMIC_CHANGED = "dynamic_changed"
 ROOT_COMMENT = "root_comment"
+REPLY_COMMENT = "reply_comment"
 HEARTBEAT = "heartbeat"
 UP_ROLE = "up"
 ALL_ROLE = "all"
@@ -149,6 +160,30 @@ def migrate_comments(connection):
                        "WHERE comment_started_at IS NULL", (time.time(),))
 
 
+def migrate_candidate_roots(connection):
+    """v20：候选身份补所属根，主键改为（动态、所属根、评论）。
+
+    一级评论的所属根就是自身；旧候选按这个口径回填，不丢已有等待记录。旧库降级
+    副本可能已经是本形态（既有测试重放旧迁移号），因此先核对列再重建，重建全程
+    在同一迁移事务内，失败随版本号一起回滚。
+    """
+    if "root_id" in {row[1] for row in connection.execute("PRAGMA table_info(notification_candidates)")}:
+        return
+    exists = connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' "
+                                "AND name = 'notification_candidates'").fetchone() is not None
+    connection.execute("""CREATE TABLE notification_candidates_reply (
+        dynamic_id TEXT NOT NULL, root_id TEXT NOT NULL, comment_id TEXT NOT NULL,
+        phase TEXT NOT NULL, created_at REAL NOT NULL,
+        PRIMARY KEY(dynamic_id, root_id, comment_id)
+    )""")
+    if exists:
+        connection.execute("""INSERT OR IGNORE INTO notification_candidates_reply
+            (dynamic_id, root_id, comment_id, phase, created_at)
+            SELECT dynamic_id, comment_id, comment_id, phase, created_at FROM notification_candidates""")
+        connection.execute("DROP TABLE notification_candidates")
+    connection.execute("ALTER TABLE notification_candidates_reply RENAME TO notification_candidates")
+
+
 def _phase_columns(connection):
     return {row[1] for row in connection.execute("PRAGMA table_info(notification_phases)")}
 
@@ -211,8 +246,14 @@ def claim_body(connection, uid, id, generation):
 
 
 def _active_phase(connection, id, generation):
-    """提交时核验：同一写代次 + 领取时绑定的阶段仍有效 + 目标此刻仍入选。"""
-    return connection.execute("""SELECT p.token, p.baseline_version FROM notification_phases p
+    """提交时核验：同一写代次 + 领取时绑定的阶段仍有效 + 目标此刻仍入选。
+
+    正文与评论共用：阶段在领取（`claim_body`）时与写代次绑定，提交处不能重新推导
+    “当前阶段”——否则停用后重新启用的旧在途执行会把迟到内容算进新阶段（违反
+    “旧执行不能借新阶段生成通知”）。
+    """
+    return connection.execute("""SELECT p.token, p.baseline_version, p.comment_started_at
+        FROM notification_phases p
         JOIN target_selections s ON s.uid = p.uid AND s.id = p.dynamic_id
         JOIN notification_body_claims c ON c.phase = p.token AND c.dynamic_id = p.dynamic_id
         WHERE c.dynamic_id = ? AND c.generation = ? AND p.sealed = 0""", (id, generation)).fetchone()
@@ -366,25 +407,22 @@ def _comment_ready(document):
     return _epoch(document.get("published_at")) is not None
 
 
-def _comment_phase(connection, uid, dynamic_id):
-    """当前阶段只在「未封存且目标仍入选」时有效，提交处核验而不是任务开始时核验。"""
-    return connection.execute("""SELECT p.token, p.comment_started_at FROM notification_phases p
-        JOIN target_selections s ON s.uid = p.uid AND s.id = p.dynamic_id
-        WHERE p.uid = ? AND p.dynamic_id = ? AND p.sealed = 0
-        ORDER BY p.started_at DESC LIMIT 1""", (uid, dynamic_id)).fetchone()
+def _candidate(connection, dynamic_id, root_id, comment_id):
+    """候选保留原阶段与起点：补齐时不重新制造启用时间，也不借新阶段发旧评论。
 
-
-def _candidate(connection, dynamic_id, comment_id):
-    """候选保留原阶段与起点：补齐时不重新制造启用时间，也不借新阶段发旧评论。"""
+    身份是（动态、所属根、评论）：回复必须带上所属根，同一回复 ID 属于不同根时
+    不会共用同一条候选。
+    """
     return connection.execute("""SELECT c.phase, p.comment_started_at, p.sealed,
             (s.token IS NOT NULL) AS selected
         FROM notification_candidates c
         LEFT JOIN notification_phases p ON p.token = c.phase
         LEFT JOIN target_selections s ON p.uid = s.uid AND p.dynamic_id = s.id
-        WHERE c.dynamic_id = ? AND c.comment_id = ?""", (dynamic_id, comment_id)).fetchone()
+        WHERE c.dynamic_id = ? AND c.root_id = ? AND c.comment_id = ?""",
+                            (dynamic_id, root_id, comment_id)).fetchone()
 
 
-def record_root(connection, uid, dynamic_id, archive, document, *, discovered):
+def record_root(connection, uid, dynamic_id, archive, document, *, discovered, generation):
     """根评论写事务内登记评论事件或待判定候选：与评论内容同事务提交或回滚。
 
     - `discovered` 是本次事务前该评论首次插入（`previous is None`）。补字段、纯编辑
@@ -398,31 +436,62 @@ def record_root(connection, uid, dynamic_id, archive, document, *, discovered):
     comment_id = document.get("id")
     if not isinstance(comment_id, str) or not comment_id:
         return
-    candidate = _candidate(connection, dynamic_id, comment_id)
+    # 一级评论的所属根就是自身：与回复共用同一事件身份口径（动态 + 根 + 评论）。
+    _record_comment(connection, uid, dynamic_id, archive, document, discovered=discovered,
+                    kind=ROOT_COMMENT, root_id=comment_id, generation=generation)
+
+
+def record_reply(connection, uid, dynamic_id, archive, root_id, document, *, discovered, generation):
+    """楼中楼回复写事务内登记事件或候选：与回复内容同事务提交或回滚。
+
+    - 身份是「动态 + 所属根 + 回复」，不以回复计数或扫描轮次作键；补字段、重新分页
+      与纯编辑都不重复登记。
+    - 阶段、评论起点、候选与路由与一级评论完全一致：作者 UID 与该动态所属 UP 相等
+      时发 UP 群 + 全员群，否则只发全员群；被回复者身份不参与路由。
+    - 所属根必须先合法归档（`replies` 外键）；根或身份不可定位时回复本身就存不进
+      归档，所以这里只为“已存内容 + 字段不全”保留候选，不虚构可定位性。
+    """
+    comment_id = document.get("id")
+    if not isinstance(comment_id, str) or not comment_id:
+        return
+    if not isinstance(root_id, str) or not root_id:
+        return
+    _record_comment(connection, uid, dynamic_id, archive, document, discovered=discovered,
+                    kind=REPLY_COMMENT, root_id=root_id, generation=generation)
+
+
+def _record_comment(connection, uid, dynamic_id, archive, document, *, discovered, kind, root_id,
+                    generation):
+    comment_id = document["id"]
+    candidate = _candidate(connection, dynamic_id, root_id, comment_id)
     if candidate is not None:
         if not _comment_ready(document):
             return
-        connection.execute("DELETE FROM notification_candidates WHERE dynamic_id = ? AND comment_id = ?",
-                           (dynamic_id, comment_id))
+        connection.execute("""DELETE FROM notification_candidates
+            WHERE dynamic_id = ? AND root_id = ? AND comment_id = ?""",
+                           (dynamic_id, root_id, comment_id))
         if candidate["sealed"] or not candidate["selected"] or candidate["comment_started_at"] is None:
             return
-        _register_comment(connection, uid, dynamic_id, archive, document, candidate["comment_started_at"])
+        _register_comment(connection, uid, dynamic_id, archive, document,
+                          candidate["comment_started_at"], kind=kind, root_id=root_id)
         return
     if not discovered:
         return
-    phase = _comment_phase(connection, uid, dynamic_id)
-    # 评论起点缺失（旧库尚未完成回填）时不猜启用时间：宁可不发，也不回填历史。
+    # 阶段取自本次领取时绑定的阶段，不重新推导“当前阶段”。
+    phase = _active_phase(connection, dynamic_id, generation)
+    # 阶段缺失/已封存，或评论起点缺失（旧库尚未完成回填）时不猜启用时间：宁可不发。
     if phase is None or phase["comment_started_at"] is None:
         return
     if not _comment_ready(document):
         connection.execute("""INSERT OR IGNORE INTO notification_candidates
-            (dynamic_id, comment_id, phase, created_at) VALUES (?, ?, ?, ?)""",
-            (dynamic_id, comment_id, phase["token"], time.time()))
+            (dynamic_id, root_id, comment_id, phase, created_at) VALUES (?, ?, ?, ?, ?)""",
+            (dynamic_id, root_id, comment_id, phase["token"], time.time()))
         return
-    _register_comment(connection, uid, dynamic_id, archive, document, phase["comment_started_at"])
+    _register_comment(connection, uid, dynamic_id, archive, document, phase["comment_started_at"],
+                      kind=kind, root_id=root_id)
 
 
-def _register_comment(connection, uid, dynamic_id, archive, document, comment_started_at):
+def _register_comment(connection, uid, dynamic_id, archive, document, comment_started_at, *, kind, root_id):
     published = _epoch(document["published_at"])
     # 起点按秒取整：与起点同一秒发表的评论属于「起点及之后」，不因亚秒差被吞掉。
     if comment_started_at is None or published < math.floor(comment_started_at):
@@ -431,16 +500,19 @@ def _register_comment(connection, uid, dynamic_id, archive, document, comment_st
     author = document["author"]
     roles = (UP_ROLE, ALL_ROLE) if author["id"] == uid else (ALL_ROLE,)
     snapshot = {
-        "dynamic_id": dynamic_id, "title": archive.get("title"), "comment_id": comment_id,
+        "dynamic_id": dynamic_id, "title": archive.get("title"), "root_id": root_id,
+        "comment_id": comment_id,
         "author": {"id": author["id"], "nickname": author.get("nickname")},
         "published_at": document["published_at"], "text": document.get("text"),
-        # 纯图占位依据归档已知媒体，不把“未知”说成“无图”。
-        "has_media": bool(document.get("media") or document.get("media_sources")),
+        # 纯图占位依据“已知有媒体”，不把“未知”说成“无图”：一级评论看归档媒体，
+        # 回复只看来源已给出的布尔存在性（不保存、不上传回复图片）。
+        "has_media": bool(document.get("media") or document.get("media_sources")
+                           or document.get("has_pictures")),
     }
     inserted = connection.execute("""INSERT OR IGNORE INTO notification_events
         (kind, uid, dynamic_id, version, root_id, comment_id, snapshot, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (ROOT_COMMENT, uid, dynamic_id, None, comment_id, comment_id,
+        (kind, uid, dynamic_id, None, root_id, comment_id,
          json.dumps(snapshot, ensure_ascii=False), time.time()))
     if inserted.rowcount != 1:
         return
