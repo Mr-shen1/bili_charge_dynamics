@@ -24,6 +24,11 @@ export interface ManagedUp {
   readonly monitor: Monitor | null;
 }
 export interface ManagedTarget { readonly id: string }
+/** 通知总开关：只表示“通知进程是否发送”与待发条数，不含路由或凭据。 */
+export interface NotificationState {
+  readonly enabled: boolean;
+  readonly pending: number;
+}
 
 export type ManagementResult<T> =
   | { readonly status: 'success'; readonly data: T }
@@ -74,6 +79,13 @@ export function parseUp(value: unknown): ManagedUp | null {
 
 function monitorBody(monitor: MonitorConfig) {
   return JSON.stringify({ mode: monitor.mode, recent_n: monitor.recentN, enabled: monitor.enabled });
+}
+
+/** 总开关响应守卫：只认严格布尔与安全非负整数，其余整条判为无效。 */
+export function parseNotification(value: unknown): NotificationState | null {
+  if (!record(value) || typeof value.enabled !== 'boolean') return null;
+  if (typeof value.pending !== 'number' || !Number.isSafeInteger(value.pending) || value.pending < 0) return null;
+  return { enabled: value.enabled, pending: value.pending };
 }
 
 function validMonitorConfig(monitor: MonitorConfig | null | undefined): monitor is MonitorConfig {
@@ -324,6 +336,37 @@ export function createManagementApi(transport: ManagementTransport = (url, init)
     ): Promise<ManagementResult<void>> {
       const result = await targetRequest(uid, signal, 'DELETE', id);
       return result.status === 'success' ? { status: 'success', data: undefined } : result;
+    },
+    /** 通知总开关与待发条数：只读状态，不触发发送或采集。 */
+    async readNotification(
+      { signal }: { readonly signal: AbortSignal },
+    ): Promise<ManagementResult<NotificationState>> {
+      const result = await getJson('/api/manage/notifications', signal);
+      if (result.status !== 'success') return result;
+      const state = parseNotification(result.data.body);
+      return result.data.status === 200 && state ? { status: 'success', data: state } : invalidResponse;
+    },
+    /** 切换总开关：完整提交 `{enabled}`，以后端返回的新状态为准。 */
+    async updateNotification(
+      { enabled, signal }: { readonly enabled: boolean; readonly signal: AbortSignal },
+    ): Promise<ManagementResult<NotificationState>> {
+      try {
+        if (signal.aborted) return { status: 'cancelled' };
+        const result = await request('/api/manage/notifications', {
+          method: 'PUT', signal,
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }),
+        });
+        if (signal.aborted) return { status: 'cancelled' };
+        if (result.status !== 'success') return result;
+        const response = result.data;
+        const body: unknown = await response.json();
+        if (signal.aborted) return { status: 'cancelled' };
+        if (!response.ok) return httpError(body, response.status);
+        const state = parseNotification(body);
+        return response.status === 200 && state ? { status: 'success', data: state } : invalidResponse;
+      } catch {
+        return signal.aborted ? { status: 'cancelled' } : invalidResponse;
+      }
     },
   };
 }

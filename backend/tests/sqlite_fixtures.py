@@ -26,3 +26,10 @@ def reject_config_inserts(path):
     with sqlite3.connect(path) as database:
         database.execute(f"""CREATE TRIGGER fixture_reject BEFORE INSERT ON {quote(monitor)}
             BEGIN SELECT RAISE(ABORT, 'FICTIONAL_SECRET_STORAGE'); END""")
+
+
+def reject_switch_writes(path):
+    """让通知总开关写入失败：错误码可见，且不回显原始 SQLite 文案。"""
+    with sqlite3.connect(path) as database:
+        database.execute("""CREATE TRIGGER fixture_reject_switch BEFORE UPDATE ON notification_gate
+            BEGIN SELECT RAISE(ABORT, 'FICTIONAL_SECRET_SWITCH'); END""")

@@ -17,7 +17,7 @@ exec .venv/bin/python -m uvicorn backend.bili_monitor.app:app --host 127.0.0.1 -
 
 Python 使用 `.python-version` 的 3.12 系列（记录实际补丁版本）；FastAPI、HTTPX、Uvicorn、OSS SDK 和测试依赖由清单/`uv.lock` 固定。上述路径是示例，须选择**仓库外持久、可写的绝对 SQLite 路径**，与 collector 完全相同，不随发布目录切换；默认 `backend/data/monitor.sqlite` 仅适合本地开发。依赖经 uv 同步后直接 `exec` 其解释器，打印的 shell PID 随即成为 Python PID，不会只杀掉 uv 父进程而留下子进程。仅一个 API，不加 `--workers` / `--reload`；没有内嵌定时器或常驻 Node.js，collector 另起终端。
 
-API 的 ASGI lifespan、取得锁的 collector 与独立通知进程启动都调用 `Store.migrate`（当前 v16）。升级先 TERM/Ctrl-C 停两个进程、等退出，再切换同一代码版本并 `uv sync --locked`；先启动 API 完成迁移并确认 `GET /api/manage/ups` 为 200，再启动 collector。未来 schema 拒绝启动，失败事务回滚；无独立迁移 CLI、自动降级或备份，勿删库、改版本号或让旧进程与新迁移并行。
+API 的 ASGI lifespan、取得锁的 collector 与独立通知进程启动都调用 `Store.migrate`（当前 v22）。升级先 TERM/Ctrl-C 停两个进程、等退出，再切换同一代码版本并 `uv sync --locked`；先启动 API 完成迁移并确认 `GET /api/manage/ups` 为 200，再启动 collector。未来 schema 拒绝启动，失败事务回滚；无独立迁移 CLI、自动降级或备份，勿删库、改版本号或让旧进程与新迁移并行。
 
 **首期无鉴权**：管理、初始化及归档接口均可被访问者调用，可能暴露内容或被修改配置。请通过监听地址、防火墙或反向代理限制暴露；隐藏入口不是保护。本期没有备份或容量治理。
 
@@ -204,6 +204,7 @@ API 和 collector 分别在启动时读取私有文件一次，修改文件不�
 - `GET /api/manage/ups/{uid}/targets` → `{targets:[{id:string}]}`。
 - `POST /api/manage/ups/{uid}/targets`，body `{id}` → `201 {id}`。每次请求（包括重复关联）都重新校验作者；确认后关联写入幂等，来源无法确认时仍返回 `502 TARGET_UNVERIFIED`。优先用 HTML AUTHOR 校验；页面无法验证时使用严格 code/id_str 的 detail JSON。可信作者不符返回 `409 TARGET_AUTHOR_MISMATCH`，不强行关联。
 - `DELETE /api/manage/ups/{uid}/targets/{id}` → `204`，幂等、不删归档。
+- `GET /api/manage/notifications` → `{enabled, pending}`；`PUT /api/manage/notifications`，body `{enabled}` → `200 {enabled, pending}`。这是“通知进程是否发送”的持久开关（SQLite，默认开启），不控制进程启停；严格布尔、禁止额外字段、幂等，写失败 `503 STORAGE_UNAVAILABLE`。详见 [通知总开关](../docs/backend/api/management-api.md)。
 - `POST /api/sync/initial`，body `{uid}` → `{processed,succeeded,failed}`。仅处理该 UP 当前 enabled、specified 的关联集合，recent/停用/删配置返回零；未知 UID 返回 404。这是运维/测试一次执行入口，**不是前端阅读或刷新入口**，无定时任务和自动后台重试。
 - `GET /api/archive/dynamics?limit=10&cursor=…` → `{items:Archive[],next_cursor:string|null}`。02 原范围只支持 all；13 新增显式 `scope=all|up`，单 UP 必须带 `uid`，省略 scope 兼容 all。
 - `GET /api/archive/ups` → `{ups:[{id,nickname,avatar_url}]}`，包含停用／删除配置后的持久身份及已知空身份，不依赖启用名单。

@@ -2,6 +2,7 @@
 
 默认每秒轮询到期记录、有限批量；网络等待、限流与退避都不持有 SQLite 写事务。
 发送前先按目的地过一遍主动限速（票据 13）：超预算只顺延 `due_at`，不算失败。
+每个轮次开头读一次持久总开关（票据 14）：关闭时不领取、不发送、不生成心跳。
 投递结果不回写归档成功 checkpoint。
 """
 
@@ -29,6 +30,8 @@ CONFIG_RECHECK_SECONDS = 60.0
 DELIVERY_FAILURE_THRESHOLD = 3
 # 限速键：系统角色（心跳与告警）走独立额度，业务角色按实际 webhook 共用一份。
 SYSTEM_RATE_KEY = ("system",)
+# 读不到总开关时的占位状态：与布尔态区分，使“存储异常”只在首次进入时记一条日志。
+GATE_UNREADABLE = "unreadable"
 
 
 def rate_key(role, webhook):
@@ -64,6 +67,9 @@ class Dispatcher:
         self.lease_seconds = lease_seconds
         # 预算窗口随进程存活（单实例 flock 保证同库只有一个投递进程）。
         self.limiter = limiter if limiter is not None else RateLimiter()
+        # 上一轮读到的闸门状态：只在真的变化时记一次日志，不每秒刷屏。
+        # 启动按开启计，因此正常启动不伪造一次“切换”日志；启动即关闭则记一条跳过。
+        self.gate = True
         self.client = httpx.AsyncClient(transport=transport, timeout=REQUEST_TIMEOUT_SECONDS, trust_env=False)
 
     async def aclose(self):
@@ -83,22 +89,49 @@ class Dispatcher:
             await self.clock.sleep(self.poll_seconds)
 
     async def tick(self):
-        """一轮轮询：先登记本小时心跳（仅在第 40 分钟窗口内），再投递到期记录。
+        """一轮轮询：先读总开关，再登记本小时心跳（仅第 40 分钟窗口内），最后投递到期记录。
 
         心跳生成放在已有的独立通知进程轮询里，不新增时钟进程，也不放进 API。
+        总开关关闭时不领取、不发送、不生成心跳，直接进入下一轮：进程存活、
+        `flock` 与租约语义不变，采集与归档照常工作。
         """
+        if not await self._allowed():
+            return 0
         try:
             await to_thread.run_sync(self._publish_heartbeat)
         except Exception:
             # 心跳登记失败只丢本小时的一轮尝试，不能连带停掉业务投递。
             notifier_event("heartbeat_cycle_failed", warning=True, reason="internal_error")
-        delivered = await self.run_once()
+        delivered = await self._dispatch_batch()
         try:
             await to_thread.run_sync(self._scan_delivery_alerts)
         except Exception:
             # 告警扫描失败不能停掉投递；原因固定分类，不含地址或凭据。
             notifier_event("alert_cycle_failed", warning=True, reason="internal_error")
         return delivered
+
+    async def _allowed(self):
+        """本轮的闸门判定：每轮只读一次持久开关，读不到按关闭处理（宁可停发也不误发）。"""
+        try:
+            return await to_thread.run_sync(self._switch_enabled)
+        except sqlite3.Error:
+            # 存储异常只在首次进入该状态时记一条：关闭期间不每秒刷日志。
+            if self.gate is not GATE_UNREADABLE:
+                notifier_event("delivery_cycle_failed", warning=True, reason="storage_error")
+                self.gate = GATE_UNREADABLE
+            return False
+
+    def _switch_enabled(self):
+        """读一次总开关；只在状态真的变化时记日志（含从读失败/关闭恢复）。"""
+        with self.store.connection() as connection:
+            enabled = outbox.read_gate(connection)
+        if enabled != self.gate:
+            if enabled:
+                notifier_event("notification_switch_opened")
+            else:
+                notifier_event("delivery_skipped", reason="switch_off")
+            self.gate = enabled
+        return enabled
 
     def _scan_delivery_alerts(self):
         """消费 06 的持久失败事实：持续投递失败 → 一条系统告警（节流由发件箱合并）。"""
@@ -137,6 +170,12 @@ class Dispatcher:
         return created
 
     async def run_once(self):
+        """一轮领取＋投递（轮询与 `--once` 共用）；总开关关闭时不领取、不发 HTTP。"""
+        if not await self._allowed():
+            return 0
+        return await self._dispatch_batch()
+
+    async def _dispatch_batch(self):
         claimed = await to_thread.run_sync(self._claim)
         if not claimed:
             return 0

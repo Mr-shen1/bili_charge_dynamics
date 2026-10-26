@@ -27,6 +27,7 @@
 | 11 | [真实飞书与设备验收](issues/11-real-feishu-device-acceptance.md)（**resolved，受限范围**） | 10；另须明确授权 | 实际群、内置浏览器/手机、代理访问及授权环境验证证据 |
 | 12 | [定位视图补齐目标之前的评论](issues/12-locate-earlier-comments.md)（**resolved**） | 11 真机验收派生 | 定位窗口的 `prev_cursor`/`earlier_count` 向前分页 + 页面「以上还有 N 条更早评论」/「加载更早评论」，插入不跳动，≤4px 视口位移断言 |
 | 13 | [飞书发送主动限速](issues/13-notification-send-rate-limit.md)（**resolved**） | 无（只改投递调度） | 按目的地键控的 5 次/秒 + 100 次/分钟预算，超预算顺延 `due_at`（不算失败），不持写事务；系统角色独立额度且领取优先；429 被动退避保留 |
+| 14 | [飞书通知总开关（发送闸门 + 管理页开关）](issues/14-notification-dry-run.md)（**resolved**） | 无 | 持久开关（SQLite v22，默认开启）＋每轮只读一次：关闭不领取/不发送/不生成心跳，重开按方案 A 补发并受 13 限速；管理页开关显示运行中/已关闭与待发 N 条 |
 
 ## 2. 就绪任务与执行方式
 
@@ -35,6 +36,7 @@
 - 其余依赖：10 已 `resolved`（隔离部分）并合并，11 待 10 且另须人工授权（仍为 `ready-for-human`，本轮不执行、状态不动）；真实飞书群、飞书内置浏览器/手机、代理可达性与目标环境三进程/资源证据均未取得，不得用 10 的隔离证据代替。未解锁的票不得越过其直接阻塞票开始。
 - **02/03 精确入口返回恢复缺陷（已修复，保留记录）**：提前 Spec 审查发现详情路径判定只认 `/dynamics/{id}`，两个精确入口被当成「无快照、无来源」的页面——`saveDetailSnapshot` 丢弃快照、`openThread` 不记来源、`returnFromThread` 只认普通详情，于是窄屏精确根页进楼中楼后返回被替换成普通详情顶部（已读批次与滚动丢失），历史恢复到精确访问又因无快照重新主动定位，与 spec §7「主动定位完成后…原返回与历史恢复保持」冲突。修复统一 `detailFamily` 详情族判定、按动态核对来源、以 `locateOnEntry`/`activeLocate` 让恢复按快照位置与保存页码还原，未新建第二套状态系统，链接/读取契约/后端均未变；红绿为单测 `3 failed | 1 passed` → `4 passed`、Pixel 7 浏览器 `1 failed | 1 passed` → `2 passed`，合并 tip `894a253`。细节见 [02 证据](evidence/02-root-comment-deep-link.md) §7、[03 证据](evidence/03-reply-deep-link.md) §8，本项不再遗留待修复或待决策事项。
 - 11 已完成真实验收（受限范围）：真实三群 11 条消息、真机内置浏览器深链接定位/刷新/返回、系统群告警与 13:40 心跳、代理 401 均有真实证据；未验证项（加签、目标机三进程/迁移、真实 B 站采集、图片渲染、主动限速）见 [11 证据](evidence/11-real-acceptance.md) §10，不作为上线依据。
+- 13/14 由 11 的“发送频率”与“清理/积压补发”观察派生，均为上线前加固项。裁决已完成：13 已 `resolved`（目的地键控 5 次/秒 + 100 次/分钟、超预算顺延不算失败、系统角色独立额度且领取优先、429 被动退避保留；新增 10 例、全量后端 `1041 passed`，双轴复核缺陷已整改；证据见 [evidence/13-notification-rate-limit.md](evidence/13-notification-rate-limit.md)）；14 已 `resolved`（持久总开关，不停进程：SQLite v22 `notification_gate` 默认开启、每轮只读一次、关闭不领取不发 HTTP 不生成心跳、重开按方案 A 补发并受 13 限速；管理页开关与待发条数；新增后端 21 例、全量 `1062 passed`，前端 `pnpm check` 与 `pnpm test:e2e` `209 passed/10 skipped`、`check:dist` 通过；证据见 [evidence/14-notification-gate.md](evidence/14-notification-gate.md)）。两者独立，可并行。
 - 12 由 11 真机验收派生（F-11-01）：后端 `_root_window` 增 `prev_cursor`/`earlier_count`、新增 `_root_back_window`（向前窗口以终点为坐标、不与已读窗口重叠），前端 `CommentList` 顶部「以上还有 N 条更早评论」/「加载更早评论」并按锚点位移分帧收敛滚动位置；`nextCursor` 不被向前读取改写。全门槛：后端 `1031 passed`、`pnpm check` 278 单测、全量 e2e `205 passed/10 skipped`、`test:e2e:location` `4 passed`、`check:dist` exit 0；真机复测通过。
 - 编号是便于阅读的依赖顺序，不强制串行执行。可并行的票仍需协调共享模块和迁移冲突，不能仅为避免同文件编辑添加虚假业务阻塞边。
 - 每张实现票可以在新会话中单独执行，以票据、父规格、正式设计和当前源码为依据，不依赖本轮聊天记忆。完成阻塞票的含义是其验收条件和必要证据成立，不只是文件存在或有提交。

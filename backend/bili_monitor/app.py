@@ -11,7 +11,7 @@ from typing import Annotated, Literal
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException
 
-from .contracts import UID, AddUP, AddTarget, APIError, MonitorConfig, error_response
+from .contracts import UID, AddUP, AddTarget, APIError, MonitorConfig, NotificationSwitch, error_response
 from .profiles import fetch_profile
 from .safety import configure_safe_logging
 from .storage import Store
@@ -22,6 +22,7 @@ from .source_cookies import load_source_cookie_pairs
 from .comment_client import RequestsCommentClientFactory
 from .sync import initialize
 from .media import ImageDownloader, MediaUploader, sync_media
+from .notifications.log import notifier_event
 from .oss import OSSUploader
 
 
@@ -170,6 +171,22 @@ def create_app(
     async def delete_target(uid: UID, id: UID):
         await run_store(store.delete_target, uid, id)
         return Response(status_code=204)
+
+    @application.get("/api/manage/notifications")
+    async def get_notifications(request: Request):
+        """通知总开关与待发条数：只读聚合，不返回路由、webhook 或消息正文。"""
+        validate_query(request)
+        return await run_store(store.read_notification_switch)
+
+    @application.put("/api/manage/notifications")
+    async def update_notifications(body: NotificationSwitch, request: Request):
+        """持久切换总开关：只控制通知进程是否发送，不控制进程启停。"""
+        validate_query(request)
+        changed, state = await run_store(store.update_notification_switch, body.enabled)
+        # 幂等写入不制造日志噪声：只有真的切换才留一条固定分类，不含地址或凭据。
+        if changed:
+            notifier_event("notification_switch_changed", enabled=body.enabled)
+        return state
 
     @application.post("/api/sync/initial")
     async def initial_sync(body: AddUP):

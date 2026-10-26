@@ -24,12 +24,21 @@ interface Call {
 
 type Reply = { status?: number; body?: unknown; json?: boolean; delayMs?: number };
 
-/** 记录管理请求并返回受控响应；只有 /api/manage/** 被替换，其余装配保持生产行为。 */
+/**
+ * 记录管理请求并返回受控响应；只有 /api/manage/** 被替换，其余装配保持生产行为。
+ *
+ * 通知总开关不是每个用例的被测对象：它由固定默认响应单独处理，不进入 `calls`，
+ * 需要断言它的用例在调用本函数之后再注册更具体的路由覆盖（Playwright 后注册优先）。
+ */
 async function manageApi(page: Page, handler: (call: Call) => Reply | Promise<Reply>) {
   const calls: Call[] = [];
   await page.route('**/api/manage/**', async (route: Route) => {
     const request = route.request();
     const call: Call = { method: request.method(), path: new URL(request.url()).pathname, body: request.postData() };
+    if (call.path === '/api/manage/notifications') {
+      await route.fulfill({ status: 200, json: { enabled: true, pending: 0 } });
+      return;
+    }
     calls.push(call);
     const reply = await handler(call);
     if (reply.delayMs) await new Promise(resolve => setTimeout(resolve, reply.delayMs));
@@ -126,6 +135,66 @@ test.describe('UP 监控管理', () => {
     // 恶意昵称不得变成元素；头像空值回退应用自有占位。
     await expect(link.locator('img')).toHaveAttribute('src', '/default-avatar.svg');
     expect(await page.locator('img[src="x"]').count()).toBe(0);
+  });
+
+  test('通知总开关：初始状态来自接口，切换提交 {enabled} 且刷新后与真实状态一致', async ({ page }) => {
+    // 受控的通知端点：状态由 PUT 改写，用来验证“刷新后与真实状态一致”。
+    let state = { enabled: true, pending: 5 };
+    const writes: Call[] = [];
+    // 先装通用管理路由，再装通知端点：Playwright 后注册的路由优先，才真正覆盖默认响应。
+    await manageApi(page, () => ({ body: { ups: [] } }));
+    await page.route('**/api/manage/notifications', async (route: Route) => {
+      const request = route.request();
+      writes.push({ method: request.method(), path: new URL(request.url()).pathname, body: request.postData() });
+      if (request.method() === 'PUT') {
+        const body = JSON.parse(request.postData() ?? '{}') as { enabled: boolean };
+        state = { ...state, enabled: body.enabled };
+      }
+      await route.fulfill({ status: 200, json: state });
+    });
+
+    await page.goto('/manage');
+    await expect(page.getByText('飞书通知：运行中，待发 5 条。')).toBeVisible();
+    const toggle = page.getByRole('button', { name: '关闭飞书通知', exact: true });
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+
+    await toggle.click();
+    await expect(page.getByText('飞书通知已关闭，不再发送。')).toBeVisible();
+    await expect(page.getByText('飞书通知：已关闭，待发 5 条。')).toBeVisible();
+    await expect(page.getByRole('button', { name: '开启飞书通知', exact: true }))
+      .toHaveAttribute('aria-pressed', 'false');
+
+    // 刷新后重新以 GET 为唯一来源，不回放本地记忆。
+    await page.reload();
+    await expect(page.getByText('飞书通知：已关闭，待发 5 条。')).toBeVisible();
+    await expect(page.getByRole('button', { name: '开启飞书通知', exact: true }))
+      .toHaveAttribute('aria-pressed', 'false');
+
+    expect(writes).toEqual([
+      { method: 'GET', path: '/api/manage/notifications', body: null },
+      { method: 'PUT', path: '/api/manage/notifications', body: JSON.stringify({ enabled: false }) },
+      { method: 'GET', path: '/api/manage/notifications', body: null },
+    ]);
+  });
+
+  test('通知总开关切换失败保留原状态并给出固定提示', async ({ page }) => {
+    await manageApi(page, () => ({ body: { ups: [] } }));
+    await page.route('**/api/manage/notifications', async (route: Route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({ status: 200, json: { enabled: true, pending: 2 } });
+        return;
+      }
+      await route.fulfill({ status: 503, json: { error: { code: 'STORAGE_UNAVAILABLE', message: 'SECRET_TOKEN' } } });
+    });
+
+    await page.goto('/manage');
+    await expect(page.getByText('飞书通知：运行中，待发 2 条。')).toBeVisible();
+    await page.getByRole('button', { name: '关闭飞书通知', exact: true }).click();
+    await expect(page.getByRole('alert')).toContainText('配置存储暂不可用，请重试。');
+    await expect(page.getByText('飞书通知：运行中，待发 2 条。')).toBeVisible();
+    await expect(page.getByRole('button', { name: '关闭飞书通知', exact: true }))
+      .toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('body')).not.toContainText('SECRET_TOKEN');
   });
 
   test('UID 校验失败不发请求，阻塞时重复提交被阻止，失败保留输入', async ({ page }) => {
@@ -257,7 +326,7 @@ test.describe('UP 监控管理', () => {
       await expect(page.getByRole('list', { name: 'UP 列表' })).toBeVisible();
       const list = await page.evaluate(() => {
         const heights = [...document.querySelectorAll<HTMLElement>(
-          '.app-nav a, .manage-crumbs a, .manage-up-link, .manage-submit',
+          '.app-nav a, .manage-crumbs a, .notify-switch-toggle, .manage-up-link, .manage-submit',
         )].map(node => Math.round(node.getBoundingClientRect().height));
         const cards = [...document.querySelectorAll<HTMLElement>('.manage-up-link')];
         return {

@@ -4,6 +4,7 @@ import { ElAlert, ElButton, ElForm, ElFormItem, ElInput } from 'element-plus';
 import { useSession } from '../app/session';
 import UserAvatar from '../dynamics/UserAvatar.vue';
 import { invalidUidMessage, isValidUid, type ManagedUp } from './managementApi';
+import NotificationSwitch from './NotificationSwitch.vue';
 import { manageStatus, manageUser } from './status';
 import { useManagementRead } from './useManagementRead';
 import { useManagementRequests } from './useManagementRequests';
@@ -55,6 +56,7 @@ function editUid(value: string): void {
 
 <template>
   <div class="manage-visit">
+    <NotificationSwitch />
     <p v-if="readState === 'loading'" class="manage-notice" role="status">正在读取管理配置…</p>
     <div v-else-if="readState === 'error'" class="manage-notice">
       <el-alert :title="readError" type="error" :closable="false" show-icon />

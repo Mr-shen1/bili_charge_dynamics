@@ -143,6 +143,37 @@ def migrate_alerts(connection):
     )""")
 
 
+def migrate_gate(connection):
+    """v22 通知总开关：单行持久表，缺行即开启，迁移后既有库行为不变。
+
+    旧库降级副本可能已带该表（既有测试会重放旧迁移号），建表必须可重入；
+    已有行不被重放覆盖，关闭状态跨重启/重新部署保持。
+    """
+    connection.execute("""CREATE TABLE IF NOT EXISTS notification_gate (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        enabled INTEGER NOT NULL CHECK (enabled IN (0, 1))
+    )""")
+    connection.execute("INSERT OR IGNORE INTO notification_gate (id, enabled) VALUES (1, 1)")
+
+
+def read_gate(connection):
+    """当前持久开关；缺行按开启处理（默认值就是开启，不因数据缺失停发）。"""
+    row = connection.execute("SELECT enabled FROM notification_gate WHERE id = 1").fetchone()
+    return True if row is None else bool(row["enabled"])
+
+
+def write_gate(connection, enabled):
+    """覆盖写入总开关；同一行幂等，重复写同一值不算切换。"""
+    connection.execute("""INSERT INTO notification_gate (id, enabled) VALUES (1, ?)
+        ON CONFLICT(id) DO UPDATE SET enabled = excluded.enabled""", (int(bool(enabled)),))
+
+
+def pending_count(connection):
+    """待发条数：只读聚合 `pending` 的投递记录数，不含正文、路由或凭据。"""
+    return connection.execute(
+        "SELECT COUNT(*) FROM notification_deliveries WHERE state = ?", (PENDING,)).fetchone()[0]
+
+
 class Alert(NamedTuple):
     """一条待登记告警：固定类别、表意对象键与固定原因，不含正文、地址或凭据。
 

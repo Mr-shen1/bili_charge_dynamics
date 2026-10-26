@@ -59,6 +59,8 @@
 | 目标列表 | `GET /api/manage/ups/{uid}/targets` | `{targets:[{id:string}]}` → 目标集合 |
 | 添加目标 | `POST /api/manage/ups/{uid}/targets`，`{id:string}` | 仅接受 201 且返回同一字符串 ID；提示归属校验通过 |
 | 移除目标 | `DELETE /api/manage/ups/{uid}/targets/{id}` | 仅接受 204；成功后移除当前目标，提示保留已有归档 |
+| 通知总开关 | `GET /api/manage/notifications` | `{enabled:boolean,pending:number}` → `{enabled,pending}`；页面顶部开关与待发条数的唯一来源（不读本地记忆） |
+| 切换通知总开关 | `PUT /api/manage/notifications`，`{enabled:boolean}` | 仅接受 200 且响应形状合法；成功后以响应里的新状态渲染，失败保留原状态并给固定提示（票据 14）；两个方法都不带查询参数，未知查询参数按 `422` 处理 |
 
 `TARGET_AUTHOR_MISMATCH`/409 映射“动态作者与所选 UP 不符”；`TARGET_UNVERIFIED`/502 映射“无法确认动态归属”。重复目标提交也由服务端重新验证作者，成功后仍是幂等关联；未复核不会显示“归属校验通过”。仅识别状态匹配的白名单错误码，从不回显服务端 `message`、响应正文或异常。UID 与动态 ID 共用无前导零的正整数字符串校验，最多 128 位，不转 Number。
 

@@ -13,6 +13,7 @@ from backend.tests.sqlite_fixtures import (
     management_relation,
     quote,
     reject_config_inserts,
+    reject_switch_writes,
 )
 
 
@@ -566,3 +567,76 @@ def test_list_sorts_uid_as_strings_including_retained_identity(tmp_path):
         ups = client.get(BASE).json()["ups"]
         assert [up["uid"] for up in ups] == ["10", "2", "202"]
         assert ups[0]["monitor"] is None
+
+
+# --- 14 通知总开关：只控制“是否发送”，不控制进程启停 ----------------------
+
+NOTIFICATIONS = "/api/manage/notifications"
+
+
+def test_notification_switch_defaults_on_and_round_trips_through_http(tmp_path):
+    from backend.tests.test_notification_delivery import archived_changes
+
+    path = tmp_path / "monitor.sqlite"
+    archived_changes(path, ["13:02", "13:03"])  # 两条待发业务消息
+    with client_for(path) as client:
+        assert client.get(NOTIFICATIONS).json() == {"enabled": True, "pending": 2}
+        response = client.put(NOTIFICATIONS, json={"enabled": False})
+        assert (response.status_code, response.json()) == (200, {"enabled": False, "pending": 2})
+        # 刷新页面读到的就是真实状态，不依赖本地记忆。
+        assert client.get(NOTIFICATIONS).json() == {"enabled": False, "pending": 2}
+        # 幂等：重复写同一个值仍是 200 与新状态。
+        assert client.put(NOTIFICATIONS, json={"enabled": False}).json() == {"enabled": False, "pending": 2}
+        assert client.put(NOTIFICATIONS, json={"enabled": True}).json() == {"enabled": True, "pending": 2}
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"enabled": "false"},
+        {"enabled": 0},
+        {"enabled": None},
+        {"enabled": True, "extra": 1},
+        {"enabled": True, "pending": 0},
+        [],
+        "false",
+        None,
+    ],
+)
+def test_notification_switch_rejects_invalid_input_and_keeps_state(tmp_path, body):
+    with client_for(tmp_path / "monitor.sqlite") as client:
+        response = client.put(NOTIFICATIONS, json=body)
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "INVALID_INPUT"
+        assert client.get(NOTIFICATIONS).json() == {"enabled": True, "pending": 0}
+
+
+def test_notification_switch_rejects_unknown_query_parameters(tmp_path):
+    with client_for(tmp_path / "monitor.sqlite") as client:
+        response = client.get(NOTIFICATIONS + "?token=FICTIONAL_SECRET_QUERY")
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "INVALID_INPUT"
+        assert "FICTIONAL_SECRET" not in response.text
+        # 写入端点同样拒绝未知查询参数，不静默忽略。
+        put = client.put(NOTIFICATIONS + "?token=FICTIONAL_SECRET_QUERY", json={"enabled": False})
+        assert (put.status_code, put.json()["error"]["code"]) == (422, "INVALID_INPUT")
+        assert "FICTIONAL_SECRET" not in put.text
+        assert client.get(NOTIFICATIONS).json()["enabled"] is True
+
+
+def test_notification_switch_write_failure_is_visible_and_atomic(tmp_path, caplog):
+    caplog.set_level(logging.DEBUG)
+    path = tmp_path / "monitor.sqlite"
+    with client_for(path) as client:
+        assert client.get(NOTIFICATIONS).json()["enabled"] is True
+        reject_switch_writes(path)
+        response = client.put(NOTIFICATIONS, json={"enabled": False})
+        assert response.status_code == 503
+        assert response.json() == {"error": {"code": "STORAGE_UNAVAILABLE", "message": "存储暂不可用"}}
+        assert "FICTIONAL_SECRET" not in response.text + caplog.text
+    # 写失败不回写一半：读回来仍是原状态。
+    with sqlite3.connect(path) as database:
+        database.execute("DROP TRIGGER fixture_reject_switch")
+    with client_for(path) as client:
+        assert client.get(NOTIFICATIONS).json()["enabled"] is True

@@ -34,6 +34,13 @@ class MonitorConfig(BaseModel):
     enabled: Annotated[bool, Field(strict=True)]
 
 
+class NotificationSwitch(BaseModel):
+    """通知总开关：只有布尔状态一个字段，禁止额外字段，非法入参统一 422。"""
+
+    model_config = ConfigDict(extra="forbid")
+    enabled: Annotated[bool, Field(strict=True)]
+
+
 ERRORS = {
     "INVALID_INPUT": (422, "输入无效"),
     "CURSOR_INVALID": (422, "评论读取标记无效，请重新开始读取"),

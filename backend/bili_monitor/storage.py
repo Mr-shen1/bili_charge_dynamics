@@ -5,6 +5,7 @@ import json
 import sqlite3
 import re
 import time
+from typing import NamedTuple
 from uuid import uuid4
 from contextlib import contextmanager
 from pathlib import Path
@@ -16,6 +17,7 @@ from .selection import refresh_selections, selection_token, selection_matches
 from .discovery_state import DiscoveryStore
 from .comment_status import comment_status, utc_now, ROOT_METADATA_VERSION
 from .media import reconcile_media, refresh_media_progress
+from .transaction import write
 
 
 SNAPSHOT_TTL_SECONDS = 15 * 60
@@ -120,6 +122,13 @@ def _freeze_pages(documents, limit):
     return results[0], list(zip(tokens[1:], results[1:]))
 
 
+class SwitchUpdate(NamedTuple):
+    """总开关切换结果：`changed` 决定是否记一条切换日志，`state` 就是 API 响应体。"""
+
+    changed: bool
+    state: dict
+
+
 class Store(CheckStore, DiscoveryStore):
     def __init__(self, path):
         self.path = str(path)
@@ -140,7 +149,7 @@ class Store(CheckStore, DiscoveryStore):
             connection.execute("BEGIN IMMEDIATE")
             try:
                 version = connection.execute("PRAGMA user_version").fetchone()[0]
-                if version > 21:
+                if version > 22:
                     raise RuntimeError("Unsupported database schema version")
                 if version == 0:
                     connection.execute("""CREATE TABLE identities (
@@ -293,11 +302,35 @@ class Store(CheckStore, DiscoveryStore):
                 if version < 21:
                     # 08 告警节流状态：同对象同类故障首次提醒、此后每 30 分钟最多一次。
                     outbox.migrate_alerts(connection)
-                connection.execute("PRAGMA user_version = 21")
+                if version < 22:
+                    # 14 通知总开关：持久单行，默认开启，既有库升级后行为不变。
+                    outbox.migrate_gate(connection)
+                connection.execute("PRAGMA user_version = 22")
                 connection.commit()
             except BaseException:
                 connection.rollback()
                 raise
+
+    def _notification_switch(self, connection):
+        """开关与待发条数的唯一形状：两个入口共用，不手搓两份字典。"""
+        return {"enabled": outbox.read_gate(connection),
+                "pending": outbox.pending_count(connection)}
+
+    def read_notification_switch(self):
+        """通知总开关与待发条数：只读聚合，不返回路由、webhook 或消息正文。"""
+        with self.connection() as connection:
+            return self._notification_switch(connection)
+
+    def update_notification_switch(self, enabled):
+        """持久切换总开关；返回 `SwitchUpdate`，读写在同一短事务内完成。
+
+        `changed=False` 表示写入的是与当前相同的值（幂等），调用方据此不产生日志噪声。
+        """
+        with write(self) as connection:
+            changed = outbox.read_gate(connection) != enabled
+            outbox.write_gate(connection, enabled)
+            state = self._notification_switch(connection)
+        return SwitchUpdate(changed, state)
 
     def read(self, uid=None):
         with self.connection() as connection:
