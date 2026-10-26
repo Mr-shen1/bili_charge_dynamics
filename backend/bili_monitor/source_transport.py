@@ -1,14 +1,14 @@
-"""上游分页共享节奏；HTTPX 与 Requests 只等待发送机会，不锁网络或事务。"""
+"""Feed/根页共享发送节奏；楼中楼的楼级等待由同步流程负责。"""
 
 import asyncio
 import random
 
 import httpx
 
-from .source_endpoints import FEED_URL, ROOT_COMMENTS_URL, REPLIES_URL
+from .source_endpoints import FEED_URL, ROOT_COMMENTS_URL
 
 
-PAGE_DELAYS = {FEED_URL: (0.8, 1.5), ROOT_COMMENTS_URL: (0.3, 0.4), REPLIES_URL: (0.3, 0.4)}
+PAGE_DELAYS = {FEED_URL: (0.8, 1.5), ROOT_COMMENTS_URL: (0.3, 0.4)}
 
 
 class SourcePacer:
@@ -26,7 +26,7 @@ class SourcePacer:
 
 
 class PacedSourceTransport(httpx.AsyncBaseTransport):
-    """分页发送前等待，包括首页和空尾页；不改变检查节拍或自动重试。"""
+    """Feed/根页发送前等待，包括首页和空尾页；不改变检查节拍。"""
 
     def __init__(self, transport=None, *, sleep=None, pacer=None):
         self.transport = transport if transport is not None else httpx.AsyncHTTPTransport(trust_env=False)

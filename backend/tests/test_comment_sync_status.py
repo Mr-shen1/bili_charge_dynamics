@@ -600,7 +600,7 @@ def test_new_root_success_does_not_advance_old_reply_or_whole_round_success_time
             source.count = 71
             # 增量策略按根 rcount 决定是否展开楼层；变化后才能实际触发页失败。
             source.roots[0]["rcount"] += 1
-            source.fail_reply_page = 2
+            source.fail_reply_page = 1  # 增量先取首页；不再读取旧全量的空尾页。
             clock.advance(30)
             await collector.check_once(UID, "123")
             clock.advance(45)

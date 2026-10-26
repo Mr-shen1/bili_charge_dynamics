@@ -20,7 +20,7 @@
 
 ## 分页请求节奏（30）
 
-正式 API／采集进程的 HTTPX feed 与 Requests 评论会话共享同一 `SourcePacer`：feed 每次发送前随机异步等待0.8–1.5秒，根/楼中楼每页0.3–0.4秒，包含首页和空尾页确认；锁只覆盖等待，网络与事务均不占锁。HTML/detail/独立计数不排分页队列。每个正式评论尝试单独创建 Requests Session，线程池执行网络，按参考顺序预热首页和UP空间页（每页返回后异步等1–3秒），结束关闭；不再以nav预热，不导入其主循环或飞书逻辑。Requests采用环境代理和受信B站内的GET重定向；HTTPX信号与媒体路径保持原独立策略。
+正式 API／采集进程的 HTTPX feed 与 Requests 评论会话共享同一 `SourcePacer`：feed 每次发送前随机异步等待0.8–1.5秒，根评论每页0.3–0.4秒，包含首页和空尾页确认；楼中楼每页不等待，改为每个实际处理的楼结束后等待0.3–0.4秒。页级共享锁只覆盖 feed/根评论等待，楼级等待也不占网络或 SQLite 事务。HTML/detail/独立计数不排分页队列。每个正式评论尝试单独创建 Requests Session，线程池执行网络，按参考顺序预热首页和UP空间页（每页返回后异步等1–3秒），结束关闭；不再以nav预热，不导入其主循环或飞书逻辑。Requests采用环境代理和受信B站内的GET重定向；HTTPX信号与媒体路径保持原独立策略。
 
 该节奏不改变固定节拍调度或失败重试规则；分页慢不会改成“同步完再等下一节拍”，忙检查仍跳过、不积压。等待和网络均在 SQLite 事务外。两个进程各自限速，不保证跨进程突发或上游不再限流；真实持续运行仍需 #34。测试传输可另行注入外部时间，见 [后端说明](../../../backend/README.md#30-分页请求间隔)。
 
@@ -31,7 +31,7 @@ collector 使用独立 INFO 级别的 stderr handler，保持 HTTPX/HTTPCore、O
 - `collector_initializing`、`collector_configuration`、`collector_started` 表示初始化、评论引擎/代理策略、媒体上传是否启用、固定节拍/并发配置与恢复完成。`comment_session_started/closed` 表示每轮 Requests 生命周期；`comment_session_warmup` 的 homepage/space 只表示对应 HTTP 返回情况，不代表登录成功。
 - 每个固定节拍输出一条 `collector_tick`，记录当前入选 `targets`、`recent_ups`、待处理 `pending`、检查/同步/发现的 `*_in_flight` 和本轮 `*_started` 数量。它是调度快照，不保证任务在该行输出时已完成领取；无目标也输出心跳。
 - `sync_started`、`sync_finished` 和来源阶段事件共享进程内 `attempt` 流水号。流水号不是目标 ID 或持久领取令牌；重启后重置。`sync_finished complete=false` 不表示成功，后续仍按原 pending/入选规则处理；`sync_skipped reason=not_claimed` 表示未取得有效工作。
-- `root_sync_started/root_sync_finished` 和 `replies_sync_started/replies_sync_finished` 记录整轮阶段，不为每个成功页输出 INFO。根/回复失败记录固定事件、`stage`、`page`（回复另含本轮 `root_index`），以区分来源请求、分页校验、存储和尾页复查。并发计数**增长**不判失败，只记 `root_scan_count_grew` / `reply_scan_count_grew`；根扫描失败时楼中楼降级执行记 `replies_sync_degraded roots=`；`replies_sync_finished` 另带 `skipped=` 与 `degraded=`。
+- `root_sync_started/root_sync_finished` 和 `replies_sync_started/replies_sync_finished` 记录整轮阶段，不为每个成功页输出 INFO。根/回复失败记录固定事件、`stage`、`page`（回复另含本轮 `root_index`），以区分来源请求、分页校验、存储和尾页复查。楼中楼增量另记 `reply_incremental_started/finished`（`pages_fetched`、`new`、`stopped_by=known_page|first_page|drift`）；处理完的楼记录 `local_source_delta`（本地行数减来源 count），不因此删除旧回复。并发计数**增长**不判失败，只记 `root_scan_count_grew` / `reply_scan_count_grew`；根扫描失败时楼中楼降级执行记 `replies_sync_degraded roots=`；`replies_sync_finished` 另带 `skipped=` 与 `degraded=`。
 - 失败仅记录固定 `reason` 与经过范围校验的 `http_status`：如 `timeout`、`http_status`、`network_error`、`json_invalid`、`field_missing`、`type_invalid`、`value_invalid`、`source_rejected`、`pagination_changed`、`pagination_not_advancing`、`storage_error`、`login_required`、`credential_rejected`。应用自身的固定校验错误进一步细分为 `comment_page_mismatch`、`pictures_shape_invalid`、`upper_shape_invalid` 等有限原因。根/回复的缺字段只在命中对应阶段的固定字段白名单时记录 `field`，不回显任意键名；JSON 解码异常不输出其文档片段。不读取或输出响应正文、异常原文/traceback、URL、身份/动态/评论 ID、Cookie、SDK 凭据或领取令牌。
 - `collector_loop_failed/collector_failed` 明确记录调度或启动失败；取消/退出记录 `collector_stopping/collector_stopped`。未改变既有异常处理及失败重试策略，也未在父进程中新增自动重启。
 - **凭据相关分类只有两个 token，且只由上游业务码决定**：评论计数/根评论/楼中楼响应体的 `code` 为 `-101`（账号未登录）时，本次启动确实读到来源 Cookie → `credential_rejected`（可信凭据失效）；未配置 Cookie → `login_required`（本地匿名访问，属采集异常）。其余业务码（`-111`/`-352`/`-401`/`-403`/`-412`/`-799` 等）、HTTP 401/403、超时与网络异常一律保持原分类（`source_rejected`/`http_status`/`timeout`/`network_error`），**不得**当作登录失效；不读上游 `message`，也不新增 `nav` 探针或空页启发式来推断登录态。分类只用于诊断日志与系统告警，`check_error` 的既有枚举不变。

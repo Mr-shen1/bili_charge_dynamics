@@ -1,9 +1,11 @@
-"""完整楼中楼来源分页；目标作者只由同根已归档 parent 解析。
+"""楼中楼分页与末页增量；目标作者只由同根已归档 parent 解析。
 
-增量策略与参考脚本对齐：根页 rcount 与上次成功快照相同的楼层本轮不展开，
-只在 rcount 变化、上次失败或满 FULL_SCAN_SECONDS 校准周期时重扫整楼。
+根页 rcount 不变且校准未到期时跳过；成功且已有回复的楼从末页倒序补采，
+首次、失败与显式全量仍正序扫描。
 """
 
+from asyncio import sleep as sleep_after_root
+import random
 from datetime import datetime, timezone
 
 from anyio import to_thread
@@ -21,7 +23,7 @@ FULL_SCAN_SECONDS = 24 * 60 * 60
 
 
 def scan_due(progress, observed_count, now_iso):
-    """本轮是否需要重扫该楼：新楼层、rcount 变化、上次失败或超出校准周期。"""
+    """本轮是否需要扫描该楼：新楼层、rcount 变化、上次失败或超出校准周期。"""
     if progress is None or progress["status"] != "success":
         return True
     if progress["observed_count"] != observed_count:
@@ -110,6 +112,74 @@ async def fetch_reply_page(client, dynamic_id, root_id, locator, number, *, uid=
     return documents, ids, count
 
 
+class ReplyDrift(ValueError):
+    def __init__(self, pages_fetched):
+        super().__init__("Reply count changed during scan")
+        self.pages_fetched = pages_fetched
+
+
+async def fetch_reply_tail(client, dynamic_id, root_id, locator, seen_ids, page_number, *, uid=None):
+    """从末页向前取；一次 count 漂移重启扫描，再漂移则本轮不提交。"""
+    pages_fetched = 0
+    drifted = False
+    while True:
+        page_number[0] = 1
+        first = await fetch_reply_page(client, dynamic_id, root_id, locator, 1, uid=uid)
+        pages_fetched += 1
+        count = first[2]
+        collected = []
+        if count == 0:
+            return collected, count, pages_fetched, "first_page"
+        number = (count + 19) // 20
+        restart = False
+        while number >= 1:
+            page_number[0] = number
+            page = first if number == 1 else await fetch_reply_page(
+                client, dynamic_id, root_id, locator, number, uid=uid)
+            if number != 1:
+                pages_fetched += 1
+            documents, page_ids, current = page
+            if current != count:
+                if drifted:
+                    raise ReplyDrift(pages_fetched)
+                drifted = restart = True
+                break
+            if not page_ids:
+                # count 可包含折叠/不可见条目；沿用正序全量的空尾页复查。
+                confirmation = await fetch_reply_page(client, dynamic_id, root_id, locator, number, uid=uid)
+                pages_fetched += 1
+                if confirmation[1] or confirmation[2] != count:
+                    raise ReplyDrift(pages_fetched)
+                return collected, count, pages_fetched, "first_page"
+            collected.extend(documents)
+            if set(page_ids) <= seen_ids and number > 1:
+                # 整页已知还不能停：向前重叠一页，防止分页偏移漏掉新回复。
+                number -= 1
+                page_number[0] = number
+                overlap = first if number == 1 else await fetch_reply_page(
+                    client, dynamic_id, root_id, locator, number, uid=uid)
+                if number != 1:
+                    pages_fetched += 1
+                overlap_docs, overlap_ids, overlap_count = overlap
+                if overlap_count != count:
+                    if drifted:
+                        raise ReplyDrift(pages_fetched)
+                    drifted = restart = True
+                    break
+                if not overlap_ids:
+                    confirmation = await fetch_reply_page(client, dynamic_id, root_id, locator, number, uid=uid)
+                    pages_fetched += 1
+                    if confirmation[1] or confirmation[2] != count:
+                        raise ReplyDrift(pages_fetched)
+                    return collected, count, pages_fetched, "first_page"
+                collected.extend(overlap_docs)
+                if set(overlap_ids) <= seen_ids:
+                    return collected, count, pages_fetched, "known_page"
+            number -= 1
+        if not restart:
+            return collected, count, pages_fetched, "first_page"
+
+
 async def sync_replies(store, client, id, generation, roots_result, *, now=None, uid=None, full=False,
                        on_failure=None):
     degraded = roots_result is None
@@ -133,6 +203,7 @@ async def sync_replies(store, client, id, generation, roots_result, *, now=None,
         uid = archive["author"]["id"]
     roots = await to_thread.run_sync(store.roots_for_replies, id, observed_replies)
     progress = await to_thread.run_sync(store.reply_progress, id)
+    seen_by_root = await to_thread.run_sync(store.reply_ids, id)
     # 只有存在历史成功记录时才需要判断校准周期；首轮不额外取时钟。
     checked_at = (now() if now is not None else utc_now()) if any(
         entry["status"] == "success" for entry in progress.values()) else None
@@ -152,67 +223,92 @@ async def sync_replies(store, client, id, generation, roots_result, *, now=None,
             continue
         if not await to_thread.run_sync(store.change_reply_root, id, generation, root["id"], "pending"):
             return
-        # 只有本轮明确零才可跳页；持久旧零不能冒充新的未知观察。
-        if observed == 0:
-            if not await to_thread.run_sync(lambda: store.change_reply_root(
-                    id, generation, root["id"], "success", 0, observed=0,
-                    succeeded_at=now() if now is not None else None)):
-                return
-            continue
         phase = "page_fetch"
+        number = 1
+        page_number = [1]
+        local_ids = seen_by_root.setdefault(root["id"], set())
+        incremental = not full and previous is not None and previous["status"] == "success" and bool(local_ids)
+        seen_before = local_ids.copy() if incremental else set()
         try:
-            number, baseline, seen = 1, None, set()
-            while True:
-                phase = "page_fetch"
-                documents, page_ids, count = await fetch_reply_page(client, id, root["id"], root["comment_locator"], number, uid=uid)
-                phase = "pagination"
-                # 根页 rcount 与楼中楼 count 可能来自不同快照或口径（热帖持续增长、折叠/删除仍计数），
-                # 以本次楼中楼分页自洽为准，不要求与根页旧值相等。
-                if baseline is not None and count < baseline:
-                    # 计数减少说明有删除，分页可能前移，重试以免漏回复。
-                    raise ValueError("Reply count decreased during scan")
-                if baseline is not None and count != baseline:
-                    # 热帖扫描期间新增回复属于正常并发，页偏移由重复 ID 检测负责。
-                    collector_event("reply_scan_count_grew", baseline=baseline, current=count)
-                baseline = count
-                if page_ids and not set(page_ids) - seen:
-                    raise ValueError("Reply pagination did not advance")
-                phase = "save_page"
-                if not await to_thread.run_sync(store.save_replies, id, generation, root["id"], documents, count):
+            # 只有本轮明确零才可跳页；持久旧零不能冒充新的未知观察。
+            if observed == 0:
+                if not await to_thread.run_sync(lambda: store.change_reply_root(
+                        id, generation, root["id"], "success", 0, observed=0,
+                        succeeded_at=now() if now is not None else None)):
                     return
-                if not page_ids:
-                    if number > 1:
-                        phase = "tail_fetch"
-                        confirmation, confirmed_ids, confirmed_count = await fetch_reply_page(client, id, root["id"], root["comment_locator"], number, uid=uid)
-                        phase = "tail_save"
-                        if not await to_thread.run_sync(store.save_replies, id, generation, root["id"], confirmation, confirmed_count):
-                            return
-                        phase = "tail_validate"
-                        if confirmed_ids or confirmed_count != baseline:
-                            raise ValueError("Unstable empty reply tail")
-                    # 上游 count 可能包含未返回的回复（已删除、折叠、对当前账号不可见）。
-                    # 翻完并连续确认空尾页即视为本轮可读内容已取全；差额只记录，不整根判失败。
-                    if len(seen) > count:
-                        # 反过来的偏差（返回比声称更多）说明分页/计数不可信，仍按失败保留旧内容。
-                        raise ValueError("Reply count does not match root")
-                    if len(seen) != count:
-                        collector_event("reply_scan_short", archived=len(seen), source=count)
-                    break
-                seen.update(page_ids)
-                number += 1
+                collector_event("reply_root_finished", local_source_delta=len(local_ids))
+                continue
+            if incremental:
+                collector_event("reply_incremental_started", root_index=root_index)
+                phase = "tail_fetch"
+                documents, baseline, pages_fetched, stopped_by = await fetch_reply_tail(
+                    client, id, root["id"], root["comment_locator"], local_ids, page_number, uid=uid)
+                phase = "save_page"
+                if not await to_thread.run_sync(store.save_replies, id, generation, root["id"], documents, baseline):
+                    return
+                local_ids.update(document["id"] for document in documents)
+            else:
+                number, baseline, seen = 1, None, set()
+                while True:
+                    phase = "page_fetch"
+                    documents, page_ids, count = await fetch_reply_page(client, id, root["id"], root["comment_locator"], number, uid=uid)
+                    phase = "pagination"
+                    # 根页 rcount 与楼中楼 count 可能来自不同快照或口径，以本次分页为准。
+                    if baseline is not None and count < baseline:
+                        raise ValueError("Reply count decreased during scan")
+                    if baseline is not None and count != baseline:
+                        collector_event("reply_scan_count_grew", baseline=baseline, current=count)
+                    baseline = count
+                    if page_ids and not set(page_ids) - seen:
+                        raise ValueError("Reply pagination did not advance")
+                    phase = "save_page"
+                    if not await to_thread.run_sync(store.save_replies, id, generation, root["id"], documents, count):
+                        return
+                    local_ids.update(page_ids)
+                    if not page_ids:
+                        if number > 1:
+                            phase = "tail_fetch"
+                            confirmation, confirmed_ids, confirmed_count = await fetch_reply_page(client, id, root["id"], root["comment_locator"], number, uid=uid)
+                            phase = "tail_save"
+                            if not await to_thread.run_sync(store.save_replies, id, generation, root["id"], confirmation, confirmed_count):
+                                return
+                            phase = "tail_validate"
+                            if confirmed_ids or confirmed_count != baseline:
+                                raise ValueError("Unstable empty reply tail")
+                        # 来源可含不可见回复；沿用正序全量的空尾页确认规则。
+                        if len(seen) > count:
+                            raise ValueError("Reply count does not match root")
+                        if len(seen) != count:
+                            collector_event("reply_scan_short", archived=len(seen), source=count)
+                        break
+                    seen.update(page_ids)
+                    number += 1
             phase = "finish_root"
             if not await to_thread.run_sync(lambda: store.change_reply_root(
                     id, generation, root["id"], "success", baseline, observed=observed,
                     succeeded_at=now() if now is not None else None)):
                 return
+            if incremental:
+                collector_event("reply_incremental_finished", pages_fetched=pages_fetched,
+                                new=len(local_ids - seen_before), stopped_by=stopped_by,
+                                local_source_delta=len(local_ids) - baseline)
+            else:
+                collector_event("reply_root_finished", local_source_delta=len(local_ids) - baseline)
         except Exception as error:
             # 单根失败不阻止其他根的可读回复，也不暴露来源异常文本。
-            collector_failure("reply_sync_failed", error, stage=phase, page=number, root_index=root_index)
+            if isinstance(error, ReplyDrift):
+                collector_event("reply_incremental_finished", warning=True,
+                                pages_fetched=error.pages_fetched, new=0, stopped_by="drift")
+            collector_failure("reply_sync_failed", error, stage=phase,
+                              page=page_number[0] if incremental else number, root_index=root_index)
             if on_failure is not None:
                 on_failure(error)
             failed = True
             if not await to_thread.run_sync(store.change_reply_root, id, generation, root["id"], "failed"):
                 return
+        finally:
+            # 楼级节奏在网络与 SQLite 事务外；失败也等待，跳过楼不等待。
+            await sleep_after_root(random.uniform(0.3, 0.4))
     # 降级轮只保证「已存根的可读回复」不落后，未确认根集合，故不宣称全集一致：
     # 沿用 unconfirmed 语义，synced_reply_comment_count 与成功时间不推进。
     await to_thread.run_sync(store.finish_replies, id, generation,

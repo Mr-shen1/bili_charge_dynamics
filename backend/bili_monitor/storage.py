@@ -1014,6 +1014,15 @@ class Store(CheckStore, DiscoveryStore):
                         "SELECT root_id, status, synced_source_reply_count, observed_reply_count, synced_at"
                         " FROM reply_sync WHERE dynamic_id = ?", (id,))}
 
+    def reply_ids(self, id):
+        """一轮一次批量读取本地已见回复；不持有写事务或分页游标。"""
+        with self.connection() as connection:
+            result = {}
+            for root_id, reply_id in connection.execute(
+                    "SELECT root_id, id FROM replies WHERE dynamic_id = ?", (id,)):
+                result.setdefault(root_id, set()).add(reply_id)
+            return result
+
     def save_replies(self, id, generation, root_id, documents, count):
         return self._change_replies(id, generation, "pending", None, root_id, documents, count)
 

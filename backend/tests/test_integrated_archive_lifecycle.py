@@ -144,7 +144,7 @@ def test_count_change_media_retry_and_new_observation_keep_independent_checkpoin
             source.count = 71
             source.roots[0]["rcount"] = 6  # 楼中楼增量判定依据根 rcount
             picture("https://i0.hdslb.com/bfs/new/comment-v2.png")
-            source.fail_reply_page = 2
+            source.fail_reply_page = 1  # 已成功楼的倒序增量只需首页确认 count。
             clock.advance(30)
             await collector.check_once(UID, "123")
             await collector.execute_pending()

@@ -77,9 +77,9 @@ def test_root_and_reply_pages_including_tail_confirmation_share_waits(tmp_path):
         "wait", ("/x/v2/reply", "1"),
         "wait", ("/x/v2/reply", "2"),
         "wait", ("/x/v2/reply", "2"),
-        "wait", ("/x/v2/reply/reply", "1"),
-        "wait", ("/x/v2/reply/reply", "2"),
-        "wait", ("/x/v2/reply/reply", "2"),
+        ("/x/v2/reply/reply", "1"),
+        ("/x/v2/reply/reply", "2"),
+        ("/x/v2/reply/reply", "2"),
     ]
 
 
@@ -127,7 +127,8 @@ def test_default_api_transport_paces_real_initialization(monkeypatch, tmp_path):
         prepare(api)
         assert api.post("/api/sync/initial", json={"uid": UID}).status_code == 200
         assert api.get(ARCHIVE).json()["comments_last_attempt"] == "success"
-    assert events == ["wait", "page"] * 6
+    # 共享节拍仅限根页；楼级等待由专门的注入时钟测试验证。
+    assert events == ["wait", "page"] * 3 + ["page"] * 3
 
 
 def test_collector_process_entry_uses_paced_feed_transport(monkeypatch, tmp_path):
@@ -186,9 +187,7 @@ def test_shared_pacing_does_not_serialize_network_or_block_check_signals():
                 assert waits.empty()
                 permits.put_nowait(None)
                 await asyncio.wait_for(first_sent.wait(), 2)
-                assert 0.3 <= await asyncio.wait_for(waits.get(), 2) <= 0.4
-                permits.put_nowait(None)
-                # 第一张根页仍等待网络；另一根的楼中楼在独立等待后已经能返回。
+                # 回复页不再进入页级等待队列；根页仍持网络未返回。
                 assert (await asyncio.wait_for(second, 2)).status_code == 200
                 assert not first.done()
                 network_release.set()
