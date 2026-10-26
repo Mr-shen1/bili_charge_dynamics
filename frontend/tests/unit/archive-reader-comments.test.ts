@@ -322,3 +322,32 @@ it('定位入参非法不发请求，已取消优先于响应', async () => {
   })).toEqual({ status: 'cancelled' });
   expect(called).toBe(0);
 });
+
+it('定位响应带“更早条数”与向前游标；类型不符按可重试错误处理', async () => {
+  const located = createArchiveReader(async () => Response.json({
+    items: [archiveComment(25)], next_cursor: null, prev_cursor: 'p19-0123456789abcdef', earlier_count: 24,
+  }));
+  const result = await located.locateComment({
+    dynamicId: '1001', rootId: '5025', sort: 'hot', signal: new AbortController().signal,
+  });
+  if (result.status !== 'success') throw new Error('定位读取应成功');
+  expect(result.data.prevCursor).toBe('p19-0123456789abcdef');
+  expect(result.data.earlierCount).toBe(24);
+
+  // 更早条数必须是非负整数、向前游标必须是字符串或 null，否则不猜测、按可重试错误处理。
+  for (const broken of [
+    { earlier_count: -1 }, { earlier_count: 1.5 }, { earlier_count: '9' },
+    { prev_cursor: 19 }, { prev_cursor: {} },
+  ]) {
+    const reader = createArchiveReader(async () => Response.json({ items: [archiveComment(25)], next_cursor: null, ...broken }));
+    expect(await reader.locateComment({
+      dynamicId: '1001', rootId: '5025', sort: 'hot', signal: new AbortController().signal,
+    })).toEqual({ status: 'error' });
+  }
+
+  // 普通分页不带这两个字段时按“没有更早”处理，不因为缺字段失败。
+  const plain = createArchiveReader(async () => Response.json({ items: [archiveComment(1)], next_cursor: 'next' }));
+  const batch = await plain.readComments({ dynamicId: '1001', sort: 'hot', signal: new AbortController().signal });
+  if (batch.status !== 'success') throw new Error('普通读取应成功');
+  expect([batch.data.prevCursor, batch.data.earlierCount]).toEqual([null, 0]);
+});

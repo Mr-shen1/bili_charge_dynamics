@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { ElButton } from 'element-plus';
 import type { ArchiveMetadata, CommentSort } from '../data/contracts';
 import type { CommentSnapshot, ReplySnapshot } from '../app/snapshots';
@@ -28,7 +28,7 @@ const emit = defineEmits<{ update: [CommentSnapshot]; settled: []; restart: [] }
 
 const { reader } = useSession();
 const navigation = useArchiveNavigation();
-const { state, load } = useCommentsRead(
+const { state, load, loadEarlier, earlierPending, earlierError } = useCommentsRead(
   reader, { dynamicId: props.dynamicId, sort: props.sort, anchorId: props.anchorId }, props.initial.read);
 const expanded = ref<Record<string, boolean>>({ ...props.initial.expanded });
 // 只标记确实读到的目标：目标不在已读批次里绝不冒充定位成功。
@@ -36,6 +36,8 @@ const expanded = ref<Record<string, boolean>>({ ...props.initial.expanded });
 const highlightId = computed(() => confirmedTarget(
   props.locateReplyId ? null : props.anchorId, state.value.data?.items));
 const replies = ref<Record<string, ReplySnapshot>>({ ...props.initial.replies });
+// 向前读取时的滚动锚点：取列表里第一个已渲染的评论，插入后按它的位移补回。
+const listElement = ref<HTMLElement | null>(null);
 const area = computed(() => props.sort === 'hot' ? '最热评论' : '最新评论');
 // not-found 有自己的提示与返回入口，不交给通用读取失败提示。
 const noticeStatus = computed<ReadStatus>(() => readNoticeStatus(state.value.status));
@@ -54,6 +56,46 @@ function toggle(id: string): void {
 
 function setReply(rootId: string, next: ReplySnapshot): void {
   replies.value = { ...replies.value, [rootId]: next };
+}
+
+/** 等待下一帧：插入后的布局（提示行、换行、字体）可能跨帧才稳定。 */
+function nextFrame(): Promise<void> {
+  return new Promise(resolve => {
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => resolve());
+    else setTimeout(resolve, 0);
+  });
+}
+
+/**
+ * 分帧收敛：反复把锚点的视口位置拉回插入前的位置，直到连续两帧稳定。
+ * 浏览器原生滚动锚定可能已经补偿过，所以只补差额，不做整段高度搬移。
+ */
+async function holdPosition(anchor: HTMLElement, before: number): Promise<void> {
+  let stable = 0;
+  for (let pass = 0; pass < 20; pass += 1) {
+    await nextTick();
+    const delta = anchor.getBoundingClientRect().top - before;
+    if (Math.abs(delta) <= 1) {
+      stable += 1;
+      if (stable >= 2) return;
+    } else {
+      stable = 0;
+      if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
+        window.scrollTo({ top: window.scrollY + delta, left: 0, behavior: 'instant' });
+      }
+    }
+    await nextFrame();
+  }
+}
+
+/** 向前读取一批更早评论，并把插入造成的位移补回滚动位置（视口内容不跳动）。 */
+async function loadEarlierComments(): Promise<void> {
+  // 基准取插入前列表里第一个已渲染的评论：它就在用户当前阅读位置，不依赖总文档高度。
+  const anchor = listElement.value?.querySelector<HTMLElement>('[data-reading-id]') ?? null;
+  const before = anchor?.getBoundingClientRect().top ?? 0;
+  await loadEarlier();
+  if (!anchor) return;
+  await holdPosition(anchor, before);
 }
 
 watch([state, expanded, replies], () => {
@@ -90,7 +132,17 @@ watch(() => state.value.status, status => {
   <p v-if="state.data && state.data.items.length === 0" class="comment-status" role="status">
     {{ emptyUnarchived ? '评论尚未归档；来源计数不代表本地已有评论。' : '暂无评论' }}
   </p>
-  <ul v-if="state.data && state.data.items.length > 0" class="comment-list" aria-label="一级评论">
+  <section v-if="state.data && (state.data.earlierCount ?? 0) > 0" class="comment-earlier" aria-label="更早评论">
+    <p class="comment-earlier-count" role="status">以上还有 {{ state.data.earlierCount }} 条更早评论</p>
+    <p v-if="earlierError" class="comment-earlier-error" role="alert">更早评论读取失败，请重试。</p>
+    <el-button
+      type="primary"
+      class="comment-action"
+      :disabled="earlierPending"
+      @click="loadEarlierComments()"
+    >{{ earlierPending ? '正在读取更早评论…' : '加载更早评论' }}</el-button>
+  </section>
+  <ul v-if="state.data && state.data.items.length > 0" ref="listElement" class="comment-list" aria-label="一级评论">
     <CommentItem
       v-for="item in state.data.items"
       :key="item.id"
@@ -145,6 +197,23 @@ watch(() => state.value.status, status => {
   flex-direction: column;
   align-items: center;
   padding: 8px 0 4px;
+}
+.comment-earlier {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0 8px;
+}
+.comment-earlier-count {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+.comment-earlier-error {
+  margin: 0;
+  color: var(--danger, #b3261e);
+  line-height: 1.7;
 }
 .comment-action {
   min-height: var(--touch);

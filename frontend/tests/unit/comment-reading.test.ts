@@ -722,3 +722,69 @@ it('切换定位链接时另一条访问的迟到响应不覆盖当前目标', a
   expect(within(region).getAllByRole('listitem')[0]!.getAttribute('data-reading-id')).toBe(`comment:${second.id}`);
   expect(within(region).getAllByRole('listitem')[0]!.getAttribute('data-located')).toBe('true');
 });
+
+it('定位视图可以先读目标之前的评论：提示更早条数、插入到最前面且不覆盖后向游标', async () => {
+  const all = comments(45);
+  const target = all[24]!;
+  const reads: (string | null | undefined)[] = [];
+  const reader = createReader({
+    readDetail: async () => ({ status: 'success', data: commentDynamic() }),
+    readComments: async input => {
+      reads.push(input.cursor);
+      return { status: 'success', data: {
+        items: all.slice(4, 24), nextCursor: null, prevCursor: 'back-4', earlierCount: 4,
+      } };
+    },
+    locateComment: async () => ({ status: 'success', data: {
+      items: all.slice(24, 44), nextCursor: 'located-44', prevCursor: 'back-24', earlierCount: 24,
+    } }),
+  });
+
+  await showApp(reader, `/dynamics/1001/comments/${target.id}/locate`);
+  const region = await screen.findByRole('region', { name: '评论区' });
+  await waitFor(() => expect(within(region).getAllByRole('listitem')).toHaveLength(20));
+  expect(within(region).getByText('以上还有 24 条更早评论')).toBeTruthy();
+
+  await fireEvent.click(within(region).getByRole('button', { name: '加载更早评论' }));
+  await waitFor(() => expect(within(region).getAllByRole('listitem')).toHaveLength(40));
+  // 只按向前游标读取，不重开定位、不回到首批。
+  expect(reads).toEqual(['back-24']);
+  const items = within(region).getAllByRole('listitem');
+  expect(items[0]!.getAttribute('data-reading-id')).toBe(`comment:${all[4]!.id}`);
+  expect(items[19]!.getAttribute('data-reading-id')).toBe(`comment:${all[23]!.id}`);
+  expect(items[20]!.getAttribute('data-reading-id')).toBe(`comment:${target.id}`);
+  expect(items[20]!.getAttribute('data-located')).toBe('true');
+  expect(within(region).getByText('以上还有 4 条更早评论')).toBeTruthy();
+
+  // 后向游标仍是定位窗口给的，不被向前读取的响应覆盖。
+  await fireEvent.click(within(region).getByRole('button', { name: '加载更多评论' }));
+  await waitFor(() => expect(reads).toEqual(['back-24', 'located-44']));
+});
+
+it('更早评论读取失败时保留已读批次并给出可重试提示', async () => {
+  const all = comments(45);
+  const target = all[24]!;
+  let fail = true;
+  const reader = createReader({
+    readDetail: async () => ({ status: 'success', data: commentDynamic() }),
+    readComments: async () => (fail
+      ? { status: 'error' }
+      : { status: 'success', data: { items: all.slice(0, 24), nextCursor: null, prevCursor: null, earlierCount: 0 } }),
+    locateComment: async () => ({ status: 'success', data: {
+      items: all.slice(24, 44), nextCursor: null, prevCursor: 'back-24', earlierCount: 24,
+    } }),
+  });
+
+  await showApp(reader, `/dynamics/1001/comments/${target.id}/locate`);
+  const region = await screen.findByRole('region', { name: '评论区' });
+  await waitFor(() => expect(within(region).getAllByRole('listitem')).toHaveLength(20));
+  await fireEvent.click(within(region).getByRole('button', { name: '加载更早评论' }));
+  await waitFor(() => expect(within(region).getByRole('alert').textContent).toContain('更早评论读取失败'));
+  expect(within(region).getAllByRole('listitem')).toHaveLength(20);
+  expect(within(region).getByText('以上还有 24 条更早评论')).toBeTruthy();
+
+  fail = false;
+  await fireEvent.click(within(region).getByRole('button', { name: '加载更早评论' }));
+  await waitFor(() => expect(within(region).getAllByRole('listitem')).toHaveLength(44));
+  expect(within(region).queryByText(/以上还有/)).toBeNull();
+});

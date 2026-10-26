@@ -226,12 +226,13 @@ v9 为媒体尝试表增加根 owner 标识（旧动态图尝试保持空根标�
 
 本节为通知消息的一级评论精确入口提供只读归档契约，供票据 03（楼中楼回复）和 04（消息中使用的稳定链接）复用。它不新增采集、通知或账号能力，也不改变既有分页契约。
 
-- `GET /api/archive/dynamics/{id}/comments/{root_id}/location?sort=hot|latest` 返回 `{items, next_cursor}`，结构与该动态的一级评论批次相同：`items` 最多 20 条，且**第一项就是目标评论**；`next_cursor` 是该排序下定位窗口之后的续读游标，可直接用于 `GET /api/archive/dynamics/{id}/comments?cursor=...`。
+- `GET /api/archive/dynamics/{id}/comments/{root_id}/location?sort=hot|latest` 返回 `{items, next_cursor, prev_cursor, earlier_count}`，结构与该动态的一级评论批次相同：`items` 最多 20 条，且**第一项就是目标评论**；`next_cursor` 是该排序下定位窗口之后的续读游标，可直接用于 `GET /api/archive/dynamics/{id}/comments?cursor=...`。
+- `earlier_count` 是当前窗口**之前**还有多少条评论，`prev_cursor` 是读这些更早评论的游标（目标就是第一条时为 `null`、计数为 `0`）。把 `prev_cursor` 交给 `GET /api/archive/dynamics/{id}/comments?cursor=...` 返回紧邻当前窗口之前的一批，同样带自己的 `prev_cursor`/`earlier_count`，可以一直向读到开头：向前批次以“窗口终点”为坐标，**不会与已读窗口重叠**；它不返回 `next_cursor`（`null`），调用方需要保留自己已有的后向续读点，否则会把已读评论再读一遍。
 - 排序与 `/comments` 完全一致（置顶优先、最热按点赞、其后发表时间与 ID 稳定收尾），按目标在该排序中的位置取窗口，不重新排序、不额外渲染全部评论。
 - 动态不存在、根评论不属于该动态或尚未归档，一律 `404 NOT_FOUND`（不暴露其他动态的评论）；非法排序、未知或重复查询参数返回 `422 INVALID_INPUT`。`limit` 不是该端点的参数，批量固定 20，与前端一级评论批次一致。
 - 定位读取只访问本地 SQLite：不访问上游、不写归档、不冻结快照、不创建 `root_comment_pages` 行，也不启动采集或通知。因此“定位 → 读取”本身没有采集副作用。
 - 成本如实记录：定位在该动态的本地根评论集合里按排序定位后切窗口，读取成本随单动态根评论量线性增长（内存与 CPU，不涉及上游）。响应与 DOM 仍只有 20 条，不因此渲染全部评论；本期不为单次定位新增专用索引或容量治理，做长期容量评估时须把这条计入。
-- 续读游标绑定动态、排序与批量，格式无效、摘要不符或跨动态／跨排序复用返回 `422 CURSOR_INVALID`。与其他 cursor 不同，定位游标**不冻结当时快照**：续读按当前归档重新取窗口，因此期间新增或点赞变化可能让窗口边界前移／后移；同一 ID 不会被重复展示（前端按 ID 去重），删除评论不在本期范围。该取舍让定位请求保持零写入；需要冻结快照的调用方仍应先读不带 cursor 的首批。
+- 续读游标绑定动态、排序与批量，格式无效、摘要不符或跨动态／跨排序复用返回 `422 CURSOR_INVALID`。后向游标以起点为坐标（形如 `<offset>-<摘要>`），向前游标以终点为坐标（形如 `p<end>-<摘要>`，前缀不是十六进制字符，两者不会混淆）；两种游标都不含凭据。与其他 cursor 不同，定位游标**不冻结当时快照**：续读按当前归档重新取窗口，因此期间新增或点赞变化可能让窗口边界前移／后移；同一 ID 不会被重复展示（前端按 ID 去重），删除评论不在本期范围。该取舍让定位请求保持零写入；需要冻结快照的调用方仍应先读不带 cursor 的首批。
 - 归档读取的既有约束继续适用：只读本地归档、上游不可用不触发采集、错误只返回固定脱敏码、ID 一律字符串。
 
 浏览器入口为 `/dynamics/{dynamicId}/comments/{rootId}/locate`（前端专用路由，见[客户端契约](archive-api-client.md#飞书通知-02-增量精确一级评论入口)）。自动化证据见 [02 证据](../../../.scratch/feishu-notifications/evidence/02-root-comment-deep-link.md)。

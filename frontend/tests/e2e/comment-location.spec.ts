@@ -95,11 +95,27 @@ async function mockArchive(
       return reply({
         items: ordered.slice(index, index + 20),
         next_cursor: index + 20 < ordered.length ? `loc:${index + 20}` : null,
+        prev_cursor: index > 0 ? `pre:${index}` : null,
+        earlier_count: index,
       });
     }
     if (url.pathname === `/api/archive/dynamics/${dynamicId}/comments`) {
       const cursor = url.searchParams.get('cursor');
       requests.push({ kind: 'comments', sort: url.searchParams.get('sort'), cursor });
+      // 向前游标以窗口终点为坐标：返回它之前的一批，不与已读窗口重叠。
+      if (cursor !== null && cursor.startsWith('pre:')) {
+        const end = Number(cursor.slice(4));
+        if (!Number.isSafeInteger(end) || end < 1 || end > ordered.length) {
+          return reply({ error: { code: 'CURSOR_INVALID' } }, 422);
+        }
+        const start = Math.max(0, end - 20);
+        return reply({
+          items: ordered.slice(start, end),
+          next_cursor: null,
+          prev_cursor: start > 0 ? `pre:${start}` : null,
+          earlier_count: start,
+        });
+      }
       const offset = cursor === null ? 0 : Number(cursor.startsWith('loc:') ? cursor.slice(4) : Number.NaN);
       if (!Number.isSafeInteger(offset) || offset < 0 || offset > ordered.length) {
         return reply({ error: { code: 'CURSOR_INVALID' } }, 422);
@@ -107,6 +123,8 @@ async function mockArchive(
       return reply({
         items: ordered.slice(offset, offset + 20),
         next_cursor: offset + 20 < ordered.length ? `loc:${offset + 20}` : null,
+        prev_cursor: offset > 0 ? `pre:${offset}` : null,
+        earlier_count: offset,
       });
     }
     return reply({ error: { code: 'NOT_FOUND' } }, 404);
@@ -239,5 +257,36 @@ test.describe('一级评论精确链接', () => {
         .toBe(true);
       await expect(page.locator(`[data-reading-id="comment:${target.id}"]`)).toBeVisible();
     }
+  });
+
+  test('定位后可以向前读目标之前的评论：提示更早条数、插入后视口不跳动', async ({ page }) => {
+    const requests = await mockArchive(page);
+    await page.goto(locatePath(target.id));
+    const region = page.getByRole('region', { name: '评论区' });
+    await expect(region.getByRole('listitem')).toHaveCount(20);
+    await expect(region.getByText('以上还有 24 条更早评论')).toBeVisible();
+
+    // 模拟用户滚到提示行点击：以点击那一刻的视口位置为基准，插入后必须保持不动。
+    const earlierButton = region.getByRole('button', { name: '加载更早评论' });
+    await earlierButton.scrollIntoViewIfNeeded();
+    const beforeTop = await viewportTop(page, target.id);
+    await earlierButton.click();
+    await expect(region.getByRole('listitem')).toHaveCount(40);
+    const afterTop = await viewportTop(page, target.id);
+    expect(Math.abs(afterTop - beforeTop)).toBeLessThanOrEqual(4);
+    await expect(region.getByText('以上还有 4 条更早评论')).toBeVisible();
+    // 更早的一批插在最前面，目标仍在原来的阅读位置（不以“跳回页首”代替定位）。
+    await expect(page.locator(`[data-reading-id="comment:${target.id}"]`)).toHaveAttribute('data-located', 'true');
+
+    // 再向前一次就到底：提示消失，目标之前的 24 条全部可读。
+    await region.getByRole('button', { name: '加载更早评论' }).click();
+    await expect(region.getByRole('listitem')).toHaveCount(44);
+    await expect(region.getByText(/以上还有/)).toHaveCount(0);
+    await expect(region.getByRole('button', { name: '加载更早评论' })).toHaveCount(0);
+
+    // 后向游标仍是定位窗口给的：继续“加载更多评论”读到最后一条。
+    await region.getByRole('button', { name: '加载更多评论' }).click();
+    await expect(region.getByRole('listitem')).toHaveCount(45);
+    expect(requests.map(request => request.cursor)).toEqual([null, 'pre:24', 'pre:4', 'loc:44']);
   });
 });

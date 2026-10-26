@@ -253,9 +253,9 @@
 ## 飞书通知 02 增量：精确一级评论入口
 
 - 链接：`/dynamics/{dynamicId}/comments/{rootId}/locate`。动态与目标评论身份都是 URL 路径里的字符串 ID，不含凭据；直接打开、刷新、宽窄屏与历史返回都走这同一条路由，不依赖旧会话或已加载的 DOM。03 将按同一形状扩展为楼中楼回复入口，04 在消息中使用该链接。
-- 读取：`DynamicReader.locateComment({dynamicId, rootId, sort, signal})` → `GET /api/archive/dynamics/{id}/comments/{root_id}/location?sort=hot|latest`（批量固定 20，不带 cursor/limit）。返回 `{items, nextCursor}`，第一项必须是目标评论。
+- 读取：`DynamicReader.locateComment({dynamicId, rootId, sort, signal})` → `GET /api/archive/dynamics/{id}/comments/{root_id}/location?sort=hot|latest`（批量固定 20，不带 cursor/limit）。返回 `{items, nextCursor, prevCursor, earlierCount}`，第一项必须是目标评论（否则按 `error` 处理）；`prevCursor`/`earlierCount` 缺省视为“没有更早”。
 - 结果语义：`{status:'not-found'}` 只表示目标不存在或未归档（HTTP 404、非法身份）；传输异常、非 200 其他状态、DTO 不合法或响应窗口里没有目标都是 `{status:'error'}`（可重试）；取消优先返回 `cancelled`。绝不把页首或邻近评论当作定位成功。
-- 页面行为：首批直接使用定位批次（不先读首批、不渲染全部评论），目标正文默认展开、加高亮标记（`data-located`／`aria-current`）并定位到该条；后续“加载更多评论”沿用定位批次的 `next_cursor`。目标不存在显示固定提示与“返回动态”入口（替换为对应详情，不留下不可用地址）；临时失败显示既有读取失败与重试。用户已滚动后迟到的定位结果仍高亮目标但不抢滚动，定位意图只消费一次。
+- 页面行为：首批直接使用定位批次（不先读首批、不渲染全部评论），目标正文默认展开、加高亮标记（`data-located`／`aria-current`）并定位到该条；后续“加载更多评论”沿用定位批次的 `next_cursor`。目标之前还有评论时，列表顶部显示“以上还有 N 条更早评论”与“加载更早评论”：点一次读 `prevCursor` 那一批并**插到最前面**，不重开定位、不重读目标；插入后按锚点评论的位移分帧补回滚动位置（原生滚动锚定已补偿时只补差额），连续两帧稳定即结束。向前读只改写 `prevCursor`/`earlierCount`，**不改写** `nextCursor`；读到开头时提示与按钮消失；失败保留已读批次并给可重试提示。目标不存在显示固定提示与“返回动态”入口（替换为对应详情，不留下不可用地址）；临时失败显示既有读取失败与重试。用户已滚动后迟到的定位结果仍高亮目标但不抢滚动，定位意图只消费一次。
 - 排序切换仍以同一目标为首批锚点重新定位；普通详情入口与评论区入口行为不变（无锚点时不请求定位端点、不高亮）。
 - 返回与历史恢复：精确入口是同一次详情阅读的访问，不是另一种页面。应用导航把 `/dynamics/{id}`、`/comments/{rootId}/locate`、`/replies/{replyId}/locate` 视为同一详情族，按访问身份保存详情快照（已读批次、排序、展开与阅读位置）并记录楼中楼来源；因此从精确入口进入独立楼中楼再返回、前进后退回到该访问、以及同 URL 的图片预览关闭，都沿用原快照还原并保持位置，不再重新执行主动定位。只有直开、刷新与同一链接的新访问没有快照，才按 URL 主动加载、定位并高亮。
 - 证据：前端单元测试 `tests/unit/comment-reading.test.ts`、`tests/unit/archive-reader-comments.test.ts`、`tests/unit/locate-return.test.ts`；生产装配 + 归档 HTTP 替身 `tests/e2e/comment-location.spec.ts`（桌面与 Pixel 7）与 `tests/e2e/locate-return*.spec.ts`（返回/历史恢复、图片预览返回）；实际 API + 隔离 SQLite `tests/e2e-location/comment-location.spec.ts`（`pnpm test:e2e:location`）。汇总见 [02 证据](../../../.scratch/feishu-notifications/evidence/02-root-comment-deep-link.md)。

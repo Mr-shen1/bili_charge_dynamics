@@ -170,13 +170,18 @@ function parseReply(raw: unknown, dynamicId: string, rootId: string): Reply | nu
 function commentBatch(raw: unknown, dynamicId: string, limit: number): CommentBatch | null {
   if (!record(raw) || !Array.isArray(raw.items) || raw.items.length > limit
     || !(raw.next_cursor === null || typeof raw.next_cursor === 'string')) return null;
+  // 向前读取是后加的可选字段：缺省表示“没有更早”，类型不符则不猜测、按结构失败处理。
+  const prevCursor = raw.prev_cursor ?? null;
+  const earlierCount = raw.earlier_count ?? 0;
+  if (!(prevCursor === null || typeof prevCursor === 'string')) return null;
+  if (!Number.isSafeInteger(earlierCount) || (earlierCount as number) < 0) return null;
   const items: Comment[] = [];
   for (const item of raw.items) {
     const parsed = parseComment(item, dynamicId);
     if (!parsed || items.some(existing => existing.id === parsed.id)) return null;
     items.push(parsed);
   }
-  return { items, nextCursor: raw.next_cursor };
+  return { items, nextCursor: raw.next_cursor, prevCursor, earlierCount: earlierCount as number };
 }
 
 // 楼中楼页码模式的响应：固定每页批量、next_cursor 为 null，必须带本楼计数与根评论。

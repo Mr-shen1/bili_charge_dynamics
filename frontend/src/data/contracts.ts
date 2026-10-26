@@ -99,6 +99,10 @@ export interface ReplyBatch {
 export interface CommentBatch {
   readonly items: readonly Comment[];
   readonly nextCursor: string | null;
+  /** 向前（更早）的续读游标；没有更早评论或普通首批时为 null/缺省。 */
+  readonly prevCursor?: string | null;
+  /** 当前窗口之前还有多少条评论；缺省视为 0（没有更早）。 */
+  readonly earlierCount?: number;
 }
 
 export interface DynamicBatch {

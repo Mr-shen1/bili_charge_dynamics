@@ -76,6 +76,15 @@ def _root_offset_cursor(resource, limit, offset):
     return f"{offset:x}-{digest}"
 
 
+def _root_back_cursor(resource, limit, end):
+    """向前（更早）的续读游标：以窗口**终点**为坐标，保证向前批次与已读窗口不重叠。
+
+    后缀与后向游标同形，前缀 `p` 不是十六进制字符，两种游标不会互相混淆。
+    """
+    digest = hashlib.sha256(f"{resource}|{limit}|prev|{end}".encode()).hexdigest()[:16]
+    return f"p{end:x}-{digest}"
+
+
 # 回复页码固定每页 10 条：与 page 模式的固定批量、前端 replyPageSize 一致。
 REPLY_PAGE_SIZE = 10
 
@@ -87,6 +96,15 @@ def _root_offset(resource, limit, cursor):
     offset = int(matched.group(1), 16)
     # 摘要不符时按无效游标处理：不猜来源动态/排序，也不接受被改写的偏移。
     return offset if _root_offset_cursor(resource, limit, offset) == cursor else None
+
+
+def _root_back_end(resource, limit, cursor):
+    """向前游标携带的窗口终点；摘要不符或不是向前游标时返回 None。"""
+    matched = re.fullmatch(r"p([0-9a-f]{1,8})-([0-9a-f]{16})", cursor)
+    if matched is None:
+        return None
+    end = int(matched.group(1), 16)
+    return end if _root_back_cursor(resource, limit, end) == cursor else None
 
 
 def _reply_offset(page, total):
@@ -829,9 +847,13 @@ class Store(CheckStore, DiscoveryStore):
                     return json.loads(row[0])
                 # 定位入口给出的续读游标不冻结整份快照：按当前排序重新取窗口，读取不写库。
                 offset = _root_offset(resource, limit, cursor)
-                if offset is None:
+                if offset is not None:
+                    return self._root_window(resource, limit, offset, self._ordered_roots(connection, id, sort))
+                # 向前（更早）的续读游标：窗口以游标携带的终点结束，不与已读批次重叠。
+                end = _root_back_end(resource, limit, cursor)
+                if end is None:
                     raise APIError("CURSOR_INVALID")
-                return self._root_window(resource, limit, offset, self._ordered_roots(connection, id, sort))
+                return self._root_back_window(resource, limit, end, self._ordered_roots(connection, id, sort))
             connection.execute("BEGIN IMMEDIATE")
             try:
                 documents = self._ordered_roots(connection, id, sort)
@@ -870,6 +892,24 @@ class Store(CheckStore, DiscoveryStore):
             "items": documents[offset:following],
             # 续读沿用同一排序与批量；无更多时为 null，不伪造结束结语。
             "next_cursor": _root_offset_cursor(resource, limit, following) if following < len(documents) else None,
+            # 向前（更早）的续读游标：窗口终点就是这个窗口的起点，目标就在最前面时为 null。
+            "prev_cursor": _root_back_cursor(resource, limit, offset) if offset > 0 else None,
+            # 当前窗口之前还有多少条：驱动“以上还有 N 条更早评论”的提示与结束判据。
+            "earlier_count": offset,
+        }
+
+    def _root_back_window(self, resource, limit, end, documents):
+        """向前读取：返回以 `end` 结尾的窗口（不足一个批量时就是开头那几条）。
+
+        不返回后向游标：调用方要保留自己已有的后向续读点，这里给的任何“下一批”
+        都会与已读窗口重叠。
+        """
+        start = max(0, end - limit)
+        return {
+            "items": documents[start:end],
+            "next_cursor": None,
+            "prev_cursor": _root_back_cursor(resource, limit, start) if start > 0 else None,
+            "earlier_count": start,
         }
 
     def _attach_up_replies(self, connection, id, documents):

@@ -1,4 +1,4 @@
-import { onMounted, onUnmounted, shallowRef } from 'vue';
+import { onMounted, onUnmounted, ref, shallowRef } from 'vue';
 import type { CommentSort, DynamicReader } from '../data/contracts';
 import type { CommentReadState } from '../app/snapshots';
 import { reportReadError } from '../app/readError';
@@ -16,6 +16,10 @@ export function useCommentsRead(
 ) {
   const state = shallowRef<CommentReadState>(initial ?? { data: null, status: 'loading' });
   let request: AbortController | null = null;
+  // 向前（更早）读取是独立请求：不改变后向续读状态，也不与 load() 互斥。
+  let previousRequest: AbortController | null = null;
+  const earlierPending = ref(false);
+  const earlierError = ref(false);
   let active = false;
 
   async function load(): Promise<void> {
@@ -48,7 +52,13 @@ export function useCommentsRead(
         });
         state.value = {
           status: 'success',
-          data: { items: [...(previous?.items ?? []), ...additions], nextCursor: result.data.nextCursor },
+          data: {
+            items: [...(previous?.items ?? []), ...additions],
+            nextCursor: result.data.nextCursor,
+            // 定位首批采用响应里的“更早”状态；后续追加不改写它（否则提示条数会跳变）。
+            prevCursor: previous ? (previous.prevCursor ?? null) : (result.data.prevCursor ?? null),
+            earlierCount: previous ? (previous.earlierCount ?? 0) : (result.data.earlierCount ?? 0),
+          },
         };
       } else {
         state.value = {
@@ -67,6 +77,57 @@ export function useCommentsRead(
     }
   }
 
+  /**
+   * 向前（更早）读取：只用于定位视图。把目标之前的一批插到最前面，
+   * 后向游标（nextCursor）保持定位窗口给的值，不因本次响应被改写。
+   */
+  async function loadEarlier(): Promise<void> {
+    const previous = state.value.data;
+    // 没有向前游标就是读到头了；已有向前请求时不并发，避免重复插入同一批。
+    if (!active || previousRequest || !previous?.prevCursor) return;
+    const controller = new AbortController();
+    previousRequest = controller;
+    earlierPending.value = true;
+    earlierError.value = false;
+    try {
+      const result = await reader.readComments({
+        dynamicId: input.dynamicId, sort: input.sort, cursor: previous.prevCursor, signal: controller.signal,
+      });
+      if (!active || previousRequest !== controller || controller.signal.aborted) return;
+      if (result.status !== 'success') {
+        // 失败不动已读批次：保留目标与上下文，只给可重试提示。
+        earlierError.value = true;
+        return;
+      }
+      const seen = new Set(previous.items.map(item => item.id));
+      const additions = result.data.items.filter(item => !seen.has(item.id));
+      if (additions.length === 0) {
+        // 服务端没有给出更多更早内容：结束提示，不伪造重复条目。
+        state.value = { status: 'success', data: { ...previous, prevCursor: null, earlierCount: 0 } };
+        return;
+      }
+      state.value = {
+        status: 'success',
+        data: {
+          items: [...additions, ...previous.items],
+          nextCursor: previous.nextCursor,
+          prevCursor: result.data.prevCursor ?? null,
+          earlierCount: result.data.earlierCount ?? 0,
+        },
+      };
+    } catch (error) {
+      if (active && previousRequest === controller && !controller.signal.aborted) {
+        reportReadError('更早评论', error);
+        earlierError.value = true;
+      }
+    } finally {
+      if (previousRequest === controller) {
+        previousRequest = null;
+        earlierPending.value = false;
+      }
+    }
+  }
+
   onMounted(() => {
     active = true;
     // 已恢复成功/失败结果时等待用户显式重试；只有未开始或已取消的读取自动继续。
@@ -74,9 +135,11 @@ export function useCommentsRead(
   });
   onUnmounted(() => {
     active = false;
+    previousRequest?.abort();
+    previousRequest = null;
     request?.abort();
     request = null;
   });
 
-  return { state, load };
+  return { state, load, loadEarlier, earlierPending, earlierError };
 }
