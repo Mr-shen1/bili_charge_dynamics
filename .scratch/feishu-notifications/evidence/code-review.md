@@ -72,3 +72,15 @@ Standards：6 项维护性问题、3 项判断项，主要关注重复短事务�
 ### 分轴复核结论
 
 Standards：6 项维护性问题中 5 项接受修复、1 项部分接受（测试时钟）；3 项判断项中 2 项接受修复、1 项证据驳回并记录不做。Spec：0 项确认违背维持，3 项观察项 1 项驳回 2 项成本记录，1 项跨进程时序风险按测试 seam 整改并保留实质断言。两轴结论仍不合并排名；01–10 的 `resolved` 语义仅限隔离证据，11 仍为人工授权门槛，未勾真项、未关闭父规格。
+
+### 最新只读复核与收尾（同一整改分支）
+
+- **两轴结论**：最终只读复核 **Standards 硬性 0 项、Spec 确认 0 项**；上表各项保持已给出的处置类型，没有新增确认缺陷。
+- **主线程独立复核**：把整改分支合入主集成后，对合并点 `166d706` 独立首次全量 **1030 passed, 3 warnings, 194.04s**（日志 `/tmp/feishu-independent-backend-final.log`）。此前对被审基线 `306356c` 的独立首轮全绿（1029 passed/191.05s）一并作为补证；10 §12 的首轮 4 例失败历史保留不改写。
+- **收尾三处小改（不扩大重构）**：
+  1. `frontend/src/dynamics/useLocateTarget.ts` 删除全仓未使用的 `pending` getter（`arm()`/`settle()` 两个真实使用面不变）。
+  2. `docs/backend/api/notification-process.md` 把“事务样板集中一处”限定为**本轮实际覆盖**：通知投递（领取/回写/路由复检/心跳登记/告警扫描）、检查状态写入（`record_check`/`claim_check_work`/`finish_check_work`/`recover_check_work`）与采集主循环告警登记；并明写归档/发现等既有模块仍是自己的 inline `BEGIN IMMEDIATE`、行为不变、本轮未合并，不得理解为全仓储统一。
+  3. `backend/bili_monitor/comment_status.py` 的 `epoch_from_iso` 注释改为“只做解析、不规定错误策略，调用方决定”，撤掉“解析不了就是真实错误”的过强措辞（`Collector._page_due` 实际会吞 `ValueError` 按到期处理）。
+- **记录在案的受控变化（不改）**：`NotificationConfig.secret()` 在目的地不可用（webhook 无效）时返回 `None`；因投递侧现由 `resolve()` 一次拿到错误码+地址+密钥，且 `route.error is not None` 在组装/发送之前就返回等待配置，故发送路径不会出现“有密钥无地址”的组合，凭据不可达路径不变。既有脱敏用例（队列/日志/快照/repr）继续通过。
+- **仍明示的风险**：跨进程用例的墙钟依赖已按 §3 收窄，但 SQLite 忙等、进程调度与极端 CI 负载仍可能让 `wait_for` 预算（5–30 秒）在与被测行为无关的环节耗尽；本轮不再放宽任何断言或调大超时，若未来复现应作为新的独立问题诊断。
+- **收尾验证**（本分支，代码无后端语义变化）：`pnpm check` exit 0（275 单测/24 文件 + typecheck + e2e 项目守卫）；`pnpm test:e2e:location` 4 passed、`pnpm test:e2e:notification` 4 passed；后端定向 `test_collector.py`+`test_notification_protocol.py` 48 passed。未重跑后端全量或全部 e2e（见下方 review-fixes 收尾记录）。

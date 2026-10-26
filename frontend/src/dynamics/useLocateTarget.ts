@@ -37,9 +37,6 @@ export function useLocateTarget(options: {
     arm(): void {
       pending = true;
     },
-    get pending(): boolean {
-      return pending;
-    },
     async settle(): Promise<void> {
       if (!pending) return;
       await nextTick();

@@ -21,9 +21,9 @@ def utc_now():
 def epoch_from_iso(value):
     """ISO 时间 → epoch 秒；带/不带时区与 `Z` 都接受。
 
-    只做解析，不决定错误契约：告警登记要宽松（解析不了就不登记），采集节拍要严格
-    （解析不了就是真实错误），两种调用各自包住异常。非字符串按原值交给
-    `fromisoformat`，抛 `TypeError`。
+    只做解析，不规定错误策略：解析失败就抛异常，怎么处理由调用方决定（告警登记
+    宽松到不登记，采集节拍严格到按到期／报错），本函数不降级也不编造时刻。
+    非字符串按原值交给 `fromisoformat`，抛 `TypeError`。
     """
     text = value.replace("Z", "+00:00") if isinstance(value, str) else value
     return datetime.fromisoformat(text).timestamp()

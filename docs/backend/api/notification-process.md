@@ -168,7 +168,7 @@ exec .venv/bin/python -m backend.bili_monitor.notifier
 - 投递结果不回写归档成功 checkpoint；已入队记录不随监控配置删除而级联（新表不引用 `monitors`/`targets`）。
 - 到期领取走 `(state, due_at)` 索引，过期租约走 `(state, lease_until)` 索引，两条查询各自命中一条索引后再合并排序、限批量（`DUE_QUERY`/`LEASE_QUERY`）；不扫描评论表推断新增。
 - 过期扫描的已知成本：`expire_overdue` 按 `expires_at IS NOT NULL AND expires_at <= now` 更新，该列没有独立索引，因此这一条会成为每轮领取的额外扫描成本。当前记录规模（每动态每角色一条 + 每类告警一条）不足以要求容量治理，本期不新增索引、**不**因此自动丢弃业务消息（业务记录 `expires_at` 永远为空）；若未来队列长期积压，应先评估索引或归档而不是放宽过期范围。
-- 事务样板集中在一处：投递的领取/回写/路由复检/心跳登记/告警扫描，检查与同步结果，以及采集主循环故障登记都走 `bili_monitor/transaction.py` 的 `write(store)`（`BEGIN IMMEDIATE` → 提交，异常回滚后原样抛出）；网络请求、退避与日志不在事务内。
+- 事务样板集中在一处：**本轮改造覆盖的范围**——通知投递的领取/回写/路由复检/心跳登记/告警扫描、检查状态写入（`record_check`/`claim_check_work`/`finish_check_work`/`recover_check_work`），以及采集主循环故障登记——都走 `bili_monitor/transaction.py` 的 `write(store)`（`BEGIN IMMEDIATE` → 提交，异常回滚后原样抛出）；网络请求、退避与日志不在事务内。归档/发现等既有模块仍有自己的 `BEGIN IMMEDIATE` 写法（行为不变，未在本轮合并），不应把本条理解为全仓储已统一。
 - 告警以有名字段穿行：`outbox.Alert(category, object_key, reason)`。`object_key` 对应既有的 `notification_alerts.object` 列与消息快照的 `object` 字段（列名与载荷形状不迁移），`object` 不再作为 Python 位置参数名覆盖内建。
 - 路由只解析一次：`NotificationConfig.resolve(uid, dynamic_id, role)` 同时给出错误码、地址与可选签名密钥，投递侧用它取代“先查错误、再查地址、再查密钥”三次查询；返回的 `Route` 的 `repr` 不复制地址或密钥（与整份配置一致），队列、日志与快照仍不保存凭据。
 - `attempts` 每次回写都 +1（含等待配置复检、过期、租约恢复后的回写），只用于诊断。`failures`/`last_failed_at` 只在外部投递真的失败时增长（网络异常、超时、HTTP/业务失败、限流、缺模板），并与 `state`/`error` 一起构成票据 08 的持久可判定事实：`outbox.delivery_failures(connection)` 只读返回 `role`/`kind`/`uid`/`dynamic_id`/`state`/`error`/`failures`/`last_failed_at`，不含地址、密钥或快照。成功不抹掉历史失败事实，等待配置复检不会伪造失败。

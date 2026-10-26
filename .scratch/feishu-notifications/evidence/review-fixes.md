@@ -159,3 +159,12 @@ pnpm test:delivery            # exit 0；9 条 PASS（mock/生产/更新/回退/
 - 反向验证是本地一次性实验（未提交实验代码）；它证明断言“能失败”，不构成对真实生产负载的证明。
 - 心跳假失败的解释基于机制复现（等价注入 + 同样失败形态）；10 首轮那 4 条失败没有留下断言，不能据此宣称根因已确证。
 - SQLite 写锁竞争、进程调度与 CI 负载仍可能让其它**未涉及本轮**的用例偶发失败；本轮只处理了已核查出的墙钟截止断言，没有为了“更稳”而普遍放宽断言或加长超时。
+
+
+## 7. 收尾（最新只读复核后）
+
+- 两轴最终只读复核：**Standards 硬性 0、Spec 确认 0**；主线程对合并点 `166d706` 独立首次全量 **1030 passed, 3 warnings, 194.04s**（`/tmp/feishu-independent-backend-final.log`）。
+- 本分支合入主集成 `166d706`（普通 merge，提交见分支日志）后只做三处精确小改：删除 `useLocateTarget` 未用的 `pending` getter；把 `notification-process.md` 的事务样板说明限定到本轮实际覆盖范围（归档/发现的既有 inline 事务不变、未合并）；把 `epoch_from_iso` 注释改为“不规定错误策略、调用方决定”。
+- 记录不改的受控变化：`config.secret()` 在无效 webhook 时返回 `None`，而 `resolve()` 的错误码在发送前挡住该组合，凭据不可达路径不变。
+- 墙钟剩余风险继续明示：极端负载下 `wait_for` 预算仍可能在与被测行为无关的环节耗尽，不复跑取绿、不放宽断言。
+- 收尾验证（无后端语义变化，故未重跑后端全量/全部 e2e）：`pnpm check` exit 0（275 单测 + typecheck + e2e 项目守卫）；`test:e2e:location` 4 passed；`test:e2e:notification` 4 passed；后端定向 `test_collector.py`+`test_notification_protocol.py` 48 passed。
