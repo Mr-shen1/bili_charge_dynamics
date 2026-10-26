@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { ElButton } from 'element-plus';
-import type { Comment, Reply } from '../data/contracts';
+import type { Comment, ReadStatus, Reply } from '../data/contracts';
 import { useArchiveNavigation } from '../app/navigation';
 import { useSession } from '../app/session';
 import { displayTime } from '../dynamics/display';
-import type { ReadStatus } from '../dynamics/readStatus';
+import { confirmedTarget, noticeStatus as readNoticeStatus, targetMissing } from '../dynamics/locate';
+import { useLocateTarget } from '../dynamics/useLocateTarget';
 import { replyBodyText, replyTargetNickname } from '../dynamics/replyText';
 import { replyPageCount, replyPageSize } from '../dynamics/replyPaging';
 import { useReplyPage } from '../dynamics/useReplyPage';
@@ -37,26 +38,19 @@ const { authorId } = useThreadAuthor(reader, props.dynamicId);
 
 const container = ref<HTMLElement | null>(null);
 // 只有确实读到目标才标记：目标不在当前页绝不冒充定位成功。
-const highlightId = computed(() => (located.value
-  && state.value.data?.items.some(item => item.id === located.value) ? located.value : null));
-const locateMissing = computed(() => located.value !== null && state.value.status === 'not-found');
-const noticeStatus = computed<ReadStatus>(() => {
-  const status = state.value.status;
-  return status === 'not-found' ? 'success' : status;
-});
+const highlightId = computed(() => confirmedTarget(located.value, state.value.data?.items));
+const locateMissing = computed(() => targetMissing(located.value, state.value.status));
+const noticeStatus = computed<ReadStatus>(() => readNoticeStatus(state.value.status));
 
 /** 精确入口把目标回复定位到视口；结果只消费一次，不反复抢滚动。 */
-let locatePending = Boolean(props.replyId);
-const locate = async (): Promise<void> => {
-  if (!locatePending) return;
-  await nextTick();
-  const target = highlightId.value
-    ? container.value?.querySelector<HTMLElement>(`[data-reading-id="reply:${props.rootId}:${highlightId.value}"]`)
-    : null;
-  locatePending = false;
-  (target ?? container.value)?.scrollIntoView?.({ block: 'start', behavior: 'instant' });
-};
-onUnmounted(() => { locatePending = false; });
+const locate = useLocateTarget({
+  target: () => (highlightId.value
+    ? container.value?.querySelector<HTMLElement>(
+      `[data-reading-id="reply:${props.rootId}:${highlightId.value}"]`)
+    : null),
+  container: () => container.value,
+});
+if (located.value) locate.arm();
 
 onMounted(() => {
   // 精确定位自己决定落点，不先回到页面顶部再找目标。
@@ -85,9 +79,9 @@ const busy = computed(() => state.value.status === 'loading' || invalidCursor.va
 const heading = computed(() => `相关回复共${total.value}条`);
 
 // 定位结果落下（成功/不存在/失败）后处理一次，布局稳定后再落点。
-watch(highlightId, () => { void locate(); }, { flush: 'post' });
+watch(highlightId, () => { void locate.settle(); }, { flush: 'post' });
 watch(() => state.value.status, status => {
-  if (status !== 'loading' && locatePending) void locate();
+  if (status !== 'loading') void locate.settle();
 }, { flush: 'post' });
 
 function restart(): void {
@@ -96,7 +90,7 @@ function restart(): void {
 
 /** 读取提示上的显式重试：定位未成功时重发定位，成功后仍把目标带回视口。 */
 function retryRead(): void {
-  if (located.value && !state.value.data) locatePending = true;
+  if (located.value && !state.value.data) locate.arm();
   retry();
 }
 

@@ -11,6 +11,7 @@ import time
 import httpx
 from anyio import to_thread
 
+from ..transaction import write
 from . import heartbeat, message, outbox
 from .log import notifier_event
 
@@ -87,22 +88,17 @@ class Dispatcher:
     def _scan_delivery_alerts(self):
         """消费 06 的持久失败事实：持续投递失败 → 一条系统告警（节流由发件箱合并）。"""
         now = self.clock.now()
-        with self.store.connection() as connection:
-            connection.execute("BEGIN IMMEDIATE")
-            try:
-                created = 0
-                for row in outbox.delivery_failures(connection, limit=max(self.batch * 8, 50)):
-                    if row["kind"] not in outbox.BUSINESS_KINDS or row["role"] == outbox.SYSTEM_ROLE:
-                        continue
-                    if row["state"] != outbox.PENDING or row["failures"] < DELIVERY_FAILURE_THRESHOLD:
-                        continue
-                    if outbox.record_alert(connection, "delivery", f"{row['role']}:{row['kind']}",
-                                           row["error"] or "internal_error", now):
-                        created += 1
-                connection.commit()
-            except BaseException:
-                connection.rollback()
-                raise
+        created = 0
+        with write(self.store) as connection:
+            for row in outbox.delivery_failures(connection, limit=max(self.batch * 8, 50)):
+                if row["kind"] not in outbox.BUSINESS_KINDS or row["role"] == outbox.SYSTEM_ROLE:
+                    continue
+                if row["state"] != outbox.PENDING or row["failures"] < DELIVERY_FAILURE_THRESHOLD:
+                    continue
+                alert = outbox.Alert("delivery", f"{row['role']}:{row['kind']}",
+                                     row["error"] or "internal_error")
+                if outbox.record_alert(connection, alert, now):
+                    created += 1
         if created:
             notifier_event("delivery_alert_registered", count=created)
         return created
@@ -118,14 +114,8 @@ class Dispatcher:
             if connection.execute("SELECT 1 FROM notification_heartbeats WHERE slot = ?",
                                   (slot.identity,)).fetchone() is not None:
                 return False
-        with self.store.connection() as connection:
-            connection.execute("BEGIN IMMEDIATE")
-            try:
-                created = outbox.record_heartbeat(connection, slot, heartbeat.observe(connection), now)
-                connection.commit()
-            except BaseException:
-                connection.rollback()
-                raise
+        with write(self.store) as connection:
+            created = outbox.record_heartbeat(connection, slot, heartbeat.observe(connection), now)
         if created:
             # 日志字段只允许安全标识：时段身份含日期与冒号，这里只记小时。
             notifier_event("heartbeat_generated", hour=int(slot.identity[-2:]))
@@ -139,26 +129,13 @@ class Dispatcher:
         return len(claimed)
 
     def _recheck_routes(self):
-        with self.store.connection() as connection:
-            connection.execute("BEGIN IMMEDIATE")
-            try:
-                outbox.recheck_waiting_config(connection, self.clock.now())
-                connection.commit()
-            except BaseException:
-                connection.rollback()
-                raise
+        with write(self.store) as connection:
+            outbox.recheck_waiting_config(connection, self.clock.now())
 
     def _claim(self):
         now = self.clock.now()
-        with self.store.connection() as connection:
-            connection.execute("BEGIN IMMEDIATE")
-            try:
-                items = outbox.claim_due(connection, now, self.batch, self.lease_seconds)
-                connection.commit()
-                return items
-            except BaseException:
-                connection.rollback()
-                raise
+        with write(self.store) as connection:
+            return outbox.claim_due(connection, now, self.batch, self.lease_seconds)
 
     def _payload(self, item):
         """事件类型 → 载荷；每种已登记类型都必须有模板，未支持类型才走退避兜底。"""
@@ -181,28 +158,28 @@ class Dispatcher:
             self._finish(item, state=outbox.EXPIRED, due_at=self.clock.now(), error="expired")
             notifier_event("delivery_expired", warning=True, role=item["role"], kind=item["kind"])
             return
-        route_error = self.config.route_error(item["uid"], item["dynamic_id"], item["role"])
-        if route_error is not None:
+        route = self.config.resolve(item["uid"], item["dynamic_id"], item["role"])
+        if route.error is not None:
             # 缺目标/目的地不可用时保留记录并周期性复检，不每秒执行无效 HTTP，也不转投其他角色。
             # 单条目写错只影响该目标：其他群仍在同一轮投递。
             # 业务目标的缺失/错误路由是独立可观察事实：与“等待配置”回写同事务登记告警，
             # 只标识受影响的目标角色与动态，不回显 webhook 或签名。系统群自身不登记（不递归）。
             alert = None
             if item["role"] != outbox.SYSTEM_ROLE:
-                alert = ("route", f"{item['role']}:{item['uid']}:{item['dynamic_id']}", route_error)
+                alert = outbox.Alert("route",
+                                     f"{item['role']}:{item['uid']}:{item['dynamic_id']}", route.error)
             self._finish(item, state=outbox.WAITING_CONFIG,
-                         due_at=self.clock.now() + CONFIG_RECHECK_SECONDS, error=route_error, alert=alert)
+                         due_at=self.clock.now() + CONFIG_RECHECK_SECONDS, error=route.error, alert=alert)
             notifier_event("delivery_waiting_config", warning=True, role=item["role"], kind=item["kind"],
-                           reason=route_error)
+                           reason=route.error)
             return
-        webhook = self.config.webhook(item["uid"], item["dynamic_id"], item["role"])
+        webhook, secret = route.webhook, route.secret
         payload = self._payload(item)
         if payload is None:
             # 已登记的事件缺模板属于实现缺陷：保留记录并计一次投递失败事实。
             self._finish(item, state=outbox.PENDING, due_at=self.clock.now() + RETRY_CAP_SECONDS,
                          error="unsupported_kind", failure=True)
             return
-        secret = self.config.secret(item["uid"], item["dynamic_id"], item["role"])
         if secret is not None:
             # 可选签名只在外发组装：时间戳与签名不进队列、快照或日志。
             payload = message.signed(payload, secret, self.clock.now())
@@ -222,23 +199,18 @@ class Dispatcher:
         notifier_event("delivery_failed", warning=True, reason=result.error, role=item["role"])
 
     def _finish(self, item, *, state, due_at, error=None, failure=False, alert=None):
-        with self.store.connection() as connection:
-            connection.execute("BEGIN IMMEDIATE")
-            try:
-                accepted = outbox.finish_delivery(
-                    connection, item["delivery_id"], item["token"], state=state, now=self.clock.now(),
-                    due_at=due_at, error=error, failure=failure)
-                # 告警登记与失败事实同事务：失败事实被接受才登记，回滚则一起丢弃。
-                # 单条告警写不进去不牵连投递结果（SAVEPOINT 隔离），只留固定分类日志。
-                if accepted and alert is not None:
-                    try:
-                        with outbox.alert_guard(connection):
-                            outbox.record_alert(connection, alert[0], alert[1], alert[2], self.clock.now())
-                    except sqlite3.Error:
-                        notifier_event("alert_registration_failed", warning=True, reason="storage_error")
-                connection.commit()
-            except BaseException:
-                connection.rollback()
-                raise
+        accepted = False
+        with write(self.store) as connection:
+            accepted = outbox.finish_delivery(
+                connection, item["delivery_id"], item["token"], state=state, now=self.clock.now(),
+                due_at=due_at, error=error, failure=failure)
+            # 告警登记与失败事实同事务：失败事实被接受才登记，回滚则一起丢弃。
+            # 单条告警写不进去不牵连投递结果（SAVEPOINT 隔离），只留固定分类日志。
+            if accepted and alert is not None:
+                try:
+                    with outbox.alert_guard(connection):
+                        outbox.record_alert(connection, alert, self.clock.now())
+                except sqlite3.Error:
+                    notifier_event("alert_registration_failed", warning=True, reason="storage_error")
         if not accepted:
             notifier_event("delivery_lease_expired", warning=True, role=item["role"])

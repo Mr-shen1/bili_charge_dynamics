@@ -1,9 +1,9 @@
 import { onMounted, onUnmounted, shallowRef } from 'vue';
-import type { DetailResult, Dynamic, DynamicReader } from '../data/contracts';
+import type { DetailResult, Dynamic, DynamicReader, LocateStatus } from '../data/contracts';
 import { reportReadError } from '../app/readError';
 
 export interface DetailReadState {
-  readonly status: 'loading' | 'success' | 'error' | 'cancelled' | 'not-found';
+  readonly status: LocateStatus;
   readonly data: Dynamic | null;
 }
 

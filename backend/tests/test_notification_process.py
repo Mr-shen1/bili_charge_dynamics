@@ -10,7 +10,7 @@ import time
 
 from backend.bili_monitor.storage import Store
 from backend.tests.notification_process_support import (
-    FeishuStub, NotifierProcess, archive_change, wait_for,
+    FeishuStub, NotifierProcess, archive_change, business_deliveries, wait_for,
 )
 from backend.tests.notification_support import (
     BASE_URL, DYNAMIC, deliveries, events, message_text, write_config,
@@ -25,7 +25,7 @@ def test_notification_process_delivers_once_and_survives_restart(tmp_path):
         write_config(config_path, up=stub.url)
         with NotifierProcess(tmp_path, path, config_path) as notifier:
             wait_for(lambda: stub.count("fake-process") == 1, notifier)
-            wait_for(lambda: deliveries(path)[0]["state"] == "sent", notifier)
+            wait_for(lambda: business_deliveries(path)[0]["state"] == "sent", notifier)
             request = stub.requests[0]
             assert request["path"] == "/open-apis/bot/v2/hook/fake-process"
             assert message_text(request["payload"]).splitlines() == [
@@ -42,7 +42,7 @@ def test_notification_process_delivers_once_and_survives_restart(tmp_path):
         with NotifierProcess(tmp_path, path, config_path) as restarted:
             time.sleep(2.5)
             assert stub.count("fake-process") == 1
-            assert deliveries(path)[0]["state"] == "sent"
+            assert business_deliveries(path)[0]["state"] == "sent"
             assert "delivery_sent" not in restarted.text
         assert notifier_log_redacted(first_log, stub.url)
         # 真实进程也按墙钟登记小时心跳（本文件没有系统群路由，故只留待配置记录）；
@@ -64,14 +64,14 @@ def test_process_keeps_message_waiting_for_missing_route_then_delivers(tmp_path)
     config_path = write_config(tmp_path / "notifications.json", up=None)
     with FeishuStub() as stub:
         with NotifierProcess(tmp_path, path, config_path) as notifier:
-            wait_for(lambda: deliveries(path)[0]["state"] == "waiting_config", notifier)
+            wait_for(lambda: business_deliveries(path)[0]["state"] == "waiting_config", notifier)
             assert stub.requests == []
-        assert deliveries(path)[0]["attempts"] == 1
+        assert business_deliveries(path)[0]["attempts"] == 1
         # 修复服务端配置后重启通知进程：保留原记录并补发，不重设阶段。
         write_config(tmp_path / "notifications.json", up=stub.url)
         with NotifierProcess(tmp_path, path, config_path) as repaired:
             wait_for(lambda: stub.count("fake-process") == 1, repaired)
-            wait_for(lambda: deliveries(path)[0]["state"] == "sent", repaired)
+            wait_for(lambda: business_deliveries(path)[0]["state"] == "sent", repaired)
         assert len([event for event in events(path) if event["kind"] == "dynamic_changed"]) == 1
         # 归档检查点不因投递结果改变。
         assert Store(path).read_archive(DYNAMIC)["content_state"] == "success"

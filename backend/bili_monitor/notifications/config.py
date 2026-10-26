@@ -111,6 +111,22 @@ def _destinations(value):
 
 
 @dataclass(frozen=True, repr=False)
+class Route:
+    """一次解析出来的目标路由：错误码（`None` 表示可投递）、地址与可选签名密钥。
+
+    地址与密钥只在组装外发载荷时取出；`repr` 不复制凭据，队列、日志与异常都
+    不应持有本对象。
+    """
+
+    error: str | None
+    webhook: str | None = None
+    secret: str | None = None
+
+    def __repr__(self):
+        return f"Route(error={self.error!r}, webhook=<hidden>, secret=<hidden>)"
+
+
+@dataclass(frozen=True, repr=False)
 class NotificationConfig:
     base_url: str
     ups: dict
@@ -152,28 +168,30 @@ class NotificationConfig:
         return (self.dynamics.get(str(dynamic_id), {}).get(role)
                 or self.ups.get(str(uid), {}).get(role))
 
-    def destination(self, uid, dynamic_id, role):
+    def resolve(self, uid, dynamic_id, role):
+        """解析该目标的唯一一次路由：缺引用、目的地不可用或可投递（含地址与密钥）。
+
+        投递、告警与重试判定共用这一处解析：路由规则（系统群单配、动态覆盖优先、
+        不跨角色补位）只有一份，不在四个查询里各写一遍。
+        """
         reference = self.reference(uid, dynamic_id, role)
-        return self.destinations.get(reference) if reference is not None else None
+        if reference is None:
+            return Route("route_missing")
+        destination = self.destinations.get(reference)
+        if destination is None or destination.get("webhook") is None:
+            return Route("route_invalid")
+        return Route(None, destination["webhook"], destination.get("secret"))
 
     def route_error(self, uid, dynamic_id, role):
         """该目标为什么不能投递：缺路由（`route_missing`）或目的地不可用（`route_invalid`）。
 
         不跨角色补位：角色自身缺失只让这一目标等待配置，其他目标不受影响。
         """
-        reference = self.reference(uid, dynamic_id, role)
-        if reference is None:
-            return "route_missing"
-        destination = self.destinations.get(reference)
-        if destination is None or destination.get("webhook") is None:
-            return "route_invalid"
-        return None
+        return self.resolve(uid, dynamic_id, role).error
 
     def webhook(self, uid, dynamic_id, role):
-        destination = self.destination(uid, dynamic_id, role)
-        return destination["webhook"] if destination is not None else None
+        return self.resolve(uid, dynamic_id, role).webhook
 
     def secret(self, uid, dynamic_id, role):
         """签名密钥只在发送时读取，绝不写入发件箱或消息快照。"""
-        destination = self.destination(uid, dynamic_id, role)
-        return destination.get("secret") if destination is not None else None
+        return self.resolve(uid, dynamic_id, role).secret

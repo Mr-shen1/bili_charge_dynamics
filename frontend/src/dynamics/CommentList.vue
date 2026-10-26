@@ -5,7 +5,8 @@ import type { ArchiveMetadata, CommentSort } from '../data/contracts';
 import type { CommentSnapshot, ReplySnapshot } from '../app/snapshots';
 import { useArchiveNavigation } from '../app/navigation';
 import { useSession } from '../app/session';
-import type { ReadStatus } from './readStatus';
+import type { ReadStatus } from '../data/contracts';
+import { confirmedTarget, noticeStatus as readNoticeStatus } from './locate';
 import { useCommentsRead } from './useCommentsRead';
 import CommentItem from './CommentItem.vue';
 import ReadNotice from './ReadNotice.vue';
@@ -32,12 +33,12 @@ const { state, load } = useCommentsRead(
 const expanded = ref<Record<string, boolean>>({ ...props.initial.expanded });
 // 只标记确实读到的目标：目标不在已读批次里绝不冒充定位成功。
 // 回复精确入口只高亮目标回复，所属根评论只作上下文，不抢高亮。
-const highlightId = computed(() => (!props.locateReplyId && props.anchorId
-  && state.value.data?.items.some(item => item.id === props.anchorId) ? props.anchorId : null));
+const highlightId = computed(() => confirmedTarget(
+  props.locateReplyId ? null : props.anchorId, state.value.data?.items));
 const replies = ref<Record<string, ReplySnapshot>>({ ...props.initial.replies });
 const area = computed(() => props.sort === 'hot' ? '最热评论' : '最新评论');
 // not-found 有自己的提示与返回入口，不交给通用读取失败提示。
-const noticeStatus = computed<ReadStatus>(() => (state.value.status === 'not-found' ? 'success' : state.value.status));
+const noticeStatus = computed<ReadStatus>(() => readNoticeStatus(state.value.status));
 // 成功空只在归档确认本轮根评论同步完成后才是“暂无评论”，否则不冒充来源没有评论。
 const emptyUnarchived = computed(() => Boolean(props.archive
   && (props.archive.rootCommentsLastAttempt ?? props.archive.work.comments) !== 'success'));

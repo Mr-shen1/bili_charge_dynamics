@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ElButton } from 'element-plus';
-import type { ReadStatus } from './readStatus';
+import type { ReadStatus } from '../data/contracts';
 
 defineProps<{ status: ReadStatus; area: string }>();
 const emit = defineEmits<{ retry: [] }>();

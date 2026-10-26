@@ -109,6 +109,23 @@ def test_single_malformed_destination_only_pauses_that_target():
         None, "route_missing")
 
 
+def test_one_route_resolution_covers_error_address_and_secret_without_repring_them():
+    """单一解析同时给出错误码、地址与密钥：投递不再为同一目标各查一遍。"""
+    loaded = NotificationConfig.from_mapping(config_mapping(up=WEBHOOK))
+    routable = loaded.resolve("900719925474099312345", DYNAMIC, "up")
+    assert (routable.error, routable.webhook) == (None, WEBHOOK)
+    assert routable.secret is None
+    signed = NotificationConfig.from_mapping({
+        "base_url": BASE_URL, "ups": {UID: {"up": "up-room"}},
+        "destinations": {"up-room": {"webhook": WEBHOOK, "secret": "fake-signing-secret"}}})
+    resolved = signed.resolve(UID, DYNAMIC, "up")
+    assert (resolved.webhook, resolved.secret) == (WEBHOOK, "fake-signing-secret")
+    # 与整份配置一致：凭据不进 repr，也不因一次解析就落到可见文本里。
+    assert "fake-up-token" not in repr(resolved)
+    assert "fake-signing-secret" not in repr(resolved)
+    assert loaded.resolve(UID, DYNAMIC, "all").error == "route_missing"
+
+
 def test_documented_runtime_defaults_are_finite_and_one_second_polling():
     # 默认每秒一轮、有限批量、有限租约；网络超时不占用数据库事务。
     assert delivery.POLL_SECONDS == 1.0

@@ -21,7 +21,9 @@ import pytest
 
 from backend.bili_monitor.storage import Store
 from backend.tests.archive_support import archive_content
-from backend.tests.notification_process_support import FeishuStub, NotifierProcess, wait_for
+from backend.tests.notification_process_support import (
+    FeishuStub, NotifierProcess, business_events, wait_for,
+)
 from backend.tests.notification_support import deliveries, events, message_text, query
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -265,7 +267,10 @@ def test_three_process_chain_routes_two_ups_and_opens_real_message_links(stack):
         }))
         notifier = stack.start_notifier()
         time.sleep(1.5)
-        assert stub.requests == []  # 首次正文静默，不补发旧版本
+        # 首次正文静默，不补发旧版本。系统群在真实北京时间第 40 分钟的心跳是独立合法
+        # 事件（真实 notifier 不提供测试时钟开关），这里只断言业务群没有收到消息。
+        assert [request for request in stub.requests
+                if request["path"] != stub.path_for("system-10")] == []
 
         # 第二版正文＋评论/回复集合：第 1 条是 UP 本人、第 30 条是另一 UP 串门、
         # 第 2 条纯图、第 3 条超长；第 2 页首次失败用来证明已提交页仍通知。
@@ -356,14 +361,15 @@ def test_three_process_chain_routes_two_ups_and_opens_real_message_links(stack):
         phase = query(stack.database, "SELECT token, started_at, comment_started_at, sealed"
                                      " FROM notification_phases WHERE dynamic_id = ? ORDER BY started_at",
                       (DYNAMIC,))
-        counts = (stub.count("up-202"), stub.count("all-202"), len(events(stack.database)))
+        counts = (stub.count("up-202"), stub.count("all-202"), len(business_events(stack.database)))
         stack.stop(stack.processes["collector"])
         restarted = stack.start_collector()
         time.sleep(3)
         assert query(stack.database, "SELECT token, started_at, comment_started_at, sealed"
                                     " FROM notification_phases WHERE dynamic_id = ? ORDER BY started_at",
                      (DYNAMIC,)) == phase
-        assert (stub.count("up-202"), stub.count("all-202"), len(events(stack.database))) == counts
+        assert (stub.count("up-202"), stub.count("all-202"),
+                len(business_events(stack.database))) == counts
         stack.stop(restarted)
         stack.stop(notifier)
 

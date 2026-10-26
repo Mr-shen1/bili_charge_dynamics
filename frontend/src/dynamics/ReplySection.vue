@@ -1,18 +1,18 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, useId, watch } from 'vue';
+import { computed, nextTick, ref, useId, watch } from 'vue';
 import { ElButton } from 'element-plus';
 import { replyPreviewSize } from '../data/contracts';
-import type { Reply } from '../data/contracts';
+import type { ReadStatus, Reply } from '../data/contracts';
 import type { ReplyReadState, ReplySnapshot } from '../app/snapshots';
 import { useSession } from '../app/session';
 import { useArchiveNavigation } from '../app/navigation';
-import { onUserScroll } from '../app/readingPosition';
 import { useReplyPage } from './useReplyPage';
 import { useReplyPreview } from './useReplyPreview';
+import { confirmedTarget, noticeStatus as readNoticeStatus, targetMissing } from './locate';
+import { useLocateTarget } from './useLocateTarget';
 import { replyPageCount, replyPageSize } from './replyPaging';
 import { replyBodyText, replyTargetNickname } from './replyText';
 import { displayTime } from './display';
-import type { ReadStatus } from './readStatus';
 import FoldableText from './FoldableText.vue';
 import ReadNotice from './ReadNotice.vue';
 import ReadOnlyLike from './ReadOnlyLike.vue';
@@ -65,14 +65,10 @@ const state = computed<ReplyReadState>(() => {
 });
 const invalidCursor = computed(() => state.value.reason === 'invalid-cursor');
 // 只有确实读到目标才标记：目标不在当前页绝不冒充定位成功。
-const highlightId = computed(() => (located.value
-  && live.state.value.data?.items.some(item => item.id === located.value) ? located.value : null));
+const highlightId = computed(() => confirmedTarget(located.value, live.state.value.data?.items));
 // 目标不存在有自己的提示与返回入口，不交给通用读取失败提示。
-const locateMissing = computed(() => located.value !== null && live.state.value.status === 'not-found');
-const noticeStatus = computed<ReadStatus>(() => {
-  const status = state.value.status;
-  return status === 'not-found' ? 'success' : status;
-});
+const locateMissing = computed(() => targetMissing(located.value, live.state.value.status));
+const noticeStatus = computed<ReadStatus>(() => readNoticeStatus(state.value.status));
 const localTotal = computed(() => state.value.data?.count ?? state.value.data?.localReplyCount ?? null);
 const pages = computed(() => replyPageCount(localTotal.value, state.value.data?.items.length ?? 0));
 const currentPage = computed(() => Math.min(live.state.value.page, pages.value));
@@ -101,7 +97,7 @@ function load(): void {
     return;
   }
   // 精确定位的显式重试：成功后仍把目标带回视口（用户自己点了重试，不算抢滚动）。
-  if (located.value && !live.state.value.data) locatePending = true;
+  if (located.value && !live.state.value.data) locate.arm();
   live.retry();
 }
 
@@ -129,39 +125,25 @@ async function collapse(): Promise<void> {
  * 精确定位：目标正文默认展开，并在 DOM 更新后把目标回复定位到视口。
  * 定位意图只消费一次；成功、失败与「不存在」都会落到目标回复或本区提示上。
  */
-let locatePending = Boolean(activeLocate);
-let releaseLocate = (): void => undefined;
-
-function locateTarget(): void {
-  const target = highlightId.value
-    ? section.value?.querySelector<HTMLElement>(`[data-reading-id="reply:${props.rootId}:${highlightId.value}"]`)
-    : null;
+const locate = useLocateTarget({
+  target: () => (highlightId.value
+    ? section.value?.querySelector<HTMLElement>(
+      `[data-reading-id="reply:${props.rootId}:${highlightId.value}"]`)
+    : null),
   // 目标读不到时定位到本回复区的提示，绝不把楼层顶部当作定位结果。
-  (target ?? section.value)?.scrollIntoView?.({ block: 'start', behavior: 'instant' });
-  locatePending = false;
-  releaseLocate();
-}
-
-onMounted(() => {
-  if (!locatePending) return;
-  // 用户在结果落下前自己滚动/触摸/按键时，不再把位置抢回目标。
-  releaseLocate = onUserScroll(() => {
-    locatePending = false;
-    releaseLocate();
-  });
+  container: () => section.value,
+  releaseOnUserScroll: true,
 });
-onUnmounted(() => { releaseLocate(); });
+if (activeLocate) locate.arm();
 
 // 目标的折叠正文在定位时直接展开，保证可直接阅读。
 watch(highlightId, id => {
   if (id && !expandedTexts.value[id]) expandedTexts.value = { ...expandedTexts.value, [id]: true };
 }, { immediate: true });
 // 成功、不存在与失败都在布局稳定后处理一次，迟到结果不反复抢滚动。
-watch(() => [highlightId.value, state.value.status], async () => {
-  if (!locatePending) return;
+watch(() => [highlightId.value, state.value.status], () => {
   if (state.value.status === 'loading') return;
-  await nextTick();
-  if (locatePending) locateTarget();
+  void locate.settle();
 }, { flush: 'post' });
 
 /** 失效 cursor：丢弃预览与页码状态，重新从首批 3 条开始读取。 */

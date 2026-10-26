@@ -18,5 +18,16 @@ def utc_now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def epoch_from_iso(value):
+    """ISO 时间 → epoch 秒；带/不带时区与 `Z` 都接受。
+
+    只做解析，不决定错误契约：告警登记要宽松（解析不了就不登记），采集节拍要严格
+    （解析不了就是真实错误），两种调用各自包住异常。非字符串按原值交给
+    `fromisoformat`，抛 `TypeError`。
+    """
+    text = value.replace("Z", "+00:00") if isinstance(value, str) else value
+    return datetime.fromisoformat(text).timestamp()
+
+
 def comment_status(document):
     return {field: document.get(field) for field in COMMENT_STATUS_FIELDS}

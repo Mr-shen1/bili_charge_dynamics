@@ -23,7 +23,7 @@ from backend.bili_monitor.collector import Collector
 from backend.bili_monitor.storage import Store
 from backend.tests.collector_support import configured
 from backend.tests.management_support import UID
-from backend.tests.notification_support import DYNAMIC, Source, deliveries
+from backend.tests.notification_support import DYNAMIC, Source, deliveries, events
 
 ROOT = Path(__file__).resolve().parents[2]
 HOOK = "/open-apis/bot/v2/hook/"
@@ -185,6 +185,24 @@ def wait_for(predicate, process=None, *, timeout=20, description=""):
             return
         time.sleep(0.05)
     pytest.fail(f"等待超时：{description}\n{process.text if process is not None else ''}")
+
+
+BUSINESS_KINDS = ("dynamic_changed", "root_comment", "reply_comment")
+
+
+def business_deliveries(path):
+    """只取业务事件（动态变化/一级评论/回复）的投递记录。
+
+    真通知进程在北京时间第 40 分钟会生成一条**合法心跳**（系统群，缺系统路由时为
+    `waiting_config`）。进程级用例观测的是业务结果，不能只在“这一分钟不是 :40”时才
+    通过；生产时钟不因此增加测试开关，只把观测按业务身份收窄。
+    """
+    return [row for row in deliveries(path) if row["kind"] in BUSINESS_KINDS]
+
+
+def business_events(path):
+    """只取业务事件；心跳与系统告警是独立的系统事件，另有用例专门断言。"""
+    return [row for row in events(path) if row["kind"] in BUSINESS_KINDS]
 
 
 def archive_change(path):

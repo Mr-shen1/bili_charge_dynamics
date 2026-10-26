@@ -15,10 +15,10 @@ from backend.bili_monitor.collector import Collector
 from backend.bili_monitor.storage import Store
 from backend.tests.archive_support import archive_client
 from backend.tests.management_support import BASE, UID
-from backend.tests.notification_process_support import FeishuStub, NotifierProcess, wait_for
-from backend.tests.notification_support import (
-    DYNAMIC, deliveries, events, query, write_config,
+from backend.tests.notification_process_support import (
+    FeishuStub, NotifierProcess, business_deliveries, business_events, wait_for,
 )
+from backend.tests.notification_support import DYNAMIC, query, write_config
 from backend.tests.root_notification_support import (
     Source, configure, root_comment, root_documents, started_at,
 )
@@ -47,7 +47,8 @@ def archive(path, source):
 
 
 def states(path):
-    return {row["role"]: row["state"] for row in deliveries(path) if row["kind"] != "alert"}
+    """业务投递的逐角色状态；系统心跳/告警是独立事件，不算业务结果。"""
+    return {row["role"]: row["state"] for row in business_deliveries(path)}
 
 
 def phases(path):
@@ -81,13 +82,15 @@ def test_stopped_phase_queue_delivers_after_process_restart_and_is_never_resent(
         assert (stub.count("up07"), stub.count("all07")) == (1, 1)
 
         # 普通进程重启：队列已空、成功目标不重发，阶段与起点不重建。
+        # 2.5 秒只是“至少走过两轮轮询”的观察窗口，断言的是“没有新请求”，不是“多快”。
         with NotifierProcess(tmp_path, path, config_path) as restarted:
             time.sleep(2.5)
+            assert restarted.running
             assert (stub.count("up07"), stub.count("all07")) == (1, 1)
             assert "delivery_sent" not in restarted.text
         assert phases(path) == sealed
     assert Store(path).read_archive(DYNAMIC) == checkpoint
-    assert len([row for row in events(path) if row["kind"] == "root_comment"]) == 1
+    assert len([row for row in business_events(path) if row["kind"] == "root_comment"]) == 1
 
 
 def test_restart_is_not_reentry_and_real_reentry_only_notifies_content_after_the_new_start(tmp_path):
@@ -107,6 +110,7 @@ def test_restart_is_not_reentry_and_real_reentry_only_notifies_content_after_the
         # 通知进程重启：不是重新启用，起点/基线/阶段都不变。
         with NotifierProcess(tmp_path, path, config_path) as restarted:
             time.sleep(2.5)
+            assert restarted.running
             assert phases(path) == first
             assert (stub.count("up07b"), stub.count("all07b")) == (1, 1)
 
@@ -125,7 +129,7 @@ def test_restart_is_not_reentry_and_real_reentry_only_notifies_content_after_the
         archive(path, source)
         # 暂停期间的评论已归档但静默；只有新起点之后的评论生成事件。
         assert set(root_documents(path)) == {"860101", "860102", "860103"}
-        assert [row["comment_id"] for row in events(path) if row["kind"] == "root_comment"] == [
+        assert [row["comment_id"] for row in business_events(path) if row["kind"] == "root_comment"] == [
             "860101", "860103"]
         with NotifierProcess(tmp_path, path, config_path) as after_reentry:
             wait_for(lambda: "860103" in str(stub.payloads("up07b")), after_reentry,

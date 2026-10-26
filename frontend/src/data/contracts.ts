@@ -113,6 +113,15 @@ export type ReadResult<T> =
   | { readonly status: 'error'; readonly reason?: 'not-archived' | 'unknown-up' | 'invalid-cursor' }
   | { readonly status: 'cancelled' };
 
+/** 读取区域的公开状态；与传输无关，各读取状态、快照与提示共用一份字面量。 */
+export type ReadStatus = 'loading' | 'success' | 'error' | 'cancelled';
+
+/**
+ * 精确入口额外区分“目标不存在”：它有自己的提示与返回入口，不交给通用失败提示。
+ * 普通分页读取不会产生这个状态，所以详情/评论/回复的精确定位结果单独表达。
+ */
+export type LocateStatus = ReadStatus | 'not-found';
+
 export type DetailResult = ReadResult<Dynamic> | { readonly status: 'not-found' };
 
 /**

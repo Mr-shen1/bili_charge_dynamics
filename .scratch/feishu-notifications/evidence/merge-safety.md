@@ -38,3 +38,20 @@
 
 - 文件 Git blob 哈希仍为 `4bc60768cfb171337014158b1c4e792263ecfbf6`（`git hash-object`），与用户开工时给出的哈希逐字符相同。
 - 当前 `git diff -- .pi/subagents-lite.json` 与 `/tmp/feishu-subagents-lite-existing.patch` 逐字节比较一致（`cmp` 退出码 0）；补丁仅用于核验，未恢复、未重写。
+
+## 最终双轴整改合并（本轮）
+
+审查整改分支 `feat/feishu-review-fixes`（源 tip `706d769`，被测代码 `10f41db`）以普通操作合入：先核验 `git rev-parse HEAD`＝`29aa479`（集成 tip）、源＝`706d769`、`git merge-base`＝`29aa479`（即集成 tip，理论上可快进），仍按约定执行 `git merge --no-ff -m "merge(feishu): 合并双轴审查整改（源 tip 706d769）"`，无冲突，合并提交 `9fd0b19`。未执行 `git reset --hard`、`git clean`、强制 checkout，未重写任何历史，未推送、未部署，未嵌套代理，未触碰 18445 上的既有 live 实例与 4173 端口 ssh 隧道，未读取真实通知配置/凭据，未对 `.pi/` 做任何写操作。
+
+合并后核验：
+
+- `git diff --check` 通过（工作区与 `29aa479..9fd0b19` 两处均无空白/冲突标记）；工作区仅剩 `.pi/subagents-lite.json` 这一处既存未提交修改，暂存区为空。
+- 合并结果与被测候选 `10f41db` 在 `backend`/`frontend`/`docs` 上逐字节相同（`git diff --name-only 10f41db HEAD -- backend frontend docs` 为空），因此候选上的后端 `1030 passed`、前端 `275` 单测/full e2e/隔离 Nginx 全绿仍对应该代码，不需重复全量。
+- schema 保持 v21，本合并无迁移/表结构改动（差异中无 `schema`/`migrat`/`.sql` 文件，也无 `SCHEMA_VERSION`/`PRAGMA user_version` 变动）。
+- focused 回归（合并后，本轮只跑受影响面）：`test_notification_protocol.py`＋`test_notification_alerts.py`＋`test_notification_heartbeat.py`＋`test_notification_delivery.py` `85 passed`（含新增的 route 单次解析用例）；`test_notification_recovery_processes.py`＋`test_notification_lifecycle_processes.py`＋`test_notification_process.py` `7 passed`；`test_three_process_delivery.py` `4 passed`。均为首轮绿，无复跑取绿。
+
+`.pi/subagents-lite.json` 全程未参与暂存与提交，合并前后复核：
+
+- 文件 Git blob 哈希仍为 `4bc60768cfb171337014158b1c4e792263ecfbf6`（`git hash-object`），与用户开工时给出的哈希逐字符相同。
+- 当前 `git diff -- .pi/subagents-lite.json` 与 `/tmp/feishu-subagents-lite-existing.patch` 逐字节比较一致（`cmp` 退出码 0，合并前后各核一次）；补丁仅用于核验，未恢复、未改写。
+- 本节只追加本轮核验，**不改写 08 节记录的那次 `git reset --hard` 误操作事实**：该失误及其恢复过程照旧保留为已披露事实。

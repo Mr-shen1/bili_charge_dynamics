@@ -2,14 +2,13 @@
 
 import json
 import sqlite3
-from contextlib import contextmanager
-from datetime import datetime
 from uuid import uuid4
 
 from .contracts import APIError
-from .comment_status import COMMENT_STATUS_FIELDS, ROOT_METADATA_VERSION
+from .comment_status import COMMENT_STATUS_FIELDS, ROOT_METADATA_VERSION, epoch_from_iso
 from .notifications import outbox
 from .selection import SELECTED_TARGETS, selection_token, selection_matches
+from .transaction import write
 
 
 ARCHIVE_SIGNALS = """json_object(
@@ -35,23 +34,23 @@ def safe_error(error):
 def alert_epoch(value):
     """把采集写入的 ISO 时间换成告警发生时间；解析不了就不登记，不编造时刻。"""
     try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+        return epoch_from_iso(str(value))
     except (TypeError, ValueError):
         return None
 
 
 def record_alerts(connection, alerts, now):
-    """在同一事务里登记告警事实；调用者只给固定类别/对象/原因，不存在自动扫描。
+    """在同一事务里登记告警事实；调用者只给固定类别/对象键/原因，不存在自动扫描。
 
     每条告警用 SAVEPOINT 隔离：本地存储写不进一条告警时只丢该告警并留固定分类
     日志，不让检查/同步结果与工作状态跟着回滚。
     """
     from .collector_logging import collector_event
 
-    for category, object, reason in alerts or ():
+    for alert in alerts or ():
         try:
             with outbox.alert_guard(connection):
-                outbox.record_alert(connection, category, object, reason, now)
+                outbox.record_alert(connection, alert, now)
         except sqlite3.Error:
             collector_event("alert_registration_failed", warning=True, reason="storage_error")
 
@@ -75,18 +74,6 @@ def merge_signals(previous, metadata):
             if key in ("id", "nickname", "avatar_url") and value is not None
         }}
     return observed
-
-
-@contextmanager
-def transaction(store):
-    with store.connection() as connection:
-        connection.execute("BEGIN IMMEDIATE")
-        try:
-            yield connection
-            connection.commit()
-        except BaseException:
-            connection.rollback()
-            raise
 
 
 def check_parts(row):
@@ -166,7 +153,7 @@ class CheckStore:
 
     def record_check(self, uid, id, metadata, checked_at, error=None, *, comment_observation=None,
                      selection=None, media_upload=True, page_signal=True, alerts=()):
-        with transaction(self) as connection:
+        with write(self) as connection:
             current = selection_token(connection, uid, id)
             if not selection_matches(current, selection):
                 return False
@@ -312,7 +299,7 @@ class CheckStore:
                 ORDER BY c.uid COLLATE BINARY, c.id COLLATE BINARY""")]
 
     def claim_check_work(self, uid, id, *, selection=None):
-        with transaction(self) as connection:
+        with write(self) as connection:
             current = selection_token(connection, uid, id)
             if not selection_matches(current, selection):
                 return None
@@ -330,7 +317,7 @@ class CheckStore:
                           selection=None, record_success=True, alerts=()):
         # 旧 Store 的 finish(None) 可释放失活目标的领取，跳过代次校验；不同于
         # selection_matches(None) 仍要求当前入选。Collector 必传领取资格，不能省略。
-        with transaction(self) as connection:
+        with write(self) as connection:
             row = connection.execute("SELECT revision, work, claim_token FROM target_checks WHERE uid = ? AND id = ?", (uid, id)).fetchone()
             if row is None or row["work"] != "running" or row["claim_token"] != token:
                 return False
@@ -349,5 +336,5 @@ class CheckStore:
 
     def recover_check_work(self):
         # 仅由已取得进程锁的独立 collector 显式调用；API 启动不得恢复。
-        with transaction(self) as connection:
+        with write(self) as connection:
             connection.execute("UPDATE target_checks SET work = 'pending', claim_token = NULL WHERE work = 'running'")

@@ -128,8 +128,8 @@ pnpm playwright test --project=desktop-chromium-archive tests/e2e/replies.spec.t
 | `src/app/historyState.ts` | 应用自有的轻量历史元数据：访问/预览两个命名空间一起写入，不改 Vue Router 自有字段 |
 | `src/app/snapshots.ts` / `readingPosition.ts` / `useVisitPosition.ts` | 列表/详情（含一级评论排序、cursor 批次与展开，以及按根评论保存的回复预览/展开/页码/文字）快照类型、稳定锚点定位与访问级位置保存（两个布局帧内完成，用户操作优先） |
 | `src/app/useCompactViewport.ts` | 窄屏判定（640px，无法判定按宽屏）：图片预览手势与宽屏内联回复/窄屏回复入口的分支 |
-| `src/data/` | 与框架无关的读取契约：生产 Archive Adapter、ID/时间/检查状态守卫，以及评论进度判定与评论错误文案（唯一的实现，不再有副本） |
-| `src/dynamics/` | 归档读取行为：scope 导航条、cursor/page 读取、卡片/详情、`CommentSection`/`CommentList`/`CommentItem` 与 `useCommentsRead`、`ReplySection`/`ReplyPager` 与 `useReplyPreview`/`useReplyPage`、窄屏 `ReplyPreview` 与 `useThreadAuthor`、折叠/状态提示与展示格式化 |
+| `src/data/` | 与框架无关的读取契约：生产 Archive Adapter、ID/时间/检查状态守卫、评论进度判定与评论错误文案，以及读取状态联合 `ReadStatus`/`LocateStatus`（快照、组件与提示共用一份，不再各写字面量） |
+| `src/dynamics/` | 归档读取行为：scope 导航条、cursor/page 读取、卡片/详情、`CommentSection`/`CommentList`/`CommentItem` 与 `useCommentsRead`、`ReplySection`/`ReplyPager` 与 `useReplyPreview`/`useReplyPage`、窄屏 `ReplyPreview` 与 `useThreadAuthor`、折叠/状态提示与展示格式化；精确入口共享 `locate.ts`（目标确认、not-found 提示映射）与 `useLocateTarget.ts`（一次性定位滚动），两处不再各写一份 |
 | `src/app/assembly.ts` | 装配隔离：`production` / `mock` / `fault`；自检路由只在后两者注册 |
 | `src/app/reader.ts` | 读取装配：生产用真实 API Adapter；mock/fault 用受控归档读取，普通构建摇掉 |
 | `src/app/router.ts` | 六条基线路由 + 一级评论精确入口 `/dynamics/:dynamicId/comments/:rootId/locate` + 楼中楼回复精确入口 `/dynamics/:dynamicId/comments/:rootId/replies/:replyId/locate` + 404；`scrollBehavior: () => false`（位置恢复由导航协调器负责） |

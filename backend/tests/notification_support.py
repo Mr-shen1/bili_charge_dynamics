@@ -6,6 +6,8 @@
 
 import json
 import sqlite3
+import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
@@ -187,6 +189,62 @@ class Clock:
 
     async def sleep(self, seconds):
         self.advance(seconds)
+
+
+BEIJING = timezone(timedelta(hours=8))
+
+
+def beijing_moment(hour, minute, second=0, day=9):
+    """固定北京时间的测试时刻（2026-10 月）：消息里的发生时间要能逐字断言。"""
+    return datetime(2026, 10, day, hour, minute, second, tzinfo=BEIJING)
+
+
+class BeijingClock:
+    """北京时间受控时钟：同一时刻供投递（epoch 秒）与采集（UTC ISO）使用。"""
+
+    def __init__(self, moment):
+        self.moment = moment
+
+    @classmethod
+    def start(cls, hour, minute, second=0):
+        return cls(beijing_moment(hour, minute, second))
+
+    def now(self):
+        return self.moment.timestamp()
+
+    def iso(self):
+        return self.moment.astimezone(timezone.utc).isoformat(timespec="seconds")
+
+    def at(self, hour, minute, second=0):
+        self.moment = self.moment.replace(hour=hour, minute=minute, second=second, microsecond=0)
+        return self
+
+    def advance(self, seconds):
+        self.moment = self.moment + timedelta(seconds=seconds)
+        return self
+
+    async def sleep(self, seconds):
+        self.advance(seconds)
+
+    @property
+    def collector(self):
+        return CollectorClock(self)
+
+
+class CollectorClock:
+    """采集侧时钟：与投递共享同一时刻；`now()` 给 UTC ISO，`sleep` 推进它。"""
+
+    def __init__(self, clock):
+        self.clock = clock
+
+    def now(self):
+        return self.clock.iso()
+
+    def monotonic(self):
+        return time.monotonic()
+
+    async def sleep(self, seconds):
+        self.clock.advance(seconds)
 
 
 def message_text(payload):

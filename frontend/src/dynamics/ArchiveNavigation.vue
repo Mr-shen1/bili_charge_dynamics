@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ElButton } from 'element-plus';
-import type { ArchiveScope, User } from '../data/contracts';
-import type { ReadStatus } from './readStatus';
+import type { ArchiveScope, ReadStatus, User } from '../data/contracts';
 import { useSession } from '../app/session';
 import UserAvatar from './UserAvatar.vue';
 

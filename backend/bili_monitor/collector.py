@@ -10,7 +10,6 @@ import httpx
 import fcntl
 import time
 from contextlib import contextmanager
-from datetime import datetime, timezone
 from pathlib import Path
 
 from anyio import to_thread
@@ -20,6 +19,8 @@ from .source_transport import PacedSourceTransport, SourcePacer
 from .source_client import SOURCE_HEADERS, source_client_event_hooks
 from .source_cookies import load_source_cookie_pairs
 from .comment_client import RequestsCommentClientFactory, open_comment_client
+from .comment_status import epoch_from_iso, utc_now
+from .notifications import outbox
 from .root_comments import fetch_comment_count, valid_locator
 from .sync import sync_target
 from .media import ImageDownloader
@@ -30,6 +31,7 @@ from .collector_logging import (
 )
 from .storage import Store
 from .selection import selection_matches
+from .transaction import write
 
 
 # 检查节拍：生产默认 2.7 秒 ±10% 抖动，与参考脚本 3 目标 2.4–3.0 秒一轮相当。
@@ -73,7 +75,7 @@ class SystemClock:
         return time.monotonic()
 
     def now(self):
-        return datetime.now(timezone.utc).isoformat(timespec="seconds")
+        return utc_now()
 
     async def sleep(self, seconds):
         await asyncio.sleep(seconds)
@@ -93,12 +95,6 @@ def collector_lock(path):
             yield
         finally:
             fcntl.flock(lock, fcntl.LOCK_UN)
-
-
-def _timestamp(value):
-    """当前时钟产生的 ISO 字符串；容错处理带/不带时区与 'Z'。"""
-    text = value.replace("Z", "+00:00") if isinstance(value, str) else value
-    return datetime.fromisoformat(text).timestamp()
 
 
 class Collector:
@@ -123,18 +119,18 @@ class Collector:
         self.page_interval = ((lambda: float(page_check_seconds)) if page_check_seconds is not None
                               else page_interval_sample)
 
-    def _failure_alerts(self, error, object, category="collection"):
+    def _failure_alerts(self, error, object_key, category="collection"):
         """一次真实失败 → 告警登记项（不读日志、不扫描、不访问上游）。
 
-        可信凭据失效只认「来源业务码 -101 + 本次确实配置了凭据」，对象是全局来源凭据；
-        其余仍按原分类归入本阶段类别（采集异常／主循环异常），不让普通网络/风控/HTTP
-        错误冒充登录失效。
+        可信凭据失效只认「来源业务码 -101 + 本次确实配置了凭据」，对象键是全局来源
+        凭据；其余仍按原分类归入本阶段类别（采集异常／主循环异常），不让普通网络/
+        风控/HTTP 错误冒充登录失效。
         """
         signal = credential_signal(error, credentials_configured=self.credentials_configured)
         if signal == "credential_rejected":
-            return [("credential", "source_credential", signal)]
+            return [outbox.Alert("credential", "source_credential", signal)]
         reason = signal or failure_fields(error)["reason"]
-        return [(category, object, reason)]
+        return [outbox.Alert(category, object_key, reason)]
 
     async def discover_once(self, uid):
         """一次按 UP 发现并发布可信窗口；首次工作仍经固定检查与独立归档阶段。"""
@@ -164,7 +160,7 @@ class Collector:
             await to_thread.run_sync(
                 lambda: self.store.finish_discovery(
                     uid, token, None, self.clock.now(), code,
-                    alerts=(("collection", uid, code.lower()),)))
+                    alerts=(outbox.Alert("collection", uid, code.lower()),)))
             return False
         accepted = await to_thread.run_sync(self.store.finish_discovery, uid, token, result, self.clock.now())
         collector_event("discovery_finished", accepted=accepted)
@@ -175,7 +171,7 @@ class Collector:
         if not last_checked_at:
             return True
         try:
-            return (_timestamp(now) - _timestamp(last_checked_at)) >= self.page_interval()
+            return (epoch_from_iso(now) - epoch_from_iso(last_checked_at)) >= self.page_interval()
         except ValueError:
             return True
 
@@ -202,7 +198,7 @@ class Collector:
                 metadata = page_metadata(await fetch_page(self.client, id), uid)
                 if metadata.get("edit_status") == "error":
                     page_error = "SIGNAL_INVALID"
-                    alerts.append(("collection", target_object, "signal_invalid"))
+                    alerts.append(outbox.Alert("collection", target_object, "signal_invalid"))
             except Exception as exception:
                 collector_failure("check_source_failed", exception, stage="page",
                                   credentials_configured=self.credentials_configured)
@@ -325,9 +321,9 @@ class Collector:
                 # 普通的“待同步／媒体待完成”不是故障，不据此告警。
                 if archive is not None and not alerts:
                     if archive["work"].get("text") == "failed":
-                        alerts.append(("collection", f"{uid}:{id}", "body_failed"))
+                        alerts.append(outbox.Alert("collection", f"{uid}:{id}", "body_failed"))
                     elif archive.get("comments_error"):
-                        alerts.append(("collection", f"{uid}:{id}", "comments_failed"))
+                        alerts.append(outbox.Alert("collection", f"{uid}:{id}", "comments_failed"))
                 complete = await to_thread.run_sync(
                     lambda: self.store.finish_check_work(uid, id, claim["revision"], succeeded, self.clock.now(),
                                                        None if succeeded else "SYNC_INCOMPLETE", token=claim["token"],
@@ -347,20 +343,12 @@ class Collector:
 
     def _record_loop_alert(self, error):
         """独立连接短事务登记主循环故障；写失败只留固定分类日志，不掩盖原异常。"""
-        from .notifications import outbox
-
         try:
-            now = _timestamp(self.clock.now())
-            with self.store.connection() as connection:
-                connection.execute("BEGIN IMMEDIATE")
-                try:
-                    for category, object, reason in self._failure_alerts(
-                            error, "collector_loop", category="loop"):
-                        outbox.record_alert(connection, category, object, reason, now)
-                    connection.commit()
-                except BaseException:
-                    connection.rollback()
-                    raise
+            now = epoch_from_iso(self.clock.now())
+            with write(self.store) as connection:
+                for alert in self._failure_alerts(
+                        error, "collector_loop", category="loop"):
+                    outbox.record_alert(connection, alert, now)
         except Exception as failure:
             collector_failure("alert_registration_failed", failure,
                               credentials_configured=self.credentials_configured)

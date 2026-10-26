@@ -8,8 +8,6 @@ import asyncio
 import json
 import logging
 import sqlite3
-import time
-from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
@@ -21,7 +19,7 @@ from backend.tests.archive_support import archive_client
 from backend.tests.collector_support import configured
 from backend.tests.management_support import BASE, UID, enable
 from backend.tests.notification_support import (
-    ALL_WEBHOOK, WEBHOOK, Receiver, assert_no_credentials, config, message_text, query,
+    ALL_WEBHOOK, WEBHOOK, BeijingClock, Receiver, assert_no_credentials, config, message_text, query,
 )
 from backend.tests.root_notification_support import (
     Source as CommentSource, configure as configure_source, reply_item, root_comment,
@@ -29,58 +27,8 @@ from backend.tests.root_notification_support import (
 
 DYNAMIC = "123"
 SYSTEM_WEBHOOK = "https://open.feishu.cn/open-apis/bot/v2/hook/fake-system-alert-token"
-BEIJING = timezone(timedelta(hours=8))
-
-
-def moment(hour, minute, second=0):
-    """固定北京时间的测试时刻：告警消息里的发生时间要能逐字断言。"""
-    return datetime(2026, 10, 9, hour, minute, second, tzinfo=BEIJING)
-
-
-class Clock:
-    """同一时刻供投递进程（epoch 秒）与采集（UTC ISO 字符串）使用。"""
-
-    def __init__(self, value):
-        self.value = value
-
-    @classmethod
-    def start(cls, hour, minute, second=0):
-        return cls(moment(hour, minute, second))
-
-    def now(self):
-        return self.value.timestamp()
-
-    def iso(self):
-        return self.value.astimezone(timezone.utc).isoformat(timespec="seconds")
-
-    def at(self, hour, minute, second=0):
-        self.value = moment(hour, minute, second)
-        return self
-
-    def advance(self, seconds):
-        self.value = self.value + timedelta(seconds=seconds)
-        return self
-
-    async def sleep(self, seconds):
-        self.advance(seconds)
-
-    @property
-    def collector(self):
-        return _CollectorClock(self)
-
-
-class _CollectorClock:
-    def __init__(self, clock):
-        self.clock = clock
-
-    def now(self):
-        return self.clock.iso()
-
-    def monotonic(self):
-        return time.monotonic()
-
-    async def sleep(self, seconds):
-        self.clock.advance(seconds)
+# 与 09 心跳共用同一个受控时钟与采集侧适配器（原先两处各写一份相同的实现）。
+Clock = BeijingClock
 
 
 def alerts(path):

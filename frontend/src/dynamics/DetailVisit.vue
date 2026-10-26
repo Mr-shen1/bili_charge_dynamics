@@ -31,6 +31,8 @@ const target = initial ? 'top' : navigation.detailTarget;
 const locateOnEntry = !initial;
 const entryAllowed = ref(true);
 const { state, retry } = useDetailRead(reader, props.dynamicId, initial?.dynamic ?? null);
+// 与评论/回复不同：动态详情把“不存在”渲染成自己的提示（下方 <p>），
+// 通用读取提示这里映射成 null 表示“不渲染”，不是把它当成功。
 const noticeStatus = computed(() => state.value.status === 'not-found' ? null : state.value.status);
 const root = ref<HTMLElement | null>(null);
 // 主动入口没有快照，定位到顶部；历史恢复才按稳定锚点返回原位置。

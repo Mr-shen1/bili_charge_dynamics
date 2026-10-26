@@ -1,10 +1,12 @@
-import type { CommentBatch, CommentSort, Dynamic, DynamicBatch, ReadResult, ReplyBatch } from '../data/contracts';
+import type {
+  CommentBatch, CommentSort, Dynamic, DynamicBatch, LocateStatus, ReadResult, ReadStatus, ReplyBatch,
+} from '../data/contracts';
 
 /** 读取运行态只属于页面实例；进入访问快照的是上一次可见结果，不是进行中的请求。 */
 export interface ListReadState {
   readonly data: DynamicBatch | null;
   readonly reason?: Extract<ReadResult<DynamicBatch>, { status: 'error' }>['reason'];
-  readonly status: 'loading' | 'success' | 'error' | 'cancelled';
+  readonly status: ReadStatus;
 }
 
 /**
@@ -14,7 +16,7 @@ export interface ListReadState {
 export interface CommentReadState {
   readonly data: CommentBatch | null;
   readonly reason?: Extract<ReadResult<CommentBatch>, { status: 'error' }>['reason'];
-  readonly status: 'loading' | 'success' | 'error' | 'cancelled' | 'not-found';
+  readonly status: LocateStatus;
 }
 
 /** 单个回复区的 cursor 预览结果；展开后的页码读取另有独立状态。 */
@@ -22,7 +24,7 @@ export interface ReplyReadState {
   readonly data: ReplyBatch | null;
   readonly reason?: Extract<ReadResult<ReplyBatch>, { status: 'error' }>['reason'];
   // `not-found` 只用于楼中楼精确入口：目标回复不存在与暂时失败必须区分。
-  readonly status: 'loading' | 'success' | 'error' | 'cancelled' | 'not-found';
+  readonly status: LocateStatus;
 }
 
 /**

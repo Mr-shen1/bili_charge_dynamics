@@ -43,6 +43,7 @@ import sqlite3
 import time
 from contextlib import contextmanager
 from datetime import datetime
+from typing import NamedTuple
 from uuid import uuid4
 
 DYNAMIC_CHANGED = "dynamic_changed"
@@ -142,7 +143,19 @@ def migrate_alerts(connection):
     )""")
 
 
-def record_alert(connection, category, object, reason, now, cooldown=ALERT_COOLDOWN_SECONDS):
+class Alert(NamedTuple):
+    """一条待登记告警：固定类别、表意对象键与固定原因，不含正文、地址或凭据。
+
+    `object_key` 对应既有的 `notification_alerts.object` 列与消息快照的 `object` 字段：
+    只把代码里穿行的位置元组换成有名字段，不改数据库列、载荷形状或节流键。
+    """
+
+    category: str
+    object_key: str
+    reason: str
+
+
+def record_alert(connection, alert, now, cooldown=ALERT_COOLDOWN_SECONDS):
     """在同一事务里登记一条系统告警；被节流或合并时返回 False。
 
     判定顺序：同一 `(category, object)` 距上次提醒不足一个节流窗口 → 合并；
@@ -152,7 +165,7 @@ def record_alert(connection, category, object, reason, now, cooldown=ALERT_COOLD
     """
     row = connection.execute(
         "SELECT last_alert_at, event_id FROM notification_alerts WHERE category = ? AND object = ?",
-        (category, object)).fetchone()
+        (alert.category, alert.object_key)).fetchone()
     if row is not None:
         if now - row["last_alert_at"] < cooldown:
             return False
@@ -162,11 +175,12 @@ def record_alert(connection, category, object, reason, now, cooldown=ALERT_COOLD
                 (row["event_id"], SYSTEM_ROLE)).fetchone()
             if previous is not None and previous["state"] not in (SENT, EXPIRED):
                 return False
-    snapshot = {"category": category, "object": object, "occurred_at": now, "reason": reason}
+    snapshot = {"category": alert.category, "object": alert.object_key,
+                "occurred_at": now, "reason": alert.reason}
     # 事件身份按「类别 + 节流窗口」去重：重启或并发写入不会在同一窗口内重复登记。
     event = connection.execute("""INSERT OR IGNORE INTO notification_events
         (kind, uid, dynamic_id, version, snapshot, created_at) VALUES (?, '', ?, ?, ?, ?)""",
-        (ALERT, object, f"{category}:{int(now // cooldown)}",
+        (ALERT, alert.object_key, f"{alert.category}:{int(now // cooldown)}",
          json.dumps(snapshot, ensure_ascii=False), now))
     if event.rowcount != 1:
         return False
@@ -175,7 +189,7 @@ def record_alert(connection, category, object, reason, now, cooldown=ALERT_COOLD
     connection.execute("""INSERT INTO notification_alerts(category, object, last_alert_at, event_id)
         VALUES (?, ?, ?, ?) ON CONFLICT(category, object) DO UPDATE SET
         last_alert_at = excluded.last_alert_at, event_id = excluded.event_id""",
-        (category, object, now, event.lastrowid))
+        (alert.category, alert.object_key, now, event.lastrowid))
     return True
 
 

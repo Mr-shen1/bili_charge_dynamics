@@ -8,7 +8,6 @@ import json
 import os
 import sqlite3
 import time
-from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
@@ -21,52 +20,11 @@ from backend.tests.archive_support import readable_html
 from backend.tests.collector_support import configured, empty_upstream
 from backend.tests.management_support import UID
 from backend.tests.notification_support import (
-    FailingUploader, Receiver, Source, assert_no_credentials, config, media_download, message_text,
-    query,
+    BeijingClock, FailingUploader, Receiver, Source, assert_no_credentials, beijing_moment, config,
+    media_download, message_text, query,
 )
 
-BEIJING = timezone(timedelta(hours=8))
 SYSTEM_WEBHOOK = "https://open.feishu.cn/open-apis/bot/v2/hook/fake-system-token"
-
-
-class BeijingClock:
-    """受控时间：同一时刻供投递进程（epoch 秒）与采集（UTC ISO 字符串）使用。"""
-
-    def __init__(self, moment):
-        self.moment = moment
-
-    def now(self):
-        return self.moment.timestamp()
-
-    def iso(self):
-        return self.moment.astimezone(timezone.utc).isoformat(timespec="seconds")
-
-    def at(self, hour, minute, second=0):
-        self.moment = self.moment.replace(hour=hour, minute=minute, second=second, microsecond=0)
-
-    def advance(self, seconds):
-        self.moment = self.moment + timedelta(seconds=seconds)
-
-    async def sleep(self, seconds):
-        self.advance(seconds)
-
-    @property
-    def collector_clock(self):
-        return _CollectorClock(self)
-
-
-class _CollectorClock:
-    def __init__(self, clock):
-        self.clock = clock
-
-    def now(self):
-        return self.clock.iso()
-
-    def monotonic(self):
-        return time.monotonic()
-
-    async def sleep(self, seconds):
-        self.clock.advance(seconds)
 
 
 class StoppingClock(BeijingClock):
@@ -83,8 +41,8 @@ class StoppingClock(BeijingClock):
         self.advance(seconds)
 
 
-def moment(hour, minute, second=0, day=9):
-    return datetime(2026, 10, day, hour, minute, second, tzinfo=BEIJING)
+# 08 告警用例与本票共用同一个受控北京时间（原先两处各写一份相同的实现）。
+moment = beijing_moment
 
 
 def dispatcher(path, receiver, clock, **sections):
@@ -454,7 +412,7 @@ def test_heartbeat_reports_observable_collection_facts_without_claiming_success(
         async with httpx.AsyncClient(transport=httpx.MockTransport(source)) as client, \
                 httpx.AsyncClient(transport=httpx.MockTransport(media_download)) as media:
             collector = Collector(Store(path), client, ImageDownloader(media), FailingUploader(),
-                                  clock=clock.collector_clock, page_check_seconds=0)
+                                  clock=clock.collector, page_check_seconds=0)
             for dynamic_id in ("123", "124", "125"):
                 await collector.check_once(UID, dynamic_id)
             await collector.execute_pending()
@@ -518,7 +476,7 @@ def test_heartbeat_expiry_never_drops_business_messages_sharing_the_queue(tmp_pa
     async def scenario():
         source = Source("v1")
         async with httpx.AsyncClient(transport=httpx.MockTransport(source)) as client:
-            collector = Collector(Store(path), client, clock=clock.collector_clock, page_check_seconds=0)
+            collector = Collector(Store(path), client, clock=clock.collector, page_check_seconds=0)
             await collector.check_once(UID, "123")
             await collector.execute_pending()
             source.page = "v2"
