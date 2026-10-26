@@ -14,6 +14,7 @@ import httpx
 from backend.bili_monitor.notifications import Dispatcher
 from backend.bili_monitor.storage import Store
 from backend.tests.archive_support import archive_client, detail_json, readable_html
+from backend.tests.collector_support import open_notifications
 from backend.tests.management_support import BASE, UID
 from backend.tests.notification_support import (  # noqa: F401  重用 01 装配，避免第二套替身
     ALL_WEBHOOK, BASE_URL, WEBHOOK, Clock, Receiver, config, config_mapping, deliveries, events,
@@ -43,6 +44,7 @@ def configure(path, source, uid=UID, ids=(DYNAMIC,)):
                          json={"mode": "specified", "recent_n": 10, "enabled": True}).status_code == 200
         for id in ids:
             assert api.post(f"{BASE}/{uid}/targets", json={"id": id}).status_code == 201
+    open_notifications(path)
 
 
 def started_at(path, uid=UID, dynamic_id=DYNAMIC):

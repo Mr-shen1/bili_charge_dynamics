@@ -16,7 +16,7 @@ from backend.bili_monitor.collector import Collector
 from backend.bili_monitor.notifications import Dispatcher
 from backend.bili_monitor.storage import Store
 from backend.tests.archive_support import archive_client
-from backend.tests.collector_support import configured
+from backend.tests.collector_support import configured, open_notifications
 from backend.tests.management_support import BASE, UID, enable
 from backend.tests.notification_support import (
     ALL_WEBHOOK, WEBHOOK, BeijingClock, Receiver, assert_no_credentials, config, message_text, query,
@@ -574,6 +574,7 @@ def test_discovery_failure_alerts_the_up_and_keeps_the_old_window(tmp_path):
     with archive_client(path, FailingFeedSource(count=0)) as api:
         assert api.post(BASE, json={"uid": UID}).status_code == 201
         assert enable(api).status_code == 200  # 近期模式：发现阶段由 feed 失败触发
+    open_notifications(path)
 
     async def scenario():
         async with httpx.AsyncClient(transport=httpx.MockTransport(FailingFeedSource(count=0))) as client:

@@ -202,6 +202,8 @@ class Stack:
         assert self.client.patch(f"/api/manage/ups/{uid}/monitor", json={
             "mode": "specified", "recent_n": 10, "enabled": True}).status_code == 200
         assert self.client.post(f"/api/manage/ups/{uid}/targets", json={"id": dynamic}).status_code == 201
+        # 通知三态默认 off：三进程链路需要显式打开全部通知。
+        assert self.client.put("/api/manage/notifications", json={"state": "all"}).status_code == 200
 
     def archive(self, dynamic):
         response = self.client.get(f"/api/archive/dynamics/{dynamic}")
@@ -540,7 +542,7 @@ def test_repeated_migration_keeps_archive_configuration_and_checkpoints(stack, t
     store = Store(migrated)
     assert store.read_archive(DYNAMIC) == saved_archive
     assert store.enabled_targets() == [{"uid": UP, "id": DYNAMIC}]
-    assert query(migrated, "PRAGMA user_version") == [{"user_version": 22}]
+    assert query(migrated, "PRAGMA user_version") == [{"user_version": 23}]
     assert query(migrated, "SELECT token, started_at, comment_started_at, sealed"
                            " FROM notification_phases ORDER BY started_at") == phase_before
     assert deliveries(migrated) == deliveries_before

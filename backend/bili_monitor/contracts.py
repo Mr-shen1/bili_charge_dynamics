@@ -35,10 +35,13 @@ class MonitorConfig(BaseModel):
 
 
 class NotificationSwitch(BaseModel):
-    """通知总开关：只有布尔状态一个字段，禁止额外字段，非法入参统一 422。"""
+    """通知状态：三态枚举之一，禁止额外字段，非法入参统一 422。
+
+    `all` 发送业务与系统消息；`system_only` 只发心跳/告警；`off` 一条都不发。
+    """
 
     model_config = ConfigDict(extra="forbid")
-    enabled: Annotated[bool, Field(strict=True)]
+    state: Literal["all", "system_only", "off"]
 
 
 ERRORS = {

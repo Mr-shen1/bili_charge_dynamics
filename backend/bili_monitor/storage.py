@@ -123,7 +123,7 @@ def _freeze_pages(documents, limit):
 
 
 class SwitchUpdate(NamedTuple):
-    """总开关切换结果：`changed` 决定是否记一条切换日志，`state` 就是 API 响应体。"""
+    """通知状态切换结果：`changed` 决定是否记一条切换日志，`state` 就是 API 响应体。"""
 
     changed: bool
     state: dict
@@ -149,7 +149,7 @@ class Store(CheckStore, DiscoveryStore):
             connection.execute("BEGIN IMMEDIATE")
             try:
                 version = connection.execute("PRAGMA user_version").fetchone()[0]
-                if version > 22:
+                if version > 23:
                     raise RuntimeError("Unsupported database schema version")
                 if version == 0:
                     connection.execute("""CREATE TABLE identities (
@@ -305,32 +305,41 @@ class Store(CheckStore, DiscoveryStore):
                 if version < 22:
                     # 14 通知总开关：持久单行，默认开启，既有库升级后行为不变。
                     outbox.migrate_gate(connection)
-                connection.execute("PRAGMA user_version = 22")
+                if version < 23:
+                    # 15 通知状态三态：布尔闸门改成 all / system_only / off，升级后默认 off。
+                    outbox.migrate_gate_states(connection)
+                connection.execute("PRAGMA user_version = 23")
                 connection.commit()
             except BaseException:
                 connection.rollback()
                 raise
 
     def _notification_switch(self, connection):
-        """开关与待发条数的唯一形状：两个入口共用，不手搓两份字典。"""
-        return {"enabled": outbox.read_gate(connection),
+        """通知状态与待发条数的唯一形状：两个入口共用，不手搓两份字典。"""
+        return {"state": outbox.read_state(connection),
                 "pending": outbox.pending_count(connection)}
 
     def read_notification_switch(self):
-        """通知总开关与待发条数：只读聚合，不返回路由、webhook 或消息正文。"""
+        """通知状态与待发条数：只读聚合，不返回路由、webhook 或消息正文。"""
         with self.connection() as connection:
             return self._notification_switch(connection)
 
-    def update_notification_switch(self, enabled):
-        """持久切换总开关；返回 `SwitchUpdate`，读写在同一短事务内完成。
+    def update_notification_switch(self, state):
+        """持久切换通知状态；返回 `SwitchUpdate`，读写在同一短事务内完成。
 
-        `changed=False` 表示写入的是与当前相同的值（幂等），调用方据此不产生日志噪声。
+        `changed=False` 表示写入的是与当前相同的状态（幂等），调用方据此不产生日志噪声。
+        状态真的变了才收敛队列：进入 `off` 作废全部未投递记录，进入 `system_only`
+        只作废业务角色的未投递记录；切回 `all` 时把业务起点前移到此刻，不补发。
         """
         with write(self) as connection:
-            changed = outbox.read_gate(connection) != enabled
-            outbox.write_gate(connection, enabled)
-            state = self._notification_switch(connection)
-        return SwitchUpdate(changed, state)
+            changed = outbox.read_state(connection) != state
+            outbox.write_state(connection, state)
+            if changed:
+                outbox.discard_queue(connection, system=state == outbox.NOTIFICATION_OFF)
+                if state == outbox.NOTIFICATION_ALL:
+                    outbox.realign(connection, time.time())
+            switch = self._notification_switch(connection)
+        return SwitchUpdate(changed, switch)
 
     def read(self, uid=None):
         with self.connection() as connection:

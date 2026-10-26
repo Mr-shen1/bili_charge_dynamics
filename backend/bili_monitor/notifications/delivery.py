@@ -122,9 +122,14 @@ class Dispatcher:
             return False
 
     def _switch_enabled(self):
-        """读一次总开关；只在状态真的变化时记日志（含从读失败/关闭恢复）。"""
+        """读一次通知状态；只在状态真的变化时记日志（含从读失败/关闭恢复）。
+
+        `system_only` 与 `all` 都要投递：业务记录在非 `all` 状态根本不登记，进入
+        `system_only` 时已把业务角色的未投递记录作废，因此这里只区分“发”与“全停”。
+        """
         with self.store.connection() as connection:
-            enabled = outbox.read_gate(connection)
+            state = outbox.read_state(connection)
+        enabled = state != outbox.NOTIFICATION_OFF
         if enabled != self.gate:
             if enabled:
                 notifier_event("notification_switch_opened")

@@ -57,18 +57,19 @@ profile_lookup_failed reason=http_status http_status=412 message_state=allowed u
 
 身份和监控配置分离；配置的外键引用身份，删除配置不删除身份。首次数据库使用事务创建版本 1；再次启动不改写已保存字段。未知未来 schema 版本拒绝启动，不默默降级。迁移测试通过真实旧/新临时数据库及公开 HTTP 结果验证，不绑定内部表名。上游资料网络请求期间不持有 SQLite 写事务；写入身份和默认配置在短事务内原子完成。API 不含周期调度。
 
-## 通知总开关（票据 14，已交付）
+## 通知状态（票据 14 引入，票据 15 改为三态）
 
-只控制“通知进程是否发送”，不控制进程启停（进程启停仍由 `BILI_NOTIFICATION_CONFIG` 决定）。同源 `/api/manage/notifications`，JSON 字段 snake_case。开关持久在 SQLite（v22 迁移 `notification_gate`，默认开启），随库走，重启服务、重新部署与机器重启都保持。
+只决定“发哪一类消息”，不控制进程启停（进程启停仍由 `BILI_NOTIFICATION_CONFIG` 决定）。同源 `/api/manage/notifications`，JSON 字段 snake_case。状态持久在 SQLite（v23 迁移 `notification_gate`，三态，**默认 `off`**；缺行也按 `off`），随库走，重启服务、重新部署与机器重启都保持。
 
-- `GET /api/manage/notifications` → `200 {"enabled": true, "pending": 0}`：`enabled` 为当前持久开关；`pending` 为待发条数（只读聚合，`state = 'pending'` 的投递记录数）。不返回路由、webhook、密钥或任何消息正文。
-- `PUT /api/manage/notifications`，完整体 `{"enabled": false}` → `200 {"enabled": false, "pending": N}`：`enabled` 必须严格布尔，禁止额外字段；写入在同一事务内完成，写失败 `503 STORAGE_UNAVAILABLE`，不回写一半。
-- 幂等：重复写入同一值返回同样的 `200` 与新状态，不额外产生日志噪声。
+- `GET /api/manage/notifications` → `200 {"state": "off", "pending": 0}`：`state` 是 `all`／`system_only`／`off` 之一；`pending` 为待发条数（只读聚合，`state = 'pending'` 的投递记录数）。不返回路由、webhook、密钥或任何消息正文。
+- `PUT /api/manage/notifications`，完整体 `{"state": "all"}` → `200 {"state": "all", "pending": N}`：`state` 必须是三个字面量之一（大小写、空白、非字符串、未知值一律 `422`），禁止额外字段；写入在同一事务内完成，写失败 `503 STORAGE_UNAVAILABLE`，不回写一半。
+- 状态切换语义：进入 `off` 作废全部未投递记录，进入 `system_only` 只作废业务角色的未投递记录；切回 `all` 时把业务起点前移到切换时刻，关闭或仅系统期间的内容**不补发**。语义与边界见[通知进程契约](notification-process.md#11-发送状态管理页三态票据-14-起票据-15-改造)。
+- 幂等：重复写入同一状态返回同样的 `200` 与新状态，不额外产生日志噪声，也不重复收敛队列。
 - 两个方法都不接受查询参数：出现未知查询参数按 `422 INVALID_INPUT` 拒绝，不静默忽略。
 - 无需新增鉴权：`/api/manage/*` 已由部署侧 `auth_basic "bili manage"` 保护（见[静态交付说明](../../deployment/static-delivery.md)），本文沿用。
-- 日志：切换成功只在值真的变化时记一条 `notifier_event`（`notification_switch_changed enabled=<true|false>`）；幂等重复写不产生日志。日志字段只有固定分类与布尔值，不含 webhook、密钥或 URL。
-- 页面行为：管理页顶部的“飞书通知”开关，初始状态**必须**来自 `GET`（不读本地记忆）；切换失败保留原状态并给出固定提示；状态切换后刷新页面应与真实状态一致；窄屏可用。开关与 UP 列表分离，不随单个 UP 的启停变化。当前装配（`frontend/src/manage/NotificationSwitch.vue`）用带文字与 `aria-pressed` 的按钮（“关闭飞书通知”／“开启飞书通知”，提交中显示“正在提交…”）而不是零尺寸输入框式的开关；成功文案为“飞书通知已关闭，不再发送。”或“飞书通知已开启，待发 N 条。”，状态行是“飞书通知：运行中/已关闭，待发 N 条。”。读取失败只显示固定提示与“重新读取通知开关”按钮，不自动重试。
-- 与其它开关的关系（避免概念混淆）：`BILI_NOTIFICATION_CONFIG` 缺失 → 通知进程不启动，页面开关无意义；配置存在但开关关闭 → 进程运行、不发送、心跳不生成；关闭期间的积压按 [通知进程契约](notification-process.md#11-发送闸门管理页总开关票据-14-已交付) 的方案 A 在重开后补发。
+- 日志：切换成功只在状态真的变化时记一条 `notifier_event`（`notification_switch_changed state=<all|system_only|off>`）；幂等重复写不产生日志。日志字段只有固定分类与枚举值，不含 webhook、密钥或 URL。
+- 页面行为：管理页顶部的“飞书通知”是一个原生下拉框（选项“全部通知／仅心跳与告警／全部关闭”），初始状态**必须**来自 `GET`（不读本地记忆）；切换失败保留原状态并给出固定提示；状态切换后刷新页面应与真实状态一致；窄屏可用。状态行是“飞书通知：<状态名>，待发 N 条。”，成功文案为“飞书通知已切换为「<状态名>」，待发 N 条。”。读取失败只显示固定提示与“重新读取通知状态”按钮，不自动重试。
+- 与其它开关的关系（避免概念混淆）：`BILI_NOTIFICATION_CONFIG` 缺失 → 通知进程不启动，页面状态无意义；配置存在但状态为 `off` → 进程运行、一条都不发（含心跳与告警）；`system_only` → 只发心跳与告警。
 
 ## UI 行为与安全边界
 

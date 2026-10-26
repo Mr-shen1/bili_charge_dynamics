@@ -15,6 +15,7 @@ import pytest
 from backend.bili_monitor.collector import Collector
 from backend.bili_monitor.storage import Store
 from backend.tests.archive_support import archive_client
+from backend.tests.collector_support import open_notifications
 from backend.tests.management_support import BASE, UID
 from backend.tests.notification_support import (
     ALL_WEBHOOK, WEBHOOK, Clock, Receiver, deliveries, events, query,
@@ -94,6 +95,7 @@ def arm(path, source, *, mode="specified", ids=(DYNAMIC,), window_ids=(DYNAMIC, 
                 assert api.post(f"{BASE}/{UID}/targets", json={"id": id}).status_code == 201
     if mode == "recent":
         discover(path, source, window_ids)
+    open_notifications(path)
 
 
 async def stop(path, source, cause):

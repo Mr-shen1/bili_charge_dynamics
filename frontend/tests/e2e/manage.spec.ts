@@ -27,7 +27,7 @@ type Reply = { status?: number; body?: unknown; json?: boolean; delayMs?: number
 /**
  * 记录管理请求并返回受控响应；只有 /api/manage/** 被替换，其余装配保持生产行为。
  *
- * 通知总开关不是每个用例的被测对象：它由固定默认响应单独处理，不进入 `calls`，
+ * 通知状态不是每个用例的被测对象：它由固定默认响应单独处理，不进入 `calls`，
  * 需要断言它的用例在调用本函数之后再注册更具体的路由覆盖（Playwright 后注册优先）。
  */
 async function manageApi(page: Page, handler: (call: Call) => Reply | Promise<Reply>) {
@@ -36,7 +36,7 @@ async function manageApi(page: Page, handler: (call: Call) => Reply | Promise<Re
     const request = route.request();
     const call: Call = { method: request.method(), path: new URL(request.url()).pathname, body: request.postData() };
     if (call.path === '/api/manage/notifications') {
-      await route.fulfill({ status: 200, json: { enabled: true, pending: 0 } });
+      await route.fulfill({ status: 200, json: { state: 'all', pending: 0 } });
       return;
     }
     calls.push(call);
@@ -137,9 +137,9 @@ test.describe('UP 监控管理', () => {
     expect(await page.locator('img[src="x"]').count()).toBe(0);
   });
 
-  test('通知总开关：初始状态来自接口，切换提交 {enabled} 且刷新后与真实状态一致', async ({ page }) => {
+  test('通知三态：初始状态来自接口，切换提交 {state} 且刷新后与真实状态一致', async ({ page }) => {
     // 受控的通知端点：状态由 PUT 改写，用来验证“刷新后与真实状态一致”。
-    let state = { enabled: true, pending: 5 };
+    let state = { state: 'all', pending: 5 };
     const writes: Call[] = [];
     // 先装通用管理路由，再装通知端点：Playwright 后注册的路由优先，才真正覆盖默认响应。
     await manageApi(page, () => ({ body: { ups: [] } }));
@@ -147,53 +147,49 @@ test.describe('UP 监控管理', () => {
       const request = route.request();
       writes.push({ method: request.method(), path: new URL(request.url()).pathname, body: request.postData() });
       if (request.method() === 'PUT') {
-        const body = JSON.parse(request.postData() ?? '{}') as { enabled: boolean };
-        state = { ...state, enabled: body.enabled };
+        const body = JSON.parse(request.postData() ?? '{}') as { state: string };
+        state = { ...state, state: body.state };
       }
       await route.fulfill({ status: 200, json: state });
     });
 
     await page.goto('/manage');
-    await expect(page.getByText('飞书通知：运行中，待发 5 条。')).toBeVisible();
-    const toggle = page.getByRole('button', { name: '关闭飞书通知', exact: true });
-    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByText('飞书通知：全部通知，待发 5 条。')).toBeVisible();
+    const select = page.getByLabel('飞书通知状态');
+    await expect(select).toHaveValue('all');
 
-    await toggle.click();
-    await expect(page.getByText('飞书通知已关闭，不再发送。')).toBeVisible();
-    await expect(page.getByText('飞书通知：已关闭，待发 5 条。')).toBeVisible();
-    await expect(page.getByRole('button', { name: '开启飞书通知', exact: true }))
-      .toHaveAttribute('aria-pressed', 'false');
+    await select.selectOption('system_only');
+    await expect(page.getByText('飞书通知已切换为「仅心跳与告警」，待发 5 条。')).toBeVisible();
+    await expect(page.getByText('飞书通知：仅心跳与告警，待发 5 条。')).toBeVisible();
 
     // 刷新后重新以 GET 为唯一来源，不回放本地记忆。
     await page.reload();
-    await expect(page.getByText('飞书通知：已关闭，待发 5 条。')).toBeVisible();
-    await expect(page.getByRole('button', { name: '开启飞书通知', exact: true }))
-      .toHaveAttribute('aria-pressed', 'false');
+    await expect(page.getByText('飞书通知：仅心跳与告警，待发 5 条。')).toBeVisible();
+    await expect(page.getByLabel('飞书通知状态')).toHaveValue('system_only');
 
     expect(writes).toEqual([
       { method: 'GET', path: '/api/manage/notifications', body: null },
-      { method: 'PUT', path: '/api/manage/notifications', body: JSON.stringify({ enabled: false }) },
+      { method: 'PUT', path: '/api/manage/notifications', body: JSON.stringify({ state: 'system_only' }) },
       { method: 'GET', path: '/api/manage/notifications', body: null },
     ]);
   });
 
-  test('通知总开关切换失败保留原状态并给出固定提示', async ({ page }) => {
+  test('通知状态切换失败保留原状态并给出固定提示', async ({ page }) => {
     await manageApi(page, () => ({ body: { ups: [] } }));
     await page.route('**/api/manage/notifications', async (route: Route) => {
       if (route.request().method() === 'GET') {
-        await route.fulfill({ status: 200, json: { enabled: true, pending: 2 } });
+        await route.fulfill({ status: 200, json: { state: 'all', pending: 2 } });
         return;
       }
       await route.fulfill({ status: 503, json: { error: { code: 'STORAGE_UNAVAILABLE', message: 'SECRET_TOKEN' } } });
     });
 
     await page.goto('/manage');
-    await expect(page.getByText('飞书通知：运行中，待发 2 条。')).toBeVisible();
-    await page.getByRole('button', { name: '关闭飞书通知', exact: true }).click();
+    await expect(page.getByText('飞书通知：全部通知，待发 2 条。')).toBeVisible();
+    await page.getByLabel('飞书通知状态').selectOption('off');
     await expect(page.getByRole('alert')).toContainText('配置存储暂不可用，请重试。');
-    await expect(page.getByText('飞书通知：运行中，待发 2 条。')).toBeVisible();
-    await expect(page.getByRole('button', { name: '关闭飞书通知', exact: true }))
-      .toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByText('飞书通知：全部通知，待发 2 条。')).toBeVisible();
+    await expect(page.getByLabel('飞书通知状态')).toHaveValue('all');
     await expect(page.locator('body')).not.toContainText('SECRET_TOKEN');
   });
 

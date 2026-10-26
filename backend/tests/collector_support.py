@@ -2,11 +2,22 @@
 
 import httpx
 
+from backend.bili_monitor.storage import Store
 from backend.tests.archive_support import archive_client, readable_html, set_specified, TARGETS, detail_json
 from backend.tests.management_support import BASE, UID
 
 
 CHECKS = f"{BASE}/{UID}/checks"
+
+
+def open_notifications(path):
+    """通知三态默认 `off`：需要产生消息的用例统一在这里显式切到 `all`。
+
+    生产语义是“默认不发”，所以只有相关用例自选开启，不为测试另开一条默认值捷径。
+    """
+    store = Store(path)
+    store.migrate()
+    store.update_notification_switch("all")
 
 
 def configured(path, ids=("123",)):
@@ -20,6 +31,7 @@ def configured(path, ids=("123",)):
         set_specified(api)
         for id in ids:
             assert api.post(TARGETS, json={"id": id}).status_code == 201
+    open_notifications(path)
 
 
 def empty_upstream(request):

@@ -25,7 +25,7 @@ exec .venv/bin/python -m backend.bili_monitor.notifier
 
 - 独立进程，与 API、collector 使用同一 SQLite；API 与 collector 不内嵌通知定时器，只读 HTTP 不产生事件。
 - 启动时取得数据库旁 `.notifier.lock` 排他锁，重复启动直接失败（`Notifier already running`）；崩溃后锁由内核释放。
-- 启动时执行 `Store.migrate`（当前 schema v22），并重新核验“等待配置”的待投递记录，使修复后的配置无需等待复检周期（`--once` 只跑一轮到期记录，不做这次复检，也不做告警扫描）。
+- 启动时执行 `Store.migrate`（当前 schema v23），并重新核验“等待配置”的待投递记录，使修复后的配置无需等待复检周期（`--once` 只跑一轮到期记录，不做这次复检，也不做告警扫描）。
 - 默认每 **1 秒**领取一轮，单轮有限批量（8）；网络等待、限流与退避都在数据库事务之外。
 - 每轮轮询先读一次持久总开关（§1.1，关闭即直接进入下一轮），再按当前时间登记本小时心跳（见 §3.1），然后投递到期记录，最后按 §3.3 扫描“持续投递失败”事实并登记告警；心跳与告警都不单独起时钟进程，也不进 API。
 - 单轮领取/回写失败（如 SQLite 写锁竞争）只记录固定分类并继续下一轮，不停掉投递进程；心跳登记失败与告警扫描失败同理（`heartbeat_cycle_failed`／`alert_cycle_failed`），不连带停掉业务投递。
@@ -33,21 +33,30 @@ exec .venv/bin/python -m backend.bili_monitor.notifier
 - 同一数据库只允许一个投递实例（`.notifier.lock`）；第二个进程启动即以固定错误退出，崩溃后锁由内核释放，不靠租约猜活。
 - 统一托管入口（`python -m backend.bili_monitor.service`）已支持三个进程：先等 API 完成迁移并监听，再启动独立 collector，最后启动通知进程；设置 `BILI_NOTIFICATION_CONFIG` 时才有第三个进程，未设置时保持原两进程形态（不投递飞书）。任一子进程退出都会停止其余进程并以固定错误退出；TERM 按“通知 → 采集 → API”反向顺序逐个等待退出。启动顺序、迁移顺序、启停与路由修复步骤见[静态交付运行说明](../../deployment/static-delivery.md#单-api单-collector单通知进程启动停止升级)；systemd 示例见 `deploy/bili-monitor.service` 与 `deploy/bili-monitor.env.example`。API 仍不内嵌任何通知定时器。
 
-## 1.1 发送闸门（管理页总开关，票据 14 已交付）
+## 1.1 发送状态（管理页三态，票据 14 起、票据 15 改造）
 
-- 语义：通知进程**不停止**（照常持有 `flock`、照常跑轮询），只在每个投递轮次开头读一次持久开关；关闭时不领取、不发送、不生成心跳，直接进入下一次轮询。这与环境变量 `BILI_NOTIFICATION_CONFIG` 是两个不同层级：环境变量决定**是否启动通知进程**，本开关决定**进程是否发送**。
-- 持久化：开关存 SQLite（随库走，重启服务、重新部署与机器重启后保持），默认**开启**；既有库迁移后行为不变。
-- 关闭期间：采集、归档、API 全部照常；事件仍按既有规则登记（因为登记发生在采集写事务里，不在通知进程）。心跳不生成——等价于“错过不补”，与 `:40` 窗口规则一致。
-- 重新打开（**方案 A，已由用户裁决**）：关闭期间积压的记录**保留并补发**，按 5.2 的主动限速逐条发出，不重复发送、不重复登记；管理页显示“待发 N 条”，避免用户误以为消息丢了。
-- 可观测：状态切换与“因关闭而跳过”都是 `notifier_event` 的固定分类字段，不含 webhook、密钥或 URL。关闭期间每轮都跳过，但只在**状态变化时**记一条（`delivery_skipped reason=switch_off` / `notification_switch_opened`），不每秒刷日志。进程启动按“开启”计，因此正常启动不伪造一次切换日志；启动时开关就是关闭的，则第一条就是 `delivery_skipped`。管理页切换记 `notification_switch_changed enabled=<true|false>`，幂等重复写同一值不产生这条日志。
-- 读不到开关（如本地存储异常）按关闭处理：该轮不领取、不发 HTTP。`delivery_cycle_failed reason=storage_error` **只在首次进入该状态时记一条**，恢复后记一条 `notification_switch_opened` 再继续投递；宁可停发也不误发，但不会每秒刷日志。
-- 管理端契约见 [management-api.md](management-api.md) 的“通知总开关”一节。
+- 语义：通知进程**不停止**（照常持有 `flock`、照常跑轮询），状态是**一个持久枚举**，同时决定登记与发送哪一类消息：
 
-实现约定（`notifications/outbox.py` 的 `read_gate`/`write_gate`/`pending_count`，`delivery.py` 的 `_allowed`/`_switch_enabled`）：
+  | 状态 | 业务消息（动态变化 / 一级评论 / 楼中楼） | 系统消息（心跳 / 告警） |
+  | --- | --- | --- |
+  | `all` 全部通知 | 登记 + 投递 | 登记 + 投递 |
+  | `system_only` 仅心跳与告警 | 不登记、不投递 | 登记 + 投递 |
+  | `off` 全部关闭 | 不登记、不投递 | 不登记、不投递 |
 
-- 开关是 SQLite 单行表 `notification_gate(id=1, enabled)`（v22 迁移，缺行即开启，重放迁移不重置已关闭状态）。
-- `tick` 与 `run_once` 都以同一入口读闸门：`tick` 先读闸门再登记心跳、再投递、最后扫描告警；`--once` 走 `run_once`，同样受闸门约束，因此“关闭后一条都不发”对运维排查入口也成立。
-- 关闸不改变单实例锁、租约、领取凭证与失败事实：关闭期间没有领取，因此不会出现“关闸时被领取、重开后重复发送”。
+- 与 `BILI_NOTIFICATION_CONFIG` 的分层不变：环境变量决定**是否启动通知进程**，本状态决定**进程发什么**。
+- 持久化：状态存 SQLite（随库走，重启服务、重新部署与机器重启后保持），**默认 `off`**；v22 → v23 迁移把布尔闸门换成三态表，既有库升级后同样是 `off`（新语义下“默认不发”比“默认全发”安全：升级瞬间不会突然开始投递没预期的消息）。
+- 非 `all` 状态：采集、归档、API 全部照常，但**业务事件不登记**（登记发生在采集写事务里，因此闸门也装在登记侧）；`off` 下心跳与告警同样不登记——等价于“错过不补”，与 `:40` 窗口规则一致。
+- 状态切换时同步收敛队列（`outbox.discard_queue`）：进入 `off` 作废全部 `pending`/`waiting_config` 记录，进入 `system_only` 只作废业务角色的未投递记录；正在发送中的 `inflight` 无法撤回，由那一轮投递自行收尾。
+- 切回 `all`（**票据 15 裁决，替换票据 14 的“方案 A 保留并补发”**）：就地前移业务起点（`outbox.realign`）——每个未封存且仍在入选的阶段把 `comment_started_at` 置为切换时刻、`baseline_version` 对齐当前已归档的可信版本（与 `activate` 同口径），阶段本身延续、去重种子不清。因此关闭或仅系统期间发生的变化与评论**永远不补发**，只通知切换之后的新变化。
+- 可观测：状态切换与“因关闭而跳过”都是 `notifier_event` 的固定分类字段，不含 webhook、密钥或 URL。`off` 期间每轮都跳过，但只在**状态变化时**记一条（`delivery_skipped reason=switch_off` / `notification_switch_opened`），不每秒刷日志。进程启动按实际状态计，因此正常启动不伪造一次切换日志；启动时状态就是 `off`，则第一条就是 `delivery_skipped`。管理页切换记 `notification_switch_changed state=<all|system_only|off>`，幂等重复写同一状态不产生这条日志。
+- 读不到状态（如本地存储异常、状态表缺失）按 `off` 处理：不领取、不发 HTTP，采集侧也不登记。`delivery_cycle_failed reason=storage_error` **只在首次进入该状态时记一条**，恢复后记一条 `notification_switch_opened` 再继续投递；宁可停发也不误发，但不会每秒刷日志。登记侧读失败只让这次不登记，绝不让归档事务回滚。
+- 管理端契约见 [management-api.md](management-api.md) 的“通知状态”一节。
+
+实现约定（`notifications/outbox.py` 的 `read_state`/`write_state`/`_registration_open`/`discard_queue`/`realign`/`pending_count`，`delivery.py` 的 `_allowed`/`_switch_enabled`）：
+
+- 状态是 SQLite 单行表 `notification_gate(id=1, state)`（v23 迁移，缺行按 `off`，重放迁移不重置已选状态）。
+- `tick` 与 `run_once` 都以同一入口读状态：`tick` 先读状态再登记心跳、再投递、最后扫描告警；`--once` 走 `run_once`，同样受状态约束，因此“`off` 后一条都不发”对运维排查入口也成立。
+- 状态切换不改变单实例锁、租约、领取凭证与失败事实：`off` 期间没有领取，因此不会出现“关闸时被领取、切回后重复发送”。
 
 ## 2. 配置
 
@@ -216,8 +225,8 @@ exec .venv/bin/python -m backend.bili_monitor.notifier
 | 开关默认值 | 开启 | 迁移后既有库行为不变 |
 | 检查时机 | 每个投递轮次开头一次 | 不热加锁、不中断正在进行的请求 |
 | 关闭时行为 | 不领取、不发送、不生成心跳 | 进程存活；`flock` 与租约语义不变 |
-| 重开时积压 | 保留并补发（方案 A） | 受 5.2 限速约束；页面显示待发条数 |
-| 持久位置 | SQLite 新表 `notification_gate`（v22 迁移） | 切换写失败要有非 2xx 与固定错误码，不静默 |
+| 重开时积压 | 作废，不补发 | 切回 `all` 时把业务起点前移；页面显示待发条数 |
+| 持久位置 | SQLite 新表 `notification_gate`（v23 迁移，三态；缺行按 `off`） | 切换写失败要有非 2xx 与固定错误码，不静默 |
 | 读失败 | 该轮不发送（按关闭处理） | 只记 `delivery_cycle_failed reason=storage_error`，下一轮恢复 |
 
 ### 5.2 主动限速（票据 13，已交付）
@@ -255,13 +264,14 @@ exec .venv/bin/python -m backend.bili_monitor.notifier
 
 ## 7. 迁移
 
-- 空库与旧库都迁移到 `user_version = 22`；通知表与索引可重入（`IF NOT EXISTS` 与列存在性检查），已是 v22 的库重复执行不变。
+- 空库与旧库都迁移到 `user_version = 23`；通知表与索引可重入（`IF NOT EXISTS` 与列存在性检查），已是 v23 的库重复执行不变。
 - v16（01 交付形态）库原地升级：发件箱里已入队的事件与投递记录、状态、快照全部保留；业务记录升级后 `expires_at` 为 `NULL`，仍按原规则重试。
 - v17（09 交付形态）库原地升级到 v18：补 `notification_events.root_id/comment_id` 与评论事件唯一索引、`notification_candidates`、`notification_phases.comment_started_at`；已有阶段以升级时刻填 `comment_started_at`（历史评论静默），不会重复迁移时重设（只补 `NULL`）。
 - v18（04 交付形态）库原地升级到 v19（06）：补 `notification_deliveries.failures/last_failed_at`，旧记录默认 0 次失败、无失败时间（不倒推历史 `attempts`），并确保到期/租约两条索引存在。
 - v19 → v20（05）：重建 `notification_candidates`，主键从 `(dynamic_id, comment_id)` 改为 `(dynamic_id, root_id, comment_id)`；旧候选都是一级评论，`root_id` 按自身回填，不丢等待记录。重建在迁移事务内完成，失败随版本号一起回滚。
 - v20 → v21（08）：新增 `notification_alerts` 告警节流表；已有事件、投递记录与状态不动，节流状态从空开始（不凭空补历史告警）。
-- v21 → v22（14）：新增 `notification_gate` 单行开关表，迁移即写入 `enabled=1`（默认开启）；已有事件、投递记录与状态不动，升级后行为不变，重放迁移不重置已关闭的开关。
+- v21 → v22（14）：新增 `notification_gate` 单行布尔闸门表，迁移即写入 `enabled=1`。
+- v22 → v23（15）：布尔闸门重建为三态表 `notification_gate(id, state)`，迁移即置 `off`；已有事件与投递记录不动，重放迁移不重置已选状态。
 - 旧库保留归档、观察、checkpoint、入选令牌与近期窗口状态；已成功归档的已选目标以现有可信版本作基线，不补发历史；升级不会凭空生成历史时段的心跳。
 - 迁移在 API lifespan、collector 取得锁后与通知进程启动时都有入口，重复执行幂等；三进程接管同一库时以 API 先完成迁移、其余进程再启动为约定。10 的隔离演练在真实三进程写出的库副本上停掉进程后重复迁移两次，归档正文/检查时间/监控配置/通知阶段与队列均保持不变（见票据 10 证据）。不支持自动降级，也不承诺旧版本打开更新 schema 的库；回退只能是前滚到同一或更高兼容版本。
 - 迁移失败整体回滚（含版本号），可修复后重试；未来版本仍拒绝启动。

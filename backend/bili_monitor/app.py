@@ -180,12 +180,12 @@ def create_app(
 
     @application.put("/api/manage/notifications")
     async def update_notifications(body: NotificationSwitch, request: Request):
-        """持久切换总开关：只控制通知进程是否发送，不控制进程启停。"""
+        """持久切换通知状态：决定登记与发送哪一类消息，不控制进程启停。"""
         validate_query(request)
-        changed, state = await run_store(store.update_notification_switch, body.enabled)
+        changed, state = await run_store(store.update_notification_switch, body.state)
         # 幂等写入不制造日志噪声：只有真的切换才留一条固定分类，不含地址或凭据。
         if changed:
-            notifier_event("notification_switch_changed", enabled=body.enabled)
+            notifier_event("notification_switch_changed", state=body.state)
         return state
 
     @application.post("/api/sync/initial")

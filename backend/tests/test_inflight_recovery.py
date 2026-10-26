@@ -279,7 +279,7 @@ def test_v12_migration_failure_rolls_back_and_retries_without_losing_pending(tmp
         database.execute("DROP TABLE target_selections")
     assert checks(path) == before
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 22
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 23
 
 
 @pytest.mark.parametrize("mode", ["specified", "recent"])

@@ -419,46 +419,49 @@ describe('检查与发现状态读取', () => {
   });
 });
 
-describe('通知总开关读取与切换', () => {
+describe('通知三态的读取与切换', () => {
   function notificationDto(overrides: Record<string, unknown> = {}) {
-    return { enabled: true, pending: 0, ...overrides };
+    return { state: 'all', pending: 0, ...overrides };
   }
 
-  it('读取开关映射 enabled 与待发条数，只发 GET', async () => {
+  it('读取状态映射三态与待发条数，只发 GET', async () => {
     const { transport, calls } = transportOf(Response.json(notificationDto({ pending: 3 })));
     expect(await createManagementApi(transport).readNotification({ signal: signal() }))
-      .toEqual({ status: 'success', data: { enabled: true, pending: 3 } });
+      .toEqual({ status: 'success', data: { state: 'all', pending: 3 } });
     expect(calls).toHaveLength(1);
     expect(calls[0]!.url).toBe('/api/manage/notifications');
     expect(calls[0]!.init.method).toBe('GET');
   });
 
-  it('切换提交完整 {enabled} 并返回后端新状态', async () => {
+  it('切换提交完整 {state} 并返回后端新状态', async () => {
     const { transport, calls } = transportOf(
-      Response.json(notificationDto({ enabled: false, pending: 5 })));
-    expect(await createManagementApi(transport).updateNotification({ enabled: false, signal: signal() }))
-      .toEqual({ status: 'success', data: { enabled: false, pending: 5 } });
+      Response.json(notificationDto({ state: 'system_only', pending: 5 })));
+    expect(await createManagementApi(transport).updateNotification({ state: 'system_only', signal: signal() }))
+      .toEqual({ status: 'success', data: { state: 'system_only', pending: 5 } });
     expect(calls[0]!.url).toBe('/api/manage/notifications');
     expect(calls[0]!.init.method).toBe('PUT');
-    expect(calls[0]!.init.body).toBe('{"enabled":false}');
+    expect(calls[0]!.init.body).toBe('{"state":"system_only"}');
     expect(new Headers(calls[0]!.init.headers).get('Content-Type')).toBe('application/json');
   });
 
   it('状态形状或状态码不符整体判为无效', async () => {
     const cases: [number, Record<string, unknown>][] = [
-      [200, { enabled: 'false', pending: 0 }],
-      [200, { enabled: true, pending: -1 }],
-      [200, { enabled: true, pending: 1.5 }],
-      [200, { enabled: true }],
-      [200, { enabled: true, pending: null }],
-      [201, { enabled: true, pending: 0 }],
-      [202, { enabled: true, pending: 0 }],
+      [200, { state: 'paused', pending: 0 }],
+      [200, { state: 'ALL', pending: 0 }],
+      [200, { state: true, pending: 0 }],
+      [200, { enabled: true, pending: 0 }],
+      [200, { state: 'all', pending: -1 }],
+      [200, { state: 'all', pending: 1.5 }],
+      [200, { state: 'all' }],
+      [200, { state: 'all', pending: null }],
+      [201, { state: 'all', pending: 0 }],
+      [202, { state: 'all', pending: 0 }],
     ];
     for (const [status, body] of cases) {
       for (const run of [
         (api: ReturnType<typeof createManagementApi>) => api.readNotification({ signal: signal() }),
         (api: ReturnType<typeof createManagementApi>) =>
-          api.updateNotification({ enabled: true, signal: signal() }),
+          api.updateNotification({ state: 'all', signal: signal() }),
       ]) {
         const { transport } = transportOf(Response.json(body, { status }));
         expect(await run(createManagementApi(transport)), `${status} ${JSON.stringify(body)}`)
@@ -470,7 +473,7 @@ describe('通知总开关读取与切换', () => {
   it('写失败按固定错误码映射，不回显响应正文', async () => {
     const { transport } = transportOf(Response.json(
       { error: { code: 'STORAGE_UNAVAILABLE', message: 'SECRET_TOKEN' } }, { status: 503 }));
-    const result = await createManagementApi(transport).updateNotification({ enabled: false, signal: signal() });
+    const result = await createManagementApi(transport).updateNotification({ state: 'all', signal: signal() });
     expect(result).toEqual({ status: 'error', message: '配置存储暂不可用，请重试。' });
     expect(JSON.stringify(result)).not.toContain('SECRET_TOKEN');
   });
@@ -509,7 +512,7 @@ describe('管理接口的部署入口认证', () => {
         api.readNotification({ signal }) },
     { name: 'updateNotification', path: '/api/manage/notifications', method: 'PUT',
       run: (api: ReturnType<typeof createManagementApi>, signal: AbortSignal) =>
-        api.updateNotification({ enabled: false, signal }) },
+        api.updateNotification({ state: 'all', signal }) },
   ];
 
   it('固定安全文案不指向页面入口', () => {

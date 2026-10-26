@@ -62,6 +62,14 @@ UP_ROLE = "up"
 ALL_ROLE = "all"
 SYSTEM_ROLE = "system"
 
+# 通知状态（v23）：一个持久枚举决定「登记什么」与「发送什么」，不再用布尔开关。
+# `all` 登记并投递业务与系统消息；`system_only` 只登记并投递心跳/告警；
+# `off` 一条都不登记、一条都不发（进程照常运行，只是不产生任何通知）。
+NOTIFICATION_ALL = "all"
+NOTIFICATION_SYSTEM_ONLY = "system_only"
+NOTIFICATION_OFF = "off"
+NOTIFICATION_STATES = (NOTIFICATION_ALL, NOTIFICATION_SYSTEM_ONLY, NOTIFICATION_OFF)
+
 # 投递状态：等待配置、到期待投、已领取（带租约）、已成功、已过期（心跳专用）。
 WAITING_CONFIG = "waiting_config"
 PENDING = "pending"
@@ -153,19 +161,110 @@ def migrate_gate(connection):
         id INTEGER PRIMARY KEY CHECK (id = 1),
         enabled INTEGER NOT NULL CHECK (enabled IN (0, 1))
     )""")
+    # 已被 v23 升成三态表的重放副本：不按旧形状写，也不回写默认值。
+    if "enabled" not in {row[1] for row in connection.execute("PRAGMA table_info(notification_gate)")}:
+        return
     connection.execute("INSERT OR IGNORE INTO notification_gate (id, enabled) VALUES (1, 1)")
 
 
-def read_gate(connection):
-    """当前持久开关；缺行按开启处理（默认值就是开启，不因数据缺失停发）。"""
-    row = connection.execute("SELECT enabled FROM notification_gate WHERE id = 1").fetchone()
-    return True if row is None else bool(row["enabled"])
+def migrate_gate_states(connection):
+    """v23 把布尔闸门换成三态：`all`（全部）／`system_only`（仅系统）／`off`（全停）。
+
+    重建表而不是加列：`enabled` 的语义已被取代，留着它就会出现两个真相。
+    升级后统一置 `off`——新语义下“默认不发”比“默认全发”安全：升级瞬间不会
+    突然开始投递用户没预期的消息，用户需在管理页显式选择要收哪一类。
+    已经是三态表时直接返回：重放迁移不重置用户已选的状态。
+    """
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(notification_gate)")}
+    if "state" in columns:
+        return
+    connection.execute("DROP TABLE IF EXISTS notification_gate_states")
+    connection.execute("""CREATE TABLE notification_gate_states (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        state TEXT NOT NULL CHECK (state IN ('all', 'system_only', 'off'))
+    )""")
+    connection.execute("INSERT INTO notification_gate_states (id, state) VALUES (1, 'off')")
+    connection.execute("DROP TABLE IF EXISTS notification_gate")
+    connection.execute("ALTER TABLE notification_gate_states RENAME TO notification_gate")
 
 
-def write_gate(connection, enabled):
-    """覆盖写入总开关；同一行幂等，重复写同一值不算切换。"""
-    connection.execute("""INSERT INTO notification_gate (id, enabled) VALUES (1, ?)
-        ON CONFLICT(id) DO UPDATE SET enabled = excluded.enabled""", (int(bool(enabled)),))
+def read_state(connection):
+    """当前通知状态；缺行按 `off` 处理（宁可停发不误发，不因数据缺失全发）。"""
+    row = connection.execute("SELECT state FROM notification_gate WHERE id = 1").fetchone()
+    if row is None:
+        return NOTIFICATION_OFF
+    value = row["state"]
+    return value if value in NOTIFICATION_STATES else NOTIFICATION_OFF
+
+
+def write_state(connection, state):
+    """覆盖写入通知状态；同一行幂等，重复写同一值不算切换。"""
+    if state not in NOTIFICATION_STATES:
+        raise ValueError("Unknown notification state")
+    connection.execute("""INSERT INTO notification_gate (id, state) VALUES (1, ?)
+        ON CONFLICT(id) DO UPDATE SET state = excluded.state""", (state,))
+
+
+def _registration_open(connection, *, system):
+    """写事务内读一次状态，决定这次能不能登记通知记录。
+
+    `system` 区分登记类别：业务消息（正文变化、评论、回复）只在 `all` 登记；
+    系统消息（心跳、告警）在 `all` 与 `system_only` 都登记，`off` 一律不登记。
+    读不到状态按关闭处理：通知的配置问题绝不能让归档事务回滚。
+    """
+    try:
+        state = read_state(connection)
+    except sqlite3.Error:
+        return False
+    return state == NOTIFICATION_ALL or (system and state == NOTIFICATION_SYSTEM_ONLY)
+
+
+def discard_queue(connection, *, system):
+    """作废还没发出去的通知记录；`system` 为真时连系统角色一起作废。
+
+    只清「还没发出去」的 `pending` / `waiting_config`；正在发送中的 `inflight`
+    无法撤回，由那一轮投递自行收尾。清完投递记录后连带清掉不再被引用的孤儿
+    事件，以及心跳/告警里指向它们、已经悬空的指针。
+    """
+    if system:
+        removed = connection.execute("DELETE FROM notification_deliveries WHERE state IN (?, ?)",
+                                     (PENDING, WAITING_CONFIG)).rowcount
+    else:
+        removed = connection.execute(
+            "DELETE FROM notification_deliveries WHERE state IN (?, ?) AND role <> ?",
+            (PENDING, WAITING_CONFIG, SYSTEM_ROLE)).rowcount
+    connection.execute("DELETE FROM notification_events WHERE id NOT IN "
+                       "(SELECT event_id FROM notification_deliveries)")
+    connection.execute("""DELETE FROM notification_heartbeats
+        WHERE event_id IS NULL OR event_id NOT IN (SELECT id FROM notification_events)""")
+    connection.execute("""UPDATE notification_alerts SET event_id = NULL
+        WHERE event_id IS NOT NULL AND event_id NOT IN (SELECT id FROM notification_events)""")
+    return removed
+
+
+def realign(connection, now):
+    """切回 `all` 时把业务通知起点前移到此刻：只通知之后的变化，不补发。
+
+    评论起点取 `now`；正文基线对齐当前已归档的可信版本（与 `activate` 同口径）。
+    阶段本身延续（不新开阶段、不清去重种子），`started_at` 保留真实的入选时刻。
+    """
+    _ensure_comment_start(connection)
+    rows = connection.execute("""SELECT p.token, p.uid, p.dynamic_id FROM notification_phases p
+        JOIN target_selections s ON s.uid = p.uid AND s.id = p.dynamic_id
+        WHERE p.sealed = 0""").fetchall()
+    for row in rows:
+        baseline = None
+        archived = connection.execute("SELECT document FROM archives WHERE id = ? AND uid = ?",
+                                      (row["dynamic_id"], row["uid"])).fetchone()
+        if archived is not None:
+            document = json.loads(archived["document"])
+            if document.get("content_state") == "success":
+                baseline = document.get("synced_version")
+        connection.execute("""UPDATE notification_phases SET comment_started_at = ?, baseline_version = ?
+            WHERE token = ?""", (now, baseline, row["token"]))
+        if baseline is not None:
+            connection.execute("INSERT OR IGNORE INTO notification_versions VALUES (?, ?)",
+                               (row["dynamic_id"], baseline))
 
 
 def pending_count(connection):
@@ -194,6 +293,8 @@ def record_alert(connection, alert, now, cooldown=ALERT_COOLDOWN_SECONDS):
     一条未投递的同类提醒，系统群长期失败时不会按故障次数堆积告警。
     新建事件时写系统群投递记录，`expires_at` 为空：告警不套用心跳的过期丢弃规则。
     """
+    if not _registration_open(connection, system=True):
+        return False
     row = connection.execute(
         "SELECT last_alert_at, event_id FROM notification_alerts WHERE category = ? AND object = ?",
         (alert.category, alert.object_key)).fetchone()
@@ -388,6 +489,10 @@ def record_body(connection, id, generation, document, version):
     """正文实际成功归档时调用：建立基线或登记事件，与正文同事务提交。"""
     if version is None:
         return
+    # 非 `all` 状态不登记业务事件、也不推进基线：切回 `all` 时由 `realign` 统一
+    # 对齐，因此关闭期间的变化既不入队，也不会在切回后变成一条迟到的「发生变化」。
+    if not _registration_open(connection, system=False):
+        return
     phase = _active_phase(connection, id, generation)
     if phase is None:
         return
@@ -411,6 +516,8 @@ def record_heartbeat(connection, slot, facts, now):
     时段已存在即返回 False（重复调度与进程重启都不会再生成）；新时段写事件、
     快照与系统群投递记录，并写入有效期（不跨下一个心跳时段）。
     """
+    if not _registration_open(connection, system=True):
+        return False
     created = connection.execute(
         "INSERT OR IGNORE INTO notification_heartbeats(slot, generated_at, expires_at) VALUES (?, ?, ?)",
         (slot.identity, now, slot.expires_at)).rowcount == 1
@@ -607,6 +714,9 @@ def record_reply(connection, uid, dynamic_id, archive, root_id, document, *, dis
 
 def _record_comment(connection, uid, dynamic_id, archive, document, *, discovered, kind, root_id,
                     generation):
+    # 非 `all` 状态连候选都不写：关闭期间新评论不该在切回后被补成通知。
+    if not _registration_open(connection, system=False):
+        return
     comment_id = document["id"]
     candidate = _candidate(connection, dynamic_id, root_id, comment_id)
     if candidate is not None:

@@ -18,10 +18,10 @@ export function createManagement(overrides: Partial<ManagementApi> = {}): Manage
     deleteTarget: async (): Promise<ManagementResult<void>> => failed,
     readDiscovery: async (): Promise<ManagementResult<DiscoveryState>> => failed,
     listChecks: async (): Promise<ManagementResult<readonly TargetCheck[]>> => failed,
-    // 总开关在列表页顶部，与 UP 列表是两处独立读取：多数用例不以它为被测对象，
-    // 默认给“运行中、无待发”，避免它的读取失败提示混进 UP 列表的断言。
+    // 通知状态在列表页顶部，与 UP 列表是两处独立读取：多数用例不以它为被测对象，
+    // 默认给“全部通知、无待发”，避免它的读取失败提示混进 UP 列表的断言。
     readNotification: async (): Promise<ManagementResult<NotificationState>> =>
-      ({ status: 'success', data: { enabled: true, pending: 0 } }),
+      ({ status: 'success', data: { state: 'all', pending: 0 } }),
     updateNotification: async (): Promise<ManagementResult<NotificationState>> => failed,
     ...overrides,
   };

@@ -17,7 +17,7 @@ exec .venv/bin/python -m uvicorn backend.bili_monitor.app:app --host 127.0.0.1 -
 
 Python 使用 `.python-version` 的 3.12 系列（记录实际补丁版本）；FastAPI、HTTPX、Uvicorn、OSS SDK 和测试依赖由清单/`uv.lock` 固定。上述路径是示例，须选择**仓库外持久、可写的绝对 SQLite 路径**，与 collector 完全相同，不随发布目录切换；默认 `backend/data/monitor.sqlite` 仅适合本地开发。依赖经 uv 同步后直接 `exec` 其解释器，打印的 shell PID 随即成为 Python PID，不会只杀掉 uv 父进程而留下子进程。仅一个 API，不加 `--workers` / `--reload`；没有内嵌定时器或常驻 Node.js，collector 另起终端。
 
-API 的 ASGI lifespan、取得锁的 collector 与独立通知进程启动都调用 `Store.migrate`（当前 v22）。升级先 TERM/Ctrl-C 停两个进程、等退出，再切换同一代码版本并 `uv sync --locked`；先启动 API 完成迁移并确认 `GET /api/manage/ups` 为 200，再启动 collector。未来 schema 拒绝启动，失败事务回滚；无独立迁移 CLI、自动降级或备份，勿删库、改版本号或让旧进程与新迁移并行。
+API 的 ASGI lifespan、取得锁的 collector 与独立通知进程启动都调用 `Store.migrate`（当前 v23）。升级先 TERM/Ctrl-C 停两个进程、等退出，再切换同一代码版本并 `uv sync --locked`；先启动 API 完成迁移并确认 `GET /api/manage/ups` 为 200，再启动 collector。未来 schema 拒绝启动，失败事务回滚；无独立迁移 CLI、自动降级或备份，勿删库、改版本号或让旧进程与新迁移并行。
 
 **首期无鉴权**：管理、初始化及归档接口均可被访问者调用，可能暴露内容或被修改配置。请通过监听地址、防火墙或反向代理限制暴露；隐藏入口不是保护。本期没有备份或容量治理。
 
