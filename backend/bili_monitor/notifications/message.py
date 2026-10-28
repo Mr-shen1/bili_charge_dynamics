@@ -166,6 +166,9 @@ ALERT_LABELS = {
     "loop": "主循环异常",
     "delivery": "飞书投递持续失败",
     "route": "路由缺失或错误",
+    "risk_triggered": "来源风控触发",
+    "risk_manual": "来源风控转人工",
+    "risk_recovered": "来源风控已恢复",
 }
 ALERT_REASONS = {
     "credential_rejected": "来源凭据被拒绝",
@@ -188,6 +191,9 @@ ALERT_REASONS = {
     "unsupported_kind": "事件类型缺少模板",
     "platform_rejected": "飞书拒绝消息",
     "rate_limited": "飞书限流",
+    "risk_cooldown": "来源触发风控保护，已在冷却中",
+    "risk_manual_wait": "自动恢复耗尽，等待人工探测",
+    "risk_stable": "连续正常采集后已稳定恢复",
 }
 _ALERT_TOKEN = re.compile(r"[a-z][a-z0-9_]{0,63}")
 _ALERT_OBJECT = re.compile(r"[A-Za-z0-9_:.\-]{1,80}")

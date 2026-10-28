@@ -49,6 +49,14 @@ NON_BUSINESS_TYPES = frozenset({"homepage_warmup", "space_warmup"})
 BLOCKED_STATES = frozenset({"cooldown", "probing", "manual"})
 ACTIVE_STATES = frozenset({"normal", "observing"})
 
+# 生命周期系统告警：对象是唯一的全局保护状态，三个事实各占一个类别，
+# 因此既有节流键 (category, object) 不会把“首次触发”和“稳定恢复”在 30 分钟内
+# 合并掉；每档等待与每类探测结果继续只进日志，不刷系统群。
+ALERT_OBJECT = "source_risk"
+ALERT_TRIGGERED = "risk_triggered"
+ALERT_MANUAL = "risk_manual"
+ALERT_RECOVERED = "risk_recovered"
+
 _SCHEMA = """CREATE TABLE IF NOT EXISTS source_risk (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
     state TEXT NOT NULL CHECK (state IN ('normal', 'cooldown', 'probing', 'observing', 'manual')),
@@ -298,12 +306,37 @@ class RiskGate:
                      request.endpoint_type, status_code, now, now))
             row = connection.execute(
                 f"SELECT {_COLUMNS} FROM source_risk WHERE singleton = 1").fetchone()
+            if row["state"] == "manual":
+                # 第 6 档之后再次触发：这一次转移只登记“转人工”一个事实。
+                self._alert(connection, ALERT_MANUAL, "risk_manual_wait", now)
+            else:
+                self._alert(connection, ALERT_TRIGGERED, "risk_cooldown", now)
         status = public_status(row)
         self._transition("source_risk_triggered", previous_state, status,
                          endpoint_type=request.endpoint_type, http_status=status_code)
         if status["state"] == "manual":
             collector_event("source_risk_manual_wait", backoff_step=status["backoff_step"])
         return status
+
+    @staticmethod
+    def _alert(connection, category, reason, now):
+        """在当前短事务里登记一条生命周期告警：状态事实与告警同事务提交。
+
+        复用 `checks.record_alerts`：固定类别／对象／原因，单条告警单独 SAVEPOINT，
+        通知 `off` 时不登记也不排队，写不进只留 `alert_registration_failed`，
+        不让风控状态与该次转移跟着回滚——通知失败不能变成风控旁路。
+
+        延迟导入：`source` 在导入期就需要本模块的 `SourceRiskPaused`，而通知包又
+        导入 `source`；模块级导入会形成循环，因此只在真正登记时取一次。
+        """
+        from .checks import alert_epoch, record_alerts
+        from .notifications.outbox import Alert
+
+        stamp = alert_epoch(now)
+        if stamp is None:
+            # 时间不可解析就不编造发生时刻，也不假装登记成功。
+            return
+        record_alerts(connection, [Alert(category, ALERT_OBJECT, reason)], stamp)
 
     def _log_once(self, key, event, **fields):
         """同一进程内同一原因只留一条固定日志：暂停期间不每 2.7 秒重复同一警告。"""
@@ -371,6 +404,7 @@ class RiskGate:
                     observing_active_ms = 0, observing_successes = 0, updated_at = ?
                     WHERE singleton = 1""",
                     (now, now))
+                self._alert(connection, ALERT_RECOVERED, "risk_stable", now)
             else:
                 connection.execute(
                     """UPDATE source_risk SET observing_active_ms = ?, observing_successes = ?,
@@ -564,6 +598,9 @@ class RiskGate:
                     probe_owner = NULL, probe_lease_until = NULL, probe_origin = NULL,
                     updated_at = ? WHERE singleton = 1""",
                     (now, now))
+                if origin != "manual":
+                    # 自动恢复耗尽转人工；人工轮失败仍停在人工态，不是新事实，不重复告警。
+                    self._alert(connection, ALERT_MANUAL, "risk_manual_wait", now)
             else:
                 connection.execute(
                     """UPDATE source_risk SET state = 'cooldown', generation = generation + 1,

@@ -94,6 +94,22 @@ collector 使用独立 INFO 级别的 stderr handler，保持 HTTPX/HTTPCore、O
 - **状态查询**：`GET /api/manage/risk` 的 `manual.probe_registered` 表达人工态登记，`observation` 表达观察进度；`state=normal`＋`backoff_step=0` 即稳定恢复。
 - **日志（脱敏、可关联）**：`source_risk_manual_probe_registered`、`source_risk_observation_restarted`、`source_risk_observation_cleared`、`risk_probe_claimed`、`risk_probe_round_finished`（含 `probe_origin=manual|cooldown`）。状态转移日志统一带 `previous_state`、`risk_state`、`risk_generation`、`backoff_step` 与 `probe_round_id`（数字关联号），不含 owner／租约令牌，也不产生业务通知。
 
+## 风控生命周期系统告警（09）
+
+三个关键生命周期事实会登记系统群告警，**复用**既有事务发件箱、系统群路由、类别／固定原因目录、30 分钟去重节流与通知三态开关，不新增并行投递机制、不改业务通知起点或资格。
+
+| 事实 | 登记点（真实状态转移） | 类别 | 固定原因 |
+| --- | --- | --- | --- |
+| 首次触发／冷却升级 | `RiskGate._record_trigger` 的 `with write(...)` 事务内（`normal`／`observing` → `cooldown`） | `risk_triggered` | `risk_cooldown` |
+| 自动恢复耗尽转人工 | `_finish_probe` 末档失败，或 `_record_trigger` 在观察期第六档之后直接转 `manual` | `risk_manual` | `risk_manual_wait` |
+| 稳定恢复 | `_observing_tick` 的 `observing` → `normal`（满 600 秒活跃采集） | `risk_recovered` | `risk_stable` |
+
+- **与状态事实同事务**：告警在同一短事务里登记（`outbox.record_alert`，单条 `SAVEPOINT` 隔离），不读日志、不扫描全表。登记失败只丢该条告警并留 `alert_registration_failed`，风控状态与该次转移照常提交，不把通知故障变成风控旁路。
+- **只登记转换**：每档等待、每类探测结果、每页 412、迟到响应合并、owner 接管、人工态重复登记与进程重启都不产生新告警；人工轮失败仍停在人工态，也不是新的生命周期事实。
+- **不冒充稳定恢复**：探测刚通过只是 `observing`；满 10 分钟活跃采集后才登记恢复，空闲与停机不抵扣。
+- **开关**：`off` 时与其它系统消息一样不登记、不排队、不补发，也不暗中改开关；`system_only` 只投递这类系统消息；`all` 不变。
+- **消息边界**：只有固定类别、对象（`source_risk`）、发生时间与固定原因；不带正文、完整 URL／query、Cookie、凭据或 owner／探测轮次令牌。逐接口资源定位信息留在结构化日志。三个类别分别按自己的 30 分钟窗口节流，因此稳定恢复不会被分钟级的触发提醒合并掉。
+
 ## 状态 HTTP
 
 `GET /api/manage/ups/{uid}/checks` → `200 {"checks":[Check,...]}`。未知身份 `404 NOT_FOUND`；不接受查询参数，非法或重复参数 `422 INVALID_INPUT`。只读 SQLite，无上游请求。ID 按 BINARY 字符串排序。
