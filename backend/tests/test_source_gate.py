@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 import httpx
+import pytest
 import requests
 from fastapi.testclient import TestClient
 
@@ -13,6 +14,7 @@ from backend.bili_monitor.collector import open_collector
 from backend.bili_monitor.comment_client import RequestsCommentClient
 from backend.bili_monitor.source_endpoints import REPLIES_URL, ROOT_COMMENTS_URL
 from backend.bili_monitor.source_gate import GatedAsyncTransport, endpoint_type, source_request
+from backend.bili_monitor.risk import SourceRiskPaused
 from backend.bili_monitor.source_transport import SourcePacer
 from backend.tests.archive_support import archive_client, detail_json, readable_html
 from backend.tests.collector_clock import ControlledClock
@@ -279,7 +281,10 @@ def test_source_endpoint_types_follow_host_and_path_template():
         ("www.bilibili.com", "/"): "homepage_warmup",
         ("www.bilibili.com", "/opus/123"): "opus_page",
         ("space.bilibili.com", "/202/dynamic"): "space_warmup",
-        ("i0.hdslb.com", "/bfs/new/first.png"): "media_image",
+        # 图片按受信域族区分：不同 CDN 域族的拦截面不能互相代替。
+        ("i0.hdslb.com", "/bfs/new/first.png"): "image_hdslb",
+        ("hdslb.com", "/bfs/new/first.png"): "image_hdslb",
+        ("i0.biliimg.com", "/bfs/new/second.png"): "image_biliimg",
         # 非 B 站来源（OSS 交付、投递地址等）不受源站许可控制。
         ("example.invalid", "/x/v2/reply"): None,
         ("archive.example.invalid", "/bucket/key"): None,
@@ -333,8 +338,8 @@ def test_media_download_is_gated_while_upload_and_local_reads_are_not(tmp_path):
         after_sync = len(gate.events)
         assert client.get("/api/archive/dynamics/123").status_code == 200
     # 图片下载走独立 client，但仍先取许可、返回后报告（含失败与手动重试）。
-    assert gate.permitted().count("media_image") == 2
-    assert ("media_image", 200) in gate.reported()
+    assert gate.permitted().count("image_hdslb") == 2
+    assert ("image_hdslb", 200) in gate.reported()
     assert len(uploads) == 1
     # 阅读 GET 只读本地归档：没有任何上游发送，因此也没有新的许可或报告。
     assert len(gate.events) == after_sync
@@ -360,3 +365,58 @@ def test_httpx_transport_gates_each_redirect_hop():
     assert hops == ["/x/v2/reply", "/x/v2/reply/reply"]
     assert gate.permitted() == ["root_comments", "replies"]
     assert gate.reported() == [("root_comments", 302), ("replies", 200)]
+
+
+def test_gated_transport_forwards_inner_lifecycle_and_closes_it_once():
+    """包装不改写内层启动／关闭语义：进入内层一次，退出时也只关一次。"""
+    events = []
+
+    class LifecycleTransport(httpx.MockTransport):
+        def __init__(self):
+            super().__init__(lambda request: httpx.Response(200, json={"code": 0}))
+
+        async def __aenter__(self):
+            events.append("enter")
+            return self
+
+        async def __aexit__(self, exc_type=None, exc_value=None, traceback=None):
+            events.append("exit")
+            await self.aclose()
+
+        async def aclose(self):
+            events.append("close")
+
+    async def scenario():
+        async with httpx.AsyncClient(
+            transport=GatedAsyncTransport(LifecycleTransport(), gate=LedgerGate())
+        ) as client:
+            # 启动钩子已经执行过：内层的进入不是靠第一次发送顺带完成的。
+            assert events == ["enter"]
+            assert (await client.get(ROOT_COMMENTS_URL, params={"oid": "99123", "type": 17, "pn": 1})).status_code == 200
+
+    asyncio.run(scenario())
+    assert events == ["enter", "exit", "close"]
+
+
+def test_gate_report_rejection_propagates_instead_of_being_swallowed():
+    """报告拒绝这次发送（如 HTTP 412）时必须中止调用链，不能被接入层吞成普通响应。"""
+    rejected = []
+
+    class RejectingGate:
+        async def permit(self, request):
+            return None
+
+        async def report(self, request, report):
+            rejected.append(report.status_code)
+            raise SourceRiskPaused({"state": "cooldown", "backoff_step": 1})
+
+    async def scenario():
+        async with httpx.AsyncClient(
+            transport=GatedAsyncTransport(httpx.MockTransport(lambda request: httpx.Response(412, text="")),
+                                          gate=RejectingGate())
+        ) as client:
+            with pytest.raises(SourceRiskPaused):
+                await client.get(ROOT_COMMENTS_URL, params={"oid": "99123", "type": 17, "pn": 1})
+
+    asyncio.run(scenario())
+    assert rejected == [412]

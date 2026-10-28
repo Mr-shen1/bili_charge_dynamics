@@ -36,7 +36,10 @@ _API_ENDPOINTS = {
 _OPUS_PAGE_PATH = re.compile(r"/opus/[1-9][0-9]*")
 _SPACE_DYNAMIC_PATH = re.compile(r"/[1-9][0-9]*/dynamic")
 
-MEDIA_IMAGE = "media_image"
+# 图片按受信域族区分：两族分别代表不同 CDN 拦截面，探测与日志不能互相代替。
+IMAGE_HDSLB = "image_hdslb"
+IMAGE_BILIIMG = "image_biliimg"
+IMAGE_ENDPOINTS = (("hdslb.com", IMAGE_HDSLB), ("biliimg.com", IMAGE_BILIIMG))
 # 白名单内、但尚无专门模板的来源路径仍须经过许可，不因分类缺失而放行。
 OTHER_SOURCE = "source_other"
 
@@ -44,7 +47,8 @@ OTHER_SOURCE = "source_other"
 def endpoint_type(host, path):
     """按主机与路径模板给出接口类型；非 B 站来源返回 None（不受许可控制）。"""
     if is_image_source_host(host):
-        return MEDIA_IMAGE
+        return next(kind for domain, kind in IMAGE_ENDPOINTS
+                    if host == domain or host.endswith("." + domain))
     if host not in SOURCE_HOSTS:
         return None
     if host == "api.bilibili.com":
@@ -91,7 +95,11 @@ class SourceGate(Protocol):
         """发送前调用；拒绝时抛异常，调用方不得再发出该请求。"""
 
     async def report(self, request: SourceRequest, report: SourceReport) -> None:
-        """返回或失败后调用；先报告再交给原业务错误处理。"""
+        """返回或失败后调用；先报告再交给原业务错误处理。
+
+        实现可以在这里抛出保护异常来中止当前调用链（例如收到 HTTP 412／429）：调用方
+        不会拿到该响应，因此不会继续翻页、重试或补做预热。
+        """
 
 
 class OpenSourceGate:
@@ -135,7 +143,12 @@ class GatedAsyncTransport(httpx.AsyncBaseTransport):
         except Exception as error:
             await self.gate.report(source, SourceReport(error=error))
             raise
-        await self.gate.report(source, SourceReport(status_code=response.status_code))
+        try:
+            await self.gate.report(source, SourceReport(status_code=response.status_code))
+        except BaseException:
+            # 报告拒绝这次发送时先释放连接，再让保护异常中止调用链。
+            await response.aclose()
+            raise
         return response
 
     async def aclose(self):

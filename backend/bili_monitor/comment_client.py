@@ -16,6 +16,7 @@ from .identifiers import is_valid_id
 from .source_client import comment_request_headers
 from .source_cookies import load_source_cookie_pairs
 from .reply_pacing import ReplyPagePacer
+from .risk import SourceRiskPaused
 from .source_gate import OpenSourceGate, SOURCE_HOSTS, SourceReport, ThreadSourceGate, source_request
 from .source_transport import SourcePacer
 
@@ -70,7 +71,12 @@ class _SourceSession(requests.Session):
             raise
         if not response.history:
             # 跟随跳转时，最终响应已由它自己那一跳报告；外层不重复计数同一次发送。
-            self.hop.report(source, SourceReport(status_code=response.status_code))
+            try:
+                self.hop.report(source, SourceReport(status_code=response.status_code))
+            except BaseException:
+                # 报告拒绝这次发送时先释放响应，再让保护异常中止调用链。
+                response.close()
+                raise
         return response
 
 
@@ -143,6 +149,10 @@ class RequestsCommentClient:
                 collector_event("comment_session_warmup", stage=stage,
                                 http_success=response.is_success, http_status=response.status_code)
                 await asyncio.sleep(random.uniform(1, 3))
+            except SourceRiskPaused:
+                # 预热仍是 best-effort，但触发后不再做第二次预热；报告已在传输层完成。
+                collector_event("comment_session_warmup_paused", stage=stage)
+                return
             except Exception as error:
                 collector_failure("comment_session_warmup_failed", error, stage=stage)
 
@@ -187,6 +197,9 @@ class WarmupCache:
             collector_event("comment_session_warmup_cached", ttl_seconds=self.ttl)
         except asyncio.CancelledError:
             raise
+        except SourceRiskPaused:
+            # 不把暂停记成预热失败，也不写「已预热」：冷却窗口到期后仍会重试。
+            collector_event("comment_session_warmup_paused", stage="cached")
         except Exception as error:
             # 预热本来就是 best-effort；冷却窗口限制重试频率，不打断业务请求。
             collector_failure("comment_session_warmup_failed", error, stage="cached")

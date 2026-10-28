@@ -10,6 +10,7 @@ from uuid import uuid4
 from contextlib import contextmanager
 from pathlib import Path
 
+from . import risk
 from .notifications import outbox
 from .contracts import APIError
 from .checks import CheckStore
@@ -149,7 +150,7 @@ class Store(CheckStore, DiscoveryStore):
             connection.execute("BEGIN IMMEDIATE")
             try:
                 version = connection.execute("PRAGMA user_version").fetchone()[0]
-                if version > 23:
+                if version > 24:
                     raise RuntimeError("Unsupported database schema version")
                 if version == 0:
                     connection.execute("""CREATE TABLE identities (
@@ -308,7 +309,10 @@ class Store(CheckStore, DiscoveryStore):
                 if version < 23:
                     # 15 通知状态三态：布尔闸门改成 all / system_only / off，升级后默认 off。
                     outbox.migrate_gate_states(connection)
-                connection.execute("PRAGMA user_version = 23")
+                if version < 24:
+                    # 03 跨进程风控暂停：单行保护状态，API 与采集进程共用同一 SQLite。
+                    risk.migrate(connection)
+                connection.execute("PRAGMA user_version = 24")
                 connection.commit()
             except BaseException:
                 connection.rollback()

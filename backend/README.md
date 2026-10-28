@@ -152,20 +152,22 @@ app = create_app(database_path, profile_transport=None, media_transport=None, me
 
 ## 统一源请求发送入口
 
-API 与采集进程的所有 B 站源请求都经 `source_gate.py` 的同一 Interface：发送前 `permit(request)` 取许可，返回或失败后 `report(request, report)` 报告状态。默认实现 `OpenSourceGate` 一律放行且不记录，因此本入口上线不改变任何网络行为；后续风控票在同一 Interface 上接入暂停、探测与持久状态，调用方不需要各自实现熔断。
+API 与采集进程的所有 B 站源请求都经 `source_gate.py` 的同一 Interface：发送前 `permit(request)` 取许可，返回或失败后 `report(request, report)` 报告状态。生产默认实现是 `risk.py` 的 `RiskGate`（票据 03）：状态存在同一 SQLite 的 `source_risk` 单行，任一源入口收到 HTTP 412／429 就在同一短事务里触发全局暂停，`permit` 在保护态或状态不可读写时拒绝发送，`report` 记录风控后直接中止当前调用链（不再翻页、重试或补做预热）。`OpenSourceGate` 仍是一律放行的替身实现，供不需要保护的装配与测试使用。
 
 | 接入点 | 覆盖的发送 |
 | --- | --- |
 | `GatedAsyncTransport`（HTTPX 最内层传输） | 正文 opus 页、detail、feed、UP 资料、作者校验、图片下载；跟随重定向时每一跳都重新取许可 |
 | `_SourceSession.send`（Requests 逐跳） | 评论计数、根页、楼中楼页、首页／空间预热；Requests 自己解析跳转，同样逐跳接入 |
 
-接口类型按「主机 + 路径模板」固定归类（`comment_count`、`root_comments`、`replies`、`feed`、`detail`、`opus_page`、`profile`、`homepage_warmup`、`space_warmup`、`media_image`，白名单内未列模板归 `source_other`），query 中的资源 ID 与页码不产生新类型；非 B 站主机返回 `None`、原样放行。分类结果只带方法、主机与路径，不保存 query，避免把凭据或完整 URL 带进日志。
+接口类型按「主机 + 路径模板」固定归类（`comment_count`、`root_comments`、`replies`、`feed`、`detail`、`opus_page`、`profile`、`homepage_warmup`、`space_warmup`、`image_hdslb`／`image_biliimg` 两个受信图片域族，白名单内未列模板归 `source_other`），query 中的资源 ID 与页码不产生新类型；非 B 站主机返回 `None`、原样放行。分类结果只带方法、主机与路径，不保存 query，避免把凭据或完整 URL 带进日志。
 
 明确不受源站许可控制：OSS 上传（`media_uploader`）、飞书投递（通知进程自己的 client）与所有本地归档／管理只读 HTTP。阅读 GET 不产生上游请求，因此不产生许可或报告。
 
 API 装配的 `source_gate` 覆盖资料查询、作者校验、手动初始化与媒体重试；采集进程的同一参数在 `collector.serve(..., source_gate=...)`，测试可用 `open_collector(...)` 复用同一装配。生产装配的顺序是外层 `PacedSourceTransport`（既有 0.8–1.5 秒 feed／0.3–0.4 秒根页等待）→ 内层 `GatedAsyncTransport`（许可紧贴实际发送）；注入传输的测试装配只替换外部 HTTP，不额外增加等待。Cookie、主机白名单、重定向、代理、超时、解析、会话缓存与既有等待都保持原状。
 
-专项：`uv run pytest backend/tests/test_source_gate.py -q`。断言以请求账本证明计数、根页、楼中楼、feed、detail、网页、资料、预热与图片下载都经过入口，且传输层发送序列与许可序列一致（无绕过、无额外发送）；预热仍 best-effort 但仍会报告状态；`open_collector` 的真实装配下既有等待次数不变。以上均为隔离替身自动化，未访问真实上游，也不代表风控保护已实现。
+保护状态的公开只读入口是 `GET /api/manage/risk`（字段与脱敏边界见[采集契约](../docs/backend/api/collector-api.md#跨进程风控暂停03)）；需要来源的管理操作在保护态返回 `503 SOURCE_RISK_PAUSED`（见[管理契约](../docs/backend/api/management-api.md#来源保护状态票据-03)），纯本地读取、停用／删除、已下载数据提交与 OSS 上传照常。采集进程暂停时本轮不派发发现／检查／执行，在途单元保留 pending／running 与已提交分片，不写假失败或成功时间；`collector_paused` 每个状态代次只记一条。六档到期探测、观察期、人工探测与按接口探测仍未实现，本票到期不自动放行。
+
+专项：`uv run pytest backend/tests/test_source_gate.py -q`。断言以请求账本证明计数、根页、楼中楼、feed、detail、网页、资料、预热与图片下载都经过入口，且传输层发送序列与许可序列一致（无绕过、无额外发送）；预热仍 best-effort 但仍会报告状态；`open_collector` 的真实装配下既有等待次数不变。风控暂停另有 `uv run pytest backend/tests/test_risk_state.py backend/tests/test_risk_pause.py backend/tests/test_risk_collector.py backend/tests/test_risk_processes.py -q`（跨进程用真实 API／collector 子进程、同一临时 SQLite 与上游账本）。以上均为隔离替身自动化，未访问真实上游。
 
 ## 来源 client 初始化
 

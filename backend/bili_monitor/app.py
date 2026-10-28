@@ -17,7 +17,8 @@ from .safety import configure_safe_logging
 from .storage import Store
 from .source import verify_author
 from .source_transport import PacedSourceTransport, SourcePacer
-from .source_gate import GatedAsyncTransport, OpenSourceGate, SourceGate
+from .risk import RiskGate, SourceRiskPaused, paused_response
+from .source_gate import GatedAsyncTransport, SourceGate
 from .source_client import SOURCE_HEADERS, source_client_event_hooks
 from .source_cookies import load_source_cookie_pairs
 from .comment_client import RequestsCommentClientFactory
@@ -49,15 +50,18 @@ def create_app(
     """启动 lifespan 时迁移指定文件数据库；transport 只替换外部 HTTP。
 
     `source_gate` 是 B 站源请求的发送许可与结果报告入口：资料查询、作者校验、手动
-    初始化、评论与媒体重试都经同一实例，不另造只供 collector 使用的通道。默认
-    `OpenSourceGate` 一律放行，行为与本票之前一致；跨进程持久策略由后续票接入。
+    初始化、评论与媒体重试都经同一实例，不另造只供 collector 使用的通道。默认实现
+    是读同一 SQLite 的 `RiskGate`（跨进程持久暂停）；`GET /api/manage/risk` 始终读该
+    状态，因此注入替身 gate 的管理与采集仍共享同一份保护事实。
 
     `reply_page_pacer` 是楼中楼页后等待的协调器（正式设计 §3.2）：默认进程内一个，
     注入测试替身或与采集进程共用同一实例时才会改变等待方式。
     """
     configure_safe_logging()
     store = Store(database_path)
-    gate = source_gate if source_gate is not None else OpenSourceGate()
+    # 保护状态读的是同一个 SQLite 文件：状态查询入口与发送许可共用一份持久事实。
+    risk = RiskGate(store)
+    gate = source_gate if source_gate is not None else risk
 
     @asynccontextmanager
     async def lifespan(application):
@@ -127,6 +131,11 @@ def create_app(
     async def domain_error(request, exception):
         return error_response(exception.code)
 
+    @application.exception_handler(SourceRiskPaused)
+    async def source_risk_paused(request, exception):
+        # 需要访问来源的操作被保护状态拒绝：固定提示＋状态，不返回伪成功统计。
+        return paused_response(exception.status)
+
     @application.post("/api/manage/ups", status_code=201)
     async def add_up(body: AddUP):
         uid = body.uid
@@ -190,6 +199,12 @@ def create_app(
     async def delete_target(uid: UID, id: UID):
         await run_store(store.delete_target, uid, id)
         return Response(status_code=204)
+
+    @application.get("/api/manage/risk")
+    async def get_risk(request: Request):
+        """只读本地保护状态；不触发采集、探测或任何上游请求。"""
+        validate_query(request)
+        return await run_store(risk.status)
 
     @application.get("/api/manage/notifications")
     async def get_notifications(request: Request):

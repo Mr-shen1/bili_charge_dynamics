@@ -19,6 +19,7 @@ from .source_client import comment_request_headers
 from .collector_logging import (
     SourceRejected, collector_event, collector_failure, source_ids, source_refs,
 )
+from .risk import SourceRiskPaused
 
 
 # 与参考脚本 FULL_SCAN_INTERVAL 一致：每根每天至少完整校准一次，补偿增删抵消。
@@ -331,6 +332,9 @@ async def sync_replies(store, client, id, generation, roots_result, *, now=None,
             else:
                 collector_event("reply_root_finished", local_source_delta=len(local_ids) - baseline,
                                 **root_refs)
+        except SourceRiskPaused:
+            # 风控优先于「单根失败不阻止其他根」：不继续下一楼、不写该楼失败。
+            raise
         except Exception as error:
             # 单根失败不阻止其他根的可读回复，也不暴露来源异常文本。
             if isinstance(error, ReplyDrift):

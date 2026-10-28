@@ -54,6 +54,7 @@ ERRORS = {
     "TARGET_AUTHOR_MISMATCH": (409, "动态作者与所选 UP 不符"),
     "TARGET_UNVERIFIED": (502, "无法确认动态归属"),
     "STORAGE_UNAVAILABLE": (503, "存储暂不可用"),
+    "SOURCE_RISK_PAUSED": (503, "B 站来源保护中，需要访问来源的操作暂不可用"),
     "INTERNAL_ERROR": (500, "服务暂不可用"),
 }
 
@@ -64,11 +65,13 @@ class APIError(Exception):
         super().__init__(code)
 
 
-def error_response(code):
+def error_response(code, details=None, headers=None):
+    """固定提示＋可选脱敏状态事实；调用方只能附加已审核的字段，不回显上游原文。"""
     default_status, message = ERRORS[code]
     return JSONResponse(
         status_code=default_status,
         content={
-            "error": {"code": code, "message": message},
+            "error": {"code": code, "message": message, **(details or {})},
         },
+        headers=headers,
     )

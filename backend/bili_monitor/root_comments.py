@@ -11,6 +11,7 @@ from .source_client import comment_request_headers
 from .collector_logging import (
     SourceRejected, collector_event, collector_failure, source_ids, source_refs,
 )
+from .risk import SourceRiskPaused
 
 
 def nonnegative(value):
@@ -224,6 +225,9 @@ async def sync_roots(store, client, id, generation, *, now=None, uid=None, on_fa
                 type(observed_count) is int and observed_count > 0
                 or locator.get("source") in ("opus_fallback", "dynamic_id_fallback")):
             raise ValueError("Unconfirmed empty comment resource")
+    except SourceRiskPaused:
+        # 保护暂停不是根页失败：保留 pending 与已提交页，不改写失败事实。
+        raise
     except Exception as error:
         collector_failure("root_sync_failed", error, stage=phase, page=number, **sync_refs)
         if on_failure is not None:

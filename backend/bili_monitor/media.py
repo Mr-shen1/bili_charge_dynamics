@@ -9,6 +9,7 @@ from anyio import to_thread
 from .source import safe_url
 from .contracts import APIError
 from .collector_logging import collector_event, collector_failure, source_refs
+from .risk import SourceRiskPaused
 
 
 class MediaUploader(Protocol):
@@ -148,6 +149,9 @@ async def sync_media(store, downloader, uploader, id, current_only=False, media_
             if not is_archive_delivery_url(public_url):
                 raise ValueError("Invalid public media URL")
             error = None
+        except SourceRiskPaused:
+            # 保护暂停不是下载失败：不记账、不继续下一张，已成功的媒体保留。
+            raise
         except Exception as exception:
             # 不保存异常文本、HTTP headers、签名 URL 或 OSS 凭据。
             collector_failure("media_sync_failed", exception,

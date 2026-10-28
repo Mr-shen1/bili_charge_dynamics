@@ -9,6 +9,7 @@ from .media import sync_media
 from .comment_status import ROOT_METADATA_VERSION
 from .collector_logging import collector_event, collector_failure, source_refs
 from .comment_client import open_comment_client
+from .risk import SourceRiskPaused
 
 
 async def initialize(store, client, uid, downloader=None, uploader=None, *, comment_client_factory=None):
@@ -44,6 +45,9 @@ async def sync_body(store, client, uid, id, generation, comment_observation, now
         page = await fetch_page(client, id)
         page_meta = page_metadata(page, uid)
         body = page_body(page)
+    except SourceRiskPaused:
+        # 已取得的内容仍按原规则提交，但风控不能写成正文读取失败。
+        raise
     except Exception as error:
         # 可解析 metadata 不因正文/编辑字段失败丢失。
         collector_failure("body_source_failed", error, stage="page",
@@ -62,6 +66,8 @@ async def sync_body(store, client, uid, id, generation, comment_observation, now
         await to_thread.run_sync(store.observe_archive, id, generation, {**page_meta, **detail_meta})
         if body is None and detail_status == "restricted":
             status = "restricted"
+    except SourceRiskPaused:
+        raise
     except Exception as error:
         # 通用接口失败不阻断独立已解析的 HTML 正文。
         collector_failure("body_source_failed", error, stage="detail",

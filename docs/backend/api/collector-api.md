@@ -1,6 +1,6 @@
 # 固定节拍采集与检查状态（票据 23 / 24 / 25 / 26 / 27 / 28 / 29 / 30）
 
-已确认后续设计（尚未实施）：修改 B 站请求发送、分页续采、风控恢复或采集日志时，先读[B 站限流／风控保护与全量归档续采](../../design/bilibili-risk-control.md)。该设计新增全局保护与日志 ID 规则；本文仍描述已交付接口，不据此声称保护已生效。
+已确认后续设计：修改 B 站请求发送、分页续采、风控恢复或采集日志时，先读[B 站限流／风控保护与全量归档续采](../../design/bilibili-risk-control.md)。票据 03 已实施其中的「HTTP 412／429 跨进程持久暂停与只读状态查询」（见下文「跨进程风控暂停（03）」）；六档到期探测、观察期、人工探测、页后 100ms 等待、分页续采、单路调度与日志 ID 仍按设计待实施，本文不据此声称这些已完成。
 
 后续范围说明：[飞书通知需求与设计](../../design/feishu-notifications.md)已确认新增归档提交时的事务发件箱与独立通知进程，尚未实现。本文继续描述现有采集接口和检测策略，不因设计确认而声称已产生事件或投递消息；飞书退避不改变本页采集节拍。
 
@@ -40,6 +40,33 @@ collector 使用独立 INFO 级别的 stderr handler，保持 HTTPX/HTTPCore、O
 - 真实失败事实（检查、同步、近期发现）在写入结果的同一事务里登记系统告警（见[通知进程与投递](notification-process.md#33-系统告警08)）；告警登记失败只留 `alert_registration_failed` 固定分类日志，不影响检查/归档结果提交。
 
 判断方式：`pending>0` 且 `syncs_started>0` 表示本轮安排了待处理执行，随后应看到 `sync_started`；`syncs_in_flight>0` 表示任务仍在跟踪中，不能因本轮没新启动就断言不工作；`targets=0` 表示当前没有入选目标，不能推断为有工作但未重试。需要以实际日志区分，本次按用户要求不做运行验证。
+
+## 跨进程风控暂停（03）
+
+保护状态是唯一一份持久事实，存在同一 SQLite 的 `source_risk` 单行（v24 迁移），API 与采集进程共读共写，不按 UP 或动态拆开，也不存在进程内放行开关。
+
+- **触发**：只有真实上游 **HTTP 412／429** 触发。其他 HTTP 状态、业务码（含评论业务码 `-412`／`-352`）、凭据信号、网络与内容受限分类保持原处理，不因名称相似扩大。触发入口覆盖全部源请求：业务接口、首页／空间预热、图片 CDN、API 手动初始化与媒体重试，以及 HTTPX／Requests 跟随跳转后的每一跳。
+- **报告点**：结果报告在传输层、业务异常处理之前完成，预热仍 best-effort 不抛异常也照样报告。风控响应被记录后，当前调用链不会拿到该响应，因此不再翻页、重试、重定向或补做预热；已在途返回的数据仍按原版本／令牌规则提交。
+- **状态机（本票范围）**：`normal → cooldown`（第 1 档，冷却 60 秒）。状态代次在同一短事务内 +1，并记录进入时间、下次探测时间与触发接口／HTTP 状态；同一代次内迟到的 412／429 只合并，不推进档位、不延长期限/不重复计数。本票到期**不自动解除**，也没有强制解锁入口；探测与恢复由 04／05 接入同一 `state`／`backoff_step`／`next_probe_at`／owner 租约字段。
+- **拒绝发送**：发送前原子核验状态；保护态或状态不可读写都拒绝，前端与采集侧都拿不到「放行」。状态不可读写返回存储错误（`503 STORAGE_UNAVAILABLE`），不降级放行。
+- **采集调度**：暂停时本轮不派发发现、检查或执行，错过的槽不补发；在途单元被保护打断时保留 `pending`／`running` 领取与已提交分片，不写检查失败、`sync_error`、成功时间或告警，进程重启由既有恢复路径归还。
+- **日志（脱敏、可关联）**：`source_risk_triggered`（含 `endpoint_type`、`http_status`、`backoff_step`、`risk_state`）、`source_risk_late_response_merged`、`source_risk_blocked`（拒绝原因：状态与档位）、`collector_paused`（每个状态代次一条，不每 2.7 秒重复同一警告）、`source_risk_paused_work_aborted`、`comment_session_warmup_paused`。暂停期间仍每节拍输出 `collector_tick paused=true` 心跳（只含在途数与 0 启动，不查库、不代表有工作）；不含 URL、query、Cookie、正文或领取令牌；采集侧事件共享进程内 `attempt` 流水号。
+- **接口类型**：按「主机＋路径模板」固定归类（`comment_count`、`root_comments`、`replies`、`feed`、`detail`、`opus_page`、`profile`、`homepage_warmup`、`space_warmup`，以及 `hdslb.com`／`biliimg.com` 两个受信图片域族 `image_hdslb`／`image_biliimg`；其余白名单内路径归 `source_other`，仍受许可）。不同域族是不同拦截面，后续按类型探测不能互相代替。
+
+`GET /api/manage/risk` → `200`，只读本地 SQLite，不触发采集、探测或任何上游请求；不接受查询参数（非法或重复参数 `422 INVALID_INPUT`），不接受写方法。
+
+| 字段 | 含义 |
+| --- | --- |
+| `state` | `normal`／`cooldown`／`probing`／`observing`／`manual` 之一；本票只会出现 `normal`／`cooldown`，其余状态与探测由 04／05 落地 |
+| `generation` | 状态代次，每次状态转移 +1；迟到响应的合并不推进 |
+| `since` | 进入当前状态的时间（带时区 UTC ISO） |
+| `backoff_step` | 当前退避档位，正常为 0，第 1 档为 1 |
+| `next_probe_at` | 下次探测时间，可空；本票到期后仍保持暂停，不自动清零 |
+| `observing_since` | 观察期起点，本票恒为 null |
+| `last_trigger` | `{"endpoint_type","http_status","at"}`，脱敏触发信息；从未触发为 null |
+| `probe` | `{"round","results"}` 最近一轮探测摘要；本票恒为 `{"round": null, "results": []}` |
+
+不返回凭据、完整 URL／query、内部 owner 或领取令牌。需要访问来源的管理操作在此状态下返回 `503 SOURCE_RISK_PAUSED`，见[管理契约](management-api.md)；纯本地读取、停用／删除、已下载数据提交与 OSS 上传继续可用。
 
 ## 状态 HTTP
 

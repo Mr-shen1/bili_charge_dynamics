@@ -1,6 +1,6 @@
 # B 站限流／风控保护与全量归档续采
 
-状态：**用户已确认方案，尚未实施、测试或部署**。本次交付仅为设计文档。拆票或实施时同时读取[实施规格](../../.scratch/bilibili-risk-control/spec.md)，获取实施范围、用户故事和测试决策。
+状态：**用户已确认方案**。票据 03 已实施 §4.1／§5 中的「HTTP 412／429 跨进程持久暂停、只读状态查询、保护态管理操作暂不可用」并取得隔离证据（真实双进程、同一临时 SQLite）；§4.2 六档到期探测、§4.3 探测流程、§4.4 分接口探测样本、观察期与人工探测、页后 100ms 等待、持久续采、单路调度、日志 ID 与系统告警仍未实施。真实上游、OSS／飞书、部署与压测未验证。拆票或实施时同时读取[实施规格](../../.scratch/bilibili-risk-control/spec.md)，获取实施范围、用户故事和测试决策。
 
 修改初始化、分页调度、B 站请求发送、风控恢复或采集日志时，先读本文。本文是本次新增规则的唯一来源；已交付接口见[采集契约](../backend/api/collector-api.md)、[归档契约](../backend/api/archive-api.md)及[管理契约](../backend/api/management-api.md)。实施证据另存 `.scratch/`，不能用本设计替代验收。
 
@@ -141,7 +141,7 @@ SQLite 持久保存全局状态、状态代次、退避档位、进入时间、�
 
 ## 5. 管理接口与运行反馈
 
-以下为**拟新增契约**，不是现有可调用接口；实施时同步接口文档和测试：
+以下为**拟新增契约**；其中 `GET /api/manage/risk` 与 `503 SOURCE_RISK_PAUSED` 已由票据 03 实施，`POST /api/manage/risk/probe` 仍待 05，实施时同步接口文档和测试（现行契约见[采集契约](../backend/api/collector-api.md#跨进程风控暂停03)与[管理契约](../backend/api/management-api.md#来源保护状态票据-03)）：
 
 - `GET /api/manage/risk`：只读 SQLite，返回全局 `state`、`since`、`backoff_step`、`next_probe_at`、`observing_since`、`last_trigger` 及最近一轮各类型的 `pending|passed|failed` 探测摘要。不返回凭据、完整 URL、内部 owner／领取令牌，不触发探测。
 - `POST /api/manage/risk/probe`：仅在 `manual` 请求登记一轮探测，由正式 collector 领取；返回 `202` 表示已登记，**不代表探测成功或已恢复**。同一人工态代次的重复登记幂等，不排多轮；collector 未运行时保持已登记，不由 API 绕过领取直接发送。冷却未到期不提前探测，正在探测不叠加，普通／观察态不把此入口当采集触发器；不适用状态返回固定 `409 RISK_PROBE_NOT_ALLOWED`。沿用现有管理入口的部署鉴权；两个新增入口都不接受 query 或可写状态字段，POST 不允许借请求体清零状态或修改截止时间。
