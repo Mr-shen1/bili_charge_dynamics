@@ -260,9 +260,15 @@ def test_required_page_failure_keeps_partial_archive_and_retries_without_new_cou
             assert archive["local_reply_count"] == 25
             assert archive["comments_last_attempt"] == "success"
             # 根失败轮的降级回复已推进逐根基准，恢复轮不再重复展开这些楼。
+            # 07：失败楼沿用已有回复走末页倒序断点，先重读失败页再向前收束；
+            # 不再退回整楼正序全扫，已归档的 25 条不重读。
             expected_replies = [] if failure == "root" else [
-                ("/x/v2/reply/reply", n) for n in ("1", "2", "3", "3")]
-            assert source.scans() == [("/x/v2/reply", n) for n in ("1", "2", "3", "4", "4")] + expected_replies
+                ("/x/v2/reply/reply", n) for n in ("2", "1")]
+            # 06：根页从已提交页的锚点续采（先重核第 1 页锚点），再读完剩余页与空尾确认；
+            # 根集合上一轮已确认时只增量读到整页已确认的守卫页，不整轮重扫。
+            expected_roots = ([("/x/v2/reply", n) for n in ("1", "2", "3", "4", "4")] if failure == "root"
+                              else [("/x/v2/reply", n) for n in ("1", "2")])
+            assert source.scans() == expected_roots + expected_replies
             assert state["work"] == "complete"
             source.calls.clear()
             await Collector(Store(path), client).execute_pending()

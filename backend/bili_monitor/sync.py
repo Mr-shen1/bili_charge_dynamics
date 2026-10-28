@@ -111,8 +111,11 @@ async def sync_target(store, client, uid, id, generation, downloader=None, uploa
             or archive.get("synced_root_metadata_version", 0) < ROOT_METADATA_VERSION
             or any(archive["work"][part] != "success" for part in ("comments", "replies"))):
         async with open_comment_client(client, uid, comment_client_factory) as comments_client:
+            # 显式初始化与元信息格式升级要求完整走完根页；普通计数变化只做增量扫描。
+            full_roots = (not pending_comments_only
+                          or archive.get("synced_root_metadata_version", 0) < ROOT_METADATA_VERSION)
             roots_result = await sync_roots(store, comments_client, id, generation, now=now, uid=uid,
-                                            on_failure=on_failure)
+                                            on_failure=on_failure, full=full_roots)
             # 增量基准完全由 replies.scan_due 决定（新楼、rcount 变化、上次失败、校准到期）；
             # 不让重试触发 full=True，否则热帖会陷入「全量重扫 → 期间计数变化 → 再全量重扫」。
             await sync_replies(store, comments_client, id, generation, roots_result, now=now, uid=uid,

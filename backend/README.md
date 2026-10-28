@@ -97,7 +97,7 @@ journalctl --user -u bili-charge-live-34.service -n 100 --no-pager
 journalctl --user -u bili-charge-live-34.service -f
 ```
 
-每个节拍的 `collector_tick` 会显示入选目标、待处理数、在途数和本轮新调度数；真正领取后输出 `sync_started`，完成时输出 `sync_finished`。同一同步尝试通过进程内 `attempt` 关联根评论、回复、正文和媒体阶段；日志按正式设计 §6 放行**已校验的业务 ID**（字符串 UID、动态、根评论、每页评论／回复 ID），失败包含固定分类、页号及 HTTP 状态（如有），仍不含 URL、正文、异常原文、Cookie 或内部领取令牌。楼中楼每页一条 `reply_page_fetched`（含页码、方向、数量、`elapsed_ms`、`wait_ms` 与全部已校验回复 ID）和一条 `reply_page_saved`（含新增／更新数），超长 ID 列表按同一关联号分块（`ids_part`/`ids_chunks`/`ids_total`）。详细字段及如何区分空闲、在途、失败重试和进程退出见[采集日志契约](../docs/backend/api/collector-api.md#调度与失败日志)。正常失败仍按原固定节拍重试，日志本身不触发额外采集。专项：`uv run pytest backend/tests/test_flow_logs.py -q`。
+每个节拍的 `collector_tick` 会显示入选目标、待处理数、在途数和本轮新调度数；真正领取后输出 `sync_started`，完成时输出 `sync_finished`。同一同步尝试通过进程内 `attempt` 关联根评论、回复、正文和媒体阶段；日志按正式设计 §6 放行**已校验的业务 ID**（字符串 UID、动态、根评论、每页评论／回复 ID），失败包含固定分类、页号及 HTTP 状态（如有），仍不含 URL、正文、异常原文、Cookie 或内部领取令牌。楼中楼每页一条 `reply_page_fetched`（含页码、方向、数量、`elapsed_ms`、`wait_ms` 与全部已校验回复 ID）和一条 `reply_page_saved`（含新增／更新数），超长 ID 列表按同一关联号分块（`ids_part`/`ids_chunks`/`ids_total`）。根页由 06 起逐页一条 `root_page_saved`（页码、方向、完整评论 ID、`elapsed_ms`、新增／已确认数与 checkpoint 是否被接受），恢复与重定位另记 `root_scan_position`／`root_scan_resumed`。详细字段及如何区分空闲、在途、失败重试和进程退出见[采集日志契约](../docs/backend/api/collector-api.md#调度与失败日志)。正常失败仍按原固定节拍重试，日志本身不触发额外采集。专项：`uv run pytest backend/tests/test_flow_logs.py -q`。
 
 ## 24 编辑同步与版本提交
 
@@ -117,7 +117,7 @@ journalctl --user -u bili-charge-live-34.service -f
 
 每次检查保留 `/x/v2/reply/count` 独立读取，使用已校验归属的评论 oid/type；首次缺少 locator 时从 detail 获取，之后复用可信持久定位。严格解析 `data.count`，网页／根页／本地计数不冒充独立结果。计数缺失、无效、业务拒绝或网络失败保留旧值和失败状态，不归零。协议来源、尚未实测证明的根＋回复精确包含口径见 [来源证据](../docs/backend/evidence/source-protocol-evidence.md#25-独立评论计数)。
 
-初始化、失败重试或可信总数变化才执行根页同步；楼中楼首次、上次失败或显式 initial 仍正序全量，已有成功回复的楼在到期重扫时从来源末页倒序补采，整页已知后再校验前一页。已有 ID 仍更新，不自动清除来源不可见的旧回复，不自动回填全部动态。计数不变、纯正文／评论编辑和增删抵消不重扫；这些是已知漏检，不增每日校准或内容比对。网页失败／正文受限不阻断实际可读评论，实际接口拒绝如实 failed。评论工作绑定领取计数，旧完成保留其实际 checkpoint，不能清除同步期间登记的新计数工作；关闭重开无新信号可重试。
+初始化、失败重试或可信总数变化才执行根页同步；根页逐页保存上游续采进度（定位、方向、页锚点、下一页），中断、失败或重启后先复核锚点页再续采，不默认从第一页重扫；上一轮已确认的根集合遇到仅计数增长时读到「整页已确认 + 守卫页」即收束。楼中楼逐页保存同样的续采进度（`stage=replies`、`scope_id=<根 ID>`），每页回复与进度同一短事务；首次、显式 initial 或 locator 变化才正序全量，有已归档回复即从来源末页倒序补采，命中整页已知后再校验前一页。失败楼沿用已提交页与同方向断点（先复核锚点），不再整楼从头正扫；热帖新增只重定位一次末页，第二次漂移才让本轮失败并保留断点。已有 ID 仍更新，不自动清除来源不可见的旧回复，不自动回填全部动态。计数不变、纯正文／评论编辑和增删抵消不重扫；这些是已知漏检，不增每日校准或内容比对。网页失败／正文受限不阻断实际可读评论，实际接口拒绝如实 failed。评论工作绑定领取计数，旧完成保留其实际 checkpoint，不能清除同步期间登记的新计数工作；关闭重开无新信号可重试。
 
 checks HTTP 增量返回 `observed.comment_count_status`、`synced_comment_count`、`local_comment_count/local_reply_count`、`comments_last_attempt`；无归档的本地数为 null，不伪造零。`parts` 针对最新检查观察投影，旧评论成功不冒充新计数完成。计数与正文版本分开，成功正文不为纯评论工作重读；检查 `failed` 是任一信号失败的聚合，编辑和计数状态仍可分别判断，计数失败不阻止可信正文编辑。显式 initial 不是计数检查：无独立检查记录时保持 #02 协议，有记录时绑定最近可信独立计数，不允许 STAT/detail 覆盖；媒体仍独立，评论 checkpoint 成功不等于目标 complete。复用 #21 媒体待处理／上传，不另建 OSS。没有新增 schema，旧 v11 配置、归档、cursor 和工作原样保留。
 

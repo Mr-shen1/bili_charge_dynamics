@@ -132,10 +132,6 @@ class Collector:
         self.page_interval = ((lambda: float(page_check_seconds)) if page_check_seconds is not None
                               else page_interval_sample)
 
-    async def _pause(self):
-        """保护状态快照；未接入持久状态的装配（如既有替身）视为正常。"""
-        return await self._risk_status()
-
     async def _risk_status(self):
         """完整只读状态：判定是否到期探测、是否恢复在途工作。未接入时返回 None。"""
         if self.risk is None:

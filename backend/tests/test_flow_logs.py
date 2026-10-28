@@ -152,7 +152,8 @@ def test_initial_archive_logs_business_ids_pages_and_waits(tmp_path, monkeypatch
         assert 'reply_ids=[' in line
     assert 'reply_ids=["900719925474099312350"' in fetched[0]
     saved = events(messages, "reply_page_saved")
-    assert saved and "new=" in saved[0] and "updated=" in saved[0] and "accepted=true" in saved[0]
+    # 07 起页提交结果沿用根页的 `checkpoint=accepted`，不再另设 accepted=true。
+    assert saved and "new=" in saved[0] and "updated=" in saved[0] and "checkpoint=accepted" in saved[0]
     media = events(messages, "media_sync_finished")
     assert media and 'dynamic_id="123"' in media[0]
     assert "processed=1" in media[0] and "succeeded=1" in media[0]

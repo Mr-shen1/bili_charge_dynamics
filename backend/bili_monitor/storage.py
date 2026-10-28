@@ -17,6 +17,7 @@ from .checks import CheckStore
 from .selection import refresh_selections, selection_token, selection_matches
 from .discovery_state import DiscoveryStore
 from .comment_status import comment_status, utc_now, ROOT_METADATA_VERSION
+from . import scan_progress
 from .media import reconcile_media, refresh_media_progress
 from .transaction import write
 
@@ -150,7 +151,7 @@ class Store(CheckStore, DiscoveryStore):
             connection.execute("BEGIN IMMEDIATE")
             try:
                 version = connection.execute("PRAGMA user_version").fetchone()[0]
-                if version > 24:
+                if version > 25:
                     raise RuntimeError("Unsupported database schema version")
                 if version == 0:
                     connection.execute("""CREATE TABLE identities (
@@ -312,7 +313,10 @@ class Store(CheckStore, DiscoveryStore):
                 if version < 24:
                     # 03 跨进程风控暂停：单行保护状态，API 与采集进程共用同一 SQLite。
                     risk.migrate(connection)
-                connection.execute("PRAGMA user_version = 24")
+                if version < 25:
+                    # 06 根页续采进度：页锚点、方向、下一位置与处理代次，独立于阅读 cursor。
+                    scan_progress.migrate(connection)
+                connection.execute("PRAGMA user_version = 25")
                 connection.commit()
             except BaseException:
                 connection.rollback()
@@ -854,11 +858,101 @@ class Store(CheckStore, DiscoveryStore):
             archive["comment_media_last_succeeded_at"] = succeeded_at or utc_now()
             self._write_media_owner(connection, id, None, archive)
 
-    def begin_roots(self, id, generation):
-        return self._change_roots(id, generation, "pending", None, [])
+    def read_root_scan(self, id, generation=None):
+        """只读续采位置；给出 `generation` 时只返回同一领取代次的行。"""
+        with self.connection() as connection:
+            row = connection.execute("SELECT generation FROM archives WHERE id = ?", (id,)).fetchone()
+            position = scan_progress.read(connection, id)
+        if row is None or position is None:
+            return None
+        if generation is not None and position.generation != generation:
+            return None
+        return position
 
-    def save_roots(self, id, generation, documents, observed_count):
-        return self._change_roots(id, generation, "pending", observed_count, documents)
+    def resume_root_scan(self, id, generation, locator, observed_count, *, full=False):
+        """一次尝试的开始：续采同代次断点，或按定位／代次／完成态重新起步。
+
+        返回 `{"position": Position, "reason": str}`；`None` 表示领取代次已过期，调用方
+        不得再写页数据。`reason` 只用于日志：`start`、`resume`、`regenerated`、`incremental`、
+        `locator_changed`。
+        """
+        key = scan_progress.locator_key(locator)
+        with self.connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                if not connection.execute(
+                        "SELECT 1 FROM archives WHERE id = ? AND generation = ?", (id, generation)).fetchone():
+                    connection.commit()
+                    return None
+                position = scan_progress.read(connection, id)
+                if position is None:
+                    reason, position = "start", scan_progress.start(id, generation, key, observed_count, full=full)
+                elif position.locator != key:
+                    # 定位资源变了：旧锚点属于另一资源，不能拼接；旧页数据仍保留。
+                    reason = "locator_changed"
+                    position = scan_progress.start(id, generation, key, observed_count, full=full)
+                elif position.phase == scan_progress.COMPLETE:
+                    # 上一轮已确认根集合：新观察只追加一次增量扫描，页锚点重新建立。
+                    reason = "incremental"
+                    position = position._replace(
+                        phase=scan_progress.PAGES, next_page=1, anchor_page=0, anchor_ids=(),
+                        overlap_page=0, counts=None, confirmed=0, pin_known=False, pinned_id=None,
+                        generation=generation, source_count=observed_count, full=bool(full))
+                elif position.generation != generation:
+                    # 新领取只是重新登记工作，归档数据未重置：保留分片锚点，写入代次换成新领取。
+                    reason = "regenerated"
+                    overlap = position.anchor_page if position.phase == scan_progress.PAGES else 0
+                    position = position._replace(generation=generation, overlap_page=overlap,
+                                                 source_count=observed_count)
+                else:
+                    # 同一代次的未完成扫描：下一步先校验锚点页，再继续翻页。
+                    reason = "resume"
+                    overlap = position.anchor_page if position.phase == scan_progress.PAGES else 0
+                    position = position._replace(overlap_page=overlap, generation=generation)
+                scan_progress.write(connection, id, position)
+                connection.commit()
+                return {"position": position, "reason": reason}
+            except BaseException:
+                connection.rollback()
+                raise
+
+    def save_root_position(self, id, generation, position):
+        """只推进进度、不提交页数据（锚点校验结果与空尾确认）；代次过期返回 False。"""
+        with self.connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                if not connection.execute(
+                        "SELECT 1 FROM archives WHERE id = ? AND generation = ?", (id, generation)).fetchone():
+                    connection.commit()
+                    return False
+                scan_progress.write(connection, id, position)
+                connection.commit()
+                return True
+            except BaseException:
+                connection.rollback()
+                raise
+
+    def known_root_count(self, id, ids):
+        """本页 ID 中已归档的数量：只用于「整页已确认」判定，不取整集合。"""
+        ids = list(ids)
+        if not ids:
+            return 0
+        marks = ",".join("?" * len(ids))
+        with self.connection() as connection:
+            return connection.execute(
+                f"SELECT count(*) FROM root_comments WHERE dynamic_id = ? AND id IN ({marks})",
+                (id, *ids)).fetchone()[0]
+
+    def root_reply_counts(self, id):
+        """整轮根集合的来源 rcount：含本次新提交的行，供楼中楼增量判定使用。"""
+        with self.connection() as connection:
+            return {row[0]: json.loads(row[1]).get("source_reply_count")
+                    for row in connection.execute(
+                        "SELECT id, document FROM root_comments WHERE dynamic_id = ?", (id,))}
+
+    def save_root_page(self, id, generation, documents, observed_count, position):
+        return self._change_roots(id, generation, "pending", observed_count, documents,
+                                  progress=position)
 
     def finish_roots(self, id, generation, status, observed_count, succeeded_at=None, *,
                      pin_known=False, pinned_id=None):
@@ -866,21 +960,27 @@ class Store(CheckStore, DiscoveryStore):
                                   pin_known=pin_known, pinned_id=pinned_id)
 
     def _change_roots(self, id, generation, status, observed_count, documents, succeeded_at=None, *,
-                      pin_known=False, pinned_id=None):
+                      pin_known=False, pinned_id=None, progress=None):
+        """页数据、页进度与归档分项状态同一短事务；返回摘要或 `None`（领取代次过期）。"""
         with self.connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 row = connection.execute("SELECT uid, document FROM archives WHERE id = ? AND generation = ?", (id, generation)).fetchone()
                 if row is None:
                     connection.commit()
-                    return False
+                    return None
                 archive = json.loads(row["document"])
+                added = 0
+                observed_reply_counts = {}
                 for document in documents:
                     previous = connection.execute(
                         "SELECT document FROM root_comments WHERE dynamic_id = ? AND id = ?", (id, document["id"])
                     ).fetchone()
                     # 首次插入才是新增；补字段/纯编辑/重复扫描交给候选转换判断。
                     discovered = previous is None
+                    added += 1 if discovered else 0
+                    # 本次来源观察值（可为未知）：调用方不能用合并后的旧值替代新的未知。
+                    observed_reply_counts[document["id"]] = document["source_reply_count"]
                     sources = document["media_sources"]
                     if previous is not None:
                         document = _merge_comment(json.loads(previous[0]), document)
@@ -925,8 +1025,20 @@ class Store(CheckStore, DiscoveryStore):
                                    (json.dumps(archive, ensure_ascii=False), id, generation))
                 if status == "success":
                     self._refresh_comment_media_success(connection, id, succeeded_at)
+                position = progress
+                if position is not None:
+                    # 进度与页数据同事务：崩溃后要么都有、要么都没有。
+                    position = position._replace(confirmed=position.confirmed + added, updated_at=utc_now())
+                    scan_progress.write(connection, id, position)
+                elif status == "success":
+                    # 整轮成功才把进度标记为完成；失败保留锚点与下一位置供续采。
+                    stored = scan_progress.read(connection, id)
+                    if stored is not None and stored.generation == generation:
+                        scan_progress.write(connection, id, stored._replace(
+                            phase=scan_progress.COMPLETE, overlap_page=0, updated_at=utc_now()))
                 connection.commit()
-                return True
+                return {"new": added, "fetched": len(documents), "reply_counts": observed_reply_counts,
+                        "confirmed": None if position is None else position.confirmed}
             except BaseException:
                 connection.rollback()
                 raise
@@ -1050,24 +1162,27 @@ class Store(CheckStore, DiscoveryStore):
                 if not connection.execute("SELECT 1 FROM archives WHERE id = ? AND generation = ?", (id, generation)).fetchone():
                     connection.commit()
                     return False
-                # 只在成功时推进增量基准；失败保留上次可用的 rcount、来源数与时间。
-                connection.execute("""INSERT INTO reply_sync
-                    (dynamic_id, root_id, status, synced_source_reply_count, observed_reply_count, synced_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(dynamic_id, root_id) DO UPDATE SET status = excluded.status,
-                    synced_source_reply_count = CASE WHEN excluded.status = 'success'
-                    THEN excluded.synced_source_reply_count ELSE reply_sync.synced_source_reply_count END,
-                    observed_reply_count = CASE WHEN excluded.status = 'success'
-                    THEN excluded.observed_reply_count ELSE reply_sync.observed_reply_count END,
-                    synced_at = CASE WHEN excluded.status = 'success'
-                    THEN excluded.synced_at ELSE reply_sync.synced_at END""",
-                    (id, root_id, status, count, observed,
-                     (succeeded_at or utc_now()) if status == "success" else None))
+                self._write_reply_sync(connection, id, root_id, status, count, observed, succeeded_at)
                 connection.commit()
                 return True
             except BaseException:
                 connection.rollback()
                 raise
+
+    def _write_reply_sync(self, connection, id, root_id, status, count, observed, succeeded_at):
+        """只在成功时推进增量基准；失败保留上次可用的 rcount、来源数与时间。"""
+        connection.execute("""INSERT INTO reply_sync
+            (dynamic_id, root_id, status, synced_source_reply_count, observed_reply_count, synced_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(dynamic_id, root_id) DO UPDATE SET status = excluded.status,
+            synced_source_reply_count = CASE WHEN excluded.status = 'success'
+            THEN excluded.synced_source_reply_count ELSE reply_sync.synced_source_reply_count END,
+            observed_reply_count = CASE WHEN excluded.status = 'success'
+            THEN excluded.observed_reply_count ELSE reply_sync.observed_reply_count END,
+            synced_at = CASE WHEN excluded.status = 'success'
+            THEN excluded.synced_at ELSE reply_sync.synced_at END""",
+            (id, root_id, status, count, observed,
+             (succeeded_at or utc_now()) if status == "success" else None))
 
     def reply_progress(self, id):
         """逐根增量基准：上次成功时的根页 rcount、来源数与时间。"""
@@ -1080,14 +1195,122 @@ class Store(CheckStore, DiscoveryStore):
                         "SELECT root_id, status, synced_source_reply_count, observed_reply_count, synced_at"
                         " FROM reply_sync WHERE dynamic_id = ?", (id,))}
 
-    def reply_ids(self, id):
+    def reply_ids(self, id, root_id=None):
         """一轮一次批量读取本地已见回复；不持有写事务或分页游标。"""
         with self.connection() as connection:
             result = {}
-            for root_id, reply_id in connection.execute(
-                    "SELECT root_id, id FROM replies WHERE dynamic_id = ?", (id,)):
-                result.setdefault(root_id, set()).add(reply_id)
+            if root_id is None:
+                rows = connection.execute("SELECT root_id, id FROM replies WHERE dynamic_id = ?", (id,))
+            else:
+                rows = connection.execute(
+                    "SELECT root_id, id FROM replies WHERE dynamic_id = ? AND root_id = ?", (id, root_id))
+            for stored_root, reply_id in rows:
+                result.setdefault(stored_root, set()).add(reply_id)
             return result
+
+    def read_reply_scan(self, id, root_id, generation=None):
+        """只读楼中楼续采位置；给出 `generation` 时只返回同一领取代次的行。"""
+        with self.connection() as connection:
+            row = connection.execute("SELECT generation FROM archives WHERE id = ?", (id,)).fetchone()
+            position = scan_progress.read(connection, id, scan_progress.REPLIES, root_id)
+        if row is None or position is None:
+            return None
+        if generation is not None and position.generation != generation:
+            return None
+        return position
+
+    def resume_reply_scan(self, id, generation, root_id, locator, source_count, *, direction, full=False):
+        """一次楼中楼尝试的开始：续采同代次断点，或按定位／代次／完成态重新起步。
+
+        返回 `{"position": Position, "reason": str}`；`None` 表示领取代次已过期。
+        `direction` 是新建扫描的方向；未完成的旧扫描保留原方向，避免失败楼被改成正序全扫。
+        """
+        key = scan_progress.locator_key(locator)
+        with self.connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                if not connection.execute(
+                        "SELECT 1 FROM archives WHERE id = ? AND generation = ?", (id, generation)).fetchone():
+                    connection.commit()
+                    return None
+                position = scan_progress.read(connection, id, scan_progress.REPLIES, root_id)
+                if position is None or position.locator != key:
+                    reason = "start" if position is None else "locator_changed"
+                    # 定位资源变了：旧锚点属于另一资源，不能拼接；旧回复仍保留可读。
+                    position = self._reply_scan_start(id, generation, key, source_count, direction,
+                                                      full)
+                elif position.phase == scan_progress.COMPLETE:
+                    # 上一轮已确认整楼：新观察追加一轮增量，页锚点重新建立。
+                    reason = "incremental"
+                    position = self._reply_scan_start(id, generation, key, source_count, direction,
+                                                      full)
+                elif position.direction != direction:
+                    # 方向变了：同一锚点不能跨方向复用，按新方向重建位置；旧页不删。
+                    reason = "direction_changed"
+                    position = self._reply_scan_start(id, generation, key, source_count, direction,
+                                                      full)
+                elif position.generation != generation:
+                    # 新领取只是重新登记工作，已确认页与锚点保留，只换写代次。
+                    reason = "regenerated"
+                    position = self._reply_scan_resume(position, generation, source_count)
+                else:
+                    # 同一代次的未完成扫描：下一步先校验锚点页，再续采。
+                    reason = "resume"
+                    position = self._reply_scan_resume(position, generation, source_count)
+                scan_progress.write(connection, id, position, scope_id=root_id)
+                connection.commit()
+                return {"position": position, "reason": reason}
+            except BaseException:
+                connection.rollback()
+                raise
+
+    @staticmethod
+    def _reply_scan_resume(position, generation, source_count):
+        """续采：先校验已提交的锚点页；本次走位还没有锚点时从该方向的起点重新定位。"""
+        if position.phase == scan_progress.TAIL:
+            # 空尾复查未完成：直接复读同一页，不重新走一遍。
+            return position._replace(generation=generation, source_count=source_count,
+                                     overlap_page=0)
+        if position.phase == scan_progress.PAGES and position.anchor_page:
+            return position._replace(generation=generation, source_count=source_count,
+                                     overlap_page=position.anchor_page)
+        start_page = (scan_progress.last_page(source_count)
+                      if position.direction == scan_progress.REVERSE else 1)
+        return position._replace(generation=generation, source_count=source_count,
+                                 phase=scan_progress.PAGES, overlap_page=0, counts=None,
+                                 next_page=start_page)
+
+    @staticmethod
+    def _reply_scan_start(id, generation, key, source_count, direction, full):
+        """新扫描的起点：倒序增量从来源总数对应的末页起步，正序从首屏起步。"""
+        position = scan_progress.start(id, generation, key, source_count, full=full,
+                                       stage=scan_progress.REPLIES, direction=direction)
+        if direction == scan_progress.REVERSE:
+            position = position._replace(next_page=scan_progress.last_page(source_count))
+        return position
+
+    def save_reply_position(self, id, generation, root_id, position):
+        """只推进进度、不提交页数据（锚点校验与末页重定位）；代次过期返回 False。"""
+        with self.connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                if not connection.execute(
+                        "SELECT 1 FROM archives WHERE id = ? AND generation = ?", (id, generation)).fetchone():
+                    connection.commit()
+                    return False
+                scan_progress.write(connection, id, position, scope_id=root_id)
+                connection.commit()
+                return True
+            except BaseException:
+                connection.rollback()
+                raise
+
+    def save_reply_page(self, id, generation, root_id, documents, count, position=None, *,
+                        complete=False, observed=None, succeeded_at=None):
+        """一页回复、页进度与（可选）整楼成功同一短事务。"""
+        return self._change_replies(id, generation, "pending", None, root_id, documents, count,
+                                    progress=position, complete=complete, observed=observed,
+                                    succeeded_at=succeeded_at)
 
     def save_replies(self, id, generation, root_id, documents, count):
         return self._change_replies(id, generation, "pending", None, root_id, documents, count)
@@ -1095,7 +1318,9 @@ class Store(CheckStore, DiscoveryStore):
     def finish_replies(self, id, generation, status, observed_count, succeeded_at=None):
         return self._change_replies(id, generation, status, observed_count, None, [], None, succeeded_at)
 
-    def _change_replies(self, id, generation, status, observed_count, root_id, documents, count, succeeded_at=None):
+    def _change_replies(self, id, generation, status, observed_count, root_id, documents, count,
+                        succeeded_at=None, *, progress=None, complete=False, observed=None):
+        """页数据、楼中楼进度与整楼成功记录同一短事务；返回新增条数或 `None`（代次过期）。"""
         with self.connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
@@ -1104,6 +1329,7 @@ class Store(CheckStore, DiscoveryStore):
                     connection.commit()
                     return False
                 archive = json.loads(row["document"])
+                added = 0
                 for document in documents:
                     previous = connection.execute(
                         "SELECT document FROM replies WHERE dynamic_id = ? AND root_id = ? AND id = ?",
@@ -1111,6 +1337,7 @@ class Store(CheckStore, DiscoveryStore):
                     ).fetchone()
                     # 首次插入才是新增；补字段/纯编辑/重新分页交给候选转换判断。
                     discovered = previous is None
+                    added += 1 if discovered else 0
                     if previous is not None:
                         document = _merge_comment(json.loads(previous[0]), document)
                     connection.execute("""INSERT INTO replies VALUES (?, ?, ?, ?)
@@ -1146,8 +1373,26 @@ class Store(CheckStore, DiscoveryStore):
                     archive["comments_last_attempt"] = status
                 connection.execute("UPDATE archives SET document = ? WHERE id = ? AND generation = ?",
                                    (json.dumps(archive, ensure_ascii=False), id, generation))
+                stored = progress
+                if stored is not None:
+                    # 进度与页数据同事务：崩溃后要么都有、要么都没有。
+                    stored = stored._replace(confirmed=stored.confirmed + added, updated_at=utc_now())
+                    scan_progress.write(connection, id, stored, scope_id=root_id)
+                elif complete:
+                    # 整楼确认：位置收束只对同一代次生效，旧执行不得改写新进度。
+                    current = scan_progress.read(connection, id, scan_progress.REPLIES, root_id)
+                    if current is not None and current.generation == generation:
+                        scan_progress.write(connection, id, current._replace(
+                            phase=scan_progress.COMPLETE, overlap_page=0,
+                            confirmed=current.confirmed + added, updated_at=utc_now()),
+                            scope_id=root_id)
+                if complete:
+                    # 整楼成功记录与最后一页同一事务：不存在“页已存但楼仍 pending”的中间态。
+                    self._write_reply_sync(connection, id, root_id, "success", count, observed,
+                                           succeeded_at)
                 connection.commit()
-                return True
+                return {"new": added, "fetched": len(documents),
+                        "confirmed": None if progress is None else progress.confirmed + added}
             except BaseException:
                 connection.rollback()
                 raise

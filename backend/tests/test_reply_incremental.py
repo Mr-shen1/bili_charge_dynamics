@@ -27,16 +27,26 @@ def replies(count):
     return result
 
 
-def run_round(path, state, *, full=False, observed=2, page_counts=None):
+def run_round(path, state, *, full=False, observed=None, page_counts=None, grow=None):
+    """一轮楼中楼同步；`observed` 默认取本轮根页给出的新 rcount（真实链路由根扫描提供）。"""
     store = Store(path)
     generation = store.claim_archive(UID, "123")
     assert generation is not None
+    observed = len(state.get("replies") or []) if observed is None else observed
     source = reply_source(state)
 
+    calls = 0
+
     def upstream(request):
-        if request.url.path == "/x/v2/reply/reply":
+        nonlocal calls
+        is_reply = request.url.path == "/x/v2/reply/reply"
+        if is_reply:
+            calls += 1
             state.setdefault("request_times", []).append(time.monotonic())
         response = source(request)
+        if is_reply and grow and calls in grow:
+            # 热帖在两次分页之间真实新增：本次响应保持原样，下一页的来源总数随之变化。
+            state["replies"] = replies(grow[calls])
         if request.url.path == "/x/v2/reply/reply" and state.get("empty_tail_page") == int(request.url.params["pn"]):
             payload = response.json()
             payload["data"]["replies"] = None
@@ -65,9 +75,9 @@ def setup(path, state):
 
 
 @pytest.mark.parametrize("old,new,expected", [
-    (20, 41, [1, 3, 2]),     # 末页全新，随后退化到已缓存的首页
-    (25, 26, [1, 2]),        # 末页半新半旧，首页复用
-    (40, 41, [1, 3, 2]),    # 末页已知，overlap 再到首页
+    (20, 41, [3, 2, 1]),     # 从末页起倒序，走到首屏收束，不整楼重扫
+    (25, 26, [2, 1]),        # 末页半新半旧，继续向前一页
+    (40, 41, [3, 2, 1]),     # 末页已知，先重叠一页再收束
 ])
 def test_tail_saves_new_replies_without_rescanning_every_page(tmp_path, old, new, expected, caplog):
     path = tmp_path / "tail.sqlite"
@@ -77,7 +87,7 @@ def test_tail_saves_new_replies_without_rescanning_every_page(tmp_path, old, new
     logger = logging.getLogger("bili_monitor.collector")
     logger.addHandler(caplog.handler)
     try:
-        run_round(path, state, observed=3)
+        run_round(path, state)
     finally:
         logger.removeHandler(caplog.handler)
     assert state["reply_pages"] == expected
@@ -95,39 +105,47 @@ def test_known_page_requires_one_more_known_overlap(tmp_path):
     state = {"replies": replies(60)}
     setup(path, state)
     state["replies"] = replies(61)
-    run_round(path, state, observed=3)
-    assert state["reply_pages"] == [1, 4, 3, 2]
+    run_round(path, state)
+    assert state["reply_pages"] == [4, 3, 2]
 
 
 def test_second_drift_aborts_checkpoint_and_next_round_can_retry(tmp_path, caplog):
     path = tmp_path / "drift.sqlite"
-    state = {"replies": replies(25)}
+    state = {"replies": replies(40)}
     setup(path, state)
-    state["replies"] = replies(26)
+    state["replies"] = replies(41)
     logger = logging.getLogger("bili_monitor.collector")
     logger.addHandler(caplog.handler)
     try:
-        run_round(path, state, observed=3, page_counts=[None, 27, None, 28])
+        # 同一次尝试里末页连续两次后移：第一次只重定位并保留已确认页，第二次不再提交检查点。
+        run_round(path, state, grow={1: 66, 2: 91})
     finally:
         logger.removeHandler(caplog.handler)
+    assert state["reply_pages"] == [3, 2, 4]
     with archive_client(path) as api:
         assert api.get(REPLIES).json()["replies_last_attempt"] == "failed"
-        assert api.get(REPLIES).json()["local_reply_count"] == 25
+        assert api.get(REPLIES).json()["local_reply_count"] == 41
     assert "stopped_by=drift" in caplog.text
+    # 已提交的末页与断点都在：下一轮沿用同一方向继续，不回到整楼正序全扫。
     state["reply_pages"] = []
-    run_round(path, state, observed=3)
-    assert state["reply_pages"] == [1, 2, 3, 3]  # failed root uses existing full scan
-
-
-def test_first_count_drift_restarts_from_new_page_one(tmp_path):
-    path = tmp_path / "drift-once.sqlite"
-    state = {"replies": replies(25)}
-    setup(path, state)
-    state["replies"] = replies(26)
-    run_round(path, state, observed=3, page_counts=[None, 27])
-    assert state["reply_pages"] == [1, 2, 1, 2]
+    run_round(path, state)
+    assert state["reply_pages"] == [5, 4, 3, 2, 1]
     with archive_client(path) as api:
-        assert api.get(REPLIES).json()["local_reply_count"] == 26
+        assert api.get(REPLIES).json()["replies_last_attempt"] == "success"
+        assert api.get(REPLIES).json()["local_reply_count"] == 91
+
+
+def test_first_count_drift_retargets_tail_without_losing_confirmed_pages(tmp_path):
+    path = tmp_path / "drift-once.sqlite"
+    state = {"replies": replies(40)}
+    setup(path, state)
+    state["replies"] = replies(41)
+    # 末页后移一次：只重定位到新末页继续，已提交页与新回复都保留。
+    run_round(path, state, grow={1: 66})
+    assert state["reply_pages"] == [3, 2, 4, 3, 2, 1]
+    with archive_client(path) as api:
+        assert api.get(REPLIES).json()["replies_last_attempt"] == "success"
+        assert api.get(REPLIES).json()["local_reply_count"] == 66
         assert api.get(REPLIES).json()["replies_last_attempt"] == "success"
 
 
@@ -139,7 +157,7 @@ def test_deleted_reply_remains_and_delta_reports_orphan(tmp_path, caplog):
     logger = logging.getLogger("bili_monitor.collector")
     logger.addHandler(caplog.handler)
     try:
-        run_round(path, state, observed=3)
+        run_round(path, state)
     finally:
         logger.removeHandler(caplog.handler)
     with archive_client(path) as api:
@@ -154,8 +172,9 @@ def test_unreadable_tail_is_confirmed_without_failing_the_root(tmp_path):
     state = {"replies": replies(25)}
     setup(path, state)
     state["empty_tail_page"] = 2
-    run_round(path, state, observed=3)
-    assert state["reply_pages"] == [1, 2, 2]
+    run_round(path, state)
+    # 末页倒序先读末页；该页不可读时再做一次复查确认，不整楼重扫。
+    assert state["reply_pages"] == [2, 2]
     with archive_client(path) as api:
         assert api.get(REPLIES).json()["replies_last_attempt"] == "success"
         assert api.get(REPLIES).json()["local_reply_count"] == 25
@@ -169,20 +188,21 @@ def test_incremental_failure_logs_actual_page(tmp_path, caplog):
     logger = logging.getLogger("bili_monitor.collector")
     logger.addHandler(caplog.handler)
     try:
-        run_round(path, state, observed=3)
+        run_round(path, state)
     finally:
         logger.removeHandler(caplog.handler)
     assert "reply_sync_failed" in caplog.text
     assert "page=2" in caplog.text
 
 
-def test_empty_source_count_succeeds_with_only_page_one(tmp_path):
+def test_zero_source_count_confirms_without_requests_and_keeps_archived_replies(tmp_path):
     path = tmp_path / "empty.sqlite"
     state = {"replies": replies(25)}
     setup(path, state)
     state["replies"] = []
-    run_round(path, state, observed=3)
-    assert state["reply_pages"] == [1]
+    run_round(path, state)
+    # 本轮根页明确零：不发楼中楼请求，也不删已归档回复。
+    assert state["reply_pages"] == []
     with archive_client(path) as api:
         thread = api.get(REPLIES).json()
         assert thread["replies_last_attempt"] == "success"
@@ -206,10 +226,10 @@ def test_reply_pages_have_no_sleep_but_each_root_waits_after_completion(tmp_path
         await original_sleep(0)
 
     monkeypatch.setattr("backend.bili_monitor.replies.sleep_after_root", sleep)
-    run_round(path, state, observed=3)
+    run_round(path, state)
     assert len(events) == 1
     assert 0.3 <= events[0][1] <= 0.4
-    assert state["reply_pages"] == [1, 2]
+    assert state["reply_pages"] == [2, 1]
     assert state["request_times"][1] - state["request_times"][0] < 0.1
 
 

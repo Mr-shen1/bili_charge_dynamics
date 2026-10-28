@@ -11,7 +11,8 @@ from fastapi.testclient import TestClient
 
 from backend.bili_monitor.app import create_app
 from backend.bili_monitor.comment_client import RequestsCommentClient
-from backend.bili_monitor.replies import fetch_reply_tail
+from backend.bili_monitor.replies import sync_replies
+from backend.bili_monitor.storage import Store
 from backend.bili_monitor.reply_pacing import ReplyPagePacer
 from backend.bili_monitor.source_endpoints import REPLIES_URL
 from backend.bili_monitor.source_transport import SourcePacer
@@ -199,21 +200,36 @@ def tail_fixture(count):
     return replies
 
 
-def test_incremental_tail_pages_share_the_same_wait_and_log_reverse_direction(monkeypatch):
+def run_incremental(path, monkeypatch, events, state, *, pacer, observed):
+    """真实装配的末页倒序增量：只替换外部 HTTP，页面等待仍由同一协调器执行。"""
+    install_source(monkeypatch, events, state)
+
+    async def scenario():
+        store = Store(path)
+        generation = store.claim_archive(UID, "123")
+        assert generation is not None
+        client = RequestsCommentClient("101", (), SourcePacer(sleep=asyncio.sleep),
+                                       reply_page_pacer=pacer)
+        try:
+            await sync_replies(store, client, "123", generation, ({ROOT: observed}, 7), uid=UID,
+                               now=lambda: "2026-10-27T12:00:00+00:00")
+        finally:
+            await client.aclose()
+
+    asyncio.run(scenario())
+
+
+def test_incremental_tail_pages_share_the_same_wait_and_log_reverse_direction(tmp_path, monkeypatch):
     """末页倒序增量与探测走同一条 `client.get` 路径，因此同样有页后等待。"""
-    clock, sends, replies = VirtualTime(), [], tail_fixture(25)
-    payload = reply_fixture()
+    clock, events = VirtualTime(), []
+    state = {"replies": tail_fixture(25)}
+    pacer = ReplyPagePacer(sleep=clock.sleep, clock=clock)
+    path = tmp_path / "tail-wait.sqlite"
+    run_initial(path, monkeypatch, events, state, pacer=pacer)
+    # 初始化那轮的页后等待另算；这里只看末页倒序增量的账本。
+    events.clear()
+    waited = len(clock.waits)
 
-    def comment_get(session, url, params=None, headers=None, timeout=None, **kwargs):
-        request = httpx.Request("GET", url, params=params)
-        number = int(request.url.params["pn"])
-        sends.append((number, clock()))
-        body = json.loads(json.dumps(payload))
-        body["data"]["page"].update(num=number, count=len(replies))
-        body["data"]["replies"] = replies[(number - 1) * 20:number * 20] or None
-        return _Response(httpx.Response(200, json=body), request)
-
-    monkeypatch.setattr(requests.Session, "get", comment_get)
     logged = []
 
     class Handler(logging.Handler):
@@ -223,23 +239,16 @@ def test_incremental_tail_pages_share_the_same_wait_and_log_reverse_direction(mo
     logger = logging.getLogger("bili_monitor.collector")
     handler = Handler()
     logger.addHandler(handler)
-
-    async def scenario():
-        client = RequestsCommentClient("101", (), SourcePacer(sleep=clock.sleep),
-                                       reply_page_pacer=ReplyPagePacer(sleep=clock.sleep, clock=clock))
-        try:
-            documents, count, pages_fetched, stopped = await fetch_reply_tail(
-                client, "123", ROOT, {"oid": "99123", "type": 17}, set(), [1], uid=UID)
-        finally:
-            await client.aclose()
-        return documents, count, pages_fetched, stopped
-
+    state["replies"] = tail_fixture(26)
+    state["reply_pages"] = []
     try:
-        documents, count, pages_fetched, stopped = asyncio.run(scenario())
+        run_incremental(path, monkeypatch, events, state, pacer=pacer, observed=26)
     finally:
         logger.removeHandler(handler)
-    assert (len(documents), count, pages_fetched) == (25, 25, 2)
-    assert [number for number, _ in sends] == [1, 2]
-    assert [start for _, start in sends] == [0.0, 0.1]
+    # 末页与向前一页都是真实分页请求，各自结束后各等待一次。
+    assert state["reply_pages"] == [2, 1]
+    assert events == [("send", "2"), ("done", "2"), ("send", "1"), ("done", "1")]
+    # 第二次发送发生在上一次完成并等待 100ms 之后，最后一次之后同样等待。
+    assert clock.waits[waited:] == [(0.4, 0.1), (0.5, 0.1)]
     assert [message.split("direction=")[1].split(" ")[0] for message in logged
             if message.startswith("reply_page_fetched")] == ["reverse", "reverse"]
