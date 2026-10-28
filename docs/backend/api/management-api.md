@@ -76,7 +76,7 @@ profile_lookup_failed reason=http_status http_status=412 message_state=allowed u
 
 ## SQLite 与迁移
 
-身份和监控配置分离；配置的外键引用身份，删除配置不删除身份。首次数据库使用事务创建版本 1；再次启动不改写已保存字段。未知未来 schema 版本拒绝启动，不默默降级。票据 03 新增 v24（`source_risk` 单行保护状态），票据 05 在 v26 复用同一单行补观察进度与人工探测登记列（`observing_active_ms`／`observing_successes`／`probe_request_generation`／`probe_origin`），迁移在 `BEGIN IMMEDIATE` 内原子完成，保留归档、媒体、阅读 cursor、未完成工作与已登记的保护状态，也不预占后续版本；保护状态读不出来时拒绝新源请求（`503 STORAGE_UNAVAILABLE`），不降级放行。迁移测试通过真实旧/新临时数据库及公开 HTTP 结果验证，不绑定内部表名。上游资料网络请求期间不持有 SQLite 写事务；写入身份和默认配置在短事务内原子完成。API 不含周期调度。
+身份和监控配置分离；配置的外键引用身份，删除配置不删除身份。首次数据库使用事务创建版本 1；再次启动不改写已保存字段。未知未来 schema 版本拒绝启动，不默默降级。票据 03 新增 v24（`source_risk` 单行保护状态），票据 06 新增 v25（根页／楼中楼续采进度 `page_scan_progress`），票据 05 在 v26 复用同一单行补观察进度与人工探测登记列（`observing_active_ms`／`observing_successes`／`probe_request_generation`／`probe_origin`），票据 08 新增 v27（跨进程发送／重型／目标租约 `dispatch_leases`），迁移在 `BEGIN IMMEDIATE` 内原子完成，保留归档、媒体、阅读 cursor、未完成工作与已登记的保护状态，也不预占后续版本；当前 schema 为 v27，未来版本 28 拒绝启动；保护状态读不出来时拒绝新源请求（`503 STORAGE_UNAVAILABLE`），不降级放行。迁移测试通过真实旧/新临时数据库及公开 HTTP 结果验证，不绑定内部表名。上游资料网络请求期间不持有 SQLite 写事务；写入身份和默认配置在短事务内原子完成。API 不含周期调度。
 
 ## 通知状态（票据 14 引入，票据 15 改为三态）
 

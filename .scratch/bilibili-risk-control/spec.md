@@ -1,8 +1,8 @@
     # B 站限流／风控保护与全量归档续采实施规格
 
-Status: ready-for-agent
+Status: resolved
 
-本规格综合本轮已确认的产品取舍与正式设计，可供后续拆票实施；不表示代码完成、测试通过、真实来源验证或部署已获授权。本轮不再访谈，也不创建实现代码。
+本规格综合本轮已确认的产品取舍与正式设计；票据 01—10 已实施并各有隔离证据。完成不表示真实来源验证、生产性能、部署或压测已获授权：RC-12 只做一次有界对照，无法证明与原始脚本等价且未达非硬性参考目标，整体性能未验收。本轮不再访谈。
 
 依据：[B 站限流／风控保护与全量归档续采](../../docs/design/bilibili-risk-control.md)、[领域词汇](../../GLOSSARY.md)、[SRS](../../docs/product/SRS.md) FR-15—20、[采集契约](../../docs/backend/api/collector-api.md)、[归档契约](../../docs/backend/api/archive-api.md)与[管理契约](../../docs/backend/api/management-api.md)。正式设计是新增规则的唯一来源；本文收敛实施范围、用户故事及验证要求，不另设一套策略参数。
 

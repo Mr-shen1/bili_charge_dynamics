@@ -423,7 +423,7 @@ class Collector:
                     progressed = True
                     collector_event("dispatch_turn", stage=outcome.stage, result=outcome.status,
                                     page=outcome.page, done=outcome.done,
-                                    heavy_owner=self.scheduler.owner if self.scheduler is not None else None,
+                                    heavy_held=self.scheduler is not None,
                                     **source_refs(uid=session.uid, dynamic_id=session.id))
                     if session.done:
                         await self._finish_session(session)
@@ -715,7 +715,8 @@ async def open_collector(database, *, source_gate: SourceGate | None = None, sou
                         event_hooks=source_hooks) as probe_client, httpx.AsyncClient(
                         transport=media_transport, timeout=30, trust_env=False) as probe_media:
                     prober = RiskProber(store, risk, probe_client, comments=probe_comments,
-                                        downloader=ImageDownloader(probe_media), clock=clock)
+                                        downloader=ImageDownloader(probe_media),
+                                        clock=(clock.monotonic if clock is not None else None))
                     yield Collector(store, source_client, ImageDownloader(media_client), uploader,
                                     comment_client_factory=comments, clock=clock,
                                     credentials_configured=bool(cookie_pairs), risk=risk,

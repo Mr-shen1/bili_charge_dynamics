@@ -137,6 +137,8 @@ API 的显式同步和正式采集进程使用共享 `PacedSourceTransport`：�
 
 测试注入的 transport 由调用方管理时间；可用 `PacedSourceTransport(httpx.MockTransport(...), sleep=...)` 保留节奏逻辑并替换外部时间，不让现有 fixture 等待真实秒数。楼中楼页后等待有自己的注入点 `ReplyPagePacer(sleep=..., clock=..., delay=...)`，可从 `create_app(reply_page_pacer=...)`、`open_collector(reply_page_pacer=...)` 传入，既有只覆盖楼级 0.3—0.4 秒的测试替身不会误吞或误约束它。专项验证包括正式 API／采集入口装配、完整分页、空尾页复查、失败请求、跨调用账本及取消：`uv run pytest backend/tests/test_source_pacing.py backend/tests/test_reply_page_pacing.py -q`。这只是无凭据自动化，不证明真实上游长期可用。
 
+跨进程组合回归（票据 10）用真实 API＋独立采集＋独立通知共享临时 SQLite、外部来源／媒体／OSS／飞书替身，覆盖 8 目标含一万条楼中楼完整归档、412 跨进程暂停与本地可用性、六档探测／人工／观察、强杀重启与 owner 接管、分页与 locator 续采、日志脱敏和三类系统告警；性能只做一次有界对照，无法证明与原始脚本等价且未达非硬性参考目标，**整体性能未验收**。命令与结果见[10 证据](../.scratch/bilibili-risk-control/evidence/10-integrated-performance-verification.md)。
+
 ## 应用工厂与传输边界
 
 ```python
