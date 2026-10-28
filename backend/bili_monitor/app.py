@@ -46,6 +46,7 @@ def create_app(
     comment_client_factory=None,
     source_gate: SourceGate | None = None,
     reply_page_pacer=None,
+    risk_clock=None,
 ) -> FastAPI:
     """启动 lifespan 时迁移指定文件数据库；transport 只替换外部 HTTP。
 
@@ -55,12 +56,13 @@ def create_app(
     状态，因此注入替身 gate 的管理与采集仍共享同一份保护事实。
 
     `reply_page_pacer` 是楼中楼页后等待的协调器（正式设计 §3.2）：默认进程内一个，
-    注入测试替身或与采集进程共用同一实例时才会改变等待方式。
+    注入测试替身或与采集进程共用同一实例时才会改变等待方式。`risk_clock` 只替换保护
+    状态的“现在”，持久状态仍读同一 SQLite；不注入时用系统 UTC 时间。
     """
     configure_safe_logging()
     store = Store(database_path)
     # 保护状态读的是同一个 SQLite 文件：状态查询入口与发送许可共用一份持久事实。
-    risk = RiskGate(store)
+    risk = RiskGate(store, clock=risk_clock)
     gate = source_gate if source_gate is not None else risk
 
     @asynccontextmanager
@@ -134,7 +136,7 @@ def create_app(
     @application.exception_handler(SourceRiskPaused)
     async def source_risk_paused(request, exception):
         # 需要访问来源的操作被保护状态拒绝：固定提示＋状态，不返回伪成功统计。
-        return paused_response(exception.status)
+        return paused_response(exception.status, now=risk.now())
 
     @application.post("/api/manage/ups", status_code=201)
     async def add_up(body: AddUP):

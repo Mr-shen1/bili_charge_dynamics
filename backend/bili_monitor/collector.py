@@ -22,7 +22,9 @@ from .source_cookies import load_source_cookie_pairs
 from .comment_client import RequestsCommentClientFactory, open_comment_client
 from .comment_status import epoch_from_iso, utc_now
 from .notifications import outbox
-from .risk import RiskGate, SourceRiskPaused
+from .risk import BLOCKED_STATES, RiskGate, SourceRiskPaused
+from .risk_probe import RiskProber
+from .reply_pacing import ReplyPagePacer
 from .root_comments import fetch_comment_count, valid_locator
 from .sync import sync_target
 from .media import ImageDownloader
@@ -103,7 +105,8 @@ def collector_lock(path):
 class Collector:
     def __init__(self, store, client, downloader=None, uploader=None, *, clock=None,
                  max_checks=4, max_syncs=4, max_discoveries=2, comment_client_factory=None,
-                 cadence=None, page_check_seconds=None, credentials_configured=False, risk=None):
+                 cadence=None, page_check_seconds=None, credentials_configured=False, risk=None,
+                 probe=None):
         if max_checks < 1 or max_syncs < 1 or max_discoveries < 1:
             raise ValueError("Invalid collector concurrency")
         self.store = store
@@ -117,7 +120,11 @@ class Collector:
         self.comment_client_factory = comment_client_factory
         # 只读保护快照：调度层据此跳过派发；许可本身仍由同一 gate 在发送前核验。
         self.risk = risk
+        # 到期探测的 owner：只有采集进程持有它，API 不能绕过领取直接发送。
+        self.probe = probe
         self._paused_generation = None
+        # 进入 observing 后只归还一次在途中止的工作，不重复重置。
+        self._resumed_generation = None
         # 启动时一次性读取的来源凭据是否存在；判定处不再读文件，也不为了告警额外访问来源。
         self.credentials_configured = bool(credentials_configured)
         self.cadence = cadence if cadence is not None else cadence_provider()
@@ -127,9 +134,27 @@ class Collector:
 
     async def _pause(self):
         """保护状态快照；未接入持久状态的装配（如既有替身）视为正常。"""
+        return await self._risk_status()
+
+    async def _risk_status(self):
+        """完整只读状态：判定是否到期探测、是否恢复在途工作。未接入时返回 None。"""
         if self.risk is None:
             return None
-        return await self.risk.pause()
+        return await self.risk.snapshot()
+
+    async def _resume_abandoned(self, status, inflight):
+        """进入 observing 后把上次被暂停打断的领取归还为 pending，不需要重启进程。
+
+        只在没有在途任务时归还：同一进程里正在跑的工作不是“被中止的工作”，不能被重置。
+        """
+        if status is None or status["state"] != "observing":
+            return
+        if status["generation"] == self._resumed_generation or inflight:
+            return
+        self._resumed_generation = status["generation"]
+        await to_thread.run_sync(self.store.recover_check_work)
+        await to_thread.run_sync(self.store.recover_discoveries, self.clock.now())
+        collector_event("risk_work_resumed", backoff_step=status["backoff_step"])
 
     def _settle(self, task):
         """任务结算：被保护暂停不是失败，不写检查结果／成功时间，只留一次固定日志。"""
@@ -428,7 +453,16 @@ class Collector:
                             self._settle(task)
                             del discoveries[uid]
                     discoveries_started = checks_started = syncs_started = 0
-                    pause = await self._pause()
+                    status = await self._risk_status()
+                    if (status is not None and self.probe is not None
+                            and status["state"] in ("cooldown", "probing")):
+                        # 到期（或租约过期可接管）就实际执行一轮按接口探测；网络与解析在
+                        # 写事务外，失败按阶梯推进，同一节拍不重试。
+                        finished = await self.probe.probe_if_due()
+                        if finished is not None:
+                            status = finished
+                    pause = status if (status is not None
+                                       and status["state"] in BLOCKED_STATES) else None
                     if pause is not None:
                         # 被保护暂停：不领取、不发送、不新增失败；保留 pending 与断点。
                         cadence = self.cadence()
@@ -450,6 +484,8 @@ class Collector:
                                         syncs_started=0, discoveries_started=0)
                         await self.clock.sleep(max(0, deadline - now))
                         continue
+                    # 探测全部通过后的观察态：归还上次被暂停打断的领取，继续原断点。
+                    await self._resume_abandoned(status, bool(checks or executions or discoveries))
                     recent_ups = await to_thread.run_sync(self.store.enabled_recent)
                     if recent_ups:
                         discovery_offset %= len(recent_ups)
@@ -519,23 +555,26 @@ class Collector:
 @asynccontextmanager
 async def open_collector(database, *, source_gate: SourceGate | None = None, source_transport=None,
                          media_transport=None, media_uploader=None, comment_client_factory=None,
-                         clock=None, reply_page_pacer=None):
+                         clock=None, reply_page_pacer=None, risk_clock=None, probe=None):
     """生产装配：来源 client、评论会话、媒体下载与 Collector；只替换外部传输和时钟。
 
     `source_gate` 与 API 进程接的是同一 Interface：检查、发现、归档、预热和图片下载
     不经另一套通道；OSS 上传与通知投递不在其中。`reply_page_pacer` 是楼中楼页后
     等待的协调器，默认进程内一个，可从外部注入受控时间或与 API 进程共用。
+    `probe` 是到期探测执行器；默认用同一份凭据／代理／等待规则构造独立装配
+    （探测期间发送许可本来就拒绝普通请求，唯一性由持久 owner 租约保证）。
     """
     store = Store(database)
     # 与 API 进程读同一 SQLite 文件：进程内对象不冒充跨进程保护。
-    risk = RiskGate(store)
+    risk = RiskGate(store, clock=risk_clock)
     gate = source_gate if source_gate is not None else risk
     cookie_pairs = load_source_cookie_pairs()
     source_hooks = source_client_event_hooks(cookie_pairs=cookie_pairs)
     pacer = SourcePacer()
+    page_pacer = reply_page_pacer if reply_page_pacer is not None else ReplyPagePacer()
     owns_comments = comment_client_factory is None
     comments = (RequestsCommentClientFactory(cookie_pairs=cookie_pairs, pacer=pacer, gate=gate,
-                                            reply_page_pacer=reply_page_pacer)
+                                            reply_page_pacer=page_pacer)
                 if owns_comments else comment_client_factory)
     owns_uploader = media_uploader is None
     uploader = None
@@ -548,9 +587,28 @@ async def open_collector(database, *, source_gate: SourceGate | None = None, sou
         ) as source_client, httpx.AsyncClient(
             transport=GatedAsyncTransport(media_transport, gate=gate), timeout=30, trust_env=False
         ) as media_client:
-            yield Collector(store, source_client, ImageDownloader(media_client), uploader,
-                            comment_client_factory=comments, clock=clock,
-                            credentials_configured=bool(cookie_pairs), risk=risk)
+            if probe is not None:
+                yield Collector(store, source_client, ImageDownloader(media_client), uploader,
+                                comment_client_factory=comments, clock=clock,
+                                credentials_configured=bool(cookie_pairs), risk=risk, probe=probe)
+                return
+            # 探测装配：同一凭据、代理、pacer 与解析，只是不再取“普通请求”的发送许可。
+            probe_comments = RequestsCommentClientFactory(
+                cookie_pairs=cookie_pairs, pacer=pacer, reply_page_pacer=page_pacer)
+            try:
+                async with httpx.AsyncClient(
+                        transport=PacedSourceTransport(source_transport, pacer=pacer), timeout=10,
+                        trust_env=False, follow_redirects=False, headers=SOURCE_HEADERS,
+                        event_hooks=source_hooks) as probe_client, httpx.AsyncClient(
+                        transport=media_transport, timeout=30, trust_env=False) as probe_media:
+                    prober = RiskProber(store, risk, probe_client, comments=probe_comments,
+                                        downloader=ImageDownloader(probe_media), clock=clock)
+                    yield Collector(store, source_client, ImageDownloader(media_client), uploader,
+                                    comment_client_factory=comments, clock=clock,
+                                    credentials_configured=bool(cookie_pairs), risk=risk,
+                                    probe=prober)
+            finally:
+                await probe_comments.aclose()
     finally:
         if owns_comments:
             await comments.aclose()

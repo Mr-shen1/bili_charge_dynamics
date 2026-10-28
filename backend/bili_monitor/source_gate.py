@@ -72,10 +72,12 @@ class SourceRequest:
 
 @dataclass(frozen=True)
 class SourceReport:
-    """一次发送的结果：HTTP 状态，或未能取得响应时的异常。"""
+    """一次发送的结果：HTTP 状态（含原始 Retry-After 头），或未能取得响应时的异常。"""
 
     status_code: int | None = None
     error: BaseException | None = None
+    # 原样保留 Retry-After 头；合法解析与“取更晚期限”只在持久状态层做。
+    retry_after: object = None
 
 
 def source_request(method, url):
@@ -144,7 +146,8 @@ class GatedAsyncTransport(httpx.AsyncBaseTransport):
             await self.gate.report(source, SourceReport(error=error))
             raise
         try:
-            await self.gate.report(source, SourceReport(status_code=response.status_code))
+            await self.gate.report(source, SourceReport(
+                status_code=response.status_code, retry_after=response.headers.get("retry-after")))
         except BaseException:
             # 报告拒绝这次发送时先释放连接，再让保护异常中止调用链。
             await response.aclose()

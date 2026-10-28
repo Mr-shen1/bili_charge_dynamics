@@ -58,7 +58,7 @@ curl --fail-with-body -X POST http://127.0.0.1:8000/api/sync/initial \
   -H 'Content-Type: application/json' --data "{\"uid\":\"$UP_UID\"}"
 ```
 
-此命令会使用生产传输读取上游；自动化验收只用专用 fixture 装配，不执行该生产命令。B 站来源处于保护状态（任一源入口收到 HTTP 412／429）时，本入口与两个媒体重试入口都返回 `503 SOURCE_RISK_PAUSED` 固定契约（状态、`backoff_step`、可空 `next_probe_at`，有未来截止时间时带 `Retry-After`），不返回统计、不创建半成品；已提交分片与已成功媒体保留，保护到期也不会自动放行（探测由 04／05 负责）。详见[管理契约](management-api.md#来源保护状态票据-03)与[采集契约](collector-api.md#跨进程风控暂停03)。源站限制会如实保留受限/失败，不绕过权限。来源默认匿名，可选登录态仅按[后端 Cookie 配置](../../../backend/README.md#可选-b站登录-cookie仅服务端)读取仓库外私有文件，不能通过本初始化请求体或前端提交凭据；图片/OSS 不使用来源 Cookie。新配置不会自动执行初始化，也不保证解除 HTTP 412。
+此命令会使用生产传输读取上游；自动化验收只用专用 fixture 装配，不执行该生产命令。B 站来源处于保护状态（任一源入口收到 HTTP 412／429）时，本入口与两个媒体重试入口都返回 `503 SOURCE_RISK_PAUSED` 固定契约（状态、`backoff_step`、可空 `next_probe_at`，有未来截止时间时带 `Retry-After`），不返回统计、不创建半成品；已提交分片与已成功媒体保留，冷却到期只执行一轮按接口探测，全部通过前不会自动放行（探测见[采集契约](collector-api.md#六档冷却与按接口探测04)，观察期与人工探测由 05 负责）。详见[管理契约](management-api.md#来源保护状态票据-03)与[采集契约](collector-api.md#跨进程风控暂停03)。源站限制会如实保留受限/失败，不绕过权限。来源默认匿名，可选登录态仅按[后端 Cookie 配置](../../../backend/README.md#可选-b站登录-cookie仅服务端)读取仓库外私有文件，不能通过本初始化请求体或前端提交凭据；图片/OSS 不使用来源 Cookie。新配置不会自动执行初始化，也不保证解除 HTTP 412。
 
 ## Archive 的信息边界
 

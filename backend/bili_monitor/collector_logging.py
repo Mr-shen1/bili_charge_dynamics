@@ -162,6 +162,11 @@ def source_id(value):
     return SourceId(value)
 
 
+def correlation_id(value):
+    """诊断关联号（如探测轮次）：与业务 ID 同一渲染白名单，但不是内部领取令牌。"""
+    return SourceId(str(value))
+
+
 def source_ids(values):
     return SourceIds(values)
 

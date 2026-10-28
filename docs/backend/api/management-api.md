@@ -23,8 +23,8 @@ UP 结构：`{"uid":"123","name":"示例","avatar_url":"https://example.invalid/
 
 只要操作**实际需要访问 B 站**，在保护状态下返回固定契约：
 
-- `503 {"error":{"code":"SOURCE_RISK_PAUSED","message":"B 站来源保护中，需要访问来源的操作暂不可用","state":"cooldown","backoff_step":1,"next_probe_at":"<ISO 或 null>"}}`。`message` 是固定安全提示，前端只按错误码映射，不回显该字段。
-- 有未来截止时间时附 `Retry-After`（剩余秒数，向上取整）；`next_probe_at` 已过期或为空则不带该头。本票到期不会自动解除，因此不承诺重试一定成功。
+- `503 {"error":{"code":"SOURCE_RISK_PAUSED","message":"B 站来源保护中，需要访问来源的操作暂不可用","state":"cooldown","backoff_step":1,"next_probe_at":"<ISO 或 null>"}}`。`message` 是固定安全提示，前端只按错误码映射，不回显该字段。`state` 可能是 `cooldown`／`probing`／`manual`；只有 `cooldown` 带未来 `next_probe_at`，后两者为 null。
+- 有未来截止时间时附 `Retry-After`（剩余秒数，向上取整）；`next_probe_at` 已过期或为空则不带该头。冷却到期只表示“该执行一轮按接口探测”，探测全部通过前仍不放行，因此不承诺重试一定成功；六档阶梯、探测类型与唯一 owner 见[采集契约](collector-api.md#六档冷却与按接口探测04)。
 - 触发保护的那一次请求同样返回该错误：它没有完成，也不返回 `processed/succeeded/failed` 之类的统计，避免伪成功；已提交的分片与已下载内容保留，不产生半成品身份或目标。
 - 覆盖：新增 UP（资料查询）、目标校验（作者核对）、`POST /api/sync/initial`、`POST /api/sync/media/{id}`、`.../comments/{root_id}`。不覆盖纯本地读取、配置保存／启停／删除、通知开关、归档阅读与 OSS 上传；也不需要来源时（例如当前没有可运行目标）仍按原语义返回。
 - 原有输入校验与本地冲突优先：非法输入仍 `422`，已有监控配置仍 `409 ALREADY_MONITORED`，未知身份仍 `404`。

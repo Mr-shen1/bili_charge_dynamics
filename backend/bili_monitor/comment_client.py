@@ -72,7 +72,9 @@ class _SourceSession(requests.Session):
         if not response.history:
             # 跟随跳转时，最终响应已由它自己那一跳报告；外层不重复计数同一次发送。
             try:
-                self.hop.report(source, SourceReport(status_code=response.status_code))
+                self.hop.report(source, SourceReport(
+                    status_code=response.status_code,
+                    retry_after=response.headers.get("retry-after")))
             except BaseException:
                 # 报告拒绝这次发送时先释放响应，再让保护异常中止调用链。
                 response.close()
@@ -238,6 +240,10 @@ class RequestsCommentClientFactory:
 
     def _fingerprint(self):
         return cookie_fingerprint(self.cookie_pairs)
+
+    async def client(self, uid):
+        """按 UP 复用会话但不触发预热：探测只验证可用性，不暗中补做首页／空间预热。"""
+        return (await self._entry(uid))["client"]
 
     async def _entry(self, uid):
         fingerprint = self._fingerprint()

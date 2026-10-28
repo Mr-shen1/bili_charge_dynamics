@@ -345,6 +345,57 @@ class Store(CheckStore, DiscoveryStore):
             switch = self._notification_switch(connection)
         return SwitchUpdate(changed, switch)
 
+    def risk_probe_facts(self):
+        """只读的探测样本与待执行工作事实：不访问来源、不写库、不触发预热。
+
+        探测只用本地已知有效样本（正式设计 §4.3），因此这里给出已存定位、已知有回复的
+        根、受信图片来源与待执行工作，由探测层按接口类型挑选最小有效 GET；找不到样本时
+        探测记“未确认恢复”，不在线无限寻找。
+        """
+        with self.connection() as connection:
+            connection.execute("BEGIN")
+            recent = [row["uid"] for row in connection.execute(
+                "SELECT uid FROM monitors WHERE enabled = 1 AND mode = 'recent' "
+                "ORDER BY uid COLLATE BINARY")]
+            selected = [dict(row) for row in connection.execute(
+                "SELECT uid, id FROM target_selections "
+                "ORDER BY uid COLLATE BINARY, id COLLATE BINARY")]
+            pending_work = connection.execute(
+                "SELECT 1 FROM target_checks WHERE work != 'complete' LIMIT 1").fetchone() is not None
+            identities = [row["uid"] for row in connection.execute(
+                "SELECT uid FROM monitors ORDER BY uid COLLATE BINARY")]
+            comment = connection.execute("""
+                SELECT s.uid AS uid, s.id AS dynamic_id,
+                       json_extract(a.document, '$.comment_locator.oid') AS oid,
+                       json_extract(a.document, '$.comment_locator.type') AS type
+                FROM target_selections s JOIN archives a ON a.uid = s.uid AND a.id = s.id
+                WHERE json_extract(a.document, '$.comment_locator.oid') IS NOT NULL
+                  AND json_extract(a.document, '$.comment_locator.type') > 0
+                ORDER BY s.uid COLLATE BINARY, s.id COLLATE BINARY LIMIT 1""").fetchone()
+            replies = connection.execute("""
+                SELECT a.uid AS uid, r.dynamic_id AS dynamic_id, r.id AS root_id,
+                       json_extract(a.document, '$.comment_locator.oid') AS oid,
+                       json_extract(a.document, '$.comment_locator.type') AS type
+                FROM root_comments r JOIN archives a ON a.id = r.dynamic_id
+                WHERE COALESCE(json_extract(r.document, '$.source_reply_count'), 0) > 0
+                  AND json_extract(a.document, '$.comment_locator.oid') IS NOT NULL
+                  AND json_extract(a.document, '$.comment_locator.type') > 0
+                ORDER BY r.dynamic_id COLLATE BINARY, r.id COLLATE BINARY LIMIT 1""").fetchone()
+            media = [dict(row) for row in connection.execute("""
+                SELECT json_extract(m.value, '$.source_url') AS url,
+                       json_extract(m.value, '$.status') AS status
+                FROM archives a, json_each(a.document, '$.media') m
+                UNION ALL
+                SELECT json_extract(m.value, '$.source_url'), json_extract(m.value, '$.status')
+                FROM root_comments r, json_each(r.document, '$.media') m""")]
+        return {
+            "recent": recent, "selected": selected, "pending_work": pending_work,
+            "identities": identities,
+            "comment": dict(comment) if comment is not None else None,
+            "replies": dict(replies) if replies is not None else None,
+            "media": [row for row in media if row["url"]],
+        }
+
     def read(self, uid=None):
         with self.connection() as connection:
             rows = connection.execute(

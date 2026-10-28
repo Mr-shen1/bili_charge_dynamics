@@ -166,3 +166,20 @@ def test_aclose_closes_sessions_and_cancels_warmup():
         assert factory.warmup._tasks == {}
 
     asyncio.run(scenario())
+
+
+def test_probe_client_reuses_the_session_without_warming_up():
+    """探测只验证接口可用性：取正式会话，但不暗中补做首页／空间预热。"""
+    clock = FakeClock()
+    factory, created = make_factory(clock)
+
+    async def scenario():
+        async with factory("111") as prepared:
+            assert prepared.prepared == 1
+        probe = await factory.client("111")
+        assert probe is prepared
+        assert probe.prepared == 1
+        assert factory.warmup._attempted[("111", factory._fingerprint())] == 0
+        await factory.aclose()
+
+    asyncio.run(scenario())
