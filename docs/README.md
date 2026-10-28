@@ -35,10 +35,8 @@
 
 - [项目 README](../README.md)：前端、API 启动与测试入口。
 - [后端 README](../backend/README.md)：后端运行、配置及初始化说明。
-- [交付运行说明](deployment/static-delivery.md)：当前双进程/SQLite/Nginx 的构建、迁移、启停与隔离验证；历史静态基线单列，部署回归不等于云部署或全项目验收。
-- [阿里云 ECS 运维手册](deployment/aliyun-ecs.md)：目标机的系统准备、SSH 硬化、systemd/Nginx 安装、备份、升级回滚与备案切换；尚未在目标机执行，不代替验收。
-- [本机 live-34 前端重新部署](deployment/local-live-frontend.md)：本机隔离实例（18444／18445）的前端构建、产物轮转、unit 重启、验证与回滚；只发前端，不代替生产或云部署。
-- [本机 live-34 后端重新部署](deployment/local-live-backend.md)：同一实例的 API＋collector 停启、依赖同步、迁移与只读验证、前滚式回滚边界；不触发上游采集。
+- [部署与运维指南（本地／云端）](deployment/README.md)：**唯一现行的部署运维入口**。本地与云端共用同一目录形状、systemd unit、Nginx 规则与发布／升级路径，差异集中在差异表与参数表（包管理器、Web 端口 4273／4173、swap、域名与 HTTPS）；含只读验收、一致性备份、只前进的迁移边界、排障、选配通知／OSS／Cookie，以及云端备案、证书、隧道与 BasicAuth 的指针。云端结构已只读核验，本地待管理员安装；不代替验收。
+- 旧部署指南（`static-delivery`、`aliyun-ecs`、`local-live-backend`、`local-live-frontend`）已**从仓库删除且无副本**，需要时用 `git show e58271c:docs/deployment/<旧文件名>.md` 查原文；不要将它们当作现行步骤。
 
 ## 任务、计划与验收记录
 
@@ -60,7 +58,7 @@
 
 - `docs/product/`：产品需求与可行性；`docs/design/`：架构和界面设计。
 - `docs/backend/api/`：后端/客户端接口契约；`docs/backend/evidence/`：协议来源与可行性证据。
-- `docs/deployment/`：可复用的交付运行说明；一次执行的结果放对应 `.scratch/<feature>/`，专项附件放其 `evidence/`。
+- `docs/deployment/`：部署与运维，**只保留 [README.md](deployment/README.md) 一份**（旧指南已删除，原文见 `git show`）；一次执行的结果放对应 `.scratch/<feature>/`，专项附件放其 `evidence/`。
 - 根目录和模块 `README.md` 保留为就近入口（前端命令与结构见 [frontend/README.md](../frontend/README.md)）；与素材或代码紧密相关的说明留在原目录。
 - `docs/agents/` 保留[工单约定](agents/issue-tracker.md)、[分诊标签](agents/triage-labels.md)、[领域文档约定](agents/domain.md)、[implement-spec 工作流覆盖](agents/implement-spec.md)与 [CodeGraph 使用约定](agents/codegraph.md)；提交或执行 spec 工作流、定位代码或派发探索任务时阅读对应约定。代理入口仍为根 [AGENTS.md](../AGENTS.md)，技能和代理配置保持工具要求的位置。
 - 新增文档按职责归位并补本页入口；移动文档时同步修复相对链接、图片和正文中的路径引用。保留已有需求和历史证据内容，不为整理目录重写验收结果。

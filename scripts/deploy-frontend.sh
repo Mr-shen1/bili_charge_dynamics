@@ -11,7 +11,7 @@
 #     SKIP_BUILD  设为 1 跳过构建（复用现有 frontend/dist/）
 #
 # 只发布前端静态产物，不重启 Python 进程。后端升级是另一条流程，
-# 必须先停服务再切代码，见 .scratch/aliyun-deployment/runbook.md。
+# 必须先停服务再切代码，见 docs/deployment/README.md。
 #
 # 为什么需要逐次发布目录 + 软链：Nginx 缓存规则依赖内容哈希资源长期缓存，
 # 就地覆盖 dist/ 会让已缓存的旧页面请求到不存在的哈希文件。保留旧版本

@@ -254,7 +254,7 @@ Status: ready-for-agent
 - [HLD：职责、读取及检查同步设计](../../docs/design/HLD.md)
 - [后端可行性：13 次只读样本与证据限制](../../docs/backend/evidence/backend-feasibility.md)
 - [UI 文字规范：配色、层级及功能裁剪](../../docs/design/ui-reference.md)
-- [历史静态交付参考](../../docs/deployment/static-delivery.md)
+- [历史静态交付参考](../../docs/deployment/README.md)
 - [本地 issue tracker 约定](../../docs/agents/issue-tracker.md)
 - [分诊标签](../../docs/agents/triage-labels.md)
 - [领域文档约定](../../docs/agents/domain.md)

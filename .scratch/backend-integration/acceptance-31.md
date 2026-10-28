@@ -8,7 +8,7 @@
 - `backend/tests/test_deployment_processes.py` 启动真实单 API 与独立采集进程，通过公开 HTTP 验证配置、检查、归档、模拟上传、来源/上传门闩期间读取及配置可用、API 重启不领取 running、SIGKILL 后采集重启恢复、失败无新信号重试、第二采集进程被拒绝、脱敏和只读浏览。
 - `pnpm test:delivery` 保留显式 mock 历史回归，另外启动生产 API/采集共享临时 SQLite，由实际 Nginx 提供正常生产构建。浏览器只替换外部公开图片传输，不拦截归档 API；桌面 1280 与手机 390 宽验证四类页面直接访问和刷新、未知页、图片预览、浏览只 GET、不访问上游。
 - API 成功/错误和缺资源隔离、入口重新验证、哈希资源长期缓存、mock/fault 隔离、相同输入重建及生产/mock 两次真实构建更新均实际执行。生产更新：`index-BTVOgYMH.js` → `index-C7nDeOSd.js`，保留旧哈希并刷新执行新版本。
-- 可复用运行/迁移/启停/升级/排障见 [交付运行说明](../../docs/deployment/static-delivery.md)及[后端 README](../../backend/README.md)。一次执行细节见[专项证据](evidence/deployment-31.md)。
+- 可复用运行/迁移/启停/升级/排障见 [交付运行说明](../../docs/deployment/README.md)及[后端 README](../../backend/README.md)。一次执行细节见[专项证据](evidence/deployment-31.md)。
 
 ## 测试结果
 

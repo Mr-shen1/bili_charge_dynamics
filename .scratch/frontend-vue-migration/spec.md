@@ -242,7 +242,7 @@
 - [FSR](../../docs/product/FSR.md)：技术取舍、可行性和证据限制。
 - [UI 规范](../../docs/design/ui-reference.md)：新版基准流程、信息裁剪及旧参考的历史定位。
 - [归档客户端契约](../../docs/backend/api/archive-api-client.md)、[归档 API](../../docs/backend/api/archive-api.md)、[管理 API](../../docs/backend/api/management-api.md)、[采集状态](../../docs/backend/api/collector-api.md)、[发现与窗口](../../docs/backend/api/discovery-api.md)：现有接口与增量交付边界。
-- [静态交付说明](../../docs/deployment/static-delivery.md)：静态资源/API 隔离、缓存、发布与验证；不是 Vue 已交付证据。
+- [静态交付说明](../../docs/deployment/README.md)：静态资源/API 隔离、缓存、发布与验证；不是 Vue 已交付证据。
 - [工单约定](../../docs/agents/issue-tracker.md)、[分诊状态](../../docs/agents/triage-labels.md)：本 spec 已按代码基线修正，状态为 ready-for-agent；逐票文件在 `issues/`，状态以各票为准。
 
 正式设计文档保留在 docs，实施规格、未来工单和执行证据归属本次工作目录。业务术语沿用 SRS，不创建混有框架概念的领域术语表。

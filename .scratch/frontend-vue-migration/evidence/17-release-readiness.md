@@ -178,7 +178,7 @@ Playwright Chromium 145.0.7632.6；因本机设置 `HTTP(S)_PROXY`，前端命�
 
 ### 8.1 交付与回退
 
-与[静态交付说明](../../../docs/deployment/static-delivery.md)第 3 节一致，本票在最终候选上重跑 `pnpm test:delivery`（§5）：
+与[静态交付说明](../../../docs/deployment/README.md)第 3 节一致，本票在最终候选上重跑 `pnpm test:delivery`（§5）：
 构建进 `releases/<时间>-<提交>`、同一文件系统内 `symlink + rename` 原子切换、切换/回退前把不冲突旧哈希补给相邻版本、
 入口 `no-cache` + ETag（内容变化时条件请求返回 200）、`/assets/` 内容哈希长期 `immutable`、缺失资源 404 `no-store` 且不回退 SPA、
 只切前端（SQLite 与 collector 不被替换或重启）。回退演练保留了新旧两版全部入口引用资源，六路由导航无 `/assets/` 4xx。
