@@ -429,6 +429,8 @@ run_as_bili() {
 }
 
 port_busy() { ss -H -ltn "sport = :$1" 2>/dev/null | grep -q .; }
+# 可替换 seam：测试需模拟“宿主未安装 nginx”，不能依赖 command -v 的真实结果。
+nginx_available() { command -v nginx >/dev/null 2>&1; }
 listen_addrs() { ss -H -ltn "sport = :$1" 2>/dev/null | awk '{print $4}' | paste -sd, -; }
 http_code() { curl -sS -o /dev/null -m 5 -w '%{http_code}' "$1" 2>/dev/null || true; }
 
@@ -1098,7 +1100,7 @@ preflight() {
     for tool in sqlite3 journalctl pgrep bsdtar; do
         command -v "$tool" >/dev/null 2>&1 || notef "$tool 尚未安装（依赖阶段会补 sqlite）"
     done
-    if ! command -v nginx >/dev/null 2>&1; then
+    if ! nginx_available; then
         warn "nginx 尚未安装：当前不能证明发行包默认配置安全。安装后本向导会先做原始配置核验（pacman 元数据 + 同版本缓存包逐字节比对）、备份并隔离默认站点，启动前再对有效配置做 80 硬检查；无法确认原始包则 fail closed。"
     fi
 
@@ -1142,7 +1144,7 @@ preflight() {
 
     for path in "$DEPLOY_ROOT" "$APP_DIR" "$DB_PATH" "$BACKUP_DIR" "$CRED_DIR" \
         "$SITE_ROOT" "$SITE_ROOT/releases" "$SITE_ROOT/current" \
-        /etc/bili-monitor "$CONF_ENV" "$UNIT_FILE" \
+        "$(dirname "$CONF_ENV")" "$CONF_ENV" "$UNIT_FILE" \
         "$NGINX_ROOT/conf.d" "$NGINX_CONF" "$NGINX_ROOT/snippets" "$NGINX_SNIPPET" "$UV_SYSTEM"; do
         owner="$(path_owner "$path")"
         case "$owner" in
@@ -1294,12 +1296,12 @@ run_wizard() {
         die "创建 $DEPLOY_ROOT 失败"
     sudo install -d -m 0700 -o "$RUN_USER" -g "$RUN_USER" "$CRED_DIR" || die "创建 credentials 失败"
     sudo install -d -m 0755 -o root -g root "$SITE_ROOT" "$SITE_ROOT/releases" \
-        /etc/bili-monitor "$NGINX_ROOT/conf.d" "$NGINX_ROOT/snippets" || die "创建系统目录失败"
+        "$(dirname "$CONF_ENV")" "$NGINX_ROOT/conf.d" "$NGINX_ROOT/snippets" || die "创建系统目录失败"
     if [[ -n "$(sudo find "$CRED_DIR" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
         die "$CRED_DIR 非空：本向导不处理未知凭据；请人工确认后重跑"
     fi
     for path in "$DEPLOY_ROOT" "$BACKUP_DIR" "$CRED_DIR" "$SITE_ROOT" "$SITE_ROOT/releases" \
-        /etc/bili-monitor "$NGINX_ROOT/conf.d" "$NGINX_ROOT/snippets"; do
+        "$(dirname "$CONF_ENV")" "$NGINX_ROOT/conf.d" "$NGINX_ROOT/snippets"; do
         state_set "dir:$path" "$(stat -c '%U:%G:%a' "$path")"
         okf "$path $(stat -c '%U:%G:%a' "$path")"
     done
@@ -1316,7 +1318,7 @@ run_wizard() {
     assert_anchor_stable            # 受信 HEAD 中途变动 / 包提交与锚点不一致 → 拒绝
     verify_package "$PACKAGE_DIR"   # 以 root/bili 使用包内容前再校验一次 MANIFEST 与信任锚
     verify_bundle_and_render
-    local bundle head_now real_python python_version
+    local bundle head_now real_python python_version remote_https existing_origin
     bundle="$(find "$PACKAGE_DIR/repo" -maxdepth 1 -name '*.bundle' -print -quit)"
     if [[ -e "$APP_DIR" ]]; then
         require_managed "$APP_DIR" "代码目录"
@@ -1332,9 +1334,29 @@ run_wizard() {
     fi
     [[ "$(run_as_bili git -C "$APP_DIR" rev-parse HEAD)" == "$COMMIT" ]] || die "检出提交与安装包不一致"
     [[ -z "$(run_as_bili git -C "$APP_DIR" status --porcelain)" ]] || die "检出工作区不干净，拒绝继续"
-    run_as_bili git -C "$APP_DIR" remote remove origin >/dev/null 2>&1 || true
+    # 离线来源保留为 local-bundle；真实远端 origin 留给后续升级（本地与云端同一升级流程）。
+    if run_as_bili git -C "$APP_DIR" remote get-url origin >/dev/null 2>&1; then
+        run_as_bili git -C "$APP_DIR" remote rename origin local-bundle >/dev/null 2>&1 || true
+    fi
     if ! run_as_bili git -C "$APP_DIR" remote get-url local-bundle >/dev/null 2>&1; then
         run_as_bili git -C "$APP_DIR" remote add local-bundle "$bundle" >/dev/null 2>&1 || true
+    fi
+    remote_https="$(sed -n 's/^remote_https=//p' "$PACKAGE_DIR/VERSION" | head -n1)"
+    if [[ "$remote_https" == https://* ]]; then
+        existing_origin="$(run_as_bili git -C "$APP_DIR" remote get-url origin 2>/dev/null || true)"
+        if [[ -z "$existing_origin" ]]; then
+            if run_as_bili git -C "$APP_DIR" remote add origin "$remote_https"; then
+                okf "已配置升级用 origin：$remote_https"
+            else
+                warn "添加 origin 失败；升级前请按 docs/deployment/README.md 手工补 origin"
+            fi
+        elif [[ "$existing_origin" == "$remote_https" ]]; then
+            okf "复用已有 origin：$remote_https"
+        else
+            warn "已有 origin 指向别处，保留不动：$existing_origin"
+        fi
+    else
+        warn "安装包未记录 https 远端：本次不配置 origin；升级前请按 docs/deployment/README.md 补充"
     fi
     state_set "dir:$APP_DIR" "$(stat -c '%U:%G:%a' "$APP_DIR")"
     state_set "commit:$APP_DIR" "$COMMIT"

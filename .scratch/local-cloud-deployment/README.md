@@ -14,7 +14,7 @@
 | `scripts/prepare-local-deployment-package.sh` | 非 root 构建离线安装包：干净快照 → 冻结依赖 → `pnpm check` / `check:dist` → bundle/dist/uv/模板/渲染文件 → `MANIFEST.sha256` |
 | `scripts/setup-local-deployment.sh` | 交互向导（唯一安装入口）：7 阶段、每阶段 confirm、sudo 只在用户 TTY 提示；`--check` 为只读预检 |
 | `/var/tmp/bili-local-deployment/e58271c/` | 已生成的安装包（78 MB，51 个文件），见 §2；不在仓库内、未提交 |
-| `.scratch/local-cloud-deployment/tests/sandbox-safety-tests.sh` | 沙箱安全分支测试（**59 项**，不 sudo、不装软件、不启服务；fixture 已入库） |
+| `.scratch/local-cloud-deployment/tests/sandbox-safety-tests.sh` | 沙箱安全分支测试（**60 项**，不 sudo、不装软件、不启服务；fixture 已入库） |
 | `.scratch/local-cloud-deployment/tests/fixtures/nginx-1.30.6-1.conf` | 真实 **Arch 官方 1.30.6-1** 包默认 `nginx.conf`（2717B，`sha256=7cd7c15a…49b9`），来源/版本见同目录 `README.md` |
 | `.scratch/local-cloud-deployment/evidence/verification-log.txt` | 本轮全部验证命令与输出（可复跑） |
 
@@ -184,7 +184,7 @@ verify/bundle-verify.txt
 | `wizard --check` | 退出 0；未写文件、未调用 sudo（测试断言 `/var/lib` 无新增） |
 | 锚点来源（v2） | 默认 `--check` 在脚本未提交时**正确拒绝**；`--check --commit e582…`（旧包）EXIT=0；`--commit` 短 SHA/不存在对象均拒绝；`prepare --commit e582…` 命中已有同版本包时秒退 0 且包 MANIFEST 不变 |
 | 脚本内硬编码提交 | 静态守卫断言两个脚本中**无** 40 位十六进制提交 SHA |
-| 沙箱安全分支测试 | **59/59 通过**；其中 B4/F1/F2 相关 17 例（**13 例使用入库 fixture**，已用“移走 /tmp fixture”复跑验证） |
+| 沙箱安全分支测试 | **60/60 通过**；其中 B4/F1/F2 相关 17 例（**13 例使用入库 fixture**，已用“移走 /tmp fixture”复跑验证） |
 
 沙箱测试覆盖（替换 sudo 与命令、把绝对路径重定向到 `/var/tmp` 沙箱，不碰真实系统）：
 静态守卫（无 `sudo -n`/`NOPASSWD`/`-Syu`/`--overwrite`/`apt`/`sites-enabled/default`、无打印 env、无非回环 curl、必须 `env -i`）、
@@ -228,6 +228,17 @@ HEAD 不在 main 拒绝、向导运行期间源 HEAD 变动拒绝 root 写入、
 | **B1** 首装必在健康检查失败 | 用 `curl -sSI`（HEAD，不发 `Accept-Encoding`）断言 `Content-Encoding: gzip`，nginx 只对声明可压缩的客户端压缩 ⇒ 永远失败；且未挑 >`gzip_min_length`(1024) 资源 | 抽出 `probe_static_assets`：挑 current/assets 里首个 **>1024B** 的 `.js`，用 **真实 GET + `curl --compressed`** 取响应头，同时验 immutable；找不到大资源时明确报"无法验证压缩"而不是误报 | 沙箱 `gzip 探测：…协商通过…`、`…服务器未压缩时判失败`、`…只有小资源时…` 三例；`probe_static_assets` 用 python 假服务器（仅在收到 `Accept-Encoding: gzip` 且 >1024B 时压缩）验证 |
 | **B2** 重跑被自己的产物挡住 | ①`/etc/nginx` 包归属扫描把自有 `bili.conf`/snippet 与 `/etc/nginx` 里的备份判为"未被包拥有"；②首启迁移创建的库只有健康检查通过后才登记 `db:`，健康检查失败即丢记录，重跑判 `unknown`；③提示语"备份/删除后重跑"会诱导删库 | ①扫描跳过**已安装/已登记**的自有文件与登记过的备份路径，旧版 `/etc/nginx/*.bak` 只按精确命名识别并提示**移走**，未知文件仍拒绝；②库文件一出现（`wait_api` 探测到即 `db:`+落盘）与 `service:` 均在健康检查**之前**登记，`path_owner` 新增 `db` 判定；③所有提示改为"移走/改名，**不要删除数据库或真实配置**"；④nginx.conf 备份改到 `/var/lib/bili-local-deployment/backups/`(root 0700) | 沙箱 5 例：首启真实文件集 0 问题、健康失败后连跑两次 0 问题、外部 nginx 文件仍拒绝且提示移走/改名、旧版备份精确标记、未登记 DB 拒绝且提示"不删除"+移走/改名 |
 | **B3** root 从无锚点 `/var/tmp` 目录安装 | 只拒 other 可写包目录；commit 只与包内 VERSION 自洽；软链/组写/父目录未校验 | ①`assert_trusted_package`：包与**每一级祖先**属主 ∈{操作员,root}、group/other 可写仅允许 root+sticky（`/var/tmp` 1777 例外）、包内无软链/设备/fifo、无 group/other 可写条目；②向导硬编码 `PINNED_COMMIT=e58271c…` 并与 VERSION/bundle `refs/heads/main` 比对；③**信任锚**：安装前用 bundle 里的钉住提交反向校验 `render/` 的 unit 与 snippet 逐字节相同、nginx server 仅差 `listen 4173→4273`（忽略注释行），env 有效行/DB 路径/不得有未注释 OSS·Cookie·通知；④root 写入前（Stage 4/5）再跑一次包校验与锚定 | 沙箱 6 例（见上）；**真实包实测**：替换 unit 后重算 MANIFEST（攻击者视角自校验通过）仍被 `--check` 以"render unit 与钉住提交…不一致"拒绝（`evidence/verification-log.txt` §11） |
+
+## 1.4 升级路径统一到 origin（本轮）
+
+本地与云端改用**同一条升级流程**：`git fetch origin && git checkout <完整 SHA>`。仓库为公开仓库，部署账号用匿名 HTTPS，不需要密钥或 token。
+
+- `prepare` 在 `VERSION` 增加 `remote_https=`（由开发仓库 `origin` 规范化为 HTTPS；SSH 形式自动转换）。
+- `setup` 安装时把离线来源改名为 `local-bundle`，并按 `remote_https` 配置 `origin`；重跑向导**不再删除**真实 `origin`（旧实现会 `remote remove origin`，把升级路径抹掉）。
+- `scripts/deploy-frontend.sh` 增加 `--local`：本机发布走 `sudo` 写本地目录，云端仍走 `ssh`+`rsync`；两端发布语义一致。
+- 预检的配置目录改由 `$(dirname "$CONF_ENV")` 推导（原为硬编码 `/etc/bili-monitor`，沙箱无法隔离）；`nginx_available()` 抽出 seam，测试可模拟“宿主未安装 nginx”。
+- 沙箱测试从 59 增至 **60**：新增“向导保留 origin、打包记录远端、前端支持 `--local`”；`wizard --check` 用例在已部署机器上接受“因真实冲突而拒绝”，但仍断言未写文件、未调 sudo。
+- 已验证：`60/60` 通过（含已真实部署的本机）；`bash -n` 全通过。**未在真实升级中执行**（需要停服，属用户授权动作）。
 
 ## 6.1 已存在数据库/配置的处置提示（不诱导破坏）
 

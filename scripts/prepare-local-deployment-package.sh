@@ -309,6 +309,15 @@ cp "$TMP_BUILD/deploy/bili-monitor.service" "$TMP_BUILD/render/etc/systemd/syste
 
 # ── 6. VERSION / PROVENANCE / README ─────────────────────────────────────────
 info "写 VERSION 与 PROVENANCE"
+# 记录可用于部署后 `git fetch` 的 HTTPS 远端：安装包内的 bundle 只是离线来源，
+# 升级需要真实远端。SSH 形式的 origin 需要部署账号持有密钥，故规范化为匿名可读的 HTTPS。
+remote_url="$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null || true)"
+remote_https=""
+case "$remote_url" in
+    git@github.com:*) remote_https="https://github.com/${remote_url#git@github.com:}" ;;
+    ssh://git@github.com/*) remote_https="https://github.com/${remote_url#ssh://git@github.com/}" ;;
+    https://*) remote_https="$remote_url" ;;
+esac
 {
     echo "format=1"
     echo "commit=$COMMIT"
@@ -316,6 +325,7 @@ info "写 VERSION 与 PROVENANCE"
     echo "pinned_ref=$PINNED_REF"
     echo "anchor_source=$ANCHOR_SOURCE"
     echo "source_repo=$REPO_ROOT"
+    echo "remote_https=${remote_https:-none}"
     echo "created_utc=$(date -u +%Y%m%dT%H%M%SZ)"
     echo "prepared_by=$(id -un)"
     echo "node=$node_version"

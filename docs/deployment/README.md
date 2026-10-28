@@ -290,15 +290,13 @@ pnpm install --frozen-lockfile
 HOST=<user>@<服务器> scripts/deploy-frontend.sh
 ```
 
-本地没有可 SSH 的目标，用等价的手工序列（需要管理员 TTY，因为发布树属 root）：
+本地没有可 SSH 的目标，用同一脚本的本地模式（`/srv` 属 root，脚本会调用 sudo）：
 
 ```bash
-( cd frontend && pnpm build )
-REL="/srv/dynamics-viewer/releases/$(date -u +%Y%m%dT%H%M%SZ)-$(git rev-parse --short HEAD)"
-sudo install -d -m 0755 "$REL"
-sudo rsync -a --delete frontend/dist/ "$REL/"
-cd /srv/dynamics-viewer && sudo ln -sfn "${REL#/srv/dynamics-viewer/}" current.tmp && sudo mv -Tf current.tmp current
+scripts/deploy-frontend.sh --local
 ```
+
+两端语义完全一致（构建 → 新 `releases/<UTC>-<commit>/` → 原子切换 → 保留 5 个），只有传输方式不同：云端走 `ssh`+`rsync`，本机直接写本地目录。
 
 发布约束（两端相同，来自静态交付的技术规则）：
 
@@ -391,21 +389,30 @@ curl -sS --compressed -m 5 -D - -o /dev/null "$WEB/assets/$asset" \
 
 ### 5.1 升级（代码／依赖）
 
+本地与云端**同一条流程**：都从已部署代码目录的 `origin` 取新版本，不再区分“bundle 包”与“远端拉取”。唯一的前置差异是 `origin` 是否已存在（见下方一次性步骤）。
+
 **必须先停服务并等真正退出，再切代码**。顺序错了会迁移失败或锁冲突。
 
 ```bash
+# 0. 开发机：确认目标版本并记下完整 SHA（不要用 main 代替，否则无法复现部署了什么）
+git checkout main && git pull
+git rev-parse HEAD
+```
+
+```bash
+# 1–6：本地与云端一字不差
 sudo systemctl stop bili-monitor
-for i in $(seq 1 30); do
-  systemctl is-active --quiet bili-monitor || break
-  sleep 1
-done
+for i in $(seq 1 30); do systemctl is-active --quiet bili-monitor || break; sleep 1; done
 systemctl is-active bili-monitor || echo '已停止'
 ss -ltn | grep -q ':8000' && echo '端口仍被占用，先排查' || echo '端口已释放'
 
+sudo -u bili sqlite3 /srv/bili-monitor/monitor.sqlite \
+  ".backup /srv/bili-monitor/backup/monitor-$(date +%F-%H%M).sqlite"
+
 cd /srv/bili-monitor/app
 sudo -u bili git log --oneline -1          # 记录升级前版本
-sudo -u bili git fetch --all
-sudo -u bili git checkout <目标版本>
+sudo -u bili git fetch origin
+sudo -u bili git checkout <40 位完整 SHA>
 sudo -u bili env HOME=/home/bili /usr/local/bin/uv sync --locked --no-dev
 
 sudo systemctl start bili-monitor
@@ -413,6 +420,20 @@ sleep 10
 systemctl status bili-monitor --no-pager
 curl -fsS http://127.0.0.1:8000/api/manage/ups >/dev/null && echo 'API ready'
 ```
+
+#### 一次性：给已部署实例补 `origin`
+
+仓库是公开的，部署账号用**匿名 HTTPS** 即可，不需要密钥或 token：
+
+```bash
+sudo -u bili git -C /srv/bili-monitor/app remote -v        # 先看现状
+sudo -u bili git -C /srv/bili-monitor/app remote add origin \
+  https://github.com/Mr-shen1/bili_charge_dynamics.git
+```
+
+- 由安装向导创建的目录只带 `local-bundle`（离线包来源，指向 `/var/tmp`，会被清理，**不能**用于升级）。安装向导自本版起会在安装时自动配置 `origin`（取自安装包的 `remote_https`），重跑向导也不会删除它。
+- 云端若是 `git clone` 而来，`origin` 已存在，跳过这一步。
+- 升级只认**完整 SHA**：`git checkout origin/main` 会让“部署了哪个版本”不可复现，也不便于回退时定位。
 
 - 先启动 API 完成迁移并确认 HTTP 就绪，collector 与通知进程才会被统一入口拉起。
 - 迁移只前进；不清空归档、媒体、阅读 cursor、未完成工作或已登记的风控状态。

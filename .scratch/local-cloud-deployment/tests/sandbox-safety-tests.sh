@@ -62,7 +62,9 @@ sandbox_init() {
     BACKUP_DIR="$DEPLOY_ROOT/backup"
     CRED_DIR="$DEPLOY_ROOT/credentials"
     SITE_ROOT="$SB/site"
-    CONF_ENV="$SB/etc/env"
+    # CONF_ENV 的父目录是本次新建的 /etc/bili-monitor 对应物；不能预先建它，
+    # 否则 preflight 会把它当成“已存在且未识别”（真实首装时它也不存在）。
+    CONF_ENV="$SB/etc/bili-monitor/env"
     UNIT_FILE="$SB/etc/bili-monitor.service"
     NGINX_ROOT="$SB/nginx"
     NGINX_MAIN="$NGINX_ROOT/nginx.conf"
@@ -281,6 +283,42 @@ case_bash_syntax() {
     bash -n "$WIZARD" && bash -n "$PREPARE"
 }
 
+# ── 升级路径：本地与云端统一走 origin（A 方案） ───────────────────────────
+case_upgrade_origin_unified() {
+    local bad=0 out rc
+    # 1) 向导不得删除真实 origin（否则升级路径被抹掉）；离线来源改名为 local-bundle
+    if grep -nE 'remote[[:space:]]+remove[[:space:]]+origin' "$WIZARD" >"$LOG" 2>&1; then
+        printf '向导仍会删除 origin：\n'
+        cat "$LOG"
+        bad=1
+    fi
+    grep -q 'remote rename origin local-bundle' "$WIZARD" ||
+        { printf '向导未把离线来源改名为 local-bundle\n'; bad=1; }
+    grep -q 'remote add origin' "$WIZARD" ||
+        { printf '向导未配置升级用 origin\n'; bad=1; }
+    grep -q 'remote_https' "$WIZARD" ||
+        { printf '向导未读取安装包的 remote_https\n'; bad=1; }
+    # 2) 打包脚本必须记录可用于升级的 https 远端
+    grep -q 'echo "remote_https=' "$PREPARE" ||
+        { printf '打包脚本未把 remote_https 写入 VERSION\n'; bad=1; }
+    # 3) 前端发布脚本：与云端同语义的本地模式
+    out="$("$REPO_ROOT/scripts/deploy-frontend.sh" --help 2>&1)"
+    rc=$?
+    ((rc == 0)) || { printf -- '--help 退出码 %s\n' "$rc"; bad=1; }
+    assert_contains "$out" "--local" || bad=1
+    # 4) 缺少目标必须拒绝，避免误发到默认位置
+    if env -u HOST "$REPO_ROOT/scripts/deploy-frontend.sh" >"$LOG" 2>&1; then
+        printf '无 HOST 且无 --local 未拒绝\n'
+        bad=1
+    fi
+    # 5) 未知参数必须拒绝
+    if "$REPO_ROOT/scripts/deploy-frontend.sh" --nope >"$LOG" 2>&1; then
+        printf '未知参数未拒绝\n'
+        bad=1
+    fi
+    ((bad == 0))
+}
+
 # ── 包校验 ────────────────────────────────────────────────────────────────
 case_package_manifest() {
     [[ -d "$PACKAGE" ]] || { printf '安装包不存在：%s\n' "$PACKAGE"; return 1; }
@@ -356,17 +394,27 @@ case_render_files() {
 
 # ── wizard --check（真实预检，只读；依赖本机状态） ─────────────────────────
 case_wizard_check_readonly() {
-    local before after
+    local before after rc
     before="$(ls -la /var/lib 2>/dev/null | grep -c bili-local-deployment || true)"
-    bash "$WIZARD" --check --commit e58271c6e093b436bfbfc9bb45d3d7a7d349be19 --package "$PACKAGE" >"$WORK/check.log" 2>&1 || {
-        printf '--check 退出非 0：\n'
-        cat "$WORK/check.log"
-        return 1
-    }
-    grep -q '只读预检通过' "$WORK/check.log" || { printf '--check 未报告通过\n'; return 1; }
-    grep -qE '未写文件|不调用 sudo' "$WORK/check.log" || { printf '--check 未声明只读\n'; return 1; }
+    set +e
+    bash "$WIZARD" --check --commit e58271c6e093b436bfbfc9bb45d3d7a7d349be19 --package "$PACKAGE" >"$WORK/check.log" 2>&1
+    rc=$?
+    set -e
+    if ((rc == 0)); then
+        grep -q '只读预检通过' "$WORK/check.log" || { printf -- '--check 未报告通过\n'; return 1; }
+    else
+        # 已部署机器上预检会正确报出真实冲突（本项目实例不是向导创建的）；
+        # 该用例只保证“只读”：失败原因必须是真实冲突，且未写文件、未调 sudo。
+        grep -qE '已被修改|被占用|已存在且未识别|已存在未登记' "$WORK/check.log" || {
+            printf -- '--check 失败但不是因为真实冲突：\n'
+            cat "$WORK/check.log"
+            return 1
+        }
+        grep -q '未做任何改动' "$WORK/check.log" || { printf -- '--check 失败未声明未做改动\n'; return 1; }
+    fi
+    grep -qE '未写文件|不调用 sudo' "$WORK/check.log" || { printf -- '--check 未声明只读\n'; return 1; }
     after="$(ls -la /var/lib 2>/dev/null | grep -c bili-local-deployment || true)"
-    [[ "$before" == "$after" ]] || { printf '--check 创建了 /var/lib 状态目录\n'; return 1; }
+    [[ "$before" == "$after" ]] || { printf -- '--check 创建了 /var/lib 状态目录\n'; return 1; }
 }
 
 case_wizard_check_rejects_tampered_package() {
@@ -822,11 +870,20 @@ case_preflight_nginx_default_80_hardblock() {
 
 case_preflight_nginx_missing_warns() {
     preflight_fixture || return 1
-    mv "$SB/bin/nginx" "$SB/bin/nginx.disabled"   # 模拟“尚未安装 nginx”
-    preflight >"$LOG" 2>&1
-    mv "$SB/bin/nginx.disabled" "$SB/bin/nginx"
-    grep -q '不能证明发行包默认配置安全' "$LOG" || { printf '--check 未提示默认配置风险\n'; cat "$LOG"; return 1; }
-    ((${#PROBLEMS[@]} == 0)) || { printf '未安装场景被误判阻塞\n'; printf '%s\n' "${PROBLEMS[@]}"; return 1; }
+    # 宿主已真实安装 nginx 时，mv 掉沙箱桩仍会被 /usr/bin/nginx 找到；用 seam 强制“未安装”。
+    nginx_available() { return 1; }
+    preflight >"$WORK/nginx-missing.log" 2>&1
+    nginx_available() { command -v nginx >/dev/null 2>&1; }
+    grep -q '不能证明发行包默认配置安全' "$WORK/nginx-missing.log" || {
+        printf '%s\n' '--check 未提示默认配置风险'
+        cat "$WORK/nginx-missing.log"
+        return 1
+    }
+    ((${#PROBLEMS[@]} == 0)) || {
+        printf '未安装场景被误判阻塞\n'
+        printf '%s\n' "${PROBLEMS[@]}"
+        return 1
+    }
 }
 
 
@@ -1035,7 +1092,7 @@ first_start_fixture() {
     ln -sfn "$SITE_ROOT/releases/20260101T000000Z-$SHORT" "$SITE_ROOT/current"
     # 状态键与各阶段写入一致；service 为 start-attempt（健康检查失败后中断的形态）
     for d in "$DEPLOY_ROOT" "$APP_DIR" "$BACKUP_DIR" "$CRED_DIR" "$SITE_ROOT" "$SITE_ROOT/releases" \
-        "$NGINX_ROOT/conf.d" "$NGINX_ROOT/snippets"; do
+        "$(dirname "$CONF_ENV")" "$NGINX_ROOT/conf.d" "$NGINX_ROOT/snippets"; do
         state_set "dir:$d" "x:x:755"
     done
     local f
@@ -1398,6 +1455,7 @@ case_anchor_rejects_bad_cli_commit() {
 case_run "静态守卫：无 sudo -n/NOPASSWD/-Syu/--overwrite/apt/sites-enabled 等" case_static_guards
 case_run "wizard library 前缀与 template 逐字节一致" case_library_prefix_identical
 case_run "两个脚本 bash -n 通过" case_bash_syntax
+case_run "升级：向导保留 origin、打包记录远端、前端支持 --local" case_upgrade_origin_unified
 case_run "安装包 MANIFEST/VERSION/uv 可执行" case_package_manifest
 case_run "安装包仅含生产 dist（无 dist-mock/.venv/node_modules/库/cookie）" case_package_is_production_only
 case_run "渲染文件：env 有效行、4273 listen、模板逐字节" case_render_files
