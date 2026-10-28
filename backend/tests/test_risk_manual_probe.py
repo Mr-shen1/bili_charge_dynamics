@@ -76,6 +76,34 @@ def to_manual(gate, clock):
     return status
 
 
+def test_registered_manual_probe_without_verifiable_types_logs_one_fixed_reason(tmp_path):
+    """人工已登记但没有任何可验证类型：按代次留一条固定原因，不无声空转也不改状态。"""
+    clock = ControlledClock()
+    _, gate = gate_for(tmp_path / "manual-no-types.sqlite", clock)
+    to_manual(gate, clock)
+    assert asyncio.run(gate.request_probe())["manual"]["probe_registered"] is True
+    before = gate.status()
+
+    with captured_events() as log:
+        # 同一人工态代次反复领取（采集主循环每 2.7 秒一拍）都拒绝，但只留一条固定日志。
+        for _ in range(3):
+            assert asyncio.run(gate.claim_probe([])) is None
+        assert len(events(log, "risk_probe_skipped")) == 1
+        assert 'reason=no_required_types' in events(log, "risk_probe_skipped")[0]
+        assert 'risk_state=manual' in events(log, "risk_probe_skipped")[0]
+        # 重复登记仍幂等：不排多轮，也不清零档位或提前解除人工态。
+        first = asyncio.run(gate.request_probe())
+        assert first == asyncio.run(gate.request_probe())
+        after = gate.status()
+        assert after["state"] == "manual" and after["backoff_step"] == 6
+        assert after["manual"] == before["manual"] == {"probe_registered": True}
+        assert after["probe"] == before["probe"]
+
+    # 没有可验证类型就不可能确认恢复：仍然保持暂停，也没有伪造“全部通过”。
+    assert asyncio.run(gate.claim_probe([])) is None
+    assert gate.status()["state"] == "manual"
+
+
 @contextmanager
 def captured_events():
     logger = logging.getLogger("bili_monitor.collector")

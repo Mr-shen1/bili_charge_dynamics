@@ -27,8 +27,9 @@ from uuid import uuid4
 from anyio import to_thread
 
 from .collector_logging import collector_event, correlation_id
-from .comment_status import epoch_from_iso, utc_now
+from .comment_status import epoch_from_iso, optional_epoch, utc_now
 from .contracts import error_response
+from .source_endpoints import WARMUP_TYPES
 from .transaction import write
 
 
@@ -41,10 +42,10 @@ PROBE_LEASE_SECONDS = 300
 # 恢复观察期（秒）：全部接口探测通过后仍需连续成功正常采集这么久才清零档位。
 OBSERVATION_SECONDS = 600
 OBSERVATION_MS = int(OBSERVATION_SECONDS * 1000)
-# 业务“成功”只看真实上游返回的 HTTP 状态；风控状态与普通错误都不算采集活跃。
-SUCCESS_STATUSES = range(200, 400)
-# 预热只是会话前置，不算一次成功业务请求，不能让观察期凭预热空转清零。
-NON_BUSINESS_TYPES = frozenset({"homepage_warmup", "space_warmup"})
+# 观察期只认“业务解析／资源校验成功”的请求（`note_business_success`）：HTTP 2xx／3xx
+# 本身不算采集活跃——`200 + code=-352` 的评论拒绝、错误页或跳转都没有真的取得内容。
+# 会话预热只是前置，同样不算成功业务请求，不能让观察期凭预热空转清零。
+NON_BUSINESS_TYPES = frozenset(WARMUP_TYPES)
 # 禁止普通来源发送的状态；`normal` 与 `observing` 都按正常调度发送。
 BLOCKED_STATES = frozenset({"cooldown", "probing", "manual"})
 ACTIVE_STATES = frozenset({"normal", "observing"})
@@ -127,10 +128,7 @@ def format_epoch(epoch):
 
 def _epoch(value):
     """ISO 时间 → epoch 秒；缺失或不可解析返回 None（调用方按失败即关闭处理）。"""
-    try:
-        return epoch_from_iso(value)
-    except (TypeError, ValueError):
-        return None
+    return optional_epoch(value)
 
 
 def parse_retry_after(value, now=None):
@@ -353,17 +351,25 @@ class RiskGate:
     async def report(self, request, report):
         """风控响应先落库再拒绝这次发送：当前调用链不再翻页、重试或补做预热。
 
-        非风控结果（普通错误、业务码）原样返回，不改变既有分类；正常 HTTP 响应在本进程
-        记一次“成功业务请求”，供观察期心跳判断这段时间是否真有采集，而不是空转。
+        非风控结果（普通错误、业务码）原样返回，不改变既有分类。这里也不凭 HTTP
+        2xx／3xx 记“成功业务请求”：一次发送是否真的取得内容只有业务解析与资源校验
+        知道，由 `note_business_success` 单独上报；观察期只认那份事实。
         """
-        if (report.status_code in SUCCESS_STATUSES
-                and request.endpoint_type not in NON_BUSINESS_TYPES):
-            self._source_successes += 1
         if report.status_code not in TRIGGER_STATUSES:
             return
         retry_after = getattr(report, "retry_after", None)
         status = await to_thread.run_sync(self._record_trigger, request, report.status_code, retry_after)
         raise SourceRiskPaused(status)
+
+    def note_business_success(self, endpoint_type):
+        """记一次“已通过业务解析／资源校验”的请求，供观察期心跳判断确有采集发生。
+
+        只在本进程累积，由采集进程的 `observing_tick` 消费并落库；API 进程不心跳，
+        它的成功响应不会抵扣观察期。会话预热只是业务请求的前置，因此不计。
+        """
+        if endpoint_type in NON_BUSINESS_TYPES:
+            return
+        self._source_successes += 1
 
     async def pause(self):
         """只读快照：调度层据此跳过本轮派发，不当作许可或恢复依据。"""
@@ -498,6 +504,8 @@ class RiskGate:
         types = [kind for kind in endpoint_types]
         if not types:
             # 没有可验证类型就不可能确认恢复；宁可保持暂停，也不伪造“全部通过”。
+            # 但也不能无声空转：同一状态代次只留一条固定原因（见 `_refuse_claim`）。
+            self._refuse_claim("no_required_types")
             return None
         with write(self.store) as connection:
             row = connection.execute(
@@ -537,6 +545,17 @@ class RiskGate:
         collector_event("risk_probe_claimed", endpoint_types=len(types), probe_origin=origin,
                         probe_round_id=correlation_id(round_id), backoff_step=row["backoff_step"])
         return {"round": round_id, "owner": owner, "types": types, "origin": origin}
+
+    def _refuse_claim(self, reason):
+        """拒绝领取时按状态代次留一条固定原因：待人工／待到期期间不每 2.7 秒重复。
+
+        只读一次状态，不写库、不改档位：原因只进日志，状态仍由 `public_status` 的
+        `manual.probe_registered` 表达“已登记、等待可验证类型”。
+        """
+        row = self._read()
+        self._log_once(("probe_refused", reason, row["generation"]), "risk_probe_skipped",
+                       reason=reason, risk_state=row["state"],
+                       backoff_step=row["backoff_step"])
 
     def _lease_expired(self, lease_until, now):
         deadline = _epoch(lease_until)

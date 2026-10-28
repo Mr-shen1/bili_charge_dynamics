@@ -35,7 +35,9 @@ from backend.bili_monitor.reply_pacing import ReplyPagePacer
 from backend.bili_monitor.risk import RiskGate, SourceRiskPaused, format_epoch
 from backend.bili_monitor.risk_probe import RiskProber
 from backend.bili_monitor.safety import configure_safe_logging
-from backend.bili_monitor.source_gate import GatedAsyncTransport, SourceReport, source_request
+from backend.bili_monitor.source_gate import (
+    GatedAsyncClient, GatedAsyncTransport, SourceReport, source_request,
+)
 from backend.bili_monitor.storage import Store
 from backend.tests.deployment_fixture import (
     DYNAMIC_ID, MEDIA_BYTES, UID, detail_json, page_html,
@@ -157,12 +159,12 @@ async def serve(database):
     clock = FileClock(DIRECTORY)
     store = Store(database)
     gate = RiskGate(store, clock=clock)
-    async with httpx.AsyncClient(
+    async with GatedAsyncClient(
             transport=GatedAsyncTransport(httpx.MockTransport(Source()), gate=gate),
-            trust_env=False, follow_redirects=False) as client, \
-            httpx.AsyncClient(
+            trust_env=False, follow_redirects=False, gate=gate) as client, \
+            GatedAsyncClient(
                 transport=GatedAsyncTransport(httpx.MockTransport(Source()), gate=gate),
-                trust_env=False) as media, \
+                trust_env=False, gate=gate) as media, \
             httpx.AsyncClient(transport=httpx.MockTransport(Source()), trust_env=False) as probe_client, \
             httpx.AsyncClient(transport=httpx.MockTransport(Source()), trust_env=False) as probe_media:
         prober = RiskProber(store, gate, probe_client,

@@ -19,6 +19,11 @@ from urllib.parse import urlsplit
 import httpx
 
 from .media import is_image_source_host
+# 接口类型是 Gate、探测层、业务解析与日志共用的同一份常量（含图片域族与预热类型）。
+from .source_endpoints import (
+    COMMENT_COUNT, DETAIL, FEED, HOMEPAGE_WARMUP, OPUS_PAGE, OTHER_SOURCE,
+    PROFILE, REPLIES, ROOT_COMMENTS, SPACE_WARMUP, image_endpoint_type, note_business_success,
+)
 
 
 # 来源主机白名单：与评论 Cookie 的发送范围一致；其他主机不受源站许可控制。
@@ -27,38 +32,30 @@ SOURCE_HOSTS = frozenset({"api.bilibili.com", "www.bilibili.com", "space.bilibil
 # 接口类型按「主机 + 路径模板」归类：query 里的资源 ID 和页码不产生新类型，
 # 后续按类型探测与日志才能覆盖不同拦截范围又不制造探测洪峰。
 _API_ENDPOINTS = {
-    "/x/v2/reply/count": "comment_count",
-    "/x/v2/reply/reply": "replies",
-    "/x/v2/reply": "root_comments",
-    "/x/polymer/web-dynamic/v1/feed/space": "feed",
-    "/x/polymer/web-dynamic/v1/detail": "detail",
-    "/x/web-interface/card": "profile",
+    "/x/v2/reply/count": COMMENT_COUNT,
+    "/x/v2/reply/reply": REPLIES,
+    "/x/v2/reply": ROOT_COMMENTS,
+    "/x/polymer/web-dynamic/v1/feed/space": FEED,
+    "/x/polymer/web-dynamic/v1/detail": DETAIL,
+    "/x/web-interface/card": PROFILE,
 }
 _OPUS_PAGE_PATH = re.compile(r"/opus/[1-9][0-9]*")
 _SPACE_DYNAMIC_PATH = re.compile(r"/[1-9][0-9]*/dynamic")
-
-# 图片按受信域族区分：两族分别代表不同 CDN 拦截面，探测与日志不能互相代替。
-IMAGE_HDSLB = "image_hdslb"
-IMAGE_BILIIMG = "image_biliimg"
-IMAGE_ENDPOINTS = (("hdslb.com", IMAGE_HDSLB), ("biliimg.com", IMAGE_BILIIMG))
-# 白名单内、但尚无专门模板的来源路径仍须经过许可，不因分类缺失而放行。
-OTHER_SOURCE = "source_other"
 
 
 def endpoint_type(host, path):
     """按主机与路径模板给出接口类型；非 B 站来源返回 None（不受许可控制）。"""
     if is_image_source_host(host):
-        return next(kind for domain, kind in IMAGE_ENDPOINTS
-                    if host == domain or host.endswith("." + domain))
+        return image_endpoint_type(host)
     if host not in SOURCE_HOSTS:
         return None
     if host == "api.bilibili.com":
         return _API_ENDPOINTS.get(path, OTHER_SOURCE)
     if host == "www.bilibili.com":
         if path == "/":
-            return "homepage_warmup"
-        return "opus_page" if _OPUS_PAGE_PATH.fullmatch(path) else OTHER_SOURCE
-    return "space_warmup" if _SPACE_DYNAMIC_PATH.fullmatch(path) else OTHER_SOURCE
+            return HOMEPAGE_WARMUP
+        return OPUS_PAGE if _OPUS_PAGE_PATH.fullmatch(path) else OTHER_SOURCE
+    return SPACE_WARMUP if _SPACE_DYNAMIC_PATH.fullmatch(path) else OTHER_SOURCE
 
 
 @dataclass(frozen=True)
@@ -108,6 +105,13 @@ class SourceGate(Protocol):
         不会拿到该响应，因此不会继续翻页、重试或补做预热。
         """
 
+    def note_business_success(self, endpoint_type: str) -> None:
+        """业务层解析／资源校验成功后调用；传输状态本身不是业务成功。
+
+        这是进程内的观察事实，不读写共享保护状态，因此同步且不参与许可判定：
+        恢复观察期只认“确有成功业务请求的活跃采集”。
+        """
+
 
 class OpenSourceGate:
     """默认实现：一律放行且不记录，正常采集行为与本票之前一致。"""
@@ -117,6 +121,24 @@ class OpenSourceGate:
 
     async def report(self, request, report):
         return None
+
+    def note_business_success(self, endpoint_type):
+        return None
+
+
+class GatedAsyncClient(httpx.AsyncClient):
+    """携带 Gate 引用的来源客户端：业务解析成功后经同一 Gate 报告一次成功业务请求。
+
+    只有业务会话用它；探测客户端刻意保持为普通 `httpx.AsyncClient`——探测不产生
+    归档／通知副作用，也不能让观察期凭空累计。
+    """
+
+    def __init__(self, *args, gate=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.gate = gate
+
+    def note_business_success(self, endpoint_type):
+        note_business_success(self.gate, endpoint_type)
 
 
 class GatedAsyncTransport(httpx.AsyncBaseTransport):

@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 from .contracts import APIError, validate_uid
 from .risk import SourceRiskPaused
 from .identifiers import is_valid_id
+from .source_endpoints import DETAIL, OPUS_PAGE, note_business_success
 
 
 class HtmlScriptCollector(HTMLParser):
@@ -64,7 +65,10 @@ def module_data(detail, kind):
 async def fetch_page(client, id):
     response = await client.get(f"https://www.bilibili.com/opus/{id}")
     response.raise_for_status()
-    return initial_detail(response.text, id)
+    detail = initial_detail(response.text, id)
+    # 只有按原解析通过（正文页确实是该动态的合法初始状态）才算成功业务请求。
+    note_business_success(client, OPUS_PAGE)
+    return detail
 
 
 BEIJING = timezone(timedelta(hours=8))
@@ -235,6 +239,7 @@ async def fetch_item(client, id):
     item = payload["data"]["item"]
     if item["id_str"] != id:
         raise ValueError("Mismatched detail")
+    note_business_success(client, DETAIL)
     return item
 
 

@@ -15,11 +15,11 @@ from typing import NamedTuple
 
 from anyio import to_thread
 
-from . import scan_progress
+from . import page_resume, scan_progress
 from .root_comments import comment_fields, nonnegative, root_document, source_id
 from .source import media_sources
 from .comment_status import utc_now
-from .source_endpoints import REPLIES_URL
+from .source_endpoints import REPLIES, REPLIES_URL, note_business_success
 from .source_client import comment_request_headers
 from .collector_logging import (
     SourceRejected, collector_event, collector_failure, source_ids, source_refs,
@@ -143,7 +143,8 @@ async def fetch_reply_page(client, dynamic_id, root_id, locator, number, *, uid=
         raise ValueError("Unconfirmed reply page")
     # 每页一条批量 ID；请求耗时与页后等待分开，分块由日志层按关联号做。
     timing = getattr(client, "last_reply_page", None)
-    collector_event("reply_page_fetched", endpoint_type="replies", page=number, direction=direction,
+    note_business_success(client, REPLIES)
+    collector_event("reply_page_fetched", endpoint_type=REPLIES, page=number, direction=direction,
                     fetched=len(ids), reply_ids=source_ids(ids),
                     elapsed_ms=timing.elapsed_ms if timing is not None else None,
                     wait_ms=timing.wait_ms if timing is not None else None,
@@ -206,18 +207,11 @@ async def _verify_reply_anchor(store, client, id, generation, root_id, position,
     倒序不在此处追末页：新末页由下一步的计数对比重新定位，避免同一尝试里重复读。
     """
     anchor_page, anchor_ids = position.anchor_page, list(position.anchor_ids)
-    found, count = None, position.counts[0] if position.counts else None
-    for offset in scan_progress.RESUME_PAGE_OFFSETS:
-        candidate = anchor_page + offset
-        if candidate < 1:
-            continue
-        documents, ids, current = await fetch_reply_page(
-            client, id, root_id, position.locator, candidate, uid=uid, direction=position.direction)
-        count = current
-        hit = scan_progress.alignment(ids, anchor_ids)
-        if hit is not None:
-            found = (candidate, hit[0], documents, ids)
-            break
+
+    async def fetch(number):
+        return await fetch_reply_page(
+            client, id, root_id, position.locator, number, uid=uid,
+            direction=position.direction)
 
     async def save(documents, updated):
         saved = await to_thread.run_sync(lambda: store.save_reply_page(
@@ -226,6 +220,9 @@ async def _verify_reply_anchor(store, client, id, generation, root_id, position,
             local_ids.update(document["id"] for document in documents)
         return saved
 
+    found, count = await page_resume.locate(fetch, anchor_page, anchor_ids, position.page_size)
+    count = count if count is not None else (
+        position.counts[0] if position.counts else None)
     if found is None:
         if position.direction == scan_progress.REVERSE:
             updated = position._replace(
@@ -242,37 +239,34 @@ async def _verify_reply_anchor(store, client, id, generation, root_id, position,
                         **source_refs(uid=uid, dynamic_id=id, root_id=root_id))
         return updated
 
-    page, index, documents, ids = found
-    shifted = scan_progress.shift(page, index, anchor_page, len(anchor_ids), position.page_size)
     # 页内计数基准以本次锚点页为准：旧基准可能来自失败页，沿用会让重试永远判“计数减少”。
     baseline = None if count is None else (count, 0)
     if position.direction == scan_progress.REVERSE:
         last = _last_page(count or 0)
-        if last > page:
+        if last > found.page:
             # 中断期间热帖新增了末页：先重定位到新末页，再沿页递减，不静默漏掉新回复。
             next_page = last
         else:
-            next_page = 1 if page == 1 else page - 1
-        updated = position._replace(phase=scan_progress.PAGES, overlap_page=0, anchor_page=page,
-                                    anchor_ids=tuple(ids), counts=baseline, next_page=next_page)
-        if await save(documents, updated) is None:
+            next_page = 1 if found.page == 1 else found.page - 1
+        updated = position._replace(phase=scan_progress.PAGES, overlap_page=0,
+                                    anchor_page=found.page, anchor_ids=tuple(found.ids),
+                                    counts=baseline, next_page=next_page)
+        if await save(found.documents, updated) is None:
             return None
     else:
         updated = position._replace(phase=scan_progress.PAGES, overlap_page=0, counts=baseline,
-                                    next_page=scan_progress.following_page(page, index, len(ids)))
-        if await save(documents, updated) is None:
+                                    next_page=scan_progress.following_page(
+                                        found.page, found.index, len(found.ids)))
+        if await save(found.documents, updated) is None:
             return None
-        if shifted > 0:
+        if found.shifted > 0:
             # 受影响区段只在锚点之前新插入的页：只重读这几页，不整楼重扫。
-            affected = (shifted + position.page_size - 1) // position.page_size
-            for number in range(1, affected + 1):
-                head, _, _ = await fetch_reply_page(client, id, root_id, position.locator, number,
-                                                    uid=uid, direction=position.direction)
-                if await save(head, updated) is None:
-                    return None
-    collector_event("reply_scan_resumed",
-                    resume="aligned" if shifted == 0 else ("inserted" if shifted > 0 else "removed"),
-                    anchor_page=anchor_page, page=updated.next_page, shift=shifted,
+            if not await page_resume.reread_heads(
+                    fetch, lambda documents: save(documents, updated),
+                    found.shifted, position.page_size):
+                return None
+    collector_event("reply_scan_resumed", resume=page_resume.resume_reason(found.shifted),
+                    anchor_page=anchor_page, page=updated.next_page, shift=found.shifted,
                     direction=position.direction,
                     **source_refs(uid=uid, dynamic_id=id, root_id=root_id))
     return updated
@@ -538,7 +532,12 @@ async def reply_scan_step(store, client, id, generation, root_id, *, uid=None, r
 
 async def sync_replies(store, client, id, generation, roots_result, *, now=None, uid=None, full=False,
                        on_failure=None):
-    """楼中楼整轮：逐楼逐页推进，失败、重开或风控后从可验证断点继续。"""
+    """楼中楼整轮：逐楼逐页推进，失败、重开或风控后从可验证断点继续。
+
+    历史专项回归适配器：生产不调用本函数，评论由 `TargetSession` 的单页步骤推进；
+    它只为 `test_reply_incremental`／`test_reply_page_pacing`／`test_reply_page_resume`
+    保留旧整轮入口，迁移这些用例时与它们一并删除。
+    """
     degraded = roots_result is None
     if degraded:
         # 根扫描失败时降级：用已存根评论及其上次基准继续，只重扫到期/失败的楼，不整轮跳过。

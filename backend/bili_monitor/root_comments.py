@@ -5,15 +5,12 @@ from typing import NamedTuple
 
 from anyio import to_thread
 
-from . import scan_progress
+from . import page_resume, scan_progress
 from .identifiers import is_valid_id
 from .source import media_sources, published_time, safe_url
-from .source_endpoints import ROOT_COMMENTS_URL
+from .source_endpoints import COMMENT_COUNT, ROOT_COMMENTS, ROOT_COMMENTS_URL, note_business_success
 from .source_client import comment_request_headers
-from .collector_logging import (
-    SourceRejected, collector_event, collector_failure, source_ids, source_refs,
-)
-from .risk import SourceRiskPaused
+from .collector_logging import SourceRejected, collector_event, source_ids, source_refs
 
 
 def nonnegative(value):
@@ -96,6 +93,7 @@ async def fetch_comment_count(client, locator, *, uid=None):
     count = nonnegative(payload["data"].get("count"))
     if count is None:
         raise ValueError("Unknown comment count")
+    note_business_success(client, COMMENT_COUNT)
     return count
 
 
@@ -147,6 +145,7 @@ async def fetch_root_page(client, dynamic_id, locator, number, *, on_pin=None, u
         raise ValueError("Unconfirmed empty comment resource")
     if count == 0 and documents:
         raise ValueError("Contradictory empty comment resource")
+    note_business_success(client, ROOT_COMMENTS)
     # 置顶来自首页 envelope，与普通列表的同 ID 副本分开，避免去重时丢失。
     # 缺失 upper.top 表示未知；显式 null 才表示确认没有置顶。
     if number == 1 and pin_known and on_pin is not None:
@@ -201,21 +200,12 @@ async def _verify_anchor(store, client, id, generation, position, *, uid=None, o
     - 窗口内都找不到锚点：回到首屏按 ID 合并重扫。
     """
     anchor_page, anchor_ids = position.anchor_page, list(position.anchor_ids)
-    found, shifted = None, None
-    for offset in scan_progress.RESUME_PAGE_OFFSETS:
-        candidate = anchor_page + offset
-        if candidate < 1:
-            continue
+
+    async def fetch(number):
         try:
-            documents, ids, counts = await fetch_root_page(client, id, position.locator, candidate, uid=uid)
+            return await fetch_root_page(client, id, position.locator, number, uid=uid)
         except Exception as error:
-            raise _stage(error, "anchor_verify", candidate)
-        hit = scan_progress.alignment(ids, anchor_ids)
-        if hit is not None:
-            shifted = scan_progress.shift(candidate, hit[0], anchor_page, len(anchor_ids),
-                                          position.page_size)
-            found = (candidate, hit[0], documents, ids, counts)
-            break
+            raise _stage(error, "anchor_verify", number)
 
     async def commit(documents):
         nonlocal updated
@@ -227,6 +217,7 @@ async def _verify_anchor(store, client, id, generation, position, *, uid=None, o
         return True
 
     updated = position
+    found, _ = await page_resume.locate(fetch, anchor_page, anchor_ids, position.page_size)
     if found is None:
         # 锚点已不可见：受影响区段无法直接定位，回到首屏按 ID 合并重扫；已提交页保留。
         updated, reason = position._replace(
@@ -234,29 +225,23 @@ async def _verify_anchor(store, client, id, generation, position, *, uid=None, o
             overlap_page=0, counts=None), "anchor_lost"
         saved = await to_thread.run_sync(lambda: store.save_root_position(id, generation, updated))
     else:
-        page, index, documents, ids, counts = found
-        reason = "aligned" if shifted == 0 else ("inserted" if shifted > 0 else "removed")
-        updated = position._replace(phase=scan_progress.PAGES, overlap_page=0, counts=tuple(counts),
-                                    next_page=scan_progress.following_page(page, index, len(ids)))
-        if shifted > 0:
-            affected = (shifted + position.page_size - 1) // position.page_size
-            saved = True
-            for number in range(1, affected + 1):
-                try:
-                    head, _, _ = await fetch_root_page(client, id, position.locator, number, uid=uid)
-                except Exception as error:
-                    raise _stage(error, "anchor_verify", number)
-                saved = await commit(head)
-                if not saved:
-                    break
+        reason = page_resume.resume_reason(found.shifted)
+        updated = position._replace(phase=scan_progress.PAGES, overlap_page=0,
+                                    counts=tuple(found.extra),
+                                    next_page=scan_progress.following_page(
+                                        found.page, found.index, len(found.ids)))
+        if found.shifted > 0:
+            saved = await page_resume.reread_heads(fetch, commit, found.shifted,
+                                                   position.page_size)
         else:
-            saved = await commit(documents)
+            saved = await commit(found.documents)
         if saved:
             saved = await to_thread.run_sync(lambda: store.save_root_position(id, generation, updated))
     if not saved:
         return None
     collector_event("root_scan_resumed", resume=reason, anchor_page=anchor_page,
-                    overlap_page=anchor_page, page=updated.next_page, shift=shifted,
+                    overlap_page=anchor_page, page=updated.next_page, shift=found.shifted
+                    if found is not None else None,
                     confirmed=updated.confirmed, **source_refs(uid=uid, dynamic_id=id))
     return updated
 
@@ -381,59 +366,3 @@ async def root_scan_step(store, client, id, generation, *, uid=None, resume=Fals
     return RootStep("complete" if next_phase == scan_progress.COMPLETE else "page", number,
                     next_page, saved["fetched"], saved["new"], saved["confirmed"], reason,
                     tuple(ids), tuple(saved["reply_counts"].items()))
-
-
-async def sync_roots(store, client, id, generation, *, now=None, uid=None, on_failure=None, full=False):
-    """根评论整轮：逐页提交进度，失败或重开时从可验证断点继续。"""
-    archive = await to_thread.run_sync(store.read_archive, id)
-    if archive is None:
-        collector_event("root_sync_skipped", reason="archive_missing")
-        return
-    if uid is None:
-        uid = archive["author"]["id"]
-    if not valid_locator(archive.get("comment_locator")):
-        collector_event("root_sync_unconfirmed", warning=True, reason="locator_missing")
-        await to_thread.run_sync(store.finish_roots, id, generation, "unconfirmed", None)
-        return
-    observed_count = archive.get("source_comment_count")
-    sync_refs = source_refs(uid=uid, dynamic_id=id)
-    collector_event("root_sync_started", **sync_refs)
-    source_counts = {}
-    try:
-        step = await root_scan_step(store, client, id, generation, uid=uid, resume=True, full=full)
-        while True:
-            source_counts.update(dict(step.reply_counts))
-            if step.status != "page":
-                break
-            step = await root_scan_step(store, client, id, generation, uid=uid)
-    except SourceRiskPaused:
-        # 保护暂停不是根页失败：保留 pending 与已提交页，进度行留给恢复后续采。
-        raise
-    except Exception as error:
-        collector_failure("root_sync_failed", error, stage=getattr(error, "stage", "page_fetch"),
-                          page=getattr(error, "page", None), **sync_refs)
-        if on_failure is not None:
-            # 采集侧只上报固定分类（含唯一可信的凭据信号），不把异常文本或正文带出去。
-            on_failure(error)
-        await to_thread.run_sync(store.finish_roots, id, generation, "failed", None)
-        return
-    if step.status == "stale":
-        collector_event("root_sync_skipped", reason="stale_generation", page=step.page)
-        return
-    position = await to_thread.run_sync(lambda: store.read_root_scan(id, generation))
-    if position is None:
-        collector_event("root_sync_skipped", reason="stale_generation", stage="finish")
-        return
-    finished = await to_thread.run_sync(lambda: store.finish_roots(
-        id, generation, "success", observed_count, now() if now is not None else None,
-        pin_known=position.pin_known, pinned_id=position.pinned_id))
-    if finished is None:
-        collector_event("root_sync_skipped", reason="stale_generation", stage="finish")
-        return
-    # 楼中楼增量基准用整轮已存根集合，本轮实际读到的页用本次来源值覆盖：
-    # 未重读的深层根沿用归档 rcount，避免早停把「未知」错配成旧零或反过来。
-    roots = await to_thread.run_sync(store.root_reply_counts, id)
-    roots.update(source_counts)
-    collector_event("root_sync_finished", page=step.page, roots=len(roots),
-                    confirmed=position.confirmed, pin_known=position.pin_known, **sync_refs)
-    return roots, observed_count

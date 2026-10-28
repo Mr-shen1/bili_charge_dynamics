@@ -27,7 +27,7 @@ from backend.bili_monitor.collector import Collector
 from backend.bili_monitor.media import ImageDownloader
 from backend.bili_monitor.risk import RiskGate
 from backend.bili_monitor.safety import configure_safe_logging
-from backend.bili_monitor.source_gate import GatedAsyncTransport, source_request
+from backend.bili_monitor.source_gate import GatedAsyncClient, GatedAsyncTransport, source_request
 from backend.bili_monitor.storage import Store
 from backend.tests.deployment_fixture import DYNAMIC_ID, UID, detail_json, page_html
 
@@ -91,10 +91,11 @@ async def serve(database):
     configure_safe_logging()
     store = Store(database)
     gate = RiskGate(store)
-    async with httpx.AsyncClient(
-            transport=GatedAsyncTransport(httpx.MockTransport(Source()), gate=gate), trust_env=False) as client, \
-            httpx.AsyncClient(transport=GatedAsyncTransport(httpx.MockTransport(Source()), gate=gate),
-                              trust_env=False) as media:
+    async with GatedAsyncClient(
+            transport=GatedAsyncTransport(httpx.MockTransport(Source()), gate=gate),
+            trust_env=False, gate=gate) as client, \
+            GatedAsyncClient(transport=GatedAsyncTransport(httpx.MockTransport(Source()), gate=gate),
+                             trust_env=False, gate=gate) as media:
         collector = Collector(store, client, ImageDownloader(media), None, risk=gate,
                               credentials_configured=False)
         task = asyncio.create_task(collector.run())

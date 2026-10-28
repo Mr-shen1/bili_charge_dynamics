@@ -504,9 +504,9 @@ def finish(database, round_id, owner, passed):
 
 
 def observe(database, seconds):
+    """模拟采集进程的一次成功业务请求＋一拍观察心跳；不伪造 HTTP 传输事实。"""
     _, gate = open_gate(database)
-    classified = source_request("GET", "https://api.bilibili.com/x/v2/reply")
-    asyncio.run(gate.report(classified, SourceReport(status_code=200)))
+    gate.note_business_success("comment_count")
     print(json.dumps(asyncio.run(gate.observing_tick(seconds)), sort_keys=True))
 
 

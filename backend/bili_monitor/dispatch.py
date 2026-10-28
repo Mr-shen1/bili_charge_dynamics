@@ -24,7 +24,7 @@ from anyio import to_thread
 
 from .collector_logging import collector_event, collector_failure, source_refs
 from .comment_client import open_comment_client
-from .comment_status import ROOT_METADATA_VERSION, epoch_from_iso
+from .comment_status import ROOT_METADATA_VERSION, optional_epoch
 from .media import media_step
 from . import replies as replies_module
 from .replies import reply_scan_step
@@ -55,17 +55,19 @@ _SCHEMA = """CREATE TABLE IF NOT EXISTS dispatch_leases (
 
 
 def migrate(connection):
-    """v26：跨进程发送许可、重型回合与目标互斥租约；可重入。"""
+    """v27：跨进程发送许可、重型回合与目标互斥租约；可重入。"""
     connection.execute(_SCHEMA)
 
 
 def _epoch(value):
-    if value is None:
-        return time.time()
-    try:
-        return epoch_from_iso(value)
-    except (TypeError, ValueError):
-        return time.time()
+    """租约时间 → epoch 秒；缺失或不可解析时回退真实时间。
+
+    租约侧的回退语义与风控状态相反：期限算不清时必须按“已过期可接管”处理，不能
+    把它当成永久有效。解析本身与 `risk._epoch` 共用 `optional_epoch`，回退写在各
+    自的调用点上。
+    """
+    parsed = optional_epoch(value)
+    return time.time() if parsed is None else parsed
 
 
 class _HeldLease:

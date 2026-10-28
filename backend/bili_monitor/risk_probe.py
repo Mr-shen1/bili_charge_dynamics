@@ -23,15 +23,16 @@ from .reply_pacing import ReplyPagePacer
 from .risk import TRIGGER_STATUSES
 from .root_comments import fetch_comment_count, fetch_root_page
 from .source import fetch_detail, fetch_page
-from .source_gate import IMAGE_BILIIMG, IMAGE_HDSLB, source_request
+from .source_endpoints import (
+    COMMENT_COUNT, DETAIL, FEED, HOMEPAGE_WARMUP, IMAGE_TYPES, OPUS_PAGE, PROFILE, REPLIES,
+    ROOT_COMMENTS, SPACE_WARMUP, WARMUP_TYPES,
+)
+from .source_gate import source_request
 
 
 # 一轮内其余类型的固定顺序；触发类型总是排在最前，先验证拦住我们的那类接口。
-CANONICAL_ORDER = (
-    "feed", "comment_count", "root_comments", "replies", "detail", "opus_page",
-    "profile", "homepage_warmup", "space_warmup", IMAGE_HDSLB, IMAGE_BILIIMG,
-)
-IMAGE_TYPES = (IMAGE_HDSLB, IMAGE_BILIIMG)
+CANONICAL_ORDER = (FEED, COMMENT_COUNT, ROOT_COMMENTS, REPLIES, DETAIL, OPUS_PAGE, PROFILE,
+                   HOMEPAGE_WARMUP, SPACE_WARMUP) + IMAGE_TYPES
 # 没有可用样本的固定原因：保持暂停，不冒充已恢复。
 SAMPLE_MISSING = "sample_missing"
 
@@ -47,21 +48,30 @@ def _image_type(url):
     return classified.endpoint_type
 
 
-def required_types(facts):
-    """当前待执行任务真正需要的接口类型；没在工作里用到的功能不加入探测。"""
+def required_types(facts, *, warmup_due=None):
+    """当前待执行任务真正需要的接口类型；没在工作里用到的功能不加入探测。
+
+    `warmup_due(uids)` 由生产评论会话工厂给出（`WarmupCache` 的 TTL／重试冷却）：只有
+    恢复后首次取会话时真的会发首页／空间预热，才把两类预热并入必需集——缓存命中或刚
+    失败仍在重试冷却期就不强加无关请求。UP 资料只在新增或校验 UP 时用到，后台没有这类
+    待办，因此不因已存 identities 就无条件探测。
+    """
     types = set()
     if facts["selected"]:
         # 每个节拍要采样页面信号并读取独立评论计数。
-        types.update(("opus_page", "comment_count"))
+        types.update((OPUS_PAGE, COMMENT_COUNT))
         if facts["pending_work"] or facts["comment"] is None:
             # 位置未知或需要评论同步时会再读 detail 刷新 locator。
-            types.add("detail")
+            types.add(DETAIL)
+        if warmup_due is not None and warmup_due([item["uid"] for item in facts["selected"]]):
+            # 检查本身就要按 UP 取评论会话，冷启动／过期后第一件事就是首页与空间预热。
+            types.update(WARMUP_TYPES)
     if facts["pending_work"] and facts["comment"] is not None:
-        types.add("root_comments")
+        types.add(ROOT_COMMENTS)
         if facts["replies"] is not None:
-            types.add("replies")
+            types.add(REPLIES)
     if facts["recent"]:
-        types.add("feed")
+        types.add(FEED)
     for item in facts["media"]:
         if item["status"] == "success":
             continue
@@ -82,6 +92,14 @@ def ordered_types(required, trigger=None):
 
 def _first(values):
     return values[0] if values else None
+
+
+def _session_uid(facts):
+    """预热样本只能取“恢复后真要开会话”的 UP，不能拿未必工作的 identities 充数。"""
+    for sample in (facts["comment"], facts["replies"]):
+        if sample is not None:
+            return sample["uid"]
+    return _first([item["uid"] for item in facts["selected"]])
 
 
 def _need(value):
@@ -112,11 +130,13 @@ class RiskProber:
     """
 
     def __init__(self, store, gate, client, *, comments=None, downloader=None,
-                 clock=None, reply_page_pacer=None):
+                 clock=None, reply_page_pacer=None, warmup_due=None):
         self.store = store
         self.gate = gate
         self.client = client
         self.comments = comments
+        # 由生产会话工厂提供的“恢复后是否真会发预热”；缺省表示本装配没有会话预热。
+        self.warmup_due = warmup_due
         self.downloader = downloader
         self.clock = clock if clock is not None else time.monotonic
         self.reply_page_pacer = (reply_page_pacer if reply_page_pacer is not None
@@ -131,7 +151,8 @@ class RiskProber:
             return None
         facts = await to_thread.run_sync(self.store.risk_probe_facts)
         trigger = (status.get("last_trigger") or {}).get("endpoint_type")
-        claim = await self.gate.claim_probe(ordered_types(required_types(facts), trigger))
+        required = required_types(facts, warmup_due=self.warmup_due)
+        claim = await self.gate.claim_probe(ordered_types(required, trigger))
         if claim is None:
             return None
         round_ref = correlation_id(claim["round"])
@@ -196,45 +217,45 @@ class RiskProber:
 
     async def _run(self, kind, facts, watch):
         """发一个最小有效 GET 并走原解析校验；失败原样抛给本轮结算。"""
-        if kind == "feed":
+        if kind == FEED:
             uid = _need(_first(facts["recent"]))
             watch["uid"] = uid
             # 只验证当前 recent UP 的首批，不继续翻页。
             await discover_recent(self.client, uid, 1, pages=1)
-        elif kind == "opus_page":
+        elif kind == OPUS_PAGE:
             target = _need(_first(facts["selected"]))
             watch.update(uid=target["uid"], dynamic_id=target["id"])
             await fetch_page(self.client, target["id"])
-        elif kind == "detail":
+        elif kind == DETAIL:
             target = _need(_first(facts["selected"]))
             watch.update(uid=target["uid"], dynamic_id=target["id"])
             # 仍校验目标与作者：不接受别的动态或别的作者顶替。
             await fetch_detail(self.client, target["id"], target["uid"])
-        elif kind == "profile":
+        elif kind == PROFILE:
             uid = _need(_first(facts["identities"]))
             watch["uid"] = uid
             await fetch_profile(self.client, uid)
-        elif kind in ("comment_count", "root_comments"):
+        elif kind in (COMMENT_COUNT, ROOT_COMMENTS):
             sample = _need(facts["comment"])
             watch.update(uid=sample["uid"], dynamic_id=sample["dynamic_id"])
             client = await self._comment_client(sample["uid"])
             locator = {"oid": sample["oid"], "type": sample["type"]}
-            if kind == "comment_count":
+            if kind == COMMENT_COUNT:
                 await fetch_comment_count(client, locator, uid=sample["uid"])
             else:
                 await fetch_root_page(client, sample["dynamic_id"], locator, 1, uid=sample["uid"])
-        elif kind == "replies":
+        elif kind == REPLIES:
             sample = _need(facts["replies"])
             watch.update(uid=sample["uid"], dynamic_id=sample["dynamic_id"],
                          root_id=sample["root_id"])
             client = await self._comment_client(sample["uid"])
             locator = {"oid": sample["oid"], "type": sample["type"]}
             await self._reply_page(client, sample, locator)
-        elif kind in ("homepage_warmup", "space_warmup"):
-            uid = _need(_first(facts["identities"]))
+        elif kind in WARMUP_TYPES:
+            uid = _need(_session_uid(facts))
             watch["uid"] = uid
             client = await self._comment_client(uid)
-            url = ("https://www.bilibili.com/" if kind == "homepage_warmup"
+            url = ("https://www.bilibili.com/" if kind == HOMEPAGE_WARMUP
                    else f"https://space.bilibili.com/{uid}/dynamic")
             response = await client.get(url, timeout=10)
             response.raise_for_status()

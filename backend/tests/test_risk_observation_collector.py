@@ -10,15 +10,23 @@ import httpx
 
 from backend.bili_monitor.collector import Collector
 from backend.bili_monitor.risk import OBSERVATION_SECONDS, RiskGate, SourceRiskPaused
-from backend.bili_monitor.source_gate import GatedAsyncTransport, SourceReport, source_request
+from backend.bili_monitor.source_gate import (
+    GatedAsyncClient, GatedAsyncTransport, SourceReport, source_request,
+)
 from backend.bili_monitor.storage import Store
 from backend.tests.collector_clock import ControlledClock, eventually
 from backend.tests.collector_support import configured, empty_upstream
 from backend.tests.management_support import UID
+from backend.tests.test_notification_alerts import alerts
 
 
 # 一个心跳代表的最大活跃时间：观察进度按采集节拍提交，不被长停顿放大。
 CADENCE = 300.0
+
+
+def kind_of(request):
+    classified = source_request(request.method, request.url)
+    return classified.endpoint_type if classified is not None else None
 
 
 def request_for(path="/x/v2/reply/reply"):
@@ -52,12 +60,12 @@ def observing(path, clock, step=1):
     return store, gate
 
 
-def harness(path, clock, upstream, cadence=CADENCE):
+def harness(path, clock, upstream, cadence=CADENCE, page_check_seconds=0):
     store, gate = observing(path, clock)
-    client = httpx.AsyncClient(
-        transport=GatedAsyncTransport(httpx.MockTransport(upstream), gate=gate))
+    client = GatedAsyncClient(
+        transport=GatedAsyncTransport(httpx.MockTransport(upstream), gate=gate), gate=gate)
     collector = Collector(store, client, clock=clock, risk=gate,
-                          cadence=lambda: cadence, page_check_seconds=0)
+                          cadence=lambda: cadence, page_check_seconds=page_check_seconds)
     return store, gate, client, collector
 
 
@@ -142,6 +150,81 @@ def test_collector_clears_observation_after_ten_active_minutes_of_real_collectio
 
     asyncio.run(scenario())
     assert store.read_checks(UID)[0]["work"] == "complete"
+
+
+def test_business_rejection_on_comment_endpoints_never_counts_as_recovery(tmp_path):
+    """回归：HTTP 200 + `code=-352` 的评论拒绝不推进观察期，也不发“稳定恢复”告警。
+
+    观察期只认业务解析／资源校验成功的事实：传输层 2xx、错误页或跳转都不算。这里让
+    评论接口持续业务拒绝 12 分钟，观察进度必须停住；恢复真实成功后仍可正常清零。
+    """
+    path = tmp_path / "rejected-collector.sqlite"
+    configured(path)
+    clock = ControlledClock()
+    state = {"reject": False}
+    ledger = []
+
+    def upstream(request):
+        kind = kind_of(request)
+        ledger.append(kind)
+        if state["reject"] and kind in ("comment_count", "root_comments", "replies"):
+            return httpx.Response(200, json={"code": -352, "message": "FICTIONAL"})
+        return empty_upstream(request)
+
+    # 页面信号不在观察窗口内到期：这段窗口只允许评论接口流量；一拍代表 30 秒活跃采集。
+    store, gate, client, collector = harness(path, clock, upstream, cadence=30.0,
+                                             page_check_seconds=3600)
+
+    async def scenario():
+        async with client:
+            running = asyncio.create_task(collector.run())
+            try:
+                await first_tick(clock)
+                await eventually(lambda: bool(store.read_checks(UID)[0]["last_checked_at"]))
+                # 第一轮是真实成功采集：观察期凭已解析的业务请求推进。
+                for _ in range(20):
+                    if store.read_checks(UID)[0]["work"] == "complete":
+                        break
+                    await tick(clock, 30.0)
+                assert store.read_checks(UID)[0]["work"] == "complete"
+                baseline = gate.status()["observation"]["active_ms"]
+                assert baseline > 0
+
+                # 评论接口改成业务拒绝：12 分钟都不推进，也不清零、不告警。
+                state["reject"] = True
+                # 在途的真实成功检查先结算完，再取观察进度基线：这之后的 12 分钟只有业务拒绝。
+                await tick(clock, 30.0)
+                await tick(clock, 30.0)
+                baseline = gate.status()["observation"]["active_ms"]
+                ledger.clear()
+                for _ in range(24):
+                    await tick(clock, 30.0)
+                status = gate.status()
+                assert status["state"] == "observing"
+                assert status["backoff_step"] == 1
+                assert status["observation"]["active_ms"] == baseline
+                assert "comment_count" in ledger
+                reasons = [row["snapshot"]["reason"] for row in alerts(path)]
+                assert "risk_stable" not in reasons
+
+                # 真实业务成功仍在同一观察期清零档位。
+                state["reject"] = False
+                for _ in range(80):
+                    if gate.status()["state"] == "normal":
+                        break
+                    await tick(clock, 30.0)
+                status = gate.status()
+                assert status["state"] == "normal" and status["backoff_step"] == 0
+            finally:
+                running.cancel()
+                try:
+                    await running
+                except asyncio.CancelledError:
+                    pass
+
+    asyncio.run(scenario())
+    reasons = [row["snapshot"]["reason"] for row in alerts(path)]
+    assert "risk_stable" in reasons
 
 
 def test_collector_does_not_discount_idle_observation_time(tmp_path):

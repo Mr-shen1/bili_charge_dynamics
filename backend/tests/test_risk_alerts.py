@@ -66,8 +66,8 @@ def trigger(gate, status_code=412):
 
 
 def business(gate):
-    """一次真实成功业务请求：观察期只认这类请求，预热与普通错误不算。"""
-    asyncio.run(gate.report(request_for("/x/v2/reply"), SourceReport(status_code=200)))
+    """一次已通过业务解析的请求：观察期只认这类事实，HTTP 2xx 与预热不算。"""
+    gate.note_business_success("comment_count")
 
 
 def due(gate, clock):

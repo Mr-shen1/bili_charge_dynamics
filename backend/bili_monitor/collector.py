@@ -16,7 +16,7 @@ from anyio import to_thread
 
 from .source import fetch_page, page_metadata, fetch_detail, COMMENT_LOCATOR_VERSION
 from .source_transport import PacedSourceTransport, SourcePacer
-from .source_gate import GatedAsyncTransport, SourceGate
+from .source_gate import GatedAsyncClient, GatedAsyncTransport, SourceGate
 from .source_client import SOURCE_HEADERS, source_client_event_hooks
 from .source_cookies import load_source_cookie_pairs
 from .comment_client import RequestsCommentClientFactory, open_comment_client
@@ -174,13 +174,18 @@ class Collector:
         await to_thread.run_sync(self.store.recover_discoveries, self.clock.now())
         collector_event("risk_work_resumed", backoff_step=status["backoff_step"])
 
+    @staticmethod
+    def _log_paused(paused):
+        """被保护暂停不是失败：只留一条固定日志，不写检查结果、失败事实或成功时间。"""
+        collector_event("source_risk_paused_work_aborted", risk_state=paused.status["state"],
+                        backoff_step=paused.status["backoff_step"])
+
     def _settle(self, task):
         """任务结算：被保护暂停不是失败，不写检查结果／成功时间，只留一次固定日志。"""
         try:
             task.result()
         except SourceRiskPaused as paused:
-            collector_event("source_risk_paused_work_aborted", risk_state=paused.status["state"],
-                            backoff_step=paused.status["backoff_step"])
+            self._log_paused(paused)
 
     def _failure_alerts(self, error, object_key, category="collection"):
         """一次真实失败 → 告警登记项（不读日志、不扫描、不访问上游）。
@@ -370,11 +375,8 @@ class Collector:
                             collector_event("sync_skipped", reason="selection_changed",
                                             stage=session.stage,
                                             **source_refs(uid=session.uid, dynamic_id=session.id))
-                            await self._finish_session(session, succeeded=False, archive=None)
-                            if session.target_lease is not None:
-                                await session.target_lease.release()
-                            sessions.pop(key, None)
-                            attempted.add(key)
+                            await self._drop_session(sessions, attempted, key, session,
+                                                     settled="failed")
                             continue
                         try:
                             generation = await to_thread.run_sync(lambda: self.store.claim_archive(
@@ -382,26 +384,19 @@ class Collector:
                         except Exception as error:
                             collector_failure("sync_execution_failed", error,
                                               credentials_configured=self.credentials_configured)
-                            await self._finish_session(session, succeeded=False, archive=None)
-                            if session.target_lease is not None:
-                                await session.target_lease.release()
-                            sessions.pop(key, None)
-                            attempted.add(key)
+                            await self._drop_session(sessions, attempted, key, session,
+                                                     settled="failed")
                             continue
                         if generation is None:
-                            await self._finish_session(session, succeeded=False, archive=None)
-                            if session.target_lease is not None:
-                                await session.target_lease.release()
-                            sessions.pop(key, None)
-                            attempted.add(key)
+                            await self._drop_session(sessions, attempted, key, session,
+                                                     settled="failed")
                             continue
                         session.generation = generation
                     if self.scheduler is not None and not await session.target_lease.renew():
                         collector_event("sync_skipped", reason="target_lease_lost",
                                         **source_refs(uid=session.uid, dynamic_id=session.id))
-                        await session.target_lease.release()
-                        sessions.pop(key, None)
-                        attempted.add(key)
+                        # 租约已失去：不再结算它的结果，只补释放并记本拍已尝试。
+                        await self._drop_session(sessions, attempted, key, session, settled=None)
                         continue
                     heavy = (self.scheduler.heavy_slot(f"{session.uid}:{session.id}", session.stage)
                              if self.scheduler is not None else nullcontext())
@@ -416,9 +411,8 @@ class Collector:
                                           credentials_configured=self.credentials_configured)
                         session.alerts.extend(
                             self._failure_alerts(error, f"{session.uid}:{session.id}"))
-                        await self._finish_session(session, succeeded=False, archive=None)
-                        sessions.pop(key, None)
-                        attempted.add(key)
+                        await self._drop_session(sessions, attempted, key, session,
+                                                 settled="failed")
                         continue
                     progressed = True
                     collector_event("dispatch_turn", stage=outcome.stage, result=outcome.status,
@@ -426,20 +420,33 @@ class Collector:
                                     heavy_held=self.scheduler is not None,
                                     **source_refs(uid=session.uid, dynamic_id=session.id))
                     if session.done:
-                        await self._finish_session(session)
-                        sessions.pop(key, None)
-                        attempted.add(key)
+                        await self._drop_session(sessions, attempted, key, session)
                 if not progressed:
                     return
         except SourceRiskPaused as paused:
             # 暂停不是失败：停止本轮派发，保留 running 领取与已提交分片。
-            collector_event("source_risk_paused_work_aborted", risk_state=paused.status["state"],
-                            backoff_step=paused.status["backoff_step"])
+            self._log_paused(paused)
         finally:
             # 风控、取消或异常退出时只释放本进程持有权；running 领取留给既有恢复路径。
             for session in sessions.values():
                 if self.scheduler is not None:
                     await session.target_lease.release()
+
+    async def _drop_session(self, sessions, attempted, key, session, *, settled="result"):
+        """退出一个目标会话的唯一入口。
+
+        `settled="result"` 按会话结果结算，`"failed"` 记一次失败，`None` 表示不结算
+        （尚未领取或目标租约已失去）。结算本身会释放目标租约，不结算的退出在这里补
+        释放；无论如何都把目标记入本拍已尝试，否则同一轮会重复派发同一个目标。
+        """
+        if settled == "result":
+            await self._finish_session(session)
+        elif settled == "failed":
+            await self._finish_session(session, succeeded=False, archive=None)
+        elif session.target_lease is not None:
+            await session.target_lease.release()
+        sessions.pop(key, None)
+        attempted.add(key)
 
     async def _open_session(self, target):
         uid, id = target["uid"], target["id"]
@@ -690,14 +697,14 @@ async def open_collector(database, *, source_gate: SourceGate | None = None, sou
     uploader = None
     try:
         uploader = OSSUploader.from_environment() if owns_uploader else media_uploader
-        async with httpx.AsyncClient(
+        async with GatedAsyncClient(
             transport=PacedSourceTransport(
                 GatedAsyncTransport(source_transport, gate=gate, source_lease=leases), pacer=pacer),
             timeout=10, trust_env=False, follow_redirects=False,
-            headers=SOURCE_HEADERS, event_hooks=source_hooks,
-        ) as source_client, httpx.AsyncClient(
+            headers=SOURCE_HEADERS, event_hooks=source_hooks, gate=gate,
+        ) as source_client, GatedAsyncClient(
             transport=GatedAsyncTransport(media_transport, gate=gate, source_lease=leases),
-            timeout=30, trust_env=False
+            timeout=30, trust_env=False, gate=gate,
         ) as media_client:
             if probe is not None:
                 yield Collector(store, source_client, ImageDownloader(media_client), uploader,
@@ -714,9 +721,12 @@ async def open_collector(database, *, source_gate: SourceGate | None = None, sou
                         trust_env=False, follow_redirects=False, headers=SOURCE_HEADERS,
                         event_hooks=source_hooks) as probe_client, httpx.AsyncClient(
                         transport=media_transport, timeout=30, trust_env=False) as probe_media:
+                    # 探测集合只并入“恢复后真会发出”的预热：判定来自生产会话工厂的
+                    # WarmupCache（TTL 内命中或仍在重试冷却期都不强加无关请求）。
                     prober = RiskProber(store, risk, probe_client, comments=probe_comments,
                                         downloader=ImageDownloader(probe_media),
-                                        clock=(clock.monotonic if clock is not None else None))
+                                        clock=(clock.monotonic if clock is not None else None),
+                                        warmup_due=getattr(comments, "warmup_due", None))
                     yield Collector(store, source_client, ImageDownloader(media_client), uploader,
                                     comment_client_factory=comments, clock=clock,
                                     credentials_configured=bool(cookie_pairs), risk=risk,

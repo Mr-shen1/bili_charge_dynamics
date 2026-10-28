@@ -64,9 +64,14 @@ def trigger(gate, status_code=412):
     return False
 
 
-def business(gate, status_code=200, path="/x/v2/reply", host="api.bilibili.com"):
-    """一次真实成功业务请求：经同一报告入口，因此观察期才能知道确有采集发生。"""
+def http(gate, status_code=200, path="/x/v2/reply", host="api.bilibili.com"):
+    """一次真实发送的传输结果：只有 HTTP 状态，没有业务解析，因此不算成功业务请求。"""
     asyncio.run(gate.report(request_for(path, host), SourceReport(status_code=status_code)))
+
+
+def business(gate, kind="comment_count"):
+    """一次已通过业务解析／资源校验的请求：观察期只认这份事实。"""
+    gate.note_business_success(kind)
 
 
 def deadline_on_clock(status):
@@ -150,10 +155,12 @@ def test_idle_and_failed_ticks_never_discount_the_observation_window(tmp_path):
     # 空闲十分钟：没有任何成功业务请求，不进观察进度。
     for _ in range(3):
         assert tick(gate, 200)["observation"]["active_ms"] == 0
-    # 普通错误响应与仅有的预热都不算成功业务请求，也不抵扣。
-    business(gate, status_code=500)
+    # 普通错误响应、HTTP 2xx 与仅有的预热都不算成功业务请求，也不抵扣。
+    http(gate, status_code=500)
     assert tick(gate, 200)["state"] == "observing"
-    business(gate, path="/", host="www.bilibili.com")  # 首页预热
+    http(gate, status_code=200)  # 只是传输成功，业务解析并未通过
+    assert tick(gate, 200)["state"] == "observing"
+    business(gate, kind="homepage_warmup")  # 预热即使成功也不算业务请求
     assert tick(gate, 200)["state"] == "observing"
     assert gate.status()["observation"]["active_ms"] == 0
     assert gate.status()["observation"]["successes"] == 0
@@ -166,6 +173,25 @@ def test_idle_and_failed_ticks_never_discount_the_observation_window(tmp_path):
     status = tick(gate, 300)
     assert status["state"] == "normal"
     assert status["observation"]["successes"] == 0
+
+
+def test_http_success_or_redirect_alone_never_advances_the_observation_window(tmp_path):
+    """回归：HTTP 2xx／3xx 只是传输事实，业务拒绝（200+code=-352）与跳转都不是恢复证据。"""
+    clock = ControlledClock()
+    _, gate = open_gate(tmp_path / "http-only.sqlite", clock)
+    observing(gate, clock)
+
+    for status_code in (200, 204, 302, 200):
+        http(gate, status_code=status_code)
+        status = tick(gate, 300)
+        assert status["state"] == "observing"
+        assert status["backoff_step"] == 1
+        assert status["observation"]["active_ms"] == 0
+        assert status["observation"]["successes"] == 0
+
+    # 只有业务解析／资源校验成功才推进，并仍然需要满 10 分钟。
+    business(gate)
+    assert tick(gate, 600)["state"] == "normal"
 
 
 def test_observation_progress_is_persisted_for_the_read_only_status(tmp_path):

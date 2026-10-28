@@ -17,6 +17,7 @@ from .source_client import comment_request_headers
 from .source_cookies import load_source_cookie_pairs
 from .reply_pacing import ReplyPagePacer
 from .risk import SourceRiskPaused
+from .source_endpoints import REPLIES, note_business_success
 from .source_gate import OpenSourceGate, SOURCE_HOSTS, SourceReport, ThreadSourceGate, source_request
 from .source_transport import SourcePacer
 
@@ -127,7 +128,7 @@ class RequestsCommentClient:
             lease = (self.source_lease.source_slot(source.endpoint_type)
                      if self.source_lease is not None and source is not None else nullcontext())
             async with lease:
-                if source is None or source.endpoint_type != "replies":
+                if source is None or source.endpoint_type != REPLIES:
                     return await self._send(url, params, headers, timeout)
                 # 楼中楼：发送与页后等待同一个串行段，失败的请求也等待；首个请求前不等待。
                 timing = None
@@ -144,6 +145,10 @@ class RequestsCommentClient:
             return await to_thread.run_sync(self._get, url, params, headers, timeout)
         finally:
             self.session.hop = None
+
+    def note_business_success(self, endpoint_type):
+        """业务解析成功后转发给同一 Gate：评论会话自己不在传输层伪造业务成功。"""
+        note_business_success(self.gate, endpoint_type)
 
     async def prepare(self):
         # 与 create_session 相同：每个 URL 独立 best-effort，返回后等 1–3 秒。
@@ -183,6 +188,14 @@ class WarmupCache:
     def cooling(self, key):
         attempted = self._attempted.get(key)
         return attempted is not None and self.clock() - attempted < self.retry
+
+    def due(self, key):
+        """该会话下次使用时是否真会发首页／空间预热。
+
+        已预热且未过 TTL，或刚尝试过仍在重试冷却期，都不会发：两者都不该被风控探测
+        强加无关请求。首次使用（冷启动）与 TTL 过期后都会真的发送。
+        """
+        return not self.fresh(key) and not self.cooling(key)
 
     async def ensure(self, key, prepare):
         """首次使用同步预热；过期且不在冷却期时后台刷新；其余立即返回。"""
@@ -247,6 +260,11 @@ class RequestsCommentClientFactory:
 
     def _fingerprint(self):
         return cookie_fingerprint(self.cookie_pairs)
+
+    def warmup_due(self, uids):
+        """这些 UP 恢复后首次取会话时是否会真的发预热（供探测集合只覆盖实际需要）。"""
+        fingerprint = self._fingerprint()
+        return any(self.warmup.due((uid, fingerprint)) for uid in uids)
 
     async def client(self, uid):
         """按 UP 复用会话但不触发预热：探测只验证可用性，不暗中补做首页／空间预热。"""

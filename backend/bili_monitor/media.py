@@ -7,6 +7,7 @@ from typing import Protocol
 from anyio import to_thread
 
 from .source import safe_url
+from .source_endpoints import IMAGE_DOMAINS, image_endpoint_type, note_business_success
 from .contracts import APIError
 from .collector_logging import collector_event, collector_failure, source_refs
 from .risk import SourceRiskPaused
@@ -16,7 +17,7 @@ class MediaUploader(Protocol):
     async def upload(self, key: str, content: bytes, content_type: str) -> str: ...
 
 
-IMAGE_SOURCE_DOMAINS = ("hdslb.com", "biliimg.com")
+IMAGE_SOURCE_DOMAINS = tuple(domain for domain, _ in IMAGE_DOMAINS)
 IMAGE_EXTENSIONS = {
     "image/jpeg": ".jpg", "image/jpg": ".jpg", "image/pjpeg": ".jpg",
     "image/png": ".png", "image/x-png": ".png", "image/apng": ".apng",
@@ -28,7 +29,7 @@ IMAGE_EXTENSIONS = {
 
 
 def is_image_source_host(host):
-    return any(host == domain or host.endswith("." + domain) for domain in IMAGE_SOURCE_DOMAINS)
+    return image_endpoint_type(host) is not None
 
 
 def is_archive_delivery_url(url):
@@ -106,6 +107,8 @@ class ImageDownloader:
         content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
         if not content_type.startswith("image/") or not response.content:
             raise ValueError("Invalid image response")
+        # 图片验证成功也是一次成功业务请求；域族只是分类，不影响“确已取到图片”的事实。
+        note_business_success(self.client, image_endpoint_type(host))
         return response.content, content_type
 
 

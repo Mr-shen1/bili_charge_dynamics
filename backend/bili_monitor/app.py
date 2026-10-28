@@ -22,7 +22,7 @@ from .source import verify_author
 from .source_transport import PacedSourceTransport, SourcePacer
 from .risk import RiskGate, SourceRiskPaused, paused_response
 from .dispatch import DispatchLeases
-from .source_gate import GatedAsyncTransport, SourceGate
+from .source_gate import GatedAsyncClient, GatedAsyncTransport, SourceGate
 from .source_client import SOURCE_HEADERS, source_client_event_hooks
 from .source_cookies import load_source_cookie_pairs
 from .comment_client import RequestsCommentClientFactory
@@ -87,7 +87,7 @@ def create_app(
                                                         reply_page_pacer=reply_page_pacer,
                                                         source_lease=scheduler)
             uploader = media_uploader if media_uploader is not None else OSSUploader.from_environment()
-            async with httpx.AsyncClient(
+            async with GatedAsyncClient(
                 # 注入替身时沿用既有“只替换外部 HTTP”的语义（不额外分页等待）；
                 # 生产装配把分页等待放在外层、发送许可紧贴实际发送。
                 transport=(GatedAsyncTransport(profile_transport, gate=gate, source_lease=scheduler)
@@ -95,11 +95,11 @@ def create_app(
                            else PacedSourceTransport(
                                GatedAsyncTransport(gate=gate, source_lease=scheduler), pacer=pacer)),
                 timeout=10, trust_env=False, follow_redirects=False,
-                headers=SOURCE_HEADERS, event_hooks=source_hooks,
-            ) as profiles, httpx.AsyncClient(
+                headers=SOURCE_HEADERS, event_hooks=source_hooks, gate=gate,
+            ) as profiles, GatedAsyncClient(
                 # 图片下载是独立 client：它同样只经源站许可，OSS 上传不走这里。
                 transport=GatedAsyncTransport(media_transport, gate=gate, source_lease=scheduler),
-                timeout=30, trust_env=False,
+                timeout=30, trust_env=False, gate=gate,
             ) as media_client:
                 application.state.profiles = profiles
                 application.state.downloader = ImageDownloader(media_client)

@@ -8,19 +8,26 @@ import httpx
 import pytest
 
 from backend.bili_monitor.collector import Collector
-from backend.bili_monitor.comment_client import RequestsCommentClient
+from backend.bili_monitor.comment_client import (
+    RequestsCommentClient, RequestsCommentClientFactory, WarmupCache,
+)
 from backend.bili_monitor.reply_pacing import ReplyPagePacer
-from backend.bili_monitor.source_endpoints import REPLIES_URL, ROOT_COMMENTS_URL
+from backend.bili_monitor.source_endpoints import (
+    HOMEPAGE_WARMUP, REPLIES_URL, ROOT_COMMENTS_URL, SPACE_WARMUP, WARMUP_TYPES,
+)
 from backend.bili_monitor.source_transport import SourcePacer
 from backend.bili_monitor.risk import RiskGate, SourceRiskPaused
 from backend.bili_monitor.risk_probe import RiskProber, required_types
-from backend.bili_monitor.source_gate import GatedAsyncTransport, SourceReport, source_request
+from backend.bili_monitor.source_gate import (
+    GatedAsyncClient, GatedAsyncTransport, SourceReport, source_request,
+)
 from backend.bili_monitor.storage import Store
 from backend.tests.archive_support import archive_client
 from backend.tests.collector_clock import ControlledClock, eventually
 from backend.tests.collector_support import configured, empty_upstream
 from backend.tests.management_support import UID
 from backend.tests.test_replies import reply_source
+from backend.tests.test_source_gate import TransportResponse
 from backend.tests.root_support import prepare
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -437,3 +444,96 @@ def test_reply_probe_goes_through_the_production_comment_session_for_one_hundred
     # 探测没有暗补预热：会话上只有这三类评论请求。
     assert all("homepage" not in url and "space.bilibili.com" not in url
                for url, _ in session.requests)
+
+
+def _fake_client_factory(session):
+    """真实 `RequestsCommentClient` 只换掉线程内 I/O：工厂、预热缓存与等待都保持生产实现。"""
+    def build(uid, pairs, pacer):
+        client = RequestsCommentClient(uid, pairs, pacer,
+                                       reply_page_pacer=ReplyPagePacer(sleep=_no_wait))
+        client.session = session
+        return client
+    return build
+
+
+WARMUP_URLS = ("https://www.bilibili.com/", f"https://space.bilibili.com/{UID}/dynamic")
+
+
+def test_probe_covers_warmups_only_when_recovery_really_warms_a_session(tmp_path):
+    """Spec2 场景：只有恢复后真会发的首页／空间预热才并入必需集。
+
+    依据生产会话工厂：冷启动必然发预热；`WarmupCache` 命中期（TTL 内）不发，因此也不
+    强加探测；越过 TTL 后又会真的发出，于是一并被探测。UP 资料不是后台待办，始终不加入。
+    """
+    path = tmp_path / "probe-warmup.sqlite"
+    state = {}
+    roots = archive_with_pending_work(path, state)
+    clock = ControlledClock()
+    store = Store(path)
+    store.migrate()
+    gate = RiskGate(store, clock=clock)
+    session = _FakeRequestsSession({
+        "https://www.bilibili.com/": {},
+        f"https://space.bilibili.com/{UID}/dynamic": {},
+        "https://api.bilibili.com/x/v2/reply/count": {"code": 0, "data": {"count": 8}},
+        ROOT_COMMENTS_URL: json.loads((FIXTURES / "root-comments.json").read_text()),
+        REPLIES_URL: json.loads((FIXTURES / "replies.json").read_text()),
+    })
+    comments_factory = RequestsCommentClientFactory(
+        cookie_pairs=(), pacer=SourcePacer(sleep=_no_wait), gate=gate,
+        clock=clock.monotonic, client_factory=_fake_client_factory(session),
+        reply_page_pacer=ReplyPagePacer(sleep=_no_wait),
+        warmup=WarmupCache(clock=clock.monotonic))
+    probe_comments = _fake_client_factory(session)(UID, (), SourcePacer(sleep=_no_wait))
+    business = GatedAsyncClient(
+        transport=GatedAsyncTransport(httpx.MockTransport(count_handler(state, roots)), gate=gate),
+        gate=gate)
+    probe_client = httpx.AsyncClient(transport=httpx.MockTransport(count_handler(state, roots)))
+    prober = RiskProber(store, gate, probe_client, comments=_Comments(probe_comments),
+                        clock=clock.monotonic, warmup_due=comments_factory.warmup_due,
+                        reply_page_pacer=ReplyPagePacer(sleep=_no_wait))
+
+    def claimed_types(status):
+        return {item["endpoint_type"] for item in status["probe"]["results"]}
+
+    def requested_urls():
+        return [url for url, _ in session.requests]
+
+    async def scenario():
+        async with business, probe_client:
+            # ① 冷启动：还没有任何预热记录，恢复后第一次取会话就会发首页与空间预热。
+            facts = await asyncio.to_thread(store.risk_probe_facts)
+            required = required_types(facts, warmup_due=comments_factory.warmup_due)
+            assert set(WARMUP_TYPES) <= required
+            # UP 资料只在新增／校验 UP 时用到：身份表存在也不因此探测。
+            assert "profile" not in required
+
+            # ② 真实使用会话：预热写入缓存，TTL 内再取会话不会发预热。
+            async with comments_factory(UID):
+                pass
+            assert set(WARMUP_URLS) <= set(requested_urls())
+            assert comments_factory.warmup_due([UID]) is False
+            facts = await asyncio.to_thread(store.risk_probe_facts)
+            assert not (set(WARMUP_TYPES) & required_types(
+                facts, warmup_due=comments_factory.warmup_due))
+            session.requests.clear()
+            with pytest.raises(SourceRiskPaused):
+                await gate.report(request_for("/x/v2/reply/count"), SourceReport(status_code=412))
+            clock.advance(deadline_on_clock(gate.status()))
+            status = await prober.probe_if_due()
+            assert status["state"] == "observing"
+            assert not (claimed_types(status) & set(WARMUP_TYPES))
+            assert not (set(WARMUP_URLS) & set(requested_urls()))
+
+            # ③ 观察期再触发，时钟越过预热 TTL：预热会真的发出，因此必须一并验证。
+            with pytest.raises(SourceRiskPaused):
+                await gate.report(request_for("/x/v2/reply/count"), SourceReport(status_code=412))
+            clock.advance(clock.value + 400)
+            assert comments_factory.warmup_due([UID]) is True
+            session.requests.clear()
+            status = await prober.probe_if_due()
+            assert status["state"] == "observing"
+            assert set(WARMUP_TYPES) <= claimed_types(status)
+            assert set(WARMUP_URLS) <= set(requested_urls())
+
+    asyncio.run(scenario())

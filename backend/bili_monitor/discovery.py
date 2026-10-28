@@ -3,7 +3,7 @@
 import httpx
 
 from .identifiers import is_valid_id
-from .source_endpoints import FEED_URL
+from .source_endpoints import FEED, FEED_URL, note_business_success
 
 
 class DiscoveryError(Exception):
@@ -110,6 +110,7 @@ async def _discover(client, uid, n, should_continue, on_progress, pages=None):
             cursors.add(next_offset)
         # 先核验整份已请求响应，损坏条目不能靠不合格或提前截断被隐藏。
         candidates = [_candidate(item, uid) for item in items]
+        note_business_success(client, FEED)
         for id, qualified in candidates:
             if qualified:
                 if id not in seen:

@@ -1,14 +1,16 @@
-"""显式的一次当前入选集合初始化；读取归档不调用本模块，无定时器。"""
+"""显式的一次当前入选集合初始化与正文提交；读取归档不调用本模块，无定时器。
+
+评论与媒体由 08 的 `TargetSession` 步骤机按可提交分片推进；本模块内的整轮入口
+（`sync_target`／`sync_roots`）已因无调用者删除，`sync.py` 只留 `initialize`、
+`comment_metadata` 与 `sync_body`。`replies.sync_replies` 仍作为历史专项回归适配器
+保留，只由 `test_reply_incremental`／`test_reply_page_pacing`／`test_reply_page_resume`
+三个测试文件调用，生产统一经 `TargetSession`／单页步骤推进，不由它分派。
+"""
 
 from anyio import to_thread
 
 from .source import fetch_detail, fetch_page, page_body, page_metadata
-from .root_comments import sync_roots
-from .replies import sync_replies
-from .media import sync_media
-from .comment_status import ROOT_METADATA_VERSION
 from .collector_logging import collector_event, collector_failure, source_refs
-from .comment_client import open_comment_client
 from .risk import SourceRiskPaused
 
 
@@ -111,43 +113,3 @@ async def sync_body(store, client, uid, id, generation, comment_observation, now
     return succeeded
 
 
-async def sync_target(store, client, uid, id, generation, downloader=None, uploader=None, *,
-                      pending_comments_only=False, comment_observation=None, now=None, comment_client_factory=None,
-                      full_replies=False, on_failure=None):
-    """复用同一归档链；已完成正文不因独立评论工作重新访问来源。"""
-    archive = await to_thread.run_sync(store.read_archive, id)
-    previous_locator = archive.get("comment_locator") or {}
-    version = comment_observation.get("observed_version") if comment_observation is not None else None
-    body_complete = (comment_observation is not None and archive["work"]["text"] == "success"
-                     and archive["synced_version"] == version)
-    body_restricted = (comment_observation is not None and archive["work"]["text"] == "restricted"
-                       and archive.get("restricted_version") == version
-                       and comment_observation.get("content_visible") is not True)
-    # 受限登记不冒充正文成功；版本变化或正文恢复可见时重新读取。
-    # 媒体组落后于正文时也须重新确认来源，不能只凭历史图片成功推进版本。
-    body_complete = body_complete and archive.get("media_version") == version
-    if body_complete or body_restricted:
-        metadata = comment_metadata(comment_observation)
-        succeeded = await to_thread.run_sync(store.observe_archive, id, generation, metadata)
-    else:
-        succeeded = await sync_body(store, client, uid, id, generation, comment_observation, now)
-    archive = await to_thread.run_sync(store.read_archive, id)
-    current_locator = archive.get("comment_locator") or {}
-    locator_changed = any(previous_locator.get(key) != current_locator.get(key) for key in ("oid", "type"))
-    if (not pending_comments_only or locator_changed
-            or archive.get("synced_root_metadata_version", 0) < ROOT_METADATA_VERSION
-            or any(archive["work"][part] != "success" for part in ("comments", "replies"))):
-        async with open_comment_client(client, uid, comment_client_factory) as comments_client:
-            # 显式初始化与元信息格式升级要求完整走完根页；普通计数变化只做增量扫描。
-            full_roots = (not pending_comments_only
-                          or archive.get("synced_root_metadata_version", 0) < ROOT_METADATA_VERSION)
-            roots_result = await sync_roots(store, comments_client, id, generation, now=now, uid=uid,
-                                            on_failure=on_failure, full=full_roots)
-            # 增量基准完全由 replies.scan_due 决定（新楼、rcount 变化、上次失败、校准到期）；
-            # 不让重试触发 full=True，否则热帖会陷入「全量重扫 → 期间计数变化 → 再全量重扫」。
-            await sync_replies(store, comments_client, id, generation, roots_result, now=now, uid=uid,
-                               full=full_replies, on_failure=on_failure)
-    await sync_media(store, downloader, uploader, id, current_only=True, now=now)
-    for root_id in await to_thread.run_sync(store.media_root_ids, id):
-        await sync_media(store, downloader, uploader, id, current_only=True, root_id=root_id, now=now)
-    return succeeded

@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from .contracts import APIError
+from .source_endpoints import PROFILE, note_business_success
 
 
 logger = logging.getLogger(__name__)
@@ -108,6 +109,7 @@ async def fetch_profile(client, uid):
             raise ValueError("Invalid avatar URL")
         # 访问 port 触发非法端口校验，但不跟随该 URL 发起任何请求。
         _ = url.port
+        note_business_success(client, PROFILE)
         return name, face
     except httpx.TimeoutException:
         failure_reason = "timeout"
