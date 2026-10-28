@@ -279,6 +279,23 @@ CONFIG_CHANGED=0
 declare -A STATE=()
 
 # ── 本向导自有 helpers（不属于 wizard library） ────────────────────────────
+# confirm_strict "question"：显式 y/n 门，空回车不算答复而是重新提问。
+# wizard library 的 confirm 是 [y/N]（空回车 = 取消），本向导每个阶段都用这个，
+# 因为“没表态”在安装/启动这种不可轻易回退的步骤上不该被当成任何一种答复。
+# 只接受 y/yes / n/no；EOF（Ctrl-D 或 stdin 断开）视为取消，绝不自动继续。
+confirm_strict() {
+    local reply=""
+    while :; do
+        printf '  %s? %s [y/n] ' "$YELLOW" "$1"
+        read -r reply || { printf '\n'; return 1; }
+        case "$reply" in
+            [Yy] | [Yy][Ee][Ss]) return 0 ;;
+            [Nn] | [Nn][Oo]) return 1 ;;
+            *) printf '  %s请明确输入 y 或 n（空回车不算答复）%s\n' "$DIM" "$RESET" ;;
+        esac
+    done
+}
+
 die() { printf '\n  %s✖ %s%s\n\n' "$YELLOW" "$1" "$RESET" >&2; exit 1; }
 okf() { printf '  %s✓%s %s\n' "$GREEN" "$RESET" "$1"; }
 notef() { printf '  %s%s%s\n' "$DIM" "$1" "$RESET"; }
@@ -606,6 +623,7 @@ write_managed_nginx_main() { # $1 out $2 modules|no-modules
         printf 'http {\n'
         printf '    include %s/mime.types;\n' "$NGINX_ROOT"
         printf '    default_type application/octet-stream;\n'
+        printf '    types_hash_max_size 2048;\n'
         printf '    sendfile on;\n'
         printf '    keepalive_timeout 65;\n'
         printf '    include %s/conf.d/*.conf;\n' "$NGINX_ROOT"
@@ -717,6 +735,25 @@ ensure_nginx_main() {
     state_save   # F2：立即落盘，不等外层 Stage 5；否则中断后重跑会把自家受管 main 误判为人工修改
     rm -f "$tmp_orig" "$tmp_new"
     okf "已核验并备份发行版原始 nginx.conf → $backup（0600），替换为受管 main（无 server、无 80 监听）"
+}
+
+# nginx_main_is_pristine_fresh_install：盘上的 nginx 主配置是否仍是「本次由本向导
+# 新装、且与同版本缓存包内原文逐字节相同」的发行包默认配置。成立时 Stage 5 的
+# ensure_nginx_main 会备份并把它隔离成受管 main，所以 Stage 1 的静态 80 扫描不该把
+# 它当第三方监听拦下——那是启动前的硬阻断，不是安装阶段该 fail-closed 的对象。
+# 任何一项不成立（不是本次新装、被人工改过、拿不到可信缓存包）都返回非 0，
+# 调用方继续按外来 80 监听报错。
+nginx_main_is_pristine_fresh_install() {
+    local fresh ver pkg
+    [[ -f "$NGINX_MAIN" ]] || return 1
+    fresh="$(state_get "pkg:nginx-fresh-install")"
+    [[ -n "$fresh" ]] || return 1
+    ver="$(nginx_installed_version)"
+    [[ -n "$ver" && "$ver" == "$fresh" ]] || return 1
+    LC_ALL=C pacman -Qo "$NGINX_MAIN" >/dev/null 2>&1 || return 1
+    pkg="$(find_cached_nginx_pkg)" || return 1
+    # 进程替换：不落盘，--check 仍然真正只读。
+    cmp -s <(bsdtar -xOf "$pkg" "$NGINX_STOCK_CONF" 2>/dev/null) "$NGINX_MAIN"
 }
 
 # list_static_listen_80：静态列出残留 80 监听（排除本项目 bili.conf）
@@ -1129,7 +1166,12 @@ preflight() {
     static80="$(list_static_listen_80)"
     if [[ -n "$static80" ]]; then
         while IFS= read -r line; do
-            problem "已存在的 80 监听：$line（本向导会硬阻断，不会启动对外监听 80 的 nginx；请人工移走该 server/监听后重跑）"
+            # 本次新装、未被改动过的包默认 main：Stage 5 会备份并隔离，不算阻塞。
+            if [[ "$line" == "$NGINX_MAIN":* ]] && nginx_main_is_pristine_fresh_install; then
+                notef "包自带默认站点（$line）：本次新装且与缓存包原文一致，Stage 5 会备份并隔离"
+            else
+                problem "已存在的 80 监听：$line（本向导会硬阻断，不会启动对外监听 80 的 nginx；请人工移走该 server/监听后重跑）"
+            fi
         done <<<"$static80"
     else
         notef "静态扫描：现有 nginx 配置中无 80 监听"
@@ -1195,7 +1237,7 @@ run_wizard() {
     step "sudo install -d -m 0755 -o root -g root $STATE_DIR"
     note "uv 只作为 root 装进 $UV_SYSTEM；bili 的 CPython 与 uv 缓存都落在 /home/bili，"
     note "不复用 kevin 的 ~/.local、不 source 任何 ~/.local 启动脚本。"
-    confirm "授权并开始安装系统依赖？" || die "已取消；未做任何系统改动"
+    confirm_strict "授权并开始安装系统依赖？" || die "已取消；未做任何系统改动"
     sudo_auth
     local nginx_preinstalled=0 nginx_fresh_ver=""
     LC_ALL=C pacman -Q nginx >/dev/null 2>&1 && nginx_preinstalled=1
@@ -1237,7 +1279,7 @@ run_wizard() {
     step "$DEPLOY_ROOT 0755、backup/ 0755、credentials/ 0700（空目录，无任何凭据）"
     step "$SITE_ROOT/releases、/etc/bili-monitor、$NGINX_ROOT/{conf.d,snippets}"
     note "不触碰 /srv 下既有的 ftp/、http/ 等无关目录。"
-    confirm "创建账号与目录？" || die "已取消；未做改动"
+    confirm_strict "创建账号与目录？" || die "已取消；未做改动"
     if getent passwd "$RUN_USER" >/dev/null 2>&1; then
         okf "复用已记录账号 $RUN_USER（uid=$(id -u "$RUN_USER")）"
     else
@@ -1270,7 +1312,7 @@ run_wizard() {
     say "代码来源：安装包内 git bundle（main@$SHORT），不克隆开发仓库工作区、不 import 开发 .venv。"
     say "依赖：$UV_SYSTEM sync --locked --no-dev --python 3.12，venv 就地 $APP_DIR/.venv。"
     note "首次需要访问 PyPI 与 uv 的 CPython 分发；缓存和解释器都在 /home/bili（ProtectHome=read-only 允许执行）。"
-    confirm "检出代码并安装锁定依赖？" || die "已取消；未做改动"
+    confirm_strict "检出代码并安装锁定依赖？" || die "已取消；未做改动"
     assert_anchor_stable            # 受信 HEAD 中途变动 / 包提交与锚点不一致 → 拒绝
     verify_package "$PACKAGE_DIR"   # 以 root/bili 使用包内容前再校验一次 MANIFEST 与信任锚
     verify_bundle_and_render
@@ -1327,7 +1369,7 @@ run_wizard() {
     step "$NGINX_SNIPPET 0644 root:root（与 deploy/nginx-locations.conf 逐字节相同）"
     step "$NGINX_CONF 0644 root:root（唯一差异 listen 127.0.0.1:$WEB_PORT）"
     note "若 nginx 主配置尚未 include conf.d/*.conf，会在备份后精准插入一行并立即 nginx -t；失败自动回滚。"
-    confirm "安装以上配置？" || die "已取消；未做改动"
+    confirm_strict "安装以上配置？" || die "已取消；未做改动"
     assert_anchor_stable                # 再确认锚点/源 HEAD 未漂移
     verify_package "$PACKAGE_DIR"       # 重新校验 MANIFEST/属主/无软链
     verify_bundle_and_render            # 再确认 render 与锚点提交一致（不信任可重算的 MANIFEST）
@@ -1362,7 +1404,7 @@ run_wizard() {
     stage "前端静态产物原子发布"
     say "把安装包内的生产 dist（$SHORT 干净快照构建）发布到 $SITE_ROOT/releases/<UTC>-$SHORT，再原子切换 current。"
     note "保留最新 5 个本项目命名规则的版本；不就地覆盖旧产物，避免已缓存哈希资源 404。"
-    confirm "发布前端？" || die "已取消；未做改动"
+    confirm_strict "发布前端？" || die "已取消；未做改动"
     require_managed "$SITE_ROOT/current" "current 符号链接"
     publish_frontend
     state_save
@@ -1396,7 +1438,7 @@ run_wizard() {
 
     say "接下来将：enable --now nginx、enable --now $SERVICE（配置有变化时 restart），"
     say "然后只对 127.0.0.1:$API_PORT / 127.0.0.1:$WEB_PORT 做只读 GET 健康检查（空库零上游请求）。"
-    confirm "启动 nginx 与 $SERVICE？" || die "已取消；配置已安装，服务未启动（可重跑本向导再启动）"
+    confirm_strict "启动 nginx 与 $SERVICE？" || die "已取消；配置已安装，服务未启动（可重跑本向导再启动）"
     # 启动前最后一次硬检查：有效配置（含 include）里不允许出现任何 80 监听。
     # 这里没有“确认覆盖”的选项：绝不允许先 enable 起来再靠健康检查发现暴露。
     assert_no_listen_80_effective
