@@ -75,23 +75,23 @@ collector 使用独立 INFO 级别的 stderr handler，保持 HTTPX/HTTPCore、O
 冷却阶梯固定为 **1、2、4、8、15、30 分钟**（`COOLDOWN_STEPS`）。首次在 `normal` 遇到 HTTP 412／429 进入第 1 档；观察期（`observing`）再次遇到时进入当前档的下一档；第 6 档之后再次触发直接转 `manual`。每档**到期都实际执行一轮探测**，一轮失败只推进一档，第 6 档失败转 `manual` 并停止自动探测。合法 `Retry-After` 只把期限推后，不会被更短的本地档位覆盖。
 
 - **状态转换**：`cooldown`（期限到期）→ `probing`（唯一 owner 领取）→ 全部通过 `observing`（保留 `backoff_step`，恢复普通发送；不补发冷却期间错过的检查）／任一轮失败回到 `cooldown`（下一档）或 `manual`。`normal` 与 `observing` 是唯一允许普通发送的状态。
-- **探测集合**：每轮冻结「本次触发接口类型 ∪ 当前待执行工作真正需要的类型」。当前实现的判定只看本地事实：有入选目标 → `opus_page`、`comment_count`（位置未知或有待同步工作时再加 `detail`）；有待同步工作且已存 locator → `root_comments`、且只有已知有回复的根才加 `replies`；有启用 recent 监控 → `feed`；有未成功媒体 → 对应图片域族。类型按主机＋路径模板归类，不按动态 ID／根 ID／页码扩增；没有工作用到的功能不为凑探测发请求。
+- **探测集合**：每轮冻结「本次触发接口类型 ∪ 当前待执行工作真正需要的类型」。当前实现的判定只看本地事实：有入选目标 → `opus_page`、`comment_count`（位置未知或有待同步工作时再加 `detail`）；有待同步工作且已存 locator → `root_comments`、且只有已知有回复的根才加 `replies`；有启用 recent 监控 → `feed`；有未成功媒体 → 对应图片域族；恢复后首次取评论会话会真的发首页／空间预热时（预热缓存未命中或已过 TTL 且不在重试冷却期，由生产会话工厂的 `WarmupCache` 判定）才加 `homepage_warmup`、`space_warmup`——缓存命中或冷却期不发，因此不强加无关请求。已存身份不等于待办资料请求：`profile` 只在新增／校验 UP 时用到，不因身份表存在而并入。类型按主机＋路径模板归类，不按动态 ID／根 ID／页码扩增；没有工作用到的功能不为凑探测发请求。
 - **执行**：按类型串行，触发类型先探测；每类只发一个最小有效 GET 并走原解析校验（计数、根页、楼中楼、detail、opus、feed、资料、首页／空间预热、图片各用对应上游解析；图片只用实际 GET，不用 HEAD）。楼中楼探测与正常分页同一条会话路径，同样缴纳页后 100ms 等待。任一类型未通过立即结束本轮，其余类型不再请求并保持 `pending`。
 - **样本与判定**：只用本地已知有效样本（已存 locator、已知有回复的根、已存来源图、已存 UP）；样本失效时不无限在线寻找，记为固定原因 `sample_missing` 并保持暂停。HTTP 200 但业务码或资源校验失败同样不通过；非 412／429 的探测失败只表示“本轮未通过”，沿用原有固定分类，不扩大普通业务错误分类，也不写检查失败或 `sync_error`。
 - **无业务副作用**：探测只验证可用性，不提交归档分片、不推进评论 checkpoint／`last_succeeded_at`、不写通知基线，也不生成业务通知；探测不暗中补做首页／空间预热。
 - **唯一 owner 租约**：轮次、owner 与租约（300 秒）随状态落库。租约内其他进程不能领取；进程崩溃后只能等租约到期再接管，接管重新确认本轮类型；旧 owner 提交结果或结束新一轮会被拒绝（owner＋轮次 fencing）。探测期间其他 `permit` 一律拒绝。
 - **采集调度**：探测由采集进程的固定节拍驱动（API 进程只读状态，不探测）。进入 `observing` 后，采集进程在没有在途任务时把上次被暂停打断的 `running` 领取归还为 `pending` 并从原断点继续，不需要重启进程。
-- **日志（脱敏）**：`risk_probe_started`（轮次关联号、类型数、档位）、`risk_probe_finished`（每类：类型、结果、HTTP 状态、固定原因、耗时、等待、业务 ID）、`risk_probe_round_finished`（通过与否、状态、档位、距下次探测秒数）、`source_risk_observing`／`source_risk_manual_wait`、`risk_work_resumed`。不含 URL、query、Cookie、正文或 owner／令牌。
+- **日志（脱敏）**：`risk_probe_started`（轮次关联号、类型数、档位）、`risk_probe_finished`（每类：类型、结果、HTTP 状态、固定原因、耗时、等待、业务 ID）、`risk_probe_round_finished`（通过与否、状态、档位、距下次探测秒数）、`risk_probe_skipped`（无可验证类型：`reason=no_required_types`，按状态代次只留一条）、`source_risk_observing`／`source_risk_manual_wait`、`risk_work_resumed`。不含 URL、query、Cookie、正文或 owner／令牌。
 
 ## 恢复观察期与人工探测（05）
 
-探测全部通过后仍保留档位，先进入 `observing`：普通发送与等待策略立即恢复，不为观察期额外降速。只有**确有成功业务请求的活跃采集时间连续满 10 分钟**（600 秒）才回到 `normal` 并把 `backoff_step` 清零。
+探测全部通过后仍保留档位，先进入 `observing`：普通发送与等待策略立即恢复，不为观察期额外降速。只有**确有成功业务请求的活跃采集时间连续满 10 分钟**（600 秒）才回到 `normal` 并把 `backoff_step` 清零。这里的“成功”只看业务事实：该请求已通过自己的业务解析与资源校验（正文页确认是目标动态、评论／回复真的取到并入库、图片确为非空 `image/*`），由业务层显式上报；HTTP 2xx／3xx 只是传输状态，`200 + code=-352` 的评论拒绝、`-412` 业务码、无效 JSON、错误页与跳转都不累计，首页／空间预热也不计。
 
-- **活跃时间的边界**：观察进度由采集进程的固定节拍提交，每拍最多计入一个节拍的时长；该区间内没有成功业务请求（空闲、只有普通错误）就不累计。API 进程的成功响应不抵扣观察期，稳定只看正常采集。
+- **活跃时间的边界**：观察进度由采集进程的固定节拍提交，每拍最多计入一个节拍的时长；该区间内没有成功业务请求（空闲、只有普通错误、只有业务拒绝或只有预热）就不累计。API 进程的成功响应不抵扣观察期，稳定只看正常采集。
 - **停机与重启**：停机时间不计入；采集进程启动时把观察进度重新累计（`observing_since` 改为启动时刻，`active_ms`／`successes` 归零），档位与人工态保留。
 - **观察期再遇风控**：`observing` 遇到 HTTP 412／429 进入当前档的下一档（第 6 档后转 `manual`），观察进度归零，不从第 1 档重来。
 - **人工态**：`manual` 只接受管理入口登记一轮探测；登记绑定当前人工态代次，重复登记幂等、不排多轮，采集进程未运行时保持“已登记”，API 自己不探测。采集进程领取后按 04 的同一执行器验证全部必需类型：通过进入同样的观察期，失败回到 `manual`（档位不变、需重新登记），没有“强行恢复发送”的入口。
-- **状态查询**：`GET /api/manage/risk` 的 `manual.probe_registered` 表达人工态登记，`observation` 表达观察进度；`state=normal`＋`backoff_step=0` 即稳定恢复。
+- **状态查询**：`GET /api/manage/risk` 的 `manual.probe_registered` 表达人工态登记，`observation` 表达观察进度，`generation` 是状态代次（迟到响应与探测租约只认同代次）；`state=normal`＋`backoff_step=0` 即稳定恢复。人工态登记后仍没有任何可验证类型时保持暂停，按代次记一条固定原因 `risk_probe_skipped reason=no_required_types`，不每拍重复日志也不无声空转。
 - **日志（脱敏、可关联）**：`source_risk_manual_probe_registered`、`source_risk_observation_restarted`、`source_risk_observation_cleared`、`risk_probe_claimed`、`risk_probe_round_finished`（含 `probe_origin=manual|cooldown`）。状态转移日志统一带 `previous_state`、`risk_state`、`risk_generation`、`backoff_step` 与 `probe_round_id`（数字关联号），不含 owner／租约令牌，也不产生业务通知。
 
 ## 单路重型与公平轮转（08）
