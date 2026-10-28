@@ -220,6 +220,12 @@ finish() {
 # 状态登记：/var/lib/bili-local-deployment/state.tsv（root 0644）记录 dir:/file:/symlink:/
 # db:/backup:/account:/commit:/service:；nginx.conf 的改前备份放在 /var/lib/bili-local-deployment/backups/
 # （root 0700），不往 /etc/nginx 里放非包拥有的文件。数据库由首启迁移创建，只登记、永不删除/覆盖。
+# 发行包 nginx 默认配置（B4）：新装 Arch/CachyOS 的 nginx.conf 自带激活的 listen 80（0.0.0.0）。
+# 本向导只对“本次新装 + pacman 拥有 + 与同版本缓存包逐字节相同”的原始配置做隔离：
+# 备份原文（root 0600）后替换为固定受管 main（仅 events/http + mime.types + conf.d include，无 server）。
+# 拿不到可信缓存/文件被改过/nginx 事先已存在 → fail closed。任何有效配置里的 80 监听都会在
+# enable/start 之前硬 die，没有“确认后照旧启动”的选项。
+#
 # 包信任锚：期望版本（锚点）来自“受信脚本仓库的已提交 HEAD（必须是 main）”或操作者 --commit，
 # 进入向导时固定；安装包版本必须等于该锚点，且 render/ 的 unit、snippet、nginx server 与
 # bundle 内该提交的 deploy 模板逐字节/仅 listen 差异一致（不信任可被重算的 MANIFEST）。
@@ -242,6 +248,9 @@ NGINX_MAIN="$NGINX_ROOT/nginx.conf"
 NGINX_CONF="$NGINX_ROOT/conf.d/bili.conf"
 NGINX_SNIPPET="$NGINX_ROOT/snippets/bili-locations.conf"
 NGINX_SITES_DIR="$NGINX_ROOT/sites-enabled"
+# 发行包默认配置的核验来源：pacman 已安装元数据 + 本地缓存的同一版本包（用 bsdtar 只读提取）
+PACMAN_PKG_CACHE="${PACMAN_PKG_CACHE:-/var/cache/pacman/pkg}"
+NGINX_STOCK_CONF="etc/nginx/nginx.conf"
 STATE_DIR="/var/lib/bili-local-deployment"
 STATE_FILE="$STATE_DIR/state.tsv"
 UV_SYSTEM="/usr/local/bin/uv"
@@ -267,7 +276,6 @@ COMMIT=""
 SHORT=""
 PROBLEMS=()
 CONFIG_CHANGED=0
-NGINX_80_RISK=0
 declare -A STATE=()
 
 # ── 本向导自有 helpers（不属于 wizard library） ────────────────────────────
@@ -383,7 +391,7 @@ require_managed() {
     case "$owner" in
         absent | ours) return 0 ;;
         db) die "$label 是本机数据库文件，本向导不安装、不覆盖、不删除：$path（请人工确认后处理）" ;;
-        modified) die "$label 已被修改：$path（SHA256 与上次安装记录不一致）；本向导拒绝覆盖。请先人工确认并把它移走/改名（**不要删除数据库或真实配置**），再重跑" ;;
+        modified) die "$label 已被修改：$path（SHA256 与上次安装记录不一致）；本向导拒绝覆盖。请保留现文件、备份与状态，不删除、不移动真实配置、不手改 state，并按 docs/deployment/README.md 人工核查来源后处理" ;;
         *) die "$label 是未识别的已存在对象：$path；默认拒绝覆盖。请人工确认来源后移走/改名（**不要直接删除数据库或真实配置**），再重跑" ;;
     esac
 }
@@ -552,48 +560,190 @@ install_managed() {
     okf "已安装：$dst（$mode root:root）"
 }
 
-ensure_nginx_main() {
-    [[ -f "$NGINX_MAIN" ]] || die "缺少 $NGINX_MAIN（nginx 包安装异常）"
-    if grep -qE '^[[:space:]]*include[[:space:]]+[^;]*conf\.d/\*\.conf[[:space:]]*;' "$NGINX_MAIN"; then
-        okf "nginx 主配置已 include conf.d/*.conf（不做修改）"
-    else
-        local backup line orig_mode
-        backup="$BACKUP_STATE_DIR/nginx.conf.$(date -u +%Y%m%dT%H%M%SZ).bak"
-        orig_mode="$(stat -c %a "$NGINX_MAIN")"
-        [[ "$(grep -cE '^[[:space:]]*http[[:space:]]*\{' "$NGINX_MAIN")" == "1" ]] ||
-            die "nginx.conf 的 http 块不是恰好一个，拒绝自动修改"
-        line="$(grep -n '^}' "$NGINX_MAIN" | tail -n1 | cut -d: -f1)"
-        [[ -n "$line" ]] || die "无法定位 nginx.conf 的 http 块结尾，拒绝自动修改"
-        # 备份放在 root 私有目录（0700），不往 /etc/nginx 里塞非包拥有的文件
-        sudo install -d -m 0700 -o root -g root "$BACKUP_STATE_DIR" || die "创建备份目录失败：$BACKUP_STATE_DIR"
-        sudo install -D -m 0600 -o root -g root "$NGINX_MAIN" "$backup" || die "备份 nginx.conf 失败"
-        sudo sed -i "${line}i\\    include $NGINX_ROOT/conf.d/*.conf;" "$NGINX_MAIN" || {
-            sudo install -m "$orig_mode" -o root -g root "$backup" "$NGINX_MAIN"
-            die "修改 nginx.conf 失败，已从 $backup 恢复"
-        }
-        if ! sudo nginx -t >/dev/null 2>&1; then
-            sudo install -m "$orig_mode" -o root -g root "$backup" "$NGINX_MAIN"
-            die "给 nginx.conf 加 include 后 nginx -t 失败，已从 $backup 恢复原文件"
-        fi
-        state_set "backup:$NGINX_MAIN" "$backup"
-        okf "已在 nginx.conf 的 http 块末尾加入 include conf.d/*.conf（原文件备份：$backup）"
-    fi
-    grep -qE '^[[:space:]]*include[[:space:]]+(/etc/nginx/)?mime\.types[[:space:]]*;' "$NGINX_MAIN" ||
-        die "nginx 主配置没有加载 mime.types：JS 会以 application/octet-stream 发出，浏览器会拒绝模块脚本。请先修好 nginx.conf 再重跑。"
-    okf "nginx 主配置加载 mime.types"
+# ── 发行包默认 nginx.conf 的处理（B4：新装 Arch/CachyOS 自带激活的 listen 80） ──
+# 原则：只对「本次由本向导新装 + 与本地缓存同版本包逐字节相同」的原始配置动手；
+# 拿不到可信原始包、文件被改过、或 nginx 在本次运行前就已存在，一律 fail closed（不动任何文件）。
+
+nginx_installed_version() { LC_ALL=C pacman -Q nginx 2>/dev/null | awk '{print $2}'; }
+
+# find_cached_nginx_pkg echo 唯一可信的同版本缓存包路径；0=恰好一个，1=版本未知，2=没有缓存，3=多个候选
+find_cached_nginx_pkg() {
+    local ver pkg
+    local -a hits=()
+    ver="$(nginx_installed_version)"
+    [[ -n "$ver" ]] || return 1
+    shopt -s nullglob
+    for pkg in "$PACMAN_PKG_CACHE"/nginx-"$ver"-*.pkg.tar.zst \
+        "$PACMAN_PKG_CACHE"/nginx-"$ver"-*.pkg.tar.xz; do
+        hits+=("$pkg")
+    done
+    shopt -u nullglob
+    case "${#hits[@]}" in
+        1) printf '%s' "${hits[0]}" ;;
+        0) return 2 ;;
+        *) return 3 ;;
+    esac
 }
 
-scan_listen_80() {
+# 用 bsdtar 从缓存包里只读提取包原始配置（不安装、不解包到系统）
+extract_pkg_nginx_conf() { # $1 pkg $2 out
+    bsdtar -xOf "$1" "$NGINX_STOCK_CONF" >"$2" 2>/dev/null && [[ -s "$2" ]]
+}
+
+# write_managed_nginx_main 输出固定的受管 main：只有 events/http 骨架 + mime.types + conf.d include，
+# 不含任何 server/默认站点，因此不可能继承发行包默认的 listen 80。
+write_managed_nginx_main() { # $1 out $2 modules|no-modules
+    local out="$1" with_modules="$2"
+    {
+        printf '# 本机受管 nginx 主配置（bili_charge_dynamics 部署向导生成，不是发行版原始文件）\n'
+        printf '# 发行包原始配置已备份到 /var/lib/bili-local-deployment/backups/（root 0600）。\n'
+        printf '# 刻意不含任何 server 块：站点全部来自下面的 conf.d/*.conf，避免继承默认 listen 80。\n'
+        printf 'worker_processes auto;\n\n'
+        if [[ "$with_modules" == "modules" ]]; then
+            printf 'include modules.d/*.conf;\n\n'
+        fi
+        printf 'events {\n    worker_connections 1024;\n}\n\n'
+        printf 'http {\n'
+        printf '    include %s/mime.types;\n' "$NGINX_ROOT"
+        printf '    default_type application/octet-stream;\n'
+        printf '    sendfile on;\n'
+        printf '    keepalive_timeout 65;\n'
+        printf '    include %s/conf.d/*.conf;\n' "$NGINX_ROOT"
+        printf '}\n'
+    } >"$out"
+}
+
+# ensure_nginx_main：
+#   A. 已登记为受管 main（上次已规范化）→ 只接受内容仍等于登记值，重跑不当作未知；
+#   B. 未登记 → 只处理“本次新装 + pacman 拥有 + 与缓存包原始配置逐字节相同”的发行版默认配置：
+#      备份原始文件（root 0600）→ 写入固定受管 main → nginx -t，失败按原 mode 回滚。
+ensure_nginx_main() {
+    [[ -f "$NGINX_MAIN" ]] || die "缺少 $NGINX_MAIN（nginx 包安装异常）"
+
+    local recorded current
+    recorded="$(state_get "file:$NGINX_MAIN")"
+    if [[ -n "$recorded" ]]; then
+        current="$(sudo sha256sum -- "$NGINX_MAIN" 2>/dev/null | cut -d' ' -f1)"
+        [[ "$current" == "$recorded" ]] ||
+            die "受管 nginx 主配置已被改动：$NGINX_MAIN（本向导拒绝覆盖；请人工确认后移走/恢复再重跑）"
+        grep -qE '^[[:space:]]*include[[:space:]]+[^;]*conf\.d/\*\.conf[[:space:]]*;' "$NGINX_MAIN" ||
+            die "受管 nginx 主配置缺少 conf.d include（内容与登记值一致但不完整）；请人工检查后移走再重跑"
+        # 迁移闸门：旧版向导只“加 include”，会把仍带默认 server/listen 80 的文件登记成受管。
+        # 这种登记值不能当安全版本续跑；一律交人工，绝不自动改写。
+        if grep -qE '^[[:space:]]*(server[[:space:]]*\{|listen[[:space:]])' "$NGINX_MAIN"; then
+            die "登记过的受管 nginx 主配置仍含 server/listen（可能是旧版向导留下的默认站点）；本向导不自动改写，也不建议手工改配置或 state。请保留现文件与其备份、保留 $STATE_FILE 不动（不删除、不移动真实配置、不手改 state），停止安装，并按 docs/deployment/README.md 人工核查来源后再处理。"
+        fi
+        okf "nginx 主配置是本向导登记过的受管版本（无默认 server、无 80 监听）"
+        return 0
+    fi
+
+    local fresh ver pkg tmp_orig tmp_new backup mode current_sha pkg_sha modules
+    fresh="$(state_get "pkg:nginx-fresh-install")"
+    [[ -n "$fresh" ]] ||
+        die "$NGINX_MAIN 未登记为受管版本，且 nginx 不是本次运行新装的。本向导不自动改写未知/既有/人工 nginx 配置（fail closed）：请保留现文件、备份与状态，不删除、不移动真实配置、不手改 state，并按 docs/deployment/README.md 人工核查来源后处理。"
+
+    ver="$(nginx_installed_version)"
+    [[ -n "$ver" && "$ver" == "$fresh" ]] ||
+        die "nginx 版本与本次新装记录不一致（记录 ${fresh:-无}，当前 ${ver:-未知}）；拒绝自动改写（fail closed）"
+
+    LC_ALL=C pacman -Qo "$NGINX_MAIN" >/dev/null 2>&1 ||
+        die "$NGINX_MAIN 不属于任何已安装包（可能被替换/移动）；拒绝自动改写（fail closed）"
+
+    pkg="$(find_cached_nginx_pkg)" || {
+        case "$?" in
+            1) die "取不到已安装的 nginx 包版本，无法核验原始配置（fail closed）" ;;
+            2) die "本机没有 nginx $ver 的缓存包（${PACMAN_PKG_CACHE}/nginx-${ver}-*.pkg.tar.*），无法逐字节证明原始配置；拒绝自动改写（fail closed）。可先用 pacman -Sw nginx 取缓存，或人工处理默认 server。" ;;
+            *) die "缓存里有多个 nginx $ver 归档，无法确定原始配置；拒绝自动改写（fail closed）" ;;
+        esac
+    }
+
+    tmp_orig="$(mktemp /var/tmp/bili-nginx-orig.XXXXXX)"
+    tmp_new="$(mktemp /var/tmp/bili-nginx-new.XXXXXX)"
+    extract_pkg_nginx_conf "$pkg" "$tmp_orig" ||
+        die "无法从缓存包提取 $NGINX_STOCK_CONF：$pkg（fail closed；未改动系统文件）"
+    if grep -qE '^[[:space:]]*load_module[[:space:]]' "$tmp_orig"; then
+        rm -f "$tmp_orig" "$tmp_new"
+        die "包原始 nginx.conf 使用 load_module（动态模块）；本向导不自动改写（fail closed），请人工处理"
+    fi
+    modules="no-modules"
+    grep -qE '^[[:space:]]*include[[:space:]]+modules\.d/\*\.conf[[:space:]]*;' "$tmp_orig" && modules="modules"
+
+    current_sha="$(sudo sha256sum -- "$NGINX_MAIN" | cut -d' ' -f1)"
+    pkg_sha="$(sha256sum -- "$tmp_orig" | cut -d' ' -f1)"
+    if [[ "$current_sha" != "$pkg_sha" ]]; then
+        # F2 中断恢复：写盘成功但没来得及登记时，现文件应等于“同一生成器”的预期受管 main。
+        # 只有在本次新装来源、pacman 归属、缓存包原文都已成立的前提下才走到这里；
+        # 逐字节一致才补登记（绝不重写系统文件），不一致照旧拒绝，不接管任意未知配置。
+        local tmp_expected
+        tmp_expected="$(mktemp /var/tmp/bili-nginx-expect.XXXXXX)"
+        write_managed_nginx_main "$tmp_expected" "$modules" || {
+            rm -f "$tmp_orig" "$tmp_new" "$tmp_expected"
+            die "生成受管 nginx 主配置失败"
+        }
+        if cmp -s "$tmp_expected" "$NGINX_MAIN"; then
+            state_set "file:$NGINX_MAIN" "$current_sha"
+            state_save
+            rm -f "$tmp_orig" "$tmp_new" "$tmp_expected"
+            okf "检测到本向导已写入的受管 main 但状态未落盘（中断恢复）：只补登记 $current_sha，未重写系统文件"
+            return 0
+        fi
+        rm -f "$tmp_orig" "$tmp_new" "$tmp_expected"
+        die "$NGINX_MAIN 既不是包原始配置、也不是本向导应生成的受管 main（可能被人工修改或来源不明）；本向导 fail closed，未改动系统文件。请保留现文件与其备份、保留 $STATE_FILE 不动（不删除、不移动真实配置、不手改 state），停止安装，并按 docs/deployment/README.md 人工核查来源后再处理。"
+    fi
+    [[ -f "$NGINX_ROOT/mime.types" ]] || {
+        rm -f "$tmp_orig" "$tmp_new"
+        die "缺少 $NGINX_ROOT/mime.types（由 mailcap 提供）；拒绝改写主配置（fail closed）"
+    }
+    write_managed_nginx_main "$tmp_new" "$modules" || {
+        rm -f "$tmp_orig" "$tmp_new"
+        die "生成受管 nginx 主配置失败"
+    }
+
+    backup="$BACKUP_STATE_DIR/nginx.conf.$(date -u +%Y%m%dT%H%M%SZ).orig"
+    mode="$(stat -c %a "$NGINX_MAIN")"
+    sudo install -d -m 0700 -o root -g root "$BACKUP_STATE_DIR" || die "创建备份目录失败：$BACKUP_STATE_DIR"
+    sudo install -D -m 0600 -o root -g root "$NGINX_MAIN" "$backup" || die "备份 nginx.conf 失败"
+    sudo install -m "$mode" -o root -g root "$tmp_new" "$NGINX_MAIN" || {
+        rm -f "$tmp_orig" "$tmp_new"
+        die "写入受管 nginx 主配置失败；原始配置仍在 $backup"
+    }
+    if ! sudo nginx -t >/dev/null 2>&1; then
+        sudo install -m "$mode" -o root -g root "$backup" "$NGINX_MAIN"
+        rm -f "$tmp_orig" "$tmp_new"
+        die "受管 nginx 主配置未通过 nginx -t，已从 $backup 按原 mode 恢复发行版原始配置"
+    fi
+    state_set "backup:$NGINX_MAIN" "$backup"
+    state_set "file:$NGINX_MAIN" "$(sudo sha256sum -- "$NGINX_MAIN" | cut -d' ' -f1)"
+    state_save   # F2：立即落盘，不等外层 Stage 5；否则中断后重跑会把自家受管 main 误判为人工修改
+    rm -f "$tmp_orig" "$tmp_new"
+    okf "已核验并备份发行版原始 nginx.conf → $backup（0600），替换为受管 main（无 server、无 80 监听）"
+}
+
+# list_static_listen_80：静态列出残留 80 监听（排除本项目 bili.conf）
+list_static_listen_80() {
     [[ -f "$NGINX_MAIN" ]] || return 0
-    local hits conf_dir
-    conf_dir="$(dirname "$NGINX_CONF")"
-    hits="$(grep -rnE '^[[:space:]]*listen[[:space:]]+([^;]*:)?80([[:space:]]|;)' \
-        "$NGINX_MAIN" "$conf_dir" "${NGINX_SITES_DIR:-/etc/nginx/sites-enabled}" 2>/dev/null |
-        grep -v "^$NGINX_CONF:" || true)"
-    [[ -z "$hits" ]] && return 0
-    NGINX_80_RISK=1
-    local line
-    while IFS= read -r line; do warn "非本项目的 80 监听：$line"; done <<<"$hits"
+    grep -rnE '^[[:space:]]*listen[[:space:]]+([^;]*:)?80([[:space:]]|;)' \
+        "$NGINX_MAIN" "$(dirname "$NGINX_CONF")" "${NGINX_SITES_DIR:-$NGINX_ROOT/sites-enabled}" 2>/dev/null |
+        grep -v "^$NGINX_CONF:" || true
+}
+
+# assert_no_listen_80_effective：启动前的硬门。用 `nginx -T`（解析 include 后的有效配置）
+# 检查任何 80 监听；命中即 die，绝不允许“先 enable 起来再靠健康检查发现”。
+assert_no_listen_80_effective() {
+    local dump hit
+    dump="$(mktemp /var/tmp/bili-nginx-effective.XXXXXX)"
+    if ! sudo nginx -T >"$dump" 2>/dev/null; then
+        rm -f "$dump"
+        die "无法取得 nginx 有效配置（nginx -T 失败）；拒绝启用/启动 nginx"
+    fi
+    hit="$(grep -nE '^[[:space:]]*listen[[:space:]]+([^;]*:)?80([[:space:]]|;)' "$dump" | head -n3 || true)"
+    if [[ -n "$hit" ]]; then
+        while IFS= read -r line; do warn "有效配置里的 80 监听：$line"; done <<<"$hit"
+        rm -f "$dump"
+        die "nginx 有效配置仍包含 80 监听；拒绝 enable/start（不会先启动再检查）。请人工移走该 server/监听后重跑。"
+    fi
+    rm -f "$dump"
+    okf "nginx 有效配置（含 include）不含任何 80 监听"
 }
 
 assert_perm() {
@@ -834,10 +984,19 @@ health_checks() {
             fi
         done <<<"$(printf '%s' "$addrs" | tr ',' '\n')"
     done
-    if ss -H -ltn 2>/dev/null | awk '{print $4}' | grep -qE '(^|:)80$'; then
-        problem "系统上出现 80 端口监听（本项目不应占用 80）"
+    # 只保证「本实例」不占用 80：先看 nginx 有效配置，再看 80 上的 socket 是否属于 nginx 进程。
+    # 其它无关程序占用 80 不属于本项目的问题，也不去停它们。
+    if sudo nginx -T 2>/dev/null | grep -qE '^[[:space:]]*listen[[:space:]]+([^;]*:)?80([[:space:]]|;)'; then
+        problem "nginx 有效配置含 80 监听（本实例不应占用 80）"
     else
-        okf "没有 80 端口监听"
+        okf "nginx 有效配置不含 80 监听"
+    fi
+    if sudo ss -H -ltnp 'sport = :80' 2>/dev/null | grep -q 'users:(("nginx"'; then
+        problem "80 端口由 nginx 进程占用（本实例不应占用 80）"
+    elif sudo ss -H -ltn 'sport = :80' 2>/dev/null | grep -q .; then
+        notef "80 端口由其它程序占用（与本项目无关；未做任何处理）"
+    else
+        okf "80 端口无人监听"
     fi
     if systemctl is-active --quiet "$SERVICE"; then
         okf "$SERVICE active"
@@ -899,9 +1058,12 @@ preflight() {
         command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
     done
     ((${#missing[@]} == 0)) || problem "缺少基础命令：${missing[*]}"
-    for tool in nginx sqlite3 journalctl pgrep; do
-        command -v "$tool" >/dev/null 2>&1 || notef "$tool 尚未安装（依赖阶段会补 nginx/sqlite）"
+    for tool in sqlite3 journalctl pgrep bsdtar; do
+        command -v "$tool" >/dev/null 2>&1 || notef "$tool 尚未安装（依赖阶段会补 sqlite）"
     done
+    if ! command -v nginx >/dev/null 2>&1; then
+        warn "nginx 尚未安装：当前不能证明发行包默认配置安全。安装后本向导会先做原始配置核验（pacman 元数据 + 同版本缓存包逐字节比对）、备份并隔离默认站点，启动前再对有效配置做 80 硬检查；无法确认原始包则 fail closed。"
+    fi
 
     if package_version="$(LC_ALL=C pacman -Si nginx 2>/dev/null | sed -n 's/^Version[[:space:]]*:[[:space:]]*//p' | head -n1)" &&
         [[ -n "$package_version" ]]; then
@@ -953,7 +1115,7 @@ preflight() {
             modified) problem "内容与上次安装记录不同：$path（拒绝覆盖；请人工确认并移走/改名，不要删除数据库或真实配置）" ;;
             *)
                 if [[ "$path" == "$DB_PATH" ]]; then
-                    problem "已存在未登记数据库：$path；本向导**不删除、不覆盖数据库**。请人工确认来源后把它移走/改名（别删）再重跑"
+                    problem "已存在未登记数据库：$path；本向导**不删除、不覆盖数据库**。请保留数据库与现场，不删除、不移动数据库、不手改 state，并按 docs/deployment/README.md 人工核查来源后处理"
                 else
                     problem "已存在且未识别：$path（默认拒绝覆盖未知对象；请人工确认来源后移走/改名，不要删除数据库或真实配置）"
                 fi
@@ -963,7 +1125,15 @@ preflight() {
 
     check_port "$API_PORT" "后端 API"
     check_port "$WEB_PORT" "Nginx 站点"
-    scan_listen_80
+    local static80
+    static80="$(list_static_listen_80)"
+    if [[ -n "$static80" ]]; then
+        while IFS= read -r line; do
+            problem "已存在的 80 监听：$line（本向导会硬阻断，不会启动对外监听 80 的 nginx；请人工移走该 server/监听后重跑）"
+        done <<<"$static80"
+    else
+        notef "静态扫描：现有 nginx 配置中无 80 监听"
+    fi
 }
 
 run_wizard() {
@@ -1027,6 +1197,8 @@ run_wizard() {
     note "不复用 kevin 的 ~/.local、不 source 任何 ~/.local 启动脚本。"
     confirm "授权并开始安装系统依赖？" || die "已取消；未做任何系统改动"
     sudo_auth
+    local nginx_preinstalled=0 nginx_fresh_ver=""
+    LC_ALL=C pacman -Q nginx >/dev/null 2>&1 && nginx_preinstalled=1
     sudo pacman -S --needed --noconfirm nginx git rsync sqlite ||
         die "pacman 安装失败（若提示数据库过期，请人工 sudo pacman -Sy 后重跑；本向导不执行 -Syu）"
     command -v nginx >/dev/null || die "pacman 退出码为 0 但找不到 nginx"
@@ -1034,6 +1206,14 @@ run_wizard() {
     okf "git $(LC_ALL=C git --version | awk '{print $3}')"
     okf "rsync $(LC_ALL=C rsync --version | head -n1 | awk '{print $3}')"
     sudo install -d -m 0755 -o root -g root "$STATE_DIR" || die "创建 $STATE_DIR 失败"
+    if ((nginx_preinstalled == 0)); then
+        nginx_fresh_ver="$(nginx_installed_version)"
+        [[ -n "$nginx_fresh_ver" ]] || die "装完取不到 nginx 包版本（pacman -Q nginx 失败）"
+        state_set "pkg:nginx-fresh-install" "$nginx_fresh_ver"
+        okf "记录本次新装 nginx $nginx_fresh_ver：Stage 5 允许对“与缓存包逐字节相同”的原始配置做隔离"
+    else
+        notef "nginx 在本次运行前已安装：不会自动改写它的主配置（需人工确认，或由本向导上次登记过的受管 main）"
+    fi
     local uv_pkg_sha uv_installed_sha
     uv_pkg_sha="$(sha_of "$(pkg_file uv/uv)")"
     if [[ -f "$UV_SYSTEM" && "$(state_get "file:$UV_SYSTEM")" == "$uv_pkg_sha" &&
@@ -1161,7 +1341,15 @@ run_wizard() {
     install_managed render/etc/nginx/conf.d/bili.conf "$NGINX_CONF" 0644
     sudo systemctl daemon-reload || die "systemctl daemon-reload 失败"
     ensure_nginx_main
-    scan_listen_80
+    sudo nginx -t || die "nginx -t 失败；未启动任何服务（主配置已按需登记/回滚）"
+    local static80 line
+    static80="$(list_static_listen_80)"
+    if [[ -n "$static80" ]]; then
+        while IFS= read -r line; do warn "遗留 80 监听：$line"; done <<<"$static80"
+        die "存在非本项目的 80 监听；拒绝继续（本向导不会启动会对外监听 80 的 nginx）"
+    fi
+    okf "静态扫描：nginx 站点/主配置中无 80 监听"
+    assert_no_listen_80_effective
     local active_lines
     active_lines="$(sudo sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$CONF_ENV" | paste -sd, -)"
     [[ "$active_lines" == "BILI_DATABASE_PATH,PYTHONDONTWRITEBYTECODE,PYTHONUNBUFFERED" ]] ||
@@ -1185,6 +1373,7 @@ run_wizard() {
     say "先只做校验，不改变运行状态：nginx -t、systemd-analyze verify、权限与 env 有效行复核。"
     sudo nginx -t || die "nginx -t 失败；未启动任何服务"
     okf "nginx -t 通过"
+    assert_no_listen_80_effective
     local verify_output
     if ! verify_output="$(sudo systemd-analyze verify "$UNIT_FILE" 2>&1)"; then
         printf '%s\n' "$verify_output" | sed 's/^/    /'
@@ -1207,11 +1396,10 @@ run_wizard() {
 
     say "接下来将：enable --now nginx、enable --now $SERVICE（配置有变化时 restart），"
     say "然后只对 127.0.0.1:$API_PORT / 127.0.0.1:$WEB_PORT 做只读 GET 健康检查（空库零上游请求）。"
-    if ((NGINX_80_RISK)); then
-        warn "检测到非本项目的 80 监听配置；启用 nginx 可能使 80 继续对外监听。"
-        confirm "仍要启用 nginx？" || die "已取消；配置已安装但服务未启动"
-    fi
     confirm "启动 nginx 与 $SERVICE？" || die "已取消；配置已安装，服务未启动（可重跑本向导再启动）"
+    # 启动前最后一次硬检查：有效配置（含 include）里不允许出现任何 80 监听。
+    # 这里没有“确认覆盖”的选项：绝不允许先 enable 起来再靠健康检查发现暴露。
+    assert_no_listen_80_effective
     if systemctl is-active --quiet nginx; then
         sudo systemctl reload nginx || sudo systemctl restart nginx || die "nginx 重载失败"
         okf "nginx 已重载"

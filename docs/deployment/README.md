@@ -24,7 +24,7 @@
 | 项 | 云端（实测） | 本地（目标形态） | 影响 |
 | --- | --- | --- | --- |
 | 发行版／包管理 | Debian 13.6，`apt` | CachyOS（Arch 系），`pacman`（无 `apt`） | 只有「装组件」一行命令不同；`sudo` 本地已装 |
-| Nginx | 1.26.3（系统包，`/usr/sbin/nginx`） | 未安装，可装 Arch `extra` 的 1.30.x | 版本号不同，规则文本相同，须各自 `nginx -t` |
+| Nginx | 1.26.3（系统包，`/usr/sbin/nginx`），默认站点在 `sites-enabled` | 未安装，可装 Arch `extra` 的 1.30.x；包自带**激活的** `server { listen 80; }` 且无 `conf.d` include | 版本与包布局不同；本地安装后必须先隔离包默认的 80 站点再启用（见 §3.6），云端只需移除 `sites-enabled/default` |
 | Web 监听端口 | `127.0.0.1:4173` | `127.0.0.1:4273` | 只改安装后 `bili.conf` 的一行 `listen`；**避开既有 `~/.ssh/config` 中 Host `bili` 的 `LocalForward 4173`** |
 | API 监听端口 | `127.0.0.1:8000` | `127.0.0.1:8000` | 相同；`proxy_pass` 两处不用改 |
 | 浏览器入口 | 经 SSH 隧道 `http://127.0.0.1:4173` | 本机直连 `http://127.0.0.1:4273` | 云端必须先建隧道；本地不需要隧道 |
@@ -101,9 +101,9 @@ scripts/setup-local-deployment.sh --commit <40 位完整 SHA> --package <旧包�
 - 版本锚点：默认取**正在运行脚本所在的受信仓库的 `HEAD`**（要求 `HEAD == main`、该提交里存在同名脚本且与正在跑的脚本逐字节相同、两个安装脚本无未提交改动），否则向导直接拒绝并提示“先提交后正式安装，或用 `--commit` 回归旧包”。包目录依次取 `--package` → `$BILI_DEPLOY_PACKAGE` → `/var/tmp/bili-local-deployment/<锚点短 SHA>`；**版本不符的目录不会被采用**。
 - 打新包（无 sudo，普通用户）：`scripts/prepare-local-deployment-package.sh` 用当前 main HEAD，输出到 `/var/tmp/bili-local-deployment/<HEAD 短 SHA>`；另有 `--output DIR`、`--commit <完整 SHA>`（回归旧提交）与 `--replace`（仅覆盖 MANIFEST 可校验的同提交旧包）。脚本内没有硬编码提交号，也不从旧包反推期望版本。
 - **就绪判据**：准备包必须来自已提交的 main；以 `prepare` 成功、包内 MANIFEST/bundle 校验通过与 `--check` 退出 0 为唯一判据。包目录、`VERSION` 或本文存在都**不等于**已安装，也不等于锚点匹配。旧提交的包只配 `--commit` 回归，不代表现行安装版本。
-- 向导的阶段：预检（含包与锚点校验）→ 依赖（`pacman -S --needed`，不 `-Syu`，+ uv 到 `/usr/local/bin`）→ 账号与目录 → 从包内 bundle 检出到 `/srv/bili-monitor/app` 并 `uv sync --locked --no-dev` → 系统配置（env／unit／Nginx，`nginx -t` 失败回滚）→ 前端 `rsync` + `mv -Tf` 原子切 `current` → 校验后 `enable --now` 并跑第 4 节那组只读检查。root 写入前会再次确认锚点未变，并用包内锚点提交反向校验 `render/` 的 unit/snippet。
+- 向导的阶段：预检（含包与锚点校验）→ 依赖（`pacman -S --needed`，不 `-Syu`，+ uv 到 `/usr/local/bin`）→ 账号与目录 → 从包内 bundle 检出到 `/srv/bili-monitor/app` 并 `uv sync --locked --no-dev` → 系统配置（env／unit／Nginx；其中 Nginx 含[§3.6](#36-nginx-与静态站点) 的包默认 80 站点隔离硬门，`nginx -t` 失败则恢复备份且不启动服务）→ 前端 `rsync` + `mv -Tf` 原子切 `current` → 校验后 `enable --now` 并跑第 4 节那组只读检查。root 写入前会再次确认锚点未变，并用包内锚点提交反向校验 `render/` 的 unit/snippet。
 - 向导**不会**以 root 运行整个脚本、不捕获或保存 sudo 密码、不改 sudoers、不改 SSH／swap、不动 live-34。
-- 重跑边界（**不承诺“已有数据可随意重跑”**）：只有向导自己创建并在 `/var/lib/bili-local-deployment/state.tsv` 里记录且未被改动的对象才可续跑；**未识别的已存在对象一律拒绝**（含非本向导创建的 DB／env／unit／Nginx 配置／`current`），此时应人工判清来源，**不要删库、也不要按旧提示去“备份移除”受管文件**。首启由迁移创建的空库属于受管对象：即使第 7 阶段健康检查未全部通过，库也保留，修复问题后重跑可继续而不是重建。
+- 重跑边界（**不承诺“已有数据可随意重跑”**）：只有向导自己创建并在 `/var/lib/bili-local-deployment/state.tsv` 里记录且未被改动的对象才可续跑（写盘成功但登记未落地的 Nginx main 有唯一例外：条件成立且内容与受管写盘预期逐字节相同时只补登记、不重写，见[§3.6](#36-nginx-与静态站点)）；**未识别的已存在对象一律拒绝**（含非本向导创建的 DB／env／unit／Nginx 配置／`current`），此时应人工判清来源，**不要删库、也不要按旧提示去“备份移除”受管文件**。首启由迁移创建的空库属于受管对象：即使第 7 阶段健康检查未全部通过，库也保留，修复问题后重跑可继续而不是重建。
 - 状态与权威描述：沙箱测试结果、锚点拒绝矩阵与重跑语义以[交付 README](../../.scratch/local-cloud-deployment/README.md)、`evidence/verification-log.txt` 与脚本 `--help` 为准，本文不另行定义。**本次安装仍需用户在自己的 TTY 确认 `sudo`，不声称已完成**；因此 `nginx -t`、`systemd-analyze verify`、健康检查、重跑与浏览器验收的真机行为仍需执行后才有结论。
 - root 侧只留一份状态记录：`/var/lib/bili-local-deployment/state.tsv`（本脚本创建的目录／文件 SHA256／账号／release／软链），不是第二套配置来源。
 - **仍未安装**：截至本文编写时向导尚未被用户执行，因此本地依旧没有 `bili` 账号、`/srv/bili-monitor`、Nginx、unit 或数据库；真机结果（`nginx -t`、`systemd-analyze verify`、健康检查、浏览器验收）必须等执行后才能声称。
@@ -149,7 +149,7 @@ echo 'vm.swappiness=10' | sudo tee /etc/sysctl.d/99-bili.conf
 sudo sysctl -p /etc/sysctl.d/99-bili.conf
 ```
 
-本地 `/srv` 已有 `ftp/`、`http/` 等无关子项，**不要改动它们**；本地 `/etc/nginx` 目前只有 `mime.types`，没有 `sites-enabled`，所以云端 Debian 的 `rm -f /etc/nginx/sites-enabled/default` 在本地**不适用也不必执行**。
+本地 `/srv` 已有 `ftp/`、`http/` 等无关子项，**不要改动它们**；本地 `/etc/nginx` 在装包前只有 `mime.types`（属 `mailcap`）、没有 `sites-enabled`，所以云端 Debian 的 `rm -f /etc/nginx/sites-enabled/default` 在本地**不适用也不必执行**。但装上 nginx 包后会多出一份含**激活** `listen 80` 默认 server 的 `nginx.conf`，必须在启用前隔离——见[§3.6](#36-nginx-与静态站点) 的硬门。
 
 ### 3.2 运行账号与目录
 
@@ -249,20 +249,31 @@ sudo install -D -m 0644 /srv/bili-monitor/app/deploy/nginx-ecs-tunnel.conf \
 sudoedit /etc/nginx/conf.d/bili.conf      # listen 127.0.0.1:4173;  ->  listen 127.0.0.1:4273;
 ```
 
-确认主配置的 `http {}` 里加载了 `mime.types` 并 `include conf.d/*.conf`（Debian 与 Arch 的发行版默认都满足，但升级过的机器要自己看一眼）：
-
 ```bash
-sudo nginx -T 2>/dev/null | grep -E 'mime\.types|include .*conf\.d|listen 127\.0\.0\.1'
-```
-
-```bash
-sudo nginx -t
-# 云端（Debian 默认站点占 80，本项目不开 80；nginx 已在运行，实测 active）
+# 云端（Debian 的默认站点在 sites-enabled；本项目不开 80，nginx 已在运行，实测 active）
 sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t
 sudo systemctl reload nginx
-# 本地（Arch 无 sites-enabled，直接启用）
-sudo systemctl enable --now nginx
 ```
+
+**本地（CachyOS/Arch）不能直接 `enable --now`。** 发行版 nginx 包自带的 `/etc/nginx/nginx.conf` 里有一条**激活的**默认 server：`server { listen 80; root /usr/share/nginx/html; … }`（无地址即绑定 `0.0.0.0:80`），而且这份默认文件不含 `conf.d/*.conf` 的 include（`mime.types` 由 `mailcap` 提供）。只"追加 `conf.d` + 软确认"会让本实例在 `0.0.0.0:80` 上对外提供一个默认站点，这不是本项目允许的状态。
+
+本地按下面的定版流程执行，**任一条不满足就停手**（不做"先起来再说"的变通）：
+
+1. **只对本次新装的包默认配置动手。** 触发条件是向导记录的新装标记（`pkg:nginx-fresh-install`）：不是本次新装、或该配置已被人工改过，一律**不动**，交人工判断。
+2. **证明盘上文件就是包原文。** `pacman -Q nginx` / `pacman -Qo /etc/nginx/nginx.conf` 取实际版本与归属；从 pacman 缓存取**同版本且唯一**的包（`/var/cache/pacman/pkg/nginx-<该版本>-*.pkg.tar.zst`），`bsdtar -xOf <包> etc/nginx/nginx.conf` 与盘上文件**逐字节比对**。缓存缺失、存在多个候选、内容不符、缺 `mime.types`、或原文里有激活的 `load_module` ⇒ **一律不动并停止**（不改其它站点、不删 `default`／HTML 目录、不用 `--overwrite`）。
+3. **root 私有备份。** 备份为 `/var/lib/bili-local-deployment/backups/nginx.conf.<UTC>.orig`（目录 0700、文件 0600），不往 `/etc/nginx` 里制造非包拥有的文件。
+4. **规范成受管 main。** 结果里**没有默认 server、没有任何 `listen 80`**；保留原文的 `modules.d`（如原文有）、`mime.types` 与 `include conf.d/*.conf`。**绝不**把默认 server 的 `listen` 改成 `127.0.0.1:80`——那仍是 80 上的默认站点，不符合目标。
+5. **`nginx -t` 失败即回滚，且不启动服务。** 恢复原内容与原 mode；不存在"配置没通过但先把服务起来"的路径。
+6. **启动前的硬门（无 override）。** 在写配置、复检与 `enable` 之前都用生效配置（`nginx -T`）判定：只要出现任何 `:80` 监听（**含 `127.0.0.1:80`**）就拒绝继续；没有"仍要启用 nginx"之类可以越过此门的确认。
+7. **续跑规则。** 受管且安全（无 80）的 main 可续跑；旧受管 main 若仍是 80，不续跑，按第 2–5 步重新规范或交人工。
+8. **写盘后尚未登记的断点。** 若 main 已被写成本项目受管内容、但状态登记还没落地（例如中途退出），**只在**可信新装标记与包来源、权限条件均已成立、且当前内容与受管写盘预期**逐字节相同**时**补登记、不重写**；其它任何未知配置仍然拒绝，交人工处理。
+
+未安装 nginx 时，`--check` **只说明计划**（"装后包自带 `listen 80`，会被隔离"），**不等于**已经验证过安装后的 vendor 文件；逐字节确认只发生在安装之后、启用之前。
+
+验收只保证**本实例不占任何 `:80`**（生效配置里没有 `listen 80`，`ss` 里该项目只有 `127.0.0.1:8000` 与 `127.0.0.1:4273`）。宿主机上其它程序的 80 **只记录、不停掉**，也不在本项目承诺范围内。
+
+> 证据边界：以上"包自带激活 `listen 80`"是就**同版本号的 Arch 官方包**核验的；本机 CachyOS 优化包本体未取得，因此安装后仍必须按第 2 步用本机缓存包逐字节确认。脚本命令、提示文案与状态键以 `scripts/setup-local-deployment.sh --help` 及当前实现为准；真机 sudo 执行后的表现仍属待用户实测项。
 
 端口与规则约束（**两端相同**）：只监听回环；`/api`、`/api/…` 原样转发 `127.0.0.1:8000`，不拦截其错误；API 200/404/422 或 Nginx 502 都不得成为 SPA 入口；明确资源命名空间（`/assets/`、`/images/`、`/default-avatar*`）缺失返回 `404` + `Cache-Control: no-store`；`access_log off; error_log /dev/null;` 必须保留（见[附录：静态交付与缓存、路由约束](#附录静态交付与缓存路由约束)）。改 API 端口要同步改片段里的两处 `proxy_pass`；模板不会展开 shell 变量。
 
@@ -341,6 +352,7 @@ ss -tlnp | grep -E ':(4173|4273|8000)\b'
 | `curl -sSI "$WEB/"` | 入口 `200` + `Cache-Control: no-cache`（HEAD 足够，不涉压缩） | 从入口取实际哈希，不要固定旧值 |
 | 实际生产 JS/CSS（≥1024 B）的 GET | `200` + `Cache-Control: public, max-age=31536000, immutable` + `Content-Encoding: gzip` | **必须 GET 且声明压缩**；见下方命令 |
 | `ss -tlnp` | 只有 `127.0.0.1` 上的 8000 与 Web 端口 | 无 `0.0.0.0` 监听 |
+| `sudo nginx -T` 的生效配置 | 只有 `listen 127.0.0.1:<Web 端口>`；**任何 `:80`（含 `127.0.0.1:80`）与 `default_server` 都不允许** | 本实例不占 `:80`；宿主机其它程序的 80 只记录、不停掉 |
 | `journalctl -u bili-monitor` | 无 traceback、无迁移失败、无 `future schema`、无锁冲突 | 固定分类日志，不含 URL／正文／凭据 |
 | schema 版本（只读） | `user_version = 27` | 见下 |
 
@@ -452,6 +464,7 @@ sudo -u bili crontab -e
 | 管理页一直提示身份验证 | 仅云端 HTTPS 形态：确认 `realm`（`bili manage`）在所有受保护 location（`/manage`、`/manage/`、`/api/manage/`、`/api/sync/`）完全一致；先直接打开 `/manage` 触发登录，再回管理页操作 |
 | 通知不投递 | 先读 `GET /api/manage/notifications`：`off`／`system_only` 是**开关状态**，进程仍在跑；再确认是否设了 `BILI_NOTIFICATION_CONFIG`、路由配置是否合法（改文件后必须重启才生效） |
 | Nginx 起不来 | `sudo nginx -t`；`sudo nginx -T` 看最终生效配置；核对 `mime.types`、`root` 可读、监听端口与权限 |
+| 向导提示 80 监听 / 包默认配置无法确认 | **停止**：不要改成 `127.0.0.1:80`、不要强行 `enable`。先按[§3.6](#36-nginx-与静态站点) 确认 `nginx.conf` 是否包默认（同版本可信包逐字节比对）+ 做 root 私有备份，再隔离整个默认 server；`nginx -t` 失败先恢复备份且不启动 |
 
 日志纪律（两端相同）：Nginx 刻意关闭 access 与 server 级 error 日志，**外层代理、托管平台与新增 location 也不得重新开启原始 URI／请求体日志**；排障用 `nginx -t`、HTTP 状态、进程退出状态与 API 的固定脱敏错误，不要为了 debug 打印秘密。
 
@@ -564,7 +577,7 @@ ssh -N bili        # 长期保持可用 autossh -M 0 -N bili
 - 本机安装需要管理员在自己终端执行：`sudo` 需要密码且没有 NOPASSWD；代理侧无法提权，**不要**为了让代理执行而添加 NOPASSWD 规则，**也不要**把密码交给代理。建议一次性 `sudo -v` 后在同一终端连续执行 3.1–3.8。
 - 本机 **不复用** live-34 的任何东西：不用 `~/.config/systemd/user/bili-charge-live-34*.service`、不用 `~/.local/state/bili-charge-dynamics/live-34`、不用 18444／18445、不用仓库里的 `.venv`。新旧实例路径与端口不重叠。
 - 本机**不复制**云端生产数据库或秘密；新库为空，通知开关默认 `off`，无真实凭据。
-- 本机不需要 swap／`vm.swappiness` 调优，也不执行 Debian 的 `rm sites-enabled/default`；本地发行版与 Nginx 版本与云端不同，本文不声称一致。
+- 本机不需要 swap／`vm.swappiness` 调优，也不执行 Debian 的 `rm sites-enabled/default`；但**装包后必须先隔离包自带的 `listen 80` 默认站点**（见[§3.6](#36-nginx-与静态站点)），本实例只监听 `127.0.0.1:4273`。本地发行版与 Nginx 版本与云端不同，本文不声称一致。
 - 配套安装向导已交付：见[§3.0 本地：安装向导](#30-本地安装向导一个入口一个包)，正式命令是 `scripts/setup-local-deployment.sh`（先加 `--check` 只读预检；包目录默认按受信仓库 main HEAD 的短 SHA 解析，`--package`／`--commit` 仅在显式回归旧包时使用）会机械完成目录／账号／env／unit／Nginx／检出／前端与首次启动；本页 3.1–3.8 是它做的事的写法，供审阅与手工回退。交付物、包事实、重跑边界与验证证据见[本机部署交付与证据](../../.scratch/local-cloud-deployment/README.md)。**向导尚未被执行**，所以本文不声称本地已安装。首次部署的具体结果属于任务证据（`.scratch/`），不写进本页。
 
 ## 11. 历史指南的去向

@@ -186,3 +186,155 @@ RESULT=存在非注释改动 → prepare 会拒绝；新模板必须随新提交
 通过 46，失败 0
 旧包 MANIFEST（未改动）：
 65c05e5e2fc98a1efc33638a975dbba55b678f26792173632ee566ed2aeb459e  /var/tmp/bili-local-deployment/e58271c/MANIFEST.sha256
+
+## 13) B4 修复：新装 Arch/CachyOS nginx.conf 自带激活 listen 80（硬阻断 + 受管规范化）
+
+核验依据：/tmp/bili-nginx-native-default-check.md；真实发行包默认配置 fixture：
+  /tmp/bili-nginx-pkg.pIRIoM/extract/etc/nginx/nginx.conf（2717B, sha256 7cd7c15a98e2124a5cbf46e9483072d03e99f647c64d2ae0522c2ff43e1a49b9）
+
+### 修改（仅 scripts/setup-local-deployment.sh；未改 docs/、未提交）
+- 删除可覆盖的 80 软门（`仍要启用 nginx？` / `NGINX_80_RISK`）：脚本内已无该字符串
+- 新增 `list_static_listen_80`（排除本项目 bili.conf）与 `assert_no_listen_80_effective`（`nginx -T` 有效配置硬门，命中即 die，位于 enable/reload 之前）
+- 新装来源记录：Stage 2 仅在运行前没有 nginx 时写 `pkg:nginx-fresh-install=<版本>`
+- `ensure_nginx_main`：受管 main 续跑校验；未登记时只处理“本次新装 + pacman 拥有 + 与同版本缓存包逐字节相同”的原始配置 → 备份 0600 → 替换为固定受管 main（无 server/80）→ nginx -t 失败按原 mode 回滚；缺缓存/多候选/文件被改/非新装/缺 mime.types/load_module 一律 fail closed
+- 健康检查改为「本实例」口径：有效配置无 80，且 80 上没有 nginx 进程；其它程序占用 80 只提示不处理
+- 预检：未装 nginx 时明确提示不能证明默认配置安全；已存在 80 监听直接记 problem（硬阻断）
+
+### 正例（真实默认配置 → 备份 → 受管 main）
+### 原始发行包默认配置（fixture）
+sha256=7cd7c15a98e2124a5cbf46e9483072d03e99f647c64d2ae0522c2ff43e1a49b9
+38:    server {
+39:        listen       80;
+
+  ✓ 已核验并备份发行版原始 nginx.conf → /var/tmp/b4-demo.xPBcFC/sb/state/backups/nginx.conf.20261028T044235Z.orig（0600），替换为受管 main（无 server、无 80 监听）
+
+backup=/var/tmp/b4-demo.xPBcFC/sb/state/backups/nginx.conf.20261028T044235Z.orig
+backup_mode=600  backup_sha=7cd7c15a98e2124a5cbf46e9483072d03e99f647c64d2ae0522c2ff43e1a49b9
+### 受管 main 内容
+# 本机受管 nginx 主配置（bili_charge_dynamics 部署向导生成，不是发行版原始文件）
+# 发行包原始配置已备份到 /var/lib/bili-local-deployment/backups/（root 0600）。
+# 刻意不含任何 server 块：站点全部来自下面的 conf.d/*.conf，避免继承默认 listen 80。
+worker_processes auto;
+
+include modules.d/*.conf;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include /var/tmp/b4-demo.xPBcFC/sb/nginx/mime.types;
+    default_type application/octet-stream;
+    sendfile on;
+    keepalive_timeout 65;
+    include /var/tmp/b4-demo.xPBcFC/sb/nginx/conf.d/*.conf;
+}
+### 受管 main 中的 listen/server（应为空）
+（无）
+
+### 沙箱回归（真实 fixture 驱动）
+PASS  B4 正例：真实发行包默认配置备份后隔离为受管 main（无 server/80）且续跑幂等
+PASS  B4 负例：被人工改动的 nginx.conf 不动（fail closed）
+PASS  B4 负例：缺可信缓存包时不动（fail closed）
+PASS  B4 负例：非本次新装来源时不动（fail closed）
+PASS  B4 负例：多个缓存候选时不动（fail closed）
+PASS  B4：受管 main 未过 nginx -t 时按原内容/mode 回滚
+PASS  B4：缺 mime.types 时不改写（fail closed）
+PASS  B4：静态扫描识别默认 80 且排除本项目站点
+PASS  B4：有效配置含 80（含 127.0.0.1:80）硬阻断，无 80 放行
+PASS  预检：已存在默认 80 配置时硬报（不假称可隔离）
+PASS  预检：未安装 nginx 时明确提示不能证明默认配置安全
+通过 53，失败 0
+
+### 语法 / library / 旧包
+setup bash -n OK
+library 前缀 199 行 IDENTICAL
+显式旧包(23f50c4) 只读 check EXIT=0
+✓ 锚点 23f50c4（operator(--commit)）
+✓ 预检通过：目标路径/端口/账号均无未知占用
+只读预检通过（未写文件、未调用 sudo）。正式安装：
+旧包 MANIFEST 未改动: e3937823e207fd4fdbb4b3ef18f48a4c839c92b132c6def471bdd94e40e8f99b
+
+### 补充：旧版受管 main 迁移闸门（仍含 listen 80 的登记值不续跑）
+PASS  B4 正例：真实发行包默认配置备份后隔离为受管 main（无 server/80）且续跑幂等
+PASS  B4：旧版受管 main（仍含默认 listen 80）不续跑，交人工
+PASS  B4 负例：被人工改动的 nginx.conf 不动（fail closed）
+PASS  B4 负例：缺可信缓存包时不动（fail closed）
+PASS  B4 负例：非本次新装来源时不动（fail closed）
+PASS  B4 负例：多个缓存候选时不动（fail closed）
+PASS  B4：受管 main 未过 nginx -t 时按原内容/mode 回滚
+PASS  B4：缺 mime.types 时不改写（fail closed）
+PASS  B4：静态扫描识别默认 80 且排除本项目站点
+PASS  B4：有效配置含 80（含 127.0.0.1:80）硬阻断，无 80 放行
+PASS  预检：已存在默认 80 配置时硬报（不假称可隔离）
+PASS  预检：未安装 nginx 时明确提示不能证明默认配置安全
+通过 54，失败 0
+
+## 14) B4 复核修复：F1 fixture 入库 / F2 中断恢复
+
+### F1（阻塞项）fixture 入库，测试不再依赖 /tmp
+$ ls -l .scratch/local-cloud-deployment/tests/fixtures/
+总计 8
+-rw-r--r-- 1 kevin kevin 2717 10月28日 12:56 nginx-1.30.6-1.conf
+-rw-r--r-- 1 kevin kevin 1685 10月28日 12:56 README.md
+$ sha256sum/.wc
+7cd7c15a98e2124a5cbf46e9483072d03e99f647c64d2ae0522c2ff43e1a49b9  .scratch/local-cloud-deployment/tests/fixtures/nginx-1.30.6-1.conf
+2717 .scratch/local-cloud-deployment/tests/fixtures/nginx-1.30.6-1.conf
+
+$ 移走 /tmp/bili-nginx-pkg.pIRIoM 后复跑
+通过 57，失败 0
+
+$ 显式指向不存在的 fixture（不允许静默 skip）
+通过 45，失败 12
+
+### F2 中断恢复（冷重载，非同一进程内存）
+PASS  F1：入库 fixture 为真实 Arch 官方 1.30.6-1（2717B/sha 钉死）
+PASS  F2：登记立即落盘 + 冷重载 state 后续跑不重写/不重复备份
+PASS  F2：写盘后未登记的中断恢复——逐字节一致才补登记，绝不重写
+通过 57，失败 0
+
+### 语法 / library / 旧包 / 默认拒绝
+bash -n OK
+library 前缀 199 行 IDENTICAL
+显式旧包(23f50c4) 只读 check EXIT=0
+默认 repo-head check EXIT=1（脚本未提交，拒绝属正常）
+旧包 MANIFEST（未改动）: e3937823e207fd4fdbb4b3ef18f48a4c839c92b132c6def471bdd94e40e8f99b
+
+## 15) 复核后修正：删除“人工出路”清单，改为固定安全建议（§14 的三条出路作废）
+
+两个 fail-closed 分支（被改配置 / 旧版受管 main）现在的提示（脚本第 634、691 行）固定为：
+  “保留现文件与其备份、保留 state 文件不动（不删除、不移动真实配置、不手改 state），停止安装，并按 docs/deployment/README.md 人工核查来源后再处理。”
+不给 pacman/移走/手改 state 的“恢复步骤”；也不提供 adopt/force 选项。
+
+### 静态守卫 + 负向回归
+PASS  错误提示：被改配置 fail-closed 只给固定安全建议（不推手改 state/不移走/pacman）
+PASS  错误提示：旧版受管 main 只给固定安全建议
+通过 59，失败 0
+
+### 复跑（无 /tmp 依赖）
+通过 59，失败 0
+
+### 语法/前缀/旧包
+bash -n OK
+library 前缀 199 行 IDENTICAL
+显式旧包只读 check EXIT=0
+脚本中“pacman -S nginx/手改 state”出现次数（应仅安全建议的“不手改 state”1 次）: 2
+
+注：上一段计数 2 = 两条 fail-closed 提示里各一次“不手改 state”；脚本中 `pacman -S nginx` 为 0 次，移走/登记类推荐也为 0 次（静态守卫另行断言）。
+
+## 16) 文本一致性收口（只改测试/守卫/证据，未改 setup 逻辑与 docs）
+
+主线程已把 3 处纯消息统一为“保留现场 + 按唯一主指南人工核查”（require_managed 的已修改配置、非本次新装 nginx main、未登记 DB）。
+本轮只调整断言与静态守卫：
+- 既有 case 不再期望“移走/改名”：未登记 DB 用例改为断言“保留数据库与现场 / 不手改 state / 主指南指针”，并禁止出现“移走/改名、删除数据库”
+- require_managed 的 modified 分支与非新装 nginx 分支：新增同上断言，禁止旧“移走/改名”“移除默认 server”
+- 静态守卫新增：3 条已统一旧文案不得回退；必须存在“保留现文件、备份与状态”“保留数据库与现场”；“docs/deployment/README.md 人工核查来源”出现 ≥3 次
+
+### 复跑
+通过 59，失败 0
+
+### 语法/library/旧包
+bash -n OK
+library 前缀 199 行 IDENTICAL
+显式旧包只读 check EXIT=0
+旧包 MANIFEST 未改动: e3937823e207fd4fdbb4b3ef18f48a4c839c92b132c6def471bdd94e40e8f99b
