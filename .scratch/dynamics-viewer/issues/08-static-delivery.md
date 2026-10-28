@@ -41,5 +41,5 @@ Blocked by: [05：在动态中查看多图并打开图片预览](05-preview-dyna
 ## Comments
 
 - 在 `feat/dynamics-viewer` 串行完成；开始及双轴审查基线 `174cded5c22071dc538116272400fcac59a47184`，开始工作区干净，无新分支/worktree。依赖05已完成，不修改前置票据。
-- 已交付 [Nginx 示例](../../../deploy/nginx.conf)、[静态交付说明](../../../docs/deployment/static-delivery.md) 和真实Nginx验证入口；本机临时编译Nginx1.28.0，未安装系统服务或改变生产设施。
+- 已交付 [Nginx 示例](../../../deploy/nginx.conf)、[静态交付说明](../../../docs/deployment/README.md) 和真实Nginx验证入口；本机临时编译Nginx1.28.0，未安装系统服务或改变生产设施。
 - Vitest89、开发浏览器90、正常preview82均通过；新增10项仅在Nginx目标执行，真实Nginx正常产物92/92及构建更新演练通过。生产云部署、容量、真机/Safari及09最终复验未做，详见 [08 验收记录](../acceptance-08.md)。

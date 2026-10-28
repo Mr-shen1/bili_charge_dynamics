@@ -1,7 +1,7 @@
 # 16 验证静态交付、资源更新与前端回退
 
 - 对应票据：[16: 验证静态交付、资源更新与前端回退](../issues/16-static-delivery-rollback.md)
-- 对应规格：[前端重构实施规格](../spec.md)、[静态交付与 Nginx 运行说明](../../../docs/deployment/static-delivery.md)、[行为基线差异](../baseline-differences.md)
+- 对应规格：[前端重构实施规格](../spec.md)、[静态交付与 Nginx 运行说明](../../../docs/deployment/README.md)、[行为基线差异](../baseline-differences.md)
 - 证据状态：**在本机隔离环境用临时编译的 Nginx 1.28.0 实际执行 `pnpm test:delivery` 全流程通过**（mock 静态交付、构建复现与故障隔离、生产构建 + 实际 API/collector、原子更新与前端回退）。未在目标机、云环境、真实上游/OSS 或公网执行；本记录不构成本期正式上线或云部署完成。
 
 ## 1. 结论
@@ -14,7 +14,7 @@
 | 默认生产装配与 mock/fault 隔离，普通产物无故障入口/虚构动态/秘密；修正废弃路径与资源探测耦合 | 通过 | §3.2、§5 |
 | 原子切换、旧哈希保留、旧产物回退，新旧已打开页面资源可达 | 通过 | §6 |
 | 只切前端：不回退 SQLite、不因前端重启 collector，保留旧产物与源码/依赖信息 | 通过 | §6.3、§7 |
-| 构建/交付/回退说明与实际一致，记录环境、命令、版本、资源检查与结果 | 通过 | 本文件 + [static-delivery.md](../../../docs/deployment/static-delivery.md) 第 3 节 |
+| 构建/交付/回退说明与实际一致，记录环境、命令、版本、资源检查与结果 | 通过 | 本文件 + [static-delivery.md](../../../docs/deployment/README.md) 第 3 节 |
 | 隔离 Nginx 证据与开发预览、mock、实际 API 集成分别记录 | 通过 | §4 分阶段记录 |
 | 候选变化时补验，证据与统一候选版本一致 | 记为约束 | §8 |
 
@@ -156,7 +156,7 @@ pnpm test:delivery
 ## 7. 旧产物与源码/依赖留存
 
 - 演练发布目录位于系统临时目录，结束时按脚本清理；**产物身份**以同目录 `16-delivery-manifest.json` 留存：候选提交、lockfile sha256、入口与全部 assets 的 sha256、mock 产物清单、Nginx/运行时版本。
-- 生产发布时旧目录与源码/依赖信息的保留方式见 [static-delivery.md](../../../docs/deployment/static-delivery.md) 第 3 节和 [local-live-frontend.md](../../../docs/deployment/local-live-frontend.md)（`releases/<时间>-<提交>` 轮转）。
+- 生产发布时旧目录与源码/依赖信息的保留方式见 [static-delivery.md](../../../docs/deployment/README.md) 第 3 节和 [local-live-frontend.md](../../../docs/deployment/README.md#10-本地专属说明)（`releases/<时间>-<提交>` 轮转）。
 - 本票不归档二进制产物本体，避免把构建输出提交进仓库；需要逐字节复核时按同一提交与 lockfile 重建。
 
 ## 8. 未验证与边界

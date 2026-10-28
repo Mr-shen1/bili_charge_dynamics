@@ -14,7 +14,7 @@
 
 - 产品范围、架构和可行性分别以 [SRS](../../docs/product/SRS.md)、[HLD](../../docs/design/HLD.md)、[FSR](../../docs/product/FSR.md) 为依据；[样本证据](../../docs/backend/evidence/backend-feasibility.md) 不等于持续运行结论。
 - 增量实现须兼容已有 [管理接口](../../docs/backend/api/management-api.md)、[归档接口](../../docs/backend/api/archive-api.md)、[归档客户端](../../docs/backend/api/archive-api-client.md) 和 [动态协议字段](../../docs/backend/evidence/dynamic-protocol-fields.md)，不重做 #01/#02 或忽略其保存的元信息。
-- 展示和交付分别参考 [UI 文字规范](../../docs/design/ui-reference.md)、[静态交付](../../docs/deployment/static-delivery.md)；[票据](../../docs/agents/issue-tracker.md)、[标签](../../docs/agents/triage-labels.md) 及 [领域约定](../../docs/agents/domain.md) 约束追踪方式。
+- 展示和交付分别参考 [UI 文字规范](../../docs/design/ui-reference.md)、[静态交付](../../docs/deployment/README.md)；[票据](../../docs/agents/issue-tracker.md)、[标签](../../docs/agents/triage-labels.md) 及 [领域约定](../../docs/agents/domain.md) 约束追踪方式。
 - 补读后修正汇总票派工状态，明确 #27 材料门槛，并补充 #15/#17 cursor 失效验收及 #15 对既有 `comment_locator` 的兼容验证；当时未改变产品范围和 22 张执行子票的依赖图。
 - 用户随后确认按两张 UI 参考图一比一复刻，新增 #35 视觉专项并同步现行 SRS／规格／UI 参考；旧验收与票据交付状态不改写。#35 包含阅读一比一视觉及监控管理同风格改版，可复用已交付阅读／管理能力直接推进，#32/#33 的最终视觉证据需基于 #35 后的版本。
 

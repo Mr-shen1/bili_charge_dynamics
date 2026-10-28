@@ -37,7 +37,7 @@
 
 实际首次 targeted 与 quality 均于 12:23:14 启动，后端 pytest 与 tsc/Vite build 并行；首次 M 与 V 也曾并行，失败见 §5。随后浏览器／构建套件按顺序执行。下面是**建议的安全复测顺序**，不冒称首次执行已经全串行；实际调度以各日志时间戳为准。
 
-复现前按[正式交付说明](../../docs/deployment/static-delivery.md)准备锁定依赖、Chromium、Nginx/mime.types；本次依赖已在本地，`uv --no-sync` 不同步依赖。运行助手不负责安装。**各阶段顺序运行**，不要让不同 Vite 模式、构建或 Playwright 输出目录并发；管理与归档测试 API 都会用 4176。已有端口占用时记录环境失败，不停止他人服务。
+复现前按[正式交付说明](../../docs/deployment/README.md)准备锁定依赖、Chromium、Nginx/mime.types；本次依赖已在本地，`uv --no-sync` 不同步依赖。运行助手不负责安装。**各阶段顺序运行**，不要让不同 Vite 模式、构建或 Playwright 输出目录并发；管理与归档测试 API 都会用 4176。已有端口占用时记录环境失败，不停止他人服务。
 
 ```bash
 # 仓库根目录

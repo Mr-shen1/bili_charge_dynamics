@@ -1,0 +1,188 @@
+# 本机部署工具与安装包：验证记录（可复跑）
+
+## 1) shell 语法与静态检查
+$ bash -n scripts/prepare-local-deployment-package.sh
+OK
+$ bash -n scripts/setup-local-deployment.sh
+OK
+$ bash -n .scratch/local-cloud-deployment/tests/sandbox-safety-tests.sh
+OK
+$ command -v shellcheck
+未安装 shellcheck（本次未运行，不是通过）
+$ grep -nEo "[0-9a-f]{40}" scripts/*.sh   # 期望无输出（无硬编码提交 SHA）
+无硬编码 40 位提交 SHA
+
+## 2) wizard library 前缀逐字节一致
+prefix_lines=199
+IDENTICAL
+
+## 3) 锚点来源（v2）
+$ setup --check --commit <e582…> --package <旧包>
+EXIT=0
+✓ 锚点 e58271c（operator(--commit)）
+✓ 预检通过：目标路径/端口/账号均无未知占用
+只读预检通过（未写文件、未调用 sudo）。正式安装：
+$ setup --check --commit <e582…>   # 省略 --package，按锚点短 SHA 解析包路径
+EXIT=0
+✓ 安装包 MANIFEST 校验通过：/var/tmp/bili-local-deployment/e58271c
+$ setup --check   # 运维脚本未提交时的默认锚点模式（应拒绝）
+EXIT=1
+✖ 受信 HEAD 中没有 scripts/setup-local-deployment.sh：请先从已提交版本运行（或用 --commit 做旧包回归）
+
+$ setup --check --commit e58271c   # 非完整 SHA
+EXIT=1
+✖ --commit 需要完整 40 位十六进制 SHA（收到：e58271c）
+
+$ prepare --commit <e582…>   # 已有同版本包：秒退 0，不重建
+EXIT=0
+  ✓ 已存在同版本安装包并由 MANIFEST 校验通过：/var/tmp/bili-local-deployment/e58271c
+==> 如需重建请加 --replace
+==> 安装命令：scripts/setup-local-deployment.sh --package /var/tmp/bili-local-deployment/e58271c
+$ prepare --commit <全 0 SHA>
+EXIT=1
+error: --commit 指定的提交不在本仓库：0000000000000000000000000000000000000000（请先 fetch/确认对象存在）
+
+## 4) 安装包 MANIFEST / VERSION / bundle
+$ cd /var/tmp/bili-local-deployment/e58271c && sha256sum --check --strict MANIFEST.sha256 | tail -1
+./verify/bundle-verify.txt: 成功
+manifest sha256:
+65c05e5e2fc98a1efc33638a975dbba55b678f26792173632ee566ed2aeb459e  /var/tmp/bili-local-deployment/e58271c/MANIFEST.sha256
+commit/short/dist:
+commit=e58271c6e093b436bfbfc9bb45d3d7a7d349be19
+short=e58271c
+created_utc=20261028T033237Z
+uv=uv 0.12.23 (x86_64-unknown-linux-gnu)
+frontend_dist_files=33
+frontend_dist_index_sha256=88ae5c497a611da3885bd706d4c1c20847b8dafe92dd6e3a4abdcfc5ac51f65f
+deploy_templates=worktree-comment-only-sync(未提交):bili-monitor.env.example
+bundle heads:
+e58271c6e093b436bfbfc9bb45d3d7a7d349be19 refs/heads/main
+
+## 5) 模板一致性
+unit: 与 e58271c 模板逐字节相同
+snippet: 与 e58271c 模板逐字节相同
+nginx server 差异（仅 listen；其余为来源注释头）:
+<     listen 127.0.0.1:4173;
+>     listen 127.0.0.1:4273;
+
+## 6) env 有效行
+BILI_DATABASE_PATH
+PYTHONDONTWRITEBYTECODE
+PYTHONUNBUFFERED
+(以 # BILI_ 开头的注释项数量：)
+9
+
+## 7) 生产 dist 隔离
+dist 文件数: 33
+无 mock 自检路由
+无 dist-mock
+
+## 8) 非 TTY 安装模式拒绝
+EXIT=1
+✖ 需要在你的终端交互运行（sudo 密码不会被脚本捕获或保存）
+
+
+## 9) 沙箱安全分支测试（不 sudo、不装软件、不启服务）
+PASS  静态守卫：无 sudo -n/NOPASSWD/-Syu/--overwrite/apt/sites-enabled 等
+PASS  wizard library 前缀与 template 逐字节一致
+PASS  两个脚本 bash -n 通过
+PASS  安装包 MANIFEST/VERSION/uv 可执行
+PASS  安装包仅含生产 dist（无 dist-mock/.venv/node_modules/库/cookie）
+PASS  渲染文件：env 有效行、4273 listen、模板逐字节
+PASS  wizard --check 只读通过
+PASS  wizard --check 拒绝被篡改安装包
+PASS  wizard --check 拒绝 other 可写安装包
+PASS  锚点：默认取受信仓库 main HEAD，包路径用锚点短 SHA
+PASS  锚点：脚本与受信 HEAD 不一致时拒绝
+PASS  锚点：HEAD 不在 main 时拒绝
+PASS  锚点：向导运行期间源 HEAD 变动时拒绝 root 写入
+PASS  锚点：--commit 显式锚点不受源 HEAD 漂移影响
+PASS  锚点：--commit 非完整 SHA 拒绝
+PASS  state 保存/回读
+PASS  path_owner absent/ours/modified/不可读 矩阵
+PASS  require_managed 拒绝未识别与被改动文件
+PASS  install_managed 幂等且拒绝覆盖用户改动
+PASS  nginx main 缺失 include 时插入且幂等
+PASS  nginx -t 失败时从备份回滚 nginx.conf
+PASS  nginx main 缺 mime.types 时拒绝
+PASS  listen 80 扫描告警
+PASS  前端原子发布与同产物跳过
+PASS  current 软链被改动时拒绝发布
+PASS  端口占用检测
+PASS  preflight 干净沙箱零问题且不调用 sudo
+PASS  preflight 拒绝未识别 systemd unit
+PASS  preflight 接受已记录且未改的 unit
+PASS  preflight 拒绝被改动的 unit
+PASS  preflight 拒绝被占用端口
+PASS  preflight 拒绝未识别的 /usr/local/bin/uv
+PASS  preflight 首启后重跑：真实文件集/备份/DB/current 全部识别
+PASS  preflight 健康检查失败后重跑仍可继续
+PASS  preflight 外部 nginx 文件仍拒绝、自有文件跳过
+PASS  preflight 旧版 /etc/nginx 备份被精确标记（提示移走）
+PASS  preflight 未登记 DB 拒绝且提示不删除数据库
+PASS  信任锚：包内 group 可写成员被拒
+PASS  信任锚：非 sticky 0777 父目录被拒
+PASS  信任锚：包内符号链接被拒
+PASS  信任锚：提交与钉住版本不一致被拒
+PASS  信任锚：重算 MANIFEST 的恶意 unit 仍被拒
+PASS  信任锚：/var/tmp 1777 sticky 祖先合法放行
+PASS  gzip 探测：真实 GET+Accept-Encoding 协商通过且只用 >1024B 资源
+PASS  gzip 探测：服务器未压缩时判失败
+PASS  gzip 探测：只有小资源时明确报“无法验证压缩”
+
+通过 46，失败 0
+
+## 10) 最终产物清点
+包内文件数: 51
+78M	/var/tmp/bili-local-deployment/e58271c
+65c05e5e2fc98a1efc33638a975dbba55b678f26792173632ee566ed2aeb459e  /var/tmp/bili-local-deployment/e58271c/MANIFEST.sha256
+-rwxr-xr-x 1 kevin kevin 26321 10月28日 12:08 prepare-local-deployment-package.sh
+-rwxr-xr-x 1 kevin kevin 67851 10月28日 12:08 setup-local-deployment.sh
+
+## 11) repo-head 端到端（临时仓库模拟“提交后的 main”）
+说明：把当前两个脚本在临时仓库里提交，从该仓库路径运行默认锚点模式 + 旧包，验证锚点取自受信 HEAD 且拒绝版本不符的包。
+fake main HEAD=35c94f2c05cd76938c68cfb3ead59c7ae481a714
+EXIT=1
+✓ 锚点 35c94f2（repo-head(/var/tmp/bili-anchor-e2e.F37exg/repo)）
+✖ 安装包版本 e58271c6e093b436bfbfc9bb45d3d7a7d349be19 不是进入向导时固定的锚点 35c94f2c05cd76938c68cfb3ead59c7ae481a714（来源：repo-head(/var/tmp/bili-anchor-e2e.F37exg/repo)；拒绝安装其他版本）
+- 安装包版本 e58271c6e093b436bfbfc9bb45d3d7a7d349be19 不是进入向导时固定的锚点 35c94f2c05cd76938c68cfb3ead59c7ae481a714（来源：repo-head(/var/tmp/bili-anchor-e2e.F37exg/repo)；拒绝安装其他版本）
+
+## 12) 旧部署文档删除后的一致性修复（deploy 模板，未提交）
+
+改动（仅文档指针 + unit 的 Documentation 元数据，运行指令未变）：
+-# 运行用户与目录（首次部署时创建，见 docs/deployment/aliyun-ecs.md）：
++# 运行用户与目录（首次部署时创建，见 docs/deployment/README.md）：
+-# 关键约束（来自 docs/deployment/static-delivery.md）：
++# 关键约束（来自 docs/deployment/README.md）：
+-Documentation=file:/srv/bili-monitor/app/docs/deployment/static-delivery.md
++Documentation=file:/srv/bili-monitor/app/docs/deployment/README.md
+-#   1. 域名已完成 ICP 备案（大陆节点强制，见 docs/deployment/aliyun-ecs.md「备案」）。
++#   1. 域名已完成 ICP 备案（大陆节点强制，见 docs/deployment/README.md「备案」）。
+-#   3. 已生成密码文件 /etc/nginx/.htpasswd（见 docs/deployment/aliyun-ecs.md「生成密码文件」）。
++#   3. 已生成密码文件 /etc/nginx/.htpasswd（见 docs/deployment/README.md「生成密码文件」）。
+-# docs/deployment/aliyun-ecs.md「SSH 硬化」。
++# docs/deployment/README.md「SSH 硬化」。
+-# 必须先停服务再切代码，见 .scratch/aliyun-deployment/runbook.md。
++# 必须先停服务再切代码，见 docs/deployment/README.md。
+
+残留旧指针扫描（deploy/ scripts/）：
+无残留（全部指向 docs/deployment/README.md）
+
+$ grep -n "^Documentation=" deploy/bili-monitor.service
+23:Documentation=file:/srv/bili-monitor/app/docs/deployment/README.md
+
+旧包（旧锚点，仅回归用）仍自洽：
+EXIT=0
+✓ 锚点 e58271c（operator(--commit)）
+✓ render unit 与钉住提交的 deploy/bili-monitor.service 逐字节相同
+✓ 预检通过：目标路径/端口/账号均无未知占用
+只读预检通过（未写文件、未调用 sudo）。正式安装：
+
+prepare 非注释模板闸门（工作区未提交改动不得并入旧锚点包；本检查不触发构建）：
+RESULT=存在非注释改动 → prepare 会拒绝；新模板必须随新提交发布
+
+沙箱回归：
+
+通过 46，失败 0
+旧包 MANIFEST（未改动）：
+65c05e5e2fc98a1efc33638a975dbba55b678f26792173632ee566ed2aeb459e  /var/tmp/bili-local-deployment/e58271c/MANIFEST.sha256

@@ -25,7 +25,7 @@
 
 - [父规格](../spec.md)：故事 1–68；I1–I12；T1–T3、穿透与证据核验。
 - [SRS](../../../docs/product/SRS.md)：FR-01–FR-20、DR-01–DR-05、NFR-01–NFR-05；AC-01–AC-34 全量回归，交付主责 AC-16、AC-19、AC-20、AC-32、AC-33、AC-34。
-- [HLD](../../../docs/design/HLD.md)：第 10–15 节；[FSR](../../../docs/product/FSR.md)、[有限上游证据](../../../docs/backend/evidence/backend-feasibility.md)、[UI 文字规范](../../../docs/design/ui-reference.md)、[历史静态交付](../../../docs/deployment/static-delivery.md)。
+- [HLD](../../../docs/design/HLD.md)：第 10–15 节；[FSR](../../../docs/product/FSR.md)、[有限上游证据](../../../docs/backend/evidence/backend-feasibility.md)、[UI 文字规范](../../../docs/design/ui-reference.md)、[历史静态交付](../../../docs/deployment/README.md)。
 
 ## 核验标准
 

@@ -34,6 +34,6 @@
 
 - 已交付双进程 fixture、6 项真实进程 HTTP/SQLite 专项、生产 Nginx 四类页面/刷新/API/资源错误/缓存/更新回归及完整启停迁移说明。修正 API 不可达时 Nginx 默认 error 日志泄露 query 的问题，先 red 后 green；关闭原始请求日志并记录诊断取舍。
 - `pnpm typecheck` 通过；`pnpm test --maxWorkers=2` 268 passed；后端全量 669 passed（3 个既有 SDK 弃用警告）；开发浏览器 104 passed/10 skipped、manage 7、archive 38、mock preview 96/10 skipped；实际 Nginx 历史正常浏览器 106 passed，另生产部署、生产更新及秘密扫描均通过。干净临时副本重新锁定安装并构建，生产 dist 字节一致。
-- 命令、版本、HTTP/缓存观察及首轮环境问题见 [#31 验收](../acceptance-31.md)与[部署专项证据](../evidence/deployment-31.md)；可复用说明见 [交付运行说明](../../../docs/deployment/static-delivery.md)。仅用虚构秘密，不依赖真实上游/OSS/ignored 文件。
+- 命令、版本、HTTP/缓存观察及首轮环境问题见 [#31 验收](../acceptance-31.md)与[部署专项证据](../evidence/deployment-31.md)；可复用说明见 [交付运行说明](../../../docs/deployment/README.md)。仅用虚构秘密，不依赖真实上游/OSS/ignored 文件。
 - Standards/Spec 两个 `review` 代理已并行审查及复核：硬性规范违规 0、确认规格缺陷 0；已按判断性去重建议提取共享发布更新验证，补版本化干净副本命令，完整 Nginx 重跑通过。其余字面量/参数建议的保留理由见验收记录。
 - 所勾选范围仅为本票的隔离交付，不代替 #30 人工签收、#32 总台账、#33 真机或 #34 真实上游/OSS/持续调度/资源验收。无鉴权/公开图/无备份容量治理风险保持。状态转 `ready-for-human` 等待维护者核验，不宣称整个产品已验收。
