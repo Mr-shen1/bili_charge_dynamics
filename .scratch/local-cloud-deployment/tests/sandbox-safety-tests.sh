@@ -69,6 +69,12 @@ sandbox_init() {
     NGINX_CONF="$NGINX_ROOT/conf.d/bili.conf"
     NGINX_SNIPPET="$NGINX_ROOT/snippets/bili-locations.conf"
     NGINX_SITES_DIR="$NGINX_ROOT/sites-enabled"
+    PACMAN_PKG_CACHE="$SB/pkgcache"
+    NGINX_STOCK_CONF="etc/nginx/nginx.conf"
+    FAKE_NGINX_PKGVER="1.30.6-1"
+    NGINX_INSTALLED_FLAG="$SB/nginx-installed"
+    FAKE_NGINX_DUMP="$SB/effective.conf"
+    export PACMAN_PKG_CACHE NGINX_STOCK_CONF FAKE_NGINX_PKGVER NGINX_INSTALLED_FLAG FAKE_NGINX_DUMP
     STATE_DIR="$SB/state"
     STATE_FILE="$STATE_DIR/state.tsv"
     BACKUP_STATE_DIR="$STATE_DIR/backups"
@@ -86,10 +92,18 @@ sandbox_init() {
     PACMAN_OWNED="$SB/pacman-owned.txt"
     : >"$PACMAN_OWNED"
     export PACMAN_OWNED
+    mkdir -p "$PACMAN_PKG_CACHE"
     cat >"$SB/bin/pacman" <<'SH'
 #!/usr/bin/env bash
 case "$1" in
   -Si) printf 'Name            : nginx\nVersion         : 1.30.6-1.1\n' ;;
+  -Q)
+    if [[ "${2:-}" == "nginx" && -f "${NGINX_INSTALLED_FLAG:-/nonexistent}" ]]; then
+        printf 'nginx %s\n' "${FAKE_NGINX_PKGVER:-1.30.6-1}"
+    else
+        exit 1
+    fi
+    ;;
   -Qo)
     # 只有清单里列出的路径算“由包拥有”；其余返回 1（与真实 pacman 一致）
     /usr/bin/grep -qxF -- "${2:-}" "${PACMAN_OWNED:-/nonexistent}" 2>/dev/null
@@ -108,6 +122,16 @@ exit 2
 SH
     cat >"$SB/bin/nginx" <<'SH'
 #!/usr/bin/env bash
+case "${1:-}" in
+  -T)
+    [[ -f "${FAKE_NGINX_DUMP:-}" ]] && cat "${FAKE_NGINX_DUMP}"
+    exit "${FAKE_NGINX_RC:-0}"
+    ;;
+  -v)
+    echo 'nginx version: nginx/1.30.6' >&2
+    exit "${FAKE_NGINX_RC:-0}"
+    ;;
+esac
 exit "${FAKE_NGINX_RC:-0}"
 SH
     chmod 0755 "$SB/bin"/*
@@ -134,6 +158,7 @@ SH
             ln) shift; command ln "$@" ;;
             rsync) shift; command rsync "$@" ;;
             nginx) shift; command nginx "$@" ;;
+            ss) shift; command ss "$@" ;;
             rm) shift; command rm "$@" ;;
             mv) shift; command mv "$@" ;;
             find) shift; command find "$@" ;;
@@ -182,6 +207,56 @@ case_static_guards() {
         cat "$LOG"
         bad=1
     fi
+    # B4：错误提示不得推荐手改 state、伪恢复命令或让用户移走 main/配置
+    local bad_advice
+    for bad_advice in 'pacman -S nginx' '移走后重跑' '把该文件移走' '把默认 server 移走' \
+        '移走该默认 server' '登记 file:' '移除 file:'; do
+        if grep -nF -- "$bad_advice" "$WIZARD" >"$LOG" 2>&1; then
+            printf '错误提示仍在推荐不安全出路：%s\n' "$bad_advice"
+            cat "$LOG"
+            bad=1
+        fi
+    done
+    grep -qF '不删除、不移动真实配置、不手改 state' "$WIZARD" ||
+        { printf '缺少固定安全建议文案（不删除/不移动/不手改 state）\n'; bad=1; }
+    # 这 3 处消息已统一为“保留现场 + 人工按主指南核查”；禁止回退成旧文案
+    local old_msg
+    for old_msg in '把它移走/改名（**不要删除数据库或真实配置**）' \
+        '请人工备份并移除默认 server 后重跑' \
+        '把它移走/改名（别删）再重跑'; do
+        if grep -nF -- "$old_msg" "$WIZARD" >"$LOG" 2>&1; then
+            printf '已统一的旧文案回退了：%s\n' "$old_msg"
+            cat "$LOG"
+            bad=1
+        fi
+    done
+    grep -qF '保留现文件、备份与状态' "$WIZARD" ||
+        { printf '缺少“保留现文件、备份与状态”安全措辞\n'; bad=1; }
+    grep -qF '保留数据库与现场' "$WIZARD" ||
+        { printf '缺少“保留数据库与现场”安全措辞\n'; bad=1; }
+    (($(grep -cF 'docs/deployment/README.md 人工核查来源' "$WIZARD") >= 3)) ||
+        { printf '3 处统一消息未全部指向唯一主指南\n'; bad=1; }
+
+    # B4：不允许“确认后照旧启动 80”的软门；启动/重载 nginx 之前必须有有效配置硬检查
+    if grep -nE '仍要启用 nginx|NGINX_80_RISK' "$WIZARD" >"$LOG" 2>&1; then
+        printf '仍存在可覆盖的 80 软门：\n'
+        cat "$LOG"
+        bad=1
+    fi
+    if grep -nE "grep -qE '\(\^\|:\)80\$'" "$WIZARD" >"$LOG" 2>&1; then
+        printf '健康检查仍用全局 ss 80 断言：\n'
+        cat "$LOG"
+        bad=1
+    fi
+    grep -q 'users:(("nginx"' "$WIZARD" || { printf '健康检查未做本实例 nginx 占 80 判定\n'; bad=1; }
+    local enable_line assert_line
+    enable_line="$(grep -n 'systemctl enable --now nginx' "$WIZARD" | head -n1 | cut -d: -f1)"
+    assert_line="$(grep -n 'assert_no_listen_80_effective' "$WIZARD" | tail -n1 | cut -d: -f1)"
+    if [[ -z "$enable_line" || -z "$assert_line" ]] || ((assert_line > enable_line)); then
+        printf 'nginx enable 之前缺少有效配置 80 硬检查（enable=%s assert=%s）\n' "${enable_line:-无}" "${assert_line:-无}"
+        bad=1
+    fi
+
     # 反向确认：注释里确实写明了这些限制
     grep -q '不执行 -Syu' "$WIZARD" || { printf '缺少 -Syu 禁止说明\n'; bad=1; }
     grep -q '不用 --overwrite' "$WIZARD" || { printf '缺少 --overwrite 禁止说明\n'; bad=1; }
@@ -370,6 +445,15 @@ case_require_managed_refusals() {
         return 1
     fi
     grep -q '已被修改' "$LOG" || { printf '缺少修改提示\n'; return 1; }
+    grep -qF '不手改 state' "$LOG" || { printf 'modified 分支缺少“不手改 state”\n'; cat "$LOG"; return 1; }
+    grep -qF 'docs/deployment/README.md 人工核查来源' "$LOG" ||
+        { printf 'modified 分支缺少主指南指针\n'; cat "$LOG"; return 1; }
+    if grep -qE '移走/改名' "$LOG"; then
+        printf 'modified 分支仍在推荐移走/改名\n'
+        cat "$LOG"
+        return 1
+    fi
+    return 0
 }
 
 case_install_managed_gate() {
@@ -408,70 +492,343 @@ EOF
     fi
 }
 
-case_nginx_main_insert_and_idempotent() {
-    sandbox_init
-    nginx_fixture noinclude mime
-    local before
-    before="$(sha_of "$NGINX_MAIN")"
-    FAKE_NGINX_RC=0 ensure_nginx_main || { printf '插入失败\n'; return 1; }
-    [[ "$(sha_of "$NGINX_MAIN")" != "$before" ]] || { printf '未修改 nginx.conf\n'; return 1; }
-    [[ "$(grep -c "include $NGINX_ROOT/conf.d/\*\.conf;" "$NGINX_MAIN")" == "1" ]] || {
-        printf 'include 行数不为 1\n'
-        return 1
-    }
-    # include 必须落在 http 块内（最后一个 } 之前）
-    local include_line last_brace
-    include_line="$(grep -n "include $NGINX_ROOT/conf.d/\*\.conf;" "$NGINX_MAIN" | cut -d: -f1)"
-    last_brace="$(grep -n '^}' "$NGINX_MAIN" | tail -n1 | cut -d: -f1)"
-    ((include_line > 1 && include_line < last_brace)) || {
-        printf 'include 未落在 http 块内（include=%s last_brace=%s）\n' "$include_line" "$last_brace"
-        return 1
-    }
-    [[ -f "$(state_get "backup:$NGINX_MAIN")" ]] || { printf '未记录备份路径\n'; return 1; }
-    FAKE_NGINX_RC=0 ensure_nginx_main >"$LOG" 2>&1
-    grep -q '已 include' "$LOG" || { printf '第二次运行未识别已有 include\n'; return 1; }
-    [[ "$(grep -c "include $NGINX_ROOT/conf.d/\*\.conf;" "$NGINX_MAIN")" == "1" ]] || {
-        printf '重复插入\n'
-        return 1
-    }
+# ── 发行包默认 nginx.conf（B4） ──────────────────────────────────────────────
+# F1：真实 Arch 官方 1.30.6-1 的包默认 nginx.conf 已入库，测试只用脚本相对路径（不依赖 /tmp）。
+# 来源与 sha 记录见 tests/fixtures/README.md；可用 NGINX_STOCK_FIXTURE 覆盖，但 sha 断言不变。
+TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEFAULT_NGINX_FIXTURE="$TESTS_DIR/fixtures/nginx-1.30.6-1.conf"
+NGINX_STOCK_FIXTURE="${NGINX_STOCK_FIXTURE:-$DEFAULT_NGINX_FIXTURE}"
+
+# nginx_pkg_fixture：在沙箱里搭“本次新装 + pacman 拥有 + 缓存包原始配置”的可信环境。
+# 使用真实发行包默认配置 fixture（2717B / sha256 7cd7c15a…），并用 bsdtar 造同版本缓存包。
+nginx_pkg_fixture() {
+    [[ -f "$NGINX_STOCK_FIXTURE" ]] ||
+        { printf '缺少真实发行包默认配置 fixture：%s\n' "$NGINX_STOCK_FIXTURE"; return 1; }
+    mkdir -p "$(dirname "$NGINX_MAIN")" "$PACMAN_PKG_CACHE" "$BACKUP_STATE_DIR" \
+        "$SB/pkgroot/etc/nginx"
+    cp "$NGINX_STOCK_FIXTURE" "$NGINX_MAIN"
+    chmod 0644 "$NGINX_MAIN"
+    printf '# mime.types (mailcap fixture)\n' >"$NGINX_ROOT/mime.types"
+    cp "$NGINX_STOCK_FIXTURE" "$SB/pkgroot/etc/nginx/nginx.conf"
+    (
+        cd "$SB/pkgroot" || exit 1
+        bsdtar -cf "$PACMAN_PKG_CACHE/nginx-$FAKE_NGINX_PKGVER-x86_64.pkg.tar.zst" etc/nginx/nginx.conf
+    ) || { printf '构造缓存包失败（bsdtar）\n'; return 1; }
+    : >"$NGINX_INSTALLED_FLAG"
+    printf '%s\n' "$NGINX_MAIN" >"$PACMAN_OWNED"
+    state_set "pkg:nginx-fresh-install" "$FAKE_NGINX_PKGVER"
 }
 
-case_nginx_main_rollback_on_failed_test() {
+case_fixture_sha_matches() {
+    [[ -f "$DEFAULT_NGINX_FIXTURE" ]] ||
+        { printf '入库 fixture 缺失：%s\n' "$DEFAULT_NGINX_FIXTURE"; return 1; }
+    [[ "$(stat -c %s "$DEFAULT_NGINX_FIXTURE")" == "2717" ]] ||
+        { printf 'fixture 大小不是 2717 字节\n'; return 1; }
+    [[ "$(sha256sum -- "$DEFAULT_NGINX_FIXTURE" | cut -d' ' -f1)" == "7cd7c15a98e2124a5cbf46e9483072d03e99f647c64d2ae0522c2ff43e1a49b9" ]] ||
+        { printf 'fixture sha256 不是钉住值\n'; return 1; }
+    grep -qE '^[[:space:]]*listen[[:space:]]+80;' "$DEFAULT_NGINX_FIXTURE" ||
+        { printf 'fixture 不含激活的 listen 80\n'; return 1; }
+    grep -qE '^[[:space:]]*include[[:space:]]+mime\.types;' "$DEFAULT_NGINX_FIXTURE" ||
+        { printf 'fixture 不含 mime.types include\n'; return 1; }
+}
+
+case_nginx_state_persist_and_cold_reload() {
     sandbox_init
-    nginx_fixture noinclude mime
+    nginx_pkg_fixture || return 1
+    state_save || return 1
+    FAKE_NGINX_RC=0 ensure_nginx_main >"$LOG" 2>&1 || { cat "$LOG"; return 1; }
+    # 成功登记必须已落盘到 state 文件（不是只在内存 array）
+    [[ -n "$(awk -F'\t' -v k="file:$NGINX_MAIN" '$1==k{print $2}' "$STATE_FILE")" ]] ||
+        { printf '成功登记未落盘到 state 文件\n'; cat "$STATE_FILE"; return 1; }
+    [[ -n "$(awk -F'\t' -v k="backup:$NGINX_MAIN" '$1==k{print $2}' "$STATE_FILE")" ]] ||
+        { printf '备份登记未落盘\n'; return 1; }
+    # 冷重载：清空内存（模拟新进程），从 state 文件恢复后续跑
     local before
     before="$(sha_of "$NGINX_MAIN")"
+    STATE=()
+    state_load
+    FAKE_NGINX_RC=0 ensure_nginx_main >"$LOG" 2>&1 || { printf '冷重载后续跑被拒\n'; cat "$LOG"; return 1; }
+    grep -q '登记过的受管版本' "$LOG" || { printf '冷重载未识别受管版本\n'; return 1; }
+    [[ "$(sha_of "$NGINX_MAIN")" == "$before" ]] || { printf '冷重载续跑改写了 main\n'; return 1; }
+    [[ "$(find "$BACKUP_STATE_DIR" -name 'nginx.conf.*.orig' | wc -l)" == "1" ]] ||
+        { printf '冷重载生成了额外备份\n'; return 1; }
+}
+
+case_nginx_interrupted_state_recovery() {
+    sandbox_init
+    nginx_pkg_fixture || return 1
+    state_save || return 1   # 只落了 pkg:nginx-fresh-install，模拟“写盘成功后、登记前中断”
+    local tmp before
+    tmp="$(mktemp /var/tmp/bili-expect.XXXXXX)"
+    write_managed_nginx_main "$tmp" "modules"
+    cp "$tmp" "$NGINX_MAIN"
+    rm -f "$tmp"
+    [[ -z "$(state_get "file:$NGINX_MAIN")" ]] || { printf '前提不成立：不应已登记\n'; return 1; }
+    before="$(sha_of "$NGINX_MAIN")"
+    STATE=()
+    state_load                     # 冷重载：内存里没有 file: 记录
+    FAKE_NGINX_RC=0 ensure_nginx_main >"$LOG" 2>&1 || { printf '中断恢复失败\n'; cat "$LOG"; return 1; }
+    grep -q '只补登记' "$LOG" || { printf '未走补登记恢复\n'; cat "$LOG"; return 1; }
+    [[ "$(sha_of "$NGINX_MAIN")" == "$before" ]] || { printf '恢复过程改写了系统文件\n'; return 1; }
+    [[ "$(awk -F'\t' -v k="file:$NGINX_MAIN" '$1==k{print $2}' "$STATE_FILE")" == "$before" ]] ||
+        { printf '未把真实 sha 补登记到 state 文件\n'; cat "$STATE_FILE"; return 1; }
+    [[ "$(find "$BACKUP_STATE_DIR" -name 'nginx.conf.*.orig' | wc -l)" == "0" ]] ||
+        { printf '补登记过程仍写盘/建备份\n'; return 1; }
+    # 补登记后冷重载再跑：走受管分支
+    STATE=()
+    state_load
+    FAKE_NGINX_RC=0 ensure_nginx_main >"$LOG" 2>&1 || { printf '补登记后仍不可续跑\n'; cat "$LOG"; return 1; }
+    grep -q '登记过的受管版本' "$LOG" || { printf '补登记后未识别受管版本\n'; return 1; }
+}
+
+case_nginx_normalize_fresh_install() {
+    sandbox_init
+    nginx_pkg_fixture || return 1
+    local orig_sha backup body before
+    orig_sha="$(sha_of "$NGINX_MAIN")"
+    [[ "$orig_sha" == "7cd7c15a98e2124a5cbf46e9483072d03e99f647c64d2ae0522c2ff43e1a49b9" ]] ||
+        { printf 'fixture 不是预期的发行包默认配置\n'; return 1; }
+    FAKE_NGINX_RC=0 ensure_nginx_main >"$LOG" 2>&1 || { printf '规范化失败\n'; cat "$LOG"; return 1; }
+
+    backup="$(state_get "backup:$NGINX_MAIN")"
+    [[ -f "$backup" ]] || { printf '未创建/登记备份\n'; return 1; }
+    [[ "$(sha_of "$backup")" == "$orig_sha" ]] || { printf '备份内容不是原始配置\n'; return 1; }
+    [[ "$(stat -c %a "$backup")" == "600" ]] || { printf '备份权限不是 0600\n'; return 1; }
+    case "$backup" in
+        "$BACKUP_STATE_DIR"/*) : ;;
+        *) printf '备份不在 root 私有目录：%s\n' "$backup"; return 1 ;;
+    esac
+
+    body="$(cat "$NGINX_MAIN")"
+    if grep -qE '^[[:space:]]*server[[:space:]]*\{' <<<"$body"; then
+        printf '受管 main 仍含 server 块\n'
+        return 1
+    fi
+    if grep -qE '^[[:space:]]*listen[[:space:]]' <<<"$body"; then
+        printf '受管 main 仍含 listen\n'
+        return 1
+    fi
+    grep -qF "include $NGINX_ROOT/mime.types;" <<<"$body" || { printf '缺 mime.types include\n'; return 1; }
+    grep -qF "include $NGINX_ROOT/conf.d/*.conf;" <<<"$body" || { printf '缺 conf.d include\n'; return 1; }
+    grep -qF 'include modules.d/*.conf;' <<<"$body" || { printf '未保留原始配置的 modules.d include\n'; return 1; }
+    [[ -n "$(state_get "file:$NGINX_MAIN")" ]] || { printf '未登记受管 main\n'; return 1; }
+
+    # 重跑：受管 main 被识别为自家版本，不重复备份、不改写
+    before="$(sha_of "$NGINX_MAIN")"
+    FAKE_NGINX_RC=0 ensure_nginx_main >"$LOG" 2>&1 || { printf '受管 main 续跑被拒\n'; cat "$LOG"; return 1; }
+    grep -q '登记过的受管版本' "$LOG" || { printf '续跑未识别受管版本\n'; return 1; }
+    [[ "$(sha_of "$NGINX_MAIN")" == "$before" ]] || { printf '续跑改动了受管 main\n'; return 1; }
+    [[ "$(find "$BACKUP_STATE_DIR" -name 'nginx.conf.*.orig' | wc -l)" == "1" ]] ||
+        { printf '续跑生成了额外备份\n'; return 1; }
+}
+
+case_nginx_legacy_managed_main_refused() {
+    sandbox_init
+    nginx_pkg_fixture || return 1
+    # 模拟旧版向导：只往默认配置里插了 include 就把文件登记成“受管”
+    mkdir -p "$(dirname "$NGINX_CONF")"
+    local line
+    line="$(grep -n '^}' "$NGINX_MAIN" | tail -n1 | cut -d: -f1)"
+    sed -i "${line}i\\    include $NGINX_ROOT/conf.d/*.conf;" "$NGINX_MAIN"
+    state_set "file:$NGINX_MAIN" "$(sha_of "$NGINX_MAIN")"
+    if (ensure_nginx_main) >"$LOG" 2>&1; then
+        printf '旧版受管 main（仍带 listen 80）被当作安全版本续跑\n'
+        return 1
+    fi
+    grep -q '旧版向导留下的默认站点' "$LOG" || { printf '缺少迁移闸门提示\n'; cat "$LOG"; return 1; }
+}
+
+case_error_advice_mismatch_safe() {
+    sandbox_init
+    nginx_pkg_fixture || return 1
+    printf '\n# 人工改动\n' >>"$NGINX_MAIN"
+    local adv="$WORK/advice.log" bad
+    if (ensure_nginx_main) >"$adv" 2>&1; then
+        printf '被改动的配置未被拒绝\n'
+        return 1
+    fi
+    grep -qF '保留现文件' "$adv" || { printf '缺少“保留现文件/备份”\n'; cat "$adv"; return 1; }
+    grep -qF '不手改 state' "$adv" || { printf '缺少“不手改 state”\n'; cat "$adv"; return 1; }
+    grep -qF 'docs/deployment/README.md' "$adv" || { printf '缺少指向唯一主指南\n'; return 1; }
+    for bad in 'pacman -S nginx' '移走后重跑' '把该文件移走' '登记 file:'; do
+        if grep -qF -- "$bad" "$adv"; then
+            printf '错误提示仍在推荐不安全出路：%s\n' "$bad"
+            cat "$adv"
+            return 1
+        fi
+    done
+}
+
+case_error_advice_legacy_safe() {
+    sandbox_init
+    nginx_pkg_fixture || return 1
+    mkdir -p "$(dirname "$NGINX_CONF")"
+    local line adv="$WORK/advice-legacy.log" bad
+    line="$(grep -n '^}' "$NGINX_MAIN" | tail -n1 | cut -d: -f1)"
+    sed -i "${line}i\\    include $NGINX_ROOT/conf.d/*.conf;" "$NGINX_MAIN"
+    state_set "file:$NGINX_MAIN" "$(sha_of "$NGINX_MAIN")"
+    if (ensure_nginx_main) >"$adv" 2>&1; then
+        printf '旧版受管 main 未拒绝\n'
+        return 1
+    fi
+    grep -qF '保留现文件' "$adv" || { printf '缺少“保留现文件/备份”\n'; cat "$adv"; return 1; }
+    grep -qF '不手改 state' "$adv" || { printf '缺少“不手改 state”\n'; cat "$adv"; return 1; }
+    for bad in 'pacman -S nginx' '移走该默认 server' '把默认 server 移走' '登记 file:' '移除 file:'; do
+        if grep -qF -- "$bad" "$adv"; then
+            printf '错误提示仍在推荐不安全出路：%s\n' "$bad"
+            cat "$adv"
+            return 1
+        fi
+    done
+}
+
+case_nginx_modified_config_fail_closed() {
+    sandbox_init
+    nginx_pkg_fixture || return 1
+    printf '\n# 人工改动\n' >>"$NGINX_MAIN"
+    local before
+    before="$(sha_of "$NGINX_MAIN")"
+    if (ensure_nginx_main) >"$LOG" 2>&1; then
+        printf '被人工改动的配置未被拒绝\n'
+        return 1
+    fi
+    grep -qE '既不是包原始配置|逐字节不同' "$LOG" || { printf '缺少“非原始且非受管”拒绝提示\n'; cat "$LOG"; return 1; }
+    [[ "$(sha_of "$NGINX_MAIN")" == "$before" ]] || { printf '失败时仍改写了系统文件\n'; return 1; }
+    [[ -z "$(state_get "file:$NGINX_MAIN")" ]] || { printf '失败时仍登记了受管 main\n'; return 1; }
+}
+
+case_nginx_missing_cache_fail_closed() {
+    sandbox_init
+    nginx_pkg_fixture || return 1
+    rm -f "$PACMAN_PKG_CACHE"/nginx-*.pkg.tar.*
+    local before
+    before="$(sha_of "$NGINX_MAIN")"
+    if (ensure_nginx_main) >"$LOG" 2>&1; then
+        printf '缺可信缓存时未被拒绝\n'
+        return 1
+    fi
+    grep -q '没有 nginx' "$LOG" || { printf '缺少缓存提示不符\n'; cat "$LOG"; return 1; }
+    [[ "$(sha_of "$NGINX_MAIN")" == "$before" ]] || { printf '缺缓存时仍改写了系统文件\n'; return 1; }
+}
+
+case_nginx_not_fresh_fail_closed() {
+    sandbox_init
+    nginx_pkg_fixture || return 1
+    unset 'STATE[pkg:nginx-fresh-install]'
+    local before
+    before="$(sha_of "$NGINX_MAIN")"
+    if (ensure_nginx_main) >"$LOG" 2>&1; then
+        printf '非本次新装的 nginx 未被拒绝\n'
+        return 1
+    fi
+    grep -q '不是本次运行新装' "$LOG" || { printf '缺少来源提示\n'; cat "$LOG"; return 1; }
+    grep -qF '不手改 state' "$LOG" || { printf '非新装分支缺少“不手改 state”\n'; cat "$LOG"; return 1; }
+    grep -qF 'docs/deployment/README.md 人工核查来源' "$LOG" ||
+        { printf '非新装分支缺少主指南指针\n'; cat "$LOG"; return 1; }
+    grep -qE '移除默认 server|移走该默认 server' "$LOG" &&
+        { printf '非新装分支仍在推荐移除/移走默认 server\n'; cat "$LOG"; return 1; }
+    [[ "$(sha_of "$NGINX_MAIN")" == "$before" ]] || { printf '非新装时仍改写了系统文件\n'; return 1; }
+}
+
+case_nginx_multiple_cache_fail_closed() {
+    sandbox_init
+    nginx_pkg_fixture || return 1
+    cp "$PACMAN_PKG_CACHE"/nginx-*.pkg.tar.zst "$PACMAN_PKG_CACHE/nginx-$FAKE_NGINX_PKGVER-x86_64_v4.pkg.tar.zst"
+    if (ensure_nginx_main) >"$LOG" 2>&1; then
+        printf '多个缓存候选时未被拒绝\n'
+        return 1
+    fi
+    grep -q '多个 nginx' "$LOG" || { printf '缺少多候选提示\n'; cat "$LOG"; return 1; }
+}
+
+case_nginx_rollback_on_failed_test() {
+    sandbox_init
+    nginx_pkg_fixture || return 1
+    local before mode
+    before="$(sha_of "$NGINX_MAIN")"
+    mode="$(stat -c %a "$NGINX_MAIN")"
     if (FAKE_NGINX_RC=1 ensure_nginx_main) >"$LOG" 2>&1; then
         printf 'nginx -t 失败时未中止\n'
         return 1
     fi
-    [[ "$(sha_of "$NGINX_MAIN")" == "$before" ]] || { printf '未从备份恢复原文件\n'; return 1; }
-    grep -q '已从' "$LOG" || { printf '缺少回滚提示\n'; return 1; }
+    [[ "$(sha_of "$NGINX_MAIN")" == "$before" ]] || { printf '未按原内容恢复\n'; return 1; }
+    [[ "$(stat -c %a "$NGINX_MAIN")" == "$mode" ]] || { printf '未按原 mode 恢复\n'; return 1; }
+    grep -q '已从' "$LOG" || { printf '缺少回滚提示\n'; cat "$LOG"; return 1; }
+    [[ -z "$(state_get "file:$NGINX_MAIN")" ]] || { printf '回滚后仍登记了受管 main\n'; return 1; }
 }
 
-case_nginx_main_requires_mime_types() {
+case_nginx_requires_mime_types() {
     sandbox_init
-    nginx_fixture include nomime
-    if (FAKE_NGINX_RC=0 ensure_nginx_main) >"$LOG" 2>&1; then
-        printf '缺少 mime.types 未被拒绝\n'
+    nginx_pkg_fixture || return 1
+    rm -f "$NGINX_ROOT/mime.types"
+    local before
+    before="$(sha_of "$NGINX_MAIN")"
+    if (ensure_nginx_main) >"$LOG" 2>&1; then
+        printf '缺 mime.types 未被拒绝\n'
         return 1
     fi
     grep -q 'mime.types' "$LOG" || { printf '缺少 mime.types 提示\n'; return 1; }
+    [[ "$(sha_of "$NGINX_MAIN")" == "$before" ]] || { printf '缺 mime.types 时仍改写\n'; return 1; }
 }
 
-case_scan_listen_80() {
+case_static_listen_80_hardblock() {
     sandbox_init
+    nginx_pkg_fixture || return 1
+    local hits
+    hits="$(list_static_listen_80)"
+    printf '%s\n' "$hits" | grep -q "listen       80;" || { printf '未从真实默认配置识别 80\n'; return 1; }
+    # 本项目自己的 bili.conf 即便写 80 也不应被计入（它由受管模板锚定，正常不会有）
     mkdir -p "$(dirname "$NGINX_CONF")"
-    nginx_fixture include mime
-    printf 'server {\n    listen 80;\n}\n' >"$SB/nginx/conf.d/other.conf"
-    scan_listen_80
-    [[ "$NGINX_80_RISK" == "1" ]] || { printf '未标记 80 风险\n'; return 1; }
-    rm -f "$SB/nginx/conf.d/other.conf"
-    NGINX_80_RISK=0
-    printf 'server {\n    listen 127.0.0.1:4273;\n}\n' >"$NGINX_CONF"
-    scan_listen_80
-    [[ "$NGINX_80_RISK" == "0" ]] || { printf '误报 80 风险\n'; return 1; }
+    printf 'server {\n    listen 80;\n}\n' >"$NGINX_CONF"
+    hits="$(list_static_listen_80)"
+    printf '%s\n' "$hits" | grep -q 'bili.conf' && { printf '把自己的站点计入 80 残留\n'; return 1; }
+    rm -f "$NGINX_CONF"
 }
+
+case_hard_block_effective_80() {
+    sandbox_init
+    local dump="$SB/effective.conf"
+    export FAKE_NGINX_DUMP="$dump"
+    printf 'events {}\nhttp {\n    server {\n        listen       80;\n    }\n}\n' >"$dump"
+    if (FAKE_NGINX_RC=0 assert_no_listen_80_effective) >"$LOG" 2>&1; then
+        printf '有效配置含 80 未被硬阻断\n'
+        return 1
+    fi
+    grep -q '拒绝 enable/start' "$LOG" || { printf '缺少硬阻断提示\n'; cat "$LOG"; return 1; }
+
+    printf 'events {}\nhttp {\n    include %s/conf.d/*.conf;\n}\n' "$NGINX_ROOT" >"$dump"
+    FAKE_NGINX_RC=0 assert_no_listen_80_effective >"$LOG" 2>&1 ||
+        { printf '无 80 的有效配置被误拒\n'; cat "$LOG"; return 1; }
+
+    # 只监听 127.0.0.1:80 也算占 80（本项目目标是完全不占 80）
+    printf 'events {}\nhttp {\n    server {\n        listen 127.0.0.1:80;\n    }\n}\n' >"$dump"
+    if (FAKE_NGINX_RC=0 assert_no_listen_80_effective) >"$LOG" 2>&1; then
+        printf '127.0.0.1:80 未被阻断\n'
+        return 1
+    fi
+}
+
+case_preflight_nginx_default_80_hardblock() {
+    preflight_fixture || return 1
+    mkdir -p "$(dirname "$NGINX_MAIN")" "$NGINX_ROOT"
+    cp "$NGINX_STOCK_FIXTURE" "$NGINX_MAIN"
+    : >"$NGINX_INSTALLED_FLAG"
+    printf '%s\n' "$NGINX_MAIN" >"$PACMAN_OWNED"
+    preflight >"$LOG" 2>&1
+    ((${#PROBLEMS[@]} > 0)) || { printf '预检未报默认 80 风险\n'; return 1; }
+    printf '%s\n' "${PROBLEMS[@]}" | grep -q '80 监听' || { printf '预检问题里没有 80\n'; cat "$LOG"; return 1; }
+    printf '%s\n' "${PROBLEMS[@]}" | grep -q '硬阻断' || { printf '提示未说明硬阻断\n'; return 1; }
+}
+
+case_preflight_nginx_missing_warns() {
+    preflight_fixture || return 1
+    mv "$SB/bin/nginx" "$SB/bin/nginx.disabled"   # 模拟“尚未安装 nginx”
+    preflight >"$LOG" 2>&1
+    mv "$SB/bin/nginx.disabled" "$SB/bin/nginx"
+    grep -q '不能证明发行包默认配置安全' "$LOG" || { printf '--check 未提示默认配置风险\n'; cat "$LOG"; return 1; }
+    ((${#PROBLEMS[@]} == 0)) || { printf '未安装场景被误判阻塞\n'; printf '%s\n' "${PROBLEMS[@]}"; return 1; }
+}
+
 
 # ── 前端原子发布 ───────────────────────────────────────────────────────────
 frontend_fixture() {
@@ -747,8 +1104,14 @@ case_preflight_unrecorded_db_refused() {
     state_save || return 1
     preflight >"$LOG" 2>&1
     printf '%s\n' "${PROBLEMS[@]}" | grep -q '已存在未登记数据库' || { printf '未登记 DB 未被拒绝\n'; printf '%s\n' "${PROBLEMS[@]}"; return 1; }
-    printf '%s\n' "${PROBLEMS[@]}" | grep -q '不删除' || { printf '提示未说明不删除数据库\n'; return 1; }
-    printf '%s\n' "${PROBLEMS[@]}" | grep -qE '移走/改名' || { printf '提示未引导移走/改名\n'; return 1; }
+    printf '%s\n' "${PROBLEMS[@]}" | grep -qF '保留数据库与现场' || { printf '提示未要求保留数据库与现场\n'; printf '%s\n' "${PROBLEMS[@]}"; return 1; }
+    printf '%s\n' "${PROBLEMS[@]}" | grep -qF '不手改 state' || { printf '提示未要求不手改 state\n'; return 1; }
+    printf '%s\n' "${PROBLEMS[@]}" | grep -qF 'docs/deployment/README.md' || { printf '提示未指向唯一主指南\n'; return 1; }
+    if printf '%s\n' "${PROBLEMS[@]}" | grep -qE '移走/改名|删除数据库'; then
+        printf '提示仍在推荐移走/改名或删除数据库\n'
+        return 1
+    fi
+    return 0
 }
 
 # ── 包信任锚（B3） ─────────────────────────────────────────────────────────
@@ -1051,10 +1414,23 @@ case_run "state 保存/回读" case_state_roundtrip
 case_run "path_owner absent/ours/modified/不可读 矩阵" case_path_owner_matrix
 case_run "require_managed 拒绝未识别与被改动文件" case_require_managed_refusals
 case_run "install_managed 幂等且拒绝覆盖用户改动" case_install_managed_gate
-case_run "nginx main 缺失 include 时插入且幂等" case_nginx_main_insert_and_idempotent
-case_run "nginx -t 失败时从备份回滚 nginx.conf" case_nginx_main_rollback_on_failed_test
-case_run "nginx main 缺 mime.types 时拒绝" case_nginx_main_requires_mime_types
-case_run "listen 80 扫描告警" case_scan_listen_80
+case_run "F1：入库 fixture 为真实 Arch 官方 1.30.6-1（2717B/sha 钉死）" case_fixture_sha_matches
+case_run "错误提示：被改配置 fail-closed 只给固定安全建议（不推手改 state/不移走/pacman）" case_error_advice_mismatch_safe
+case_run "错误提示：旧版受管 main 只给固定安全建议" case_error_advice_legacy_safe
+case_run "F2：登记立即落盘 + 冷重载 state 后续跑不重写/不重复备份" case_nginx_state_persist_and_cold_reload
+case_run "F2：写盘后未登记的中断恢复——逐字节一致才补登记，绝不重写" case_nginx_interrupted_state_recovery
+case_run "B4 正例：真实发行包默认配置备份后隔离为受管 main（无 server/80）且续跑幂等" case_nginx_normalize_fresh_install
+case_run "B4：旧版受管 main（仍含默认 listen 80）不续跑，交人工" case_nginx_legacy_managed_main_refused
+case_run "B4 负例：被人工改动的 nginx.conf 不动（fail closed）" case_nginx_modified_config_fail_closed
+case_run "B4 负例：缺可信缓存包时不动（fail closed）" case_nginx_missing_cache_fail_closed
+case_run "B4 负例：非本次新装来源时不动（fail closed）" case_nginx_not_fresh_fail_closed
+case_run "B4 负例：多个缓存候选时不动（fail closed）" case_nginx_multiple_cache_fail_closed
+case_run "B4：受管 main 未过 nginx -t 时按原内容/mode 回滚" case_nginx_rollback_on_failed_test
+case_run "B4：缺 mime.types 时不改写（fail closed）" case_nginx_requires_mime_types
+case_run "B4：静态扫描识别默认 80 且排除本项目站点" case_static_listen_80_hardblock
+case_run "B4：有效配置含 80（含 127.0.0.1:80）硬阻断，无 80 放行" case_hard_block_effective_80
+case_run "预检：已存在默认 80 配置时硬报（不假称可隔离）" case_preflight_nginx_default_80_hardblock
+case_run "预检：未安装 nginx 时明确提示不能证明默认配置安全" case_preflight_nginx_missing_warns
 case_run "前端原子发布与同产物跳过" case_publish_frontend_atomic_and_idempotent
 case_run "current 软链被改动时拒绝发布" case_publish_frontend_refuses_drifted_symlink
 case_run "端口占用检测" case_port_detection
