@@ -540,7 +540,7 @@ def test_archive_cursor_freezes_attempt_checkpoint_times_and_errors_across_reope
             await collector.check_once(UID, "124")
             execution = asyncio.create_task(collector.execute_pending())
             try:
-                await asyncio.wait_for(asyncio.gather(*(event.wait() for event in started.values())), 3)
+                await asyncio.wait_for(started["99123"].wait(), 3)
                 with archive_client(path) as api:
                     first = api.get("/api/archive/dynamics", params={"limit": 1}).json()
                     assert first["items"][0]["id"] == "123"

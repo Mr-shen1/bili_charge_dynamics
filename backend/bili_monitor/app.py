@@ -11,12 +11,18 @@ from typing import Annotated, Literal
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException
 
-from .contracts import UID, AddUP, AddTarget, APIError, MonitorConfig, NotificationSwitch, error_response
+from .contracts import (
+    UID, AddUP, AddTarget, APIError, MonitorConfig, NotificationSwitch, ProbeRequest,
+    error_response,
+)
 from .profiles import fetch_profile
 from .safety import configure_safe_logging
 from .storage import Store
 from .source import verify_author
 from .source_transport import PacedSourceTransport, SourcePacer
+from .risk import RiskGate, SourceRiskPaused, paused_response
+from .dispatch import DispatchLeases
+from .source_gate import GatedAsyncClient, GatedAsyncTransport, SourceGate
 from .source_client import SOURCE_HEADERS, source_client_event_hooks
 from .source_cookies import load_source_cookie_pairs
 from .comment_client import RequestsCommentClientFactory
@@ -42,10 +48,28 @@ def create_app(
     media_transport: httpx.AsyncBaseTransport | None = None,
     media_uploader: MediaUploader | None = None,
     comment_client_factory=None,
+    source_gate: SourceGate | None = None,
+    reply_page_pacer=None,
+    risk_clock=None,
 ) -> FastAPI:
-    """启动 lifespan 时迁移指定文件数据库；transport 只替换外部 HTTP。"""
+    """启动 lifespan 时迁移指定文件数据库；transport 只替换外部 HTTP。
+
+    `source_gate` 是 B 站源请求的发送许可与结果报告入口：资料查询、作者校验、手动
+    初始化、评论与媒体重试都经同一实例，不另造只供 collector 使用的通道。默认实现
+    是读同一 SQLite 的 `RiskGate`（跨进程持久暂停）；`GET /api/manage/risk` 始终读该
+    状态，因此注入替身 gate 的管理与采集仍共享同一份保护事实。
+
+    `reply_page_pacer` 是楼中楼页后等待的协调器（正式设计 §3.2）：默认进程内一个，
+    注入测试替身或与采集进程共用同一实例时才会改变等待方式。`risk_clock` 只替换保护
+    状态的“现在”，持久状态仍读同一 SQLite；不注入时用系统 UTC 时间。
+    """
     configure_safe_logging()
     store = Store(database_path)
+    # 保护状态读的是同一个 SQLite 文件：状态查询入口与发送许可共用一份持久事实。
+    risk = RiskGate(store, clock=risk_clock)
+    gate = source_gate if source_gate is not None else risk
+    # 08：API 的手动初始化／媒体重试与 collector 共用同一份 SQLite 租约。
+    scheduler = DispatchLeases(store, clock=risk_clock)
 
     @asynccontextmanager
     async def lifespan(application):
@@ -59,14 +83,23 @@ def create_app(
             pacer = SourcePacer()
             comments = comment_client_factory
             if comments is None and profile_transport is None:
-                comments = RequestsCommentClientFactory(cookie_pairs=cookie_pairs, pacer=pacer)
+                comments = RequestsCommentClientFactory(cookie_pairs=cookie_pairs, pacer=pacer, gate=gate,
+                                                        reply_page_pacer=reply_page_pacer,
+                                                        source_lease=scheduler)
             uploader = media_uploader if media_uploader is not None else OSSUploader.from_environment()
-            async with httpx.AsyncClient(
-                transport=profile_transport if profile_transport is not None else PacedSourceTransport(pacer=pacer),
+            async with GatedAsyncClient(
+                # 注入替身时沿用既有“只替换外部 HTTP”的语义（不额外分页等待）；
+                # 生产装配把分页等待放在外层、发送许可紧贴实际发送。
+                transport=(GatedAsyncTransport(profile_transport, gate=gate, source_lease=scheduler)
+                           if profile_transport is not None
+                           else PacedSourceTransport(
+                               GatedAsyncTransport(gate=gate, source_lease=scheduler), pacer=pacer)),
                 timeout=10, trust_env=False, follow_redirects=False,
-                headers=SOURCE_HEADERS, event_hooks=source_hooks,
-            ) as profiles, httpx.AsyncClient(
-                transport=media_transport, timeout=30, trust_env=False
+                headers=SOURCE_HEADERS, event_hooks=source_hooks, gate=gate,
+            ) as profiles, GatedAsyncClient(
+                # 图片下载是独立 client：它同样只经源站许可，OSS 上传不走这里。
+                transport=GatedAsyncTransport(media_transport, gate=gate, source_lease=scheduler),
+                timeout=30, trust_env=False, gate=gate,
             ) as media_client:
                 application.state.profiles = profiles
                 application.state.downloader = ImageDownloader(media_client)
@@ -107,6 +140,11 @@ def create_app(
     @application.exception_handler(APIError)
     async def domain_error(request, exception):
         return error_response(exception.code)
+
+    @application.exception_handler(SourceRiskPaused)
+    async def source_risk_paused(request, exception):
+        # 需要访问来源的操作被保护状态拒绝：固定提示＋状态，不返回伪成功统计。
+        return paused_response(exception.status, now=risk.now())
 
     @application.post("/api/manage/ups", status_code=201)
     async def add_up(body: AddUP):
@@ -172,6 +210,25 @@ def create_app(
         await run_store(store.delete_target, uid, id)
         return Response(status_code=204)
 
+    @application.get("/api/manage/risk")
+    async def get_risk(request: Request):
+        """只读本地保护状态；不触发采集、探测或任何上游请求。"""
+        validate_query(request)
+        return await run_store(risk.status)
+
+    @application.post("/api/manage/risk/probe", status_code=202)
+    async def request_probe(body: ProbeRequest | None = None, request: Request = None):
+        """人工态登记一轮探测：202 只表示已登记，由采集进程领取执行。
+
+        不直接发起探测，也不接受 query 或可写状态字段；不适用状态返回固定
+        `409 RISK_PROBE_NOT_ALLOWED`，没有强行解除保护的入口。
+        """
+        validate_query(request)
+        status = await risk.request_probe()
+        if status is None:
+            raise APIError("RISK_PROBE_NOT_ALLOWED")
+        return status
+
     @application.get("/api/manage/notifications")
     async def get_notifications(request: Request):
         """通知总开关与待发条数：只读聚合，不返回路由、webhook 或消息正文。"""
@@ -192,7 +249,8 @@ def create_app(
     async def initial_sync(body: AddUP):
         return await initialize(store, application.state.profiles, body.uid,
                                 application.state.downloader, application.state.media_uploader,
-                                comment_client_factory=application.state.comment_client_factory)
+                                comment_client_factory=application.state.comment_client_factory,
+                                scheduler=scheduler)
 
     @application.post("/api/sync/media/{id}")
     async def retry_media(

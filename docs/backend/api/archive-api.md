@@ -58,7 +58,7 @@ curl --fail-with-body -X POST http://127.0.0.1:8000/api/sync/initial \
   -H 'Content-Type: application/json' --data "{\"uid\":\"$UP_UID\"}"
 ```
 
-此命令会使用生产传输读取上游；自动化验收只用专用 fixture 装配，不执行该生产命令。源站限制会如实保留受限/失败，不绕过权限。来源默认匿名，可选登录态仅按[后端 Cookie 配置](../../../backend/README.md#可选-b站登录-cookie仅服务端)读取仓库外私有文件，不能通过本初始化请求体或前端提交凭据；图片/OSS 不使用来源 Cookie。新配置不会自动执行初始化，也不保证解除 HTTP 412。
+此命令会使用生产传输读取上游；自动化验收只用专用 fixture 装配，不执行该生产命令。B 站来源处于保护状态（任一源入口收到 HTTP 412／429）时，本入口与两个媒体重试入口都返回 `503 SOURCE_RISK_PAUSED` 固定契约（状态、`backoff_step`、可空 `next_probe_at`，有未来截止时间时带 `Retry-After`），不返回统计、不创建半成品；已提交分片与已成功媒体保留，冷却到期只执行一轮按接口探测，全部通过前不会自动放行（探测见[采集契约](collector-api.md#六档冷却与按接口探测04)，观察期与人工探测由 05 负责）。详见[管理契约](management-api.md#来源保护状态票据-03)与[采集契约](collector-api.md#跨进程风控暂停03)。源站限制会如实保留受限/失败，不绕过权限。来源默认匿名，可选登录态仅按[后端 Cookie 配置](../../../backend/README.md#可选-b站登录-cookie仅服务端)读取仓库外私有文件，不能通过本初始化请求体或前端提交凭据；图片/OSS 不使用来源 Cookie。新配置不会自动执行初始化，也不保证解除 HTTP 412。
 
 ## Archive 的信息边界
 
@@ -82,6 +82,18 @@ curl --fail-with-body -X POST http://127.0.0.1:8000/api/sync/initial \
 - 正式根评论、楼中楼与独立计数通过按 UP 复用的 Requests Session 执行（Cookie 变化或超过 30 分钟会话 TTL 才重建），普通头/15秒超时/环境代理对照参考脚本；同步 I/O 在线程池运行。预热（B站首页与本 UP 空间 `/dynamic` 页，各 10 秒超时，取得响应后等 1–3 秒，每个 URL 独立忽略异常）按 `(UP, Cookie 指纹)` 缓存 5 分钟，过期后后台刷新、失败冷却 60 秒，命中缓存时本轮不再预热；不再做 nav 评论预热，不因此确认登录。私有文件启动读一次，每轮重新初始化 jar，本轮 Cookie 更新保留，结束关闭。重定向只允许 api/www/space 三个精确B站主机的默认HTTPS GET，避免凭据外泄；不为评论接口加 WBI。正文/detail/feed 保持原 HTTPX 路径，两种客户端共享分页等待锁。显式传输替身仍可拦截全部来源 I/O，不复制一套业务解析。
 - `/x/v2/reply` 使用 locator、`sort=0`、`ps=20`、递增 `pn`。普通根页、第一页 `upper.top` 及 `hots` 幂等去重保存，不采条目内嵌回复预览。短页仍读下一页直到明确空页，非首屏的空尾页再读取同页确认；复查非空、失败或计数变化均保留已得内容并留待重试，不提前宣布结束。不由有口径争议的 `page.count` 推算页数。第一页 count 非零却无任何根数据、缺失 replies／分页计数、业务／网络／结构错误、跨页计数**减少**或分页不前进均失败，而不是成功空；计数**增长**（多为楼中楼新增，实测可占总数的 99.4%）不中止根分页，只记 `root_scan_count_grew`，页偏移由重复 ID 检测保证。
 - 置顶状态仅取首页明确的 `upper.top`：合法对象确认对应根 ID 置顶，显式 `null` 确认无置顶，缺失字段为未知。`hots` 不代表置顶，普通列表同 ID 副本不会覆盖置顶观察。只有整轮根分页成功后才同事务更新全部根的 `is_pinned`；明确取消置顶只清标记、不删旧评论，扫描失败或字段未知保留旧可信标记。
+### 续采进度与页锚点（06）
+
+根页不再只保存 `pn + 1`。`page_scan_progress`（SQLite v25，`stage=roots`、`scope_id` 为空，07 的楼中楼复用同表结构与规则）与页数据在同一短事务提交，记录：目标动态、`generation`（归档领取代次）、locator（`oid/type/source`）、方向（当前仅 `forward`）、阶段（`pages|guard|tail|complete`）、下一页 `next_page`、页大小、页锚点（最后提交页的页码与其全部已确认根 ID）、待校验锚点页 `overlap_page`、页内计数快照 `counts`、本轮新增根数 `confirmed`、开始时的动态来源计数、置顶观察与是否为全量扫描 `full`。它不是归档阅读 cursor：读取端 `root_comment_pages`／`root-comments:*` 快照仍是本地冻结视图，两者互不复用。
+
+- 提交：每页根文档、动态 `local_comment_count`、分项 pending 状态与上述进度在同一 `BEGIN IMMEDIATE` 事务；`generation` 不符即整体拒绝（返回 stale，不写任何行），旧领取无法覆盖新观察或清除新工作。网络、等待与解析都在事务外。
+- 续采：中断、失败、关闭重开或新进程拿到同一目标时，先重新读取**锚点页**并校验锚点末 ID 与连续尾部重叠；对齐则从下一页继续，锚点页这次读取照常入库（不推进整轮 checkpoint）。窗口（锚点页及前后至多两页）内找不到锚点时退回首屏按 ID 合并重扫，已提交页与历史根不删除。`locator` 变化即视为另一资源，从头重建进度，不拼接。
+- 重定位：锚点整体后移说明锚点之前插入了新根，受影响区段就是这些新页，只重读这几页后回到锚点之后的续采位置，不整轮重扫；整体前移说明删除，按锚点末项的新页位置续读。页码不是稳定快照，不能仅凭保存的 `pn + 1` 盲跳。
+- 收束：整页根 ID 均已在归档时只前进到 `guard` 阶段，再看紧邻一页；两页都已确认才收束为 `complete`，`confirmed` 只累计本轮新增。显式初始化或 `synced_root_metadata_version` 落后时 `full=1`，不做这种提前收束。提前收束只收束根页读取，深层根的 `rcount` 沿用上次读取值，其新回复由 07 的逐根增量与 24 小时校准承担。
+- 失败与空尾：非首屏空页进入 `tail` 阶段并复读同页确认；复读页非空或计数变化时退回锚点重新定位，不用同一旧基准无限反复。复查页已取得的文档照常保存。只有整轮成功才把进度标为 `complete` 并推进 `synced_root_comment_count`、置顶标记与成功时间；失败保留锚点与下一页供续采，旧 checkpoint 与历史根不动。
+- 页内计数仍只拒绝**减少**，增长只记 `root_scan_count_grew`；锚点校验后以新观察值作为本段基线，避免中断期间的一次真实删除把续采锁死在失败上。分页不前进（整页 ID 与上一已提交页相同）仍判失败，不以重复 ID 假装推进。
+- `root_scan_step` 是单页可恢复步骤接口：一次调用提交一页（或复核锚点、确认空尾），返回 `status/page/next_page/fetched/new/confirmed`，跨调用只依赖存储里的进度行，供 07／08 把「一页」当调度片。本票不实现楼中楼持久续采与全局公平调度。
+
 - 归档 JSON 使用内部 `synced_root_metadata_version` 标记根元信息采集格式，v1 为置顶，v2 为 Requests/定位链路，v3 为「缺 `pictures` 键确认无图」。旧归档缺标记或低于当前版本时，启用且入选的目标在后续检查重新登记工作，补采一次根与必要回复；成功后不会因该标记每节拍重扫。停用目标不补采；失败仍按既有 pending 重试。没有 schema 迁移，也不重写已有 cursor。后续普通同步仍沿用首次/未完成/来源计数变化规则，单独改变置顶但计数不变可能延后反映。
 - `module_stat.comment.count`（HTML STAT 可作为独立观察）仍是动态来源总数。`page.count/acount` 仅用于当前接口分页校验，不覆盖动态信号，也不假设跨接口永久相等。只有定位可确认且没有正来源计数冲突时，明确 count=0 的根集合空才可成功；若观察总数为正而整轮没有根，仍视为未确认失败。不会清除历史根记录。来源分页不是事务快照，未引起计数变化的上游挪动可能漏检，真实全量及长期稳定性尚未验证。
 - 正文 BLOCKED、网页评论无权提示不阻断评论接口；接口明确拒绝统一记录根分项 failed，不冒充空或承诺绕权。每页独立短事务保存，失败保留已取得内容和旧记录；停止、删除配置／目标、来源消失均不删评论。
@@ -110,7 +122,7 @@ curl --fail-with-body -X POST http://127.0.0.1:8000/api/sync/initial \
 
 沿用公开 initial 和正文统计口径，在根页成功后遍历本轮根集合；本轮原始根响应明确回复数为零的根无需请求回复页，非零或未知均独立请求（持久旧零不能代替新的未知观察） `/x/v2/reply/reply`（可信 locator 的 oid/type、根 ID、ps=20、递增 pn）。不保存根页内嵌的三条预览，不扫描其他动态或补入历史目标。
 
-响应必须确认根／资源／页码／批量／有效非负 `page.count` 与条目关系；完整读取至明确空页，非首屏空尾页复读确认，短页不提前结束。页间 count 变化、重复页、不前进、结构／业务／HTTP 失败，或唯一回复数**多于**该 count 均为失败；已取得页以独立短事务保留。唯一回复数**少于** count 只记录 `reply_scan_short` 并以已取得内容成功：上游 count 会保留已删除、折叠或对当前账号不可见的回复，不能因此把整根判失败。本轮楼中楼 `page.count` 与根页 `rcount` 允许不同（热帖持续增长、两处口径不同），以本次可分页响应自洽为准；成功时以该 count 覆盖根的 `source_reply_count`。来源页不是事务快照，未引起 count 变化的来源移动仍可能漏检；真实权限和长期全量须另证。`page.count` 仅代表该根来源回复数，不覆盖动态评论观察数。
+响应必须确认根／资源／页码／批量／有效非负 `page.count` 与条目关系；完整读取至明确空页，非首屏空尾页复读确认，短页不提前结束。页间 count 变化、重复页、不前进、结构／业务／HTTP 失败，或单页条目数**多于**该页 `count` 均为失败（07 起按页判定，不再跨页累计）；已取得页以独立短事务保留。唯一回复数**少于** count 只记录 `reply_scan_short` 并以已取得内容成功：上游 count 会保留已删除、折叠或对当前账号不可见的回复，不能因此把整根判失败。本轮楼中楼 `page.count` 与根页 `rcount` 允许不同（热帖持续增长、两处口径不同），以本次可分页响应自洽为准；成功时以该 count 覆盖根的 `source_reply_count`。来源页不是事务快照，未引起 count 变化的来源移动仍可能漏检；真实权限和长期全量须另证。`page.count` 仅代表该根来源回复数，不覆盖动态评论观察数。
 
 Archive 新增：
 
@@ -127,9 +139,22 @@ Archive 新增：
 
 `reply_to` 为同根 parent 对应条目的作者对象，或 null。根与跨页回复目标均从完整本地集合解析；目标不存在／无可确认作者 ID 时不拼伪造作者，`content.members` 只是 @ 提及者，不能作为关系证据。目标作者与内容在 cursor 首读一并冻结；page 模式按每次请求的当前完整本地同根集合解析。
 
-楼中楼按根增量推进（与参考脚本一致）：本轮根页 `rcount` 与上次成功快照相同、且距上次成功不足 `FULL_SCAN_SECONDS`（24 小时）的楼层**不重发** `/x/v2/reply/reply`，只沿用已持久状态；`rcount` 变化、从未成功或超过校准周期的楼层才整楼重扫。逐根成功时记录根页 `rcount`、楼中楼来源数与成功时间（`reply_sync.observed_reply_count` / `synced_source_reply_count` / `synced_at`）；跳过不刷新校准计时，因此每根每 24 小时至少完整校准一次，用于补偿增删抵消。`replies_sync_finished` 携带 `skipped=` 与 `degraded=` 便于观察本轮省下的请求和降级轮次。显式初始化（`POST /api/sync/initial`）始终整楼重扫。
+楼中楼按根增量推进（与参考脚本一致）：本轮根页 `rcount` 与上次成功快照相同、且距上次成功不足 `FULL_SCAN_SECONDS`（24 小时）的楼层**不重发** `/x/v2/reply/reply`，只沿用已持久状态；`rcount` 变化、从未成功或超过校准周期的楼层才继续推进。逐根成功时记录根页 `rcount`、楼中楼来源数与成功时间（`reply_sync.observed_reply_count` / `synced_source_reply_count` / `synced_at`）；跳过不刷新校准计时，因此每根每 24 小时至少校准一次，用于补偿增删抵消。`replies_sync_finished` 携带 `skipped=` 与 `degraded=` 便于观察本轮省下的请求和降级轮次。显式初始化（`POST /api/sync/initial`）始终正序全量。
 
 根扫描失败不再连坐楼中楼：`sync_roots` 返回空时按已存根评论及其 `source_reply_count` 降级执行（`replies_sync_degraded`），仍按 `scan_due` 只重扫到期/上次失败的楼，失败楼层照常保存已得页。降级轮不改变一致性语义——根集合未确认，故整轮仍记 `replies_last_attempt=unconfirmed`，`synced_reply_comment_count` 与成功时间不推进，`work.replies` 保持 `pending`。因此失败重试只重扫根分页，不会因 `failed/unconfirmed` 强制 `full=True` 全量重扫全部楼层（否则热帖会陷入「全量重扫 → 期间计数变化 → 再全量重扫」的死循环）。楼中楼分页同样只拒绝计数**减少**，增长只记 `reply_scan_count_grew`。
+
+### 楼中楼续采进度与页锚点（07）
+
+楼中楼与根页共用 `page_scan_progress`（SQLite v25，`stage=replies`、`scope_id=<根评论 ID>`），不需要新迁移。每页回复与对应进度在同一短事务提交：目标动态、`generation`、locator、方向（`forward` 正序全量 / `reverse` 末页倒序增量）、阶段（`pages|guard|tail|complete`）、下一页、页锚点（最后提交页的页码与其全部已确认回复 ID）、页内计数快照 `counts`（来源 `page.count` 与本尝试已重定位次数）与整轮新增数 `confirmed`。整楼的 `reply_sync` 成功记录与最后一页同一事务，不存在“页已存但楼仍 pending”的中间态。
+
+- 方向：有已归档回复即走末页倒序增量，起点是本轮根页 `rcount` 推出的末页；显式初始化、尚无本地回复或 locator 变化才正序全量。倒序首次取回的 `page.count` 推出的末页与起点不同时，先跳到真实末页再递减（`resume=retargeted`），不让沿用的旧 `rcount` 把新回复留在身后。
+- 续采：中断、失败、关闭重开或新进程接手同一楼时先复读**锚点页**并校验锚点末 ID 与连续尾部重叠，对齐则按方向继续（正序到下一页，倒序到上一页）。正序锚点整体后移说明锚点前插入了新回复，只重读受影响头部页再回到锚点之后；倒序发现末页比锚点多时先跳到新末页。窗口（锚点页及前后至多两页）内找不到锚点时回到本方向起点按 ID 合并重扫，已提交页与历史回复不删除。locator 变化视为另一资源，从头正序重建，不拼接。
+- 失败重试不再整楼从头正扫：失败楼沿用已提交页与同方向断点续采，只有显式初始化或 locator 变化才是全量。空尾页复查未完成时复读同一页；复查仍非空或计数变化则退回锚点重新定位（正序退回锚点页、倒序跳到新末页），不用同一旧基准原地循环。
+- 热帖持续新增：一次尝试内允许一次末页重定位，第二次再漂移则本轮记失败（`stopped_by=drift`），已提交页与断点保留，下一轮从新末页继续。计数**减少**仍按失败处理并重试。
+- 旧 `rcount` 不再永久跳过：本轮新观察到的零回复不发请求；沿用旧零（06 根页早停留下的深层根）在校准到期后必须真的请求一次，仍只用既有 24 小时周期，不新增检测信号。
+- 页数、`reply_sync`、成功时间与 `work.replies` 语义不变：只有整楼页集合确认才推进该根成功记录与整轮 checkpoint；本地数仍可与来源数不同，差额照旧只记录不追赶，也不删除旧回复。
+
+`reply_scan_step(store, client, dynamic_id, generation, root_id, *, uid=None, resume=True, full=False, observed=..., now=None, on_failure=None, seen=None)` 是单页可恢复步骤接口：一次调用最多提交一页（可能先复核锚点或被插入影响的头部页），返回 `status=page|complete|skipped|failed|stale`、`direction`、`page`、`next_page`、`fetched/new/confirmed`、`reason` 与该页已校验 `reply_ids`、`expanded`（是否真的请求过上游，供调用方决定楼级等待）与 `source_count`。跨调用只依赖 `page_scan_progress`：`Store.read_reply_scan/resume_reply_scan/save_reply_page/save_reply_position` 与既有 `reply_progress/reply_ids/change_reply_root` 是同一组持久能力，08 可把「一页」当调度片。`status='stale'` 表示领取代次已过期，调用方必须停止该链、不再请求上游；`status='complete'` 时该根成功记录已提交，轮级 summary（`replies_last_attempt`）仍由整轮驱动写。
 
 根评论列表为每条根附带 `up_reply`：作者在该楼中最早的一条回复（`{id, author, published_at, text, like_count, reply_to}`），作者未参与时为 null；`reply_to` 只在回复其他楼时带目标作者，直接回根为 null。手机端只用它渲染楼中楼预览，不替代 Reply 分页。cursor 首批回复另返回 `root`（该楼根评论），cursor 续批不重复；实时 page 模式每一页均返回 `root`，供楼中楼页展示被回复评论。
 
@@ -153,7 +178,7 @@ Archive 新增：
 
 回复快照**不设 TTL**，不沿用动态列表 15 分钟；普通传输／503 STORAGE_UNAVAILABLE 失败保留原 cursor 可重试。格式无效、伪造、跨根／动态／资源、读取上下文因数据库恢复而缺失返回 `422 CURSOR_INVALID`，使用既有固定提示“评论读取标记无效，请重新开始读取”。须显式无 cursor 开始新快照并替换旧分页视图，不静默拼接另一范围。无回收／容量承诺，持久快照有增长风险。
 
-v6→v7 新增回复、逐根状态与回复分页表，旧根记录及有效根／动态 cursor 内容不改写；旧 Archive 补齐 pending 和 null 状态，不能从旧根成功推断整轮成功。#17/#18 阶段 Adapter 与页面最初使用此冻结批次模型；当前页码、窄屏独立页及对应返回行为以本节新增 page 说明和[客户端当前基线](archive-api-client.md#当前代码基线回复分页与独立楼中楼)为准，不修改旧票验收结论。
+v6→v7 新增回复、逐根状态与回复分页表，旧根记录及有效根／动态 cursor 内容不改写；旧 Archive 补齐 pending 和 null 状态。v24→v25 只新增 `page_scan_progress`（`CREATE TABLE IF NOT EXISTS`，缺失才建；v23→v24 是 03 的风控保护状态，两者可重入），保留归档、媒体、阅读 cursor、未完成工作与通知状态；旧库没有上游进度时按全新扫描重建，未来版本仍拒绝启动，不能从旧根成功推断整轮成功。#17/#18 阶段 Adapter 与页面最初使用此冻结批次模型；当前页码、窄屏独立页及对应返回行为以本节新增 page 说明和[客户端当前基线](archive-api-client.md#当前代码基线回复分页与独立楼中楼)为准，不修改旧票验收结论。
 
 自动化证据见 [17 验收记录](../../../.scratch/backend-integration/acceptance-17.md)，固定资料见 [来源协议证据](../evidence/source-protocol-evidence.md#17-楼中楼协议)。
 
@@ -165,7 +190,7 @@ initial 仍只统计正文，媒体下载/上传不使正文成功倒退；可�
 
 `POST /api/sync/media/{id}` 仅读取本地当前媒体关联并尝试未成功项，不读取上游正文、评论或编辑信号，也不重宣称正文成功。可指定 `?media_id=<关联 ID>` 只重试一张图；不指定则顺序处理全部未完成项。未知本地动态／当前关联返回 `404 NOT_FOUND`；非法关联 ID（必须 32 位小写十六进制字符串）、未知／重复 query 返回 `422 INVALID_INPUT`。成功项不重新上传，未配置 OSS 或无待处理项返回零。此显式运维入口允许恢复保留归档，不依赖监控配置仍存在；不是页面读取／刷新入口或自动调度器。
 
-重试统计只计实际领取的媒体：`processed` 为尝试数，`succeeded` 为本次上传并被当前关联接受的完成数，`failed` 包括 I/O 失败和因较新版本／尝试取代而被拒绝的旧提交。归档 GET 成功可携带 pending/failed 图片；HTTP 200 不代表全部同步成功。
+保护状态下需要下载新图片的手动重试同样返回 `503 SOURCE_RISK_PAUSED`；已全部成功的媒体只做本地结算，仍返回零处理统计，OSS 上传不受暂停影响。重试统计只计实际领取的媒体：`processed` 为尝试数，`succeeded` 为本次上传并被当前关联接受的完成数，`failed` 包括 I/O 失败和因较新版本／尝试取代而被拒绝的旧提交。归档 GET 成功可携带 pending/failed 图片；HTTP 200 不代表全部同步成功。
 
 ### Archive 增量 DTO
 

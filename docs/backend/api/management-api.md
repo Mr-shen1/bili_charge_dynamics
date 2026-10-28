@@ -17,7 +17,28 @@
 
 UP 结构：`{"uid":"123","name":"示例","avatar_url":"https://example.invalid/avatar.png","monitor":{"mode":"recent","recent_n":10,"enabled":true,"last_checked_at":null,"last_succeeded_at":null}}`。删除后 monitor 为 null。身份的 name/avatar_url 可空，以兼容旧资料；前端昵称空时显示“未知用户”，头像空或加载失败时使用 `/default-avatar.svg`。01 阶段检查时间始终 null；23 后由持久目标检查/实际成功时间的最大值提供，未检查/未成功仍为 null，不把配置保存时间当成检查时间，详见 [采集与状态契约](collector-api.md)。默认 recent、10、enabled=false：新增 UP 只保存身份与默认配置并停在“监控已停止”，需用户显式启用后才进入发现与检查；无 UP 数量限额。
 
-错误统一为 `{"error":{"code":"INVALID_INPUT","message":"固定安全提示"}}`。校验 `422 INVALID_INPUT`，上游网络异常、拒绝、身份不符或资料不足 `502 PROFILE_UNAVAILABLE`，存储失败 `503 STORAGE_UNAVAILABLE`，非预期异常 `500 INTERNAL_ERROR`。响应及日志不回显请求体、完整上游响应、URL 查询参数或异常文本；服务端消息日志只允许下述审核通过的固定文本；前端只以固定错误码映射提示，不显示来自 HTTP 的任意错误文字。失败不产生身份或配置、不覆盖已有成功资料。
+错误统一为 `{"error":{"code":"INVALID_INPUT","message":"固定安全提示"}}`。校验 `422 INVALID_INPUT`，上游网络异常、拒绝、身份不符或资料不足 `502 PROFILE_UNAVAILABLE`，存储失败 `503 STORAGE_UNAVAILABLE`，非预期异常 `500 INTERNAL_ERROR`，B 站来源处于保护状态 `503 SOURCE_RISK_PAUSED`（见下文「来源保护状态」），人工探测登记在当前状态不适用时 `409 RISK_PROBE_NOT_ALLOWED`（见下文「人工探测登记」）。响应及日志不回显请求体、完整上游响应、URL 查询参数或异常文本；服务端消息日志只允许下述审核通过的固定文本；前端只以固定错误码映射提示，不显示来自 HTTP 的任意错误文字。失败不产生身份或配置、不覆盖已有成功资料。
+
+### 来源保护状态（票据 03）
+
+只要操作**实际需要访问 B 站**，在保护状态下返回固定契约：
+
+- `503 {"error":{"code":"SOURCE_RISK_PAUSED","message":"B 站来源保护中，需要访问来源的操作暂不可用","state":"cooldown","backoff_step":1,"next_probe_at":"<ISO 或 null>"}}`。`message` 是固定安全提示，前端只按错误码映射，不回显该字段。`state` 可能是 `cooldown`／`probing`／`manual`；只有 `cooldown` 带未来 `next_probe_at`，后两者为 null。
+- 有未来截止时间时附 `Retry-After`（剩余秒数，向上取整）；`next_probe_at` 已过期或为空则不带该头。冷却到期只表示“该执行一轮按接口探测”，探测全部通过前仍不放行，因此不承诺重试一定成功；六档阶梯、探测类型与唯一 owner 见[采集契约](collector-api.md#六档冷却与按接口探测04)。
+- 触发保护的那一次请求同样返回该错误：它没有完成，也不返回 `processed/succeeded/failed` 之类的统计，避免伪成功；已提交的分片与已下载内容保留，不产生半成品身份或目标。
+- 覆盖：新增 UP（资料查询）、目标校验（作者核对）、`POST /api/sync/initial`、`POST /api/sync/media/{id}`、`.../comments/{root_id}`。不覆盖纯本地读取、配置保存／启停／删除、通知开关、归档阅读与 OSS 上传；也不需要来源时（例如当前没有可运行目标）仍按原语义返回。
+- 原有输入校验与本地冲突优先：非法输入仍 `422`，已有监控配置仍 `409 ALREADY_MONITORED`，未知身份仍 `404`。
+- 状态本身由只读 `GET /api/manage/risk` 提供（字段与脱敏边界见[采集与状态契约](collector-api.md)），同一份 SQLite 事实；本契约不另建风控页面或面板。
+
+### 人工探测登记（票据 05）
+
+`POST /api/manage/risk/probe` → `202`，沿用现有管理入口的部署保护（反向代理 Basic Auth），不新增页面或鉴权体系：
+
+- 只在 `manual` 登记一轮探测，`202` **仅表示已登记**，不代表探测成功、接口恢复或已清零档位；探测由正式采集进程领取执行，API 不直接发起请求。
+- 同一人工态代次的重复登记幂等，不排多轮；采集进程未运行时保持“已登记”。登记绑定当前人工态代次，一轮执行后需重新登记。
+- 冷却未到期、正在探测及普通／观察态都不适用，返回固定 `409 {"error":{"code":"RISK_PROBE_NOT_ALLOWED","message":"当前保护状态不允许登记人工探测"}}`，不附带状态字段以外的可写信息。
+- 不接受 query 参数（非法或重复 `422 INVALID_INPUT`），也不接受任何可写状态字段：请求体只允许空对象或缺省，`state`／`backoff_step`／`next_probe_at` 之类字段一律 `422 INVALID_INPUT`，不能借请求体清零档位、修改截止时间或绕过检查。
+- 返回体是该时刻的只读[保护状态](collector-api.md#跨进程风控暂停03)（含 `manual.probe_registered=true`），不含 owner、租约或内部令牌。
 
 ### 服务端资料失败诊断
 
@@ -55,7 +76,7 @@ profile_lookup_failed reason=http_status http_status=412 message_state=allowed u
 
 ## SQLite 与迁移
 
-身份和监控配置分离；配置的外键引用身份，删除配置不删除身份。首次数据库使用事务创建版本 1；再次启动不改写已保存字段。未知未来 schema 版本拒绝启动，不默默降级。迁移测试通过真实旧/新临时数据库及公开 HTTP 结果验证，不绑定内部表名。上游资料网络请求期间不持有 SQLite 写事务；写入身份和默认配置在短事务内原子完成。API 不含周期调度。
+身份和监控配置分离；配置的外键引用身份，删除配置不删除身份。首次数据库使用事务创建版本 1；再次启动不改写已保存字段。未知未来 schema 版本拒绝启动，不默默降级。票据 03 新增 v24（`source_risk` 单行保护状态），票据 06 新增 v25（根页／楼中楼续采进度 `page_scan_progress`），票据 05 在 v26 复用同一单行补观察进度与人工探测登记列（`observing_active_ms`／`observing_successes`／`probe_request_generation`／`probe_origin`），票据 08 新增 v27（跨进程发送／重型／目标租约 `dispatch_leases`），迁移在 `BEGIN IMMEDIATE` 内原子完成，保留归档、媒体、阅读 cursor、未完成工作与已登记的保护状态，也不预占后续版本；当前 schema 为 v27，未来版本 28 拒绝启动；保护状态读不出来时拒绝新源请求（`503 STORAGE_UNAVAILABLE`），不降级放行。迁移测试通过真实旧/新临时数据库及公开 HTTP 结果验证，不绑定内部表名。上游资料网络请求期间不持有 SQLite 写事务；写入身份和默认配置在短事务内原子完成。API 不含周期调度。
 
 ## 通知状态（票据 14 引入，票据 15 改为三态）
 
@@ -75,4 +96,4 @@ profile_lookup_failed reason=http_status http_status=412 message_state=allowed u
 
 01 的管理页契约支持加载/空态/读取失败重试、新增、逐 UP 编辑保存、独立启停、删除和原位操作重试。02 已补充真实指定目标列表、归属校验、增加/移除及反馈，见 [archive-api.md](archive-api.md)；删除配置仍保留身份与归档。控件使用原生标签、按钮、焦点样式；不提供昵称、头像或凭据编辑。
 
-**应用与部署保护分开**：01 阶段未实现应用内账号/权限；当前部署模板已有针对管理路径的反向代理 Basic Auth，客户端也会将管理响应 401 映射为固定的身份验证提示，不回显代理正文。这不是应用新增登录/角色系统，也不证明所有环境都已启用保护。Vue 迁移按当前代码保留这些边界，不根据旧“无鉴权”描述删除代理保护或 401 处理；反代配置及限制见[阿里云 ECS 运维手册](../../deployment/aliyun-ecs.md)。未受保护或可绕过代理的管理入口仍有被第三方读取/修改的风险，隐藏入口不是保护。此前静态阅读装配仍不作为管理成功证据。
+**不新增风控页面**：保护状态只通过上述固定错误提示与只读 `GET /api/manage/risk` 暴露，管理页不新增风控面板、采集按钮或强制解锁入口。**应用与部署保护分开**：01 阶段未实现应用内账号/权限；当前部署模板已有针对管理路径的反向代理 Basic Auth，客户端也会将管理响应 401 映射为固定的身份验证提示，不回显代理正文。这不是应用新增登录/角色系统，也不证明所有环境都已启用保护。Vue 迁移按当前代码保留这些边界，不根据旧“无鉴权”描述删除代理保护或 401 处理；反代配置及限制见[阿里云 ECS 运维手册](../../deployment/aliyun-ecs.md)。未受保护或可绕过代理的管理入口仍有被第三方读取/修改的风险，隐藏入口不是保护。此前静态阅读装配仍不作为管理成功证据。

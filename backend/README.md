@@ -17,7 +17,7 @@ exec .venv/bin/python -m uvicorn backend.bili_monitor.app:app --host 127.0.0.1 -
 
 Python 使用 `.python-version` 的 3.12 系列（记录实际补丁版本）；FastAPI、HTTPX、Uvicorn、OSS SDK 和测试依赖由清单/`uv.lock` 固定。上述路径是示例，须选择**仓库外持久、可写的绝对 SQLite 路径**，与 collector 完全相同，不随发布目录切换；默认 `backend/data/monitor.sqlite` 仅适合本地开发。依赖经 uv 同步后直接 `exec` 其解释器，打印的 shell PID 随即成为 Python PID，不会只杀掉 uv 父进程而留下子进程。仅一个 API，不加 `--workers` / `--reload`；没有内嵌定时器或常驻 Node.js，collector 另起终端。
 
-API 的 ASGI lifespan、取得锁的 collector 与独立通知进程启动都调用 `Store.migrate`（当前 v23）。升级先 TERM/Ctrl-C 停两个进程、等退出，再切换同一代码版本并 `uv sync --locked`；先启动 API 完成迁移并确认 `GET /api/manage/ups` 为 200，再启动 collector。未来 schema 拒绝启动，失败事务回滚；无独立迁移 CLI、自动降级或备份，勿删库、改版本号或让旧进程与新迁移并行。
+API 的 ASGI lifespan、取得锁的 collector 与独立通知进程启动都调用 `Store.migrate`（当前 v27）。升级先 TERM/Ctrl-C 停两个进程、等退出，再切换同一代码版本并 `uv sync --locked`；先启动 API 完成迁移并确认 `GET /api/manage/ups` 为 200，再启动 collector。未来 schema 拒绝启动，失败事务回滚；无独立迁移 CLI、自动降级或备份，勿删库、改版本号或让旧进程与新迁移并行。
 
 **首期无鉴权**：管理、初始化及归档接口均可被访问者调用，可能暴露内容或被修改配置。请通过监听地址、防火墙或反向代理限制暴露；隐藏入口不是保护。本期没有备份或容量治理。
 
@@ -38,7 +38,7 @@ exec .venv/bin/python -m backend.bili_monitor.service --host 127.0.0.1 --port 80
 
 动态可信新版本正文成功归档后登记通知事件，由独立进程按索引领取并投递到 UP 群；首次正文只建立基线，通知失败不回写归档成功状态。一级评论在根评论写事务里、楼中楼回复在回复写事务里与内容同事务登记：作者等于该动态所属 UP 时同时发 UP 群和全员群，其他人只发全员群，身份/时间不全时留候选等补齐，评论起点之前的评论静默；单条就绪即投递，不等整轮分页或媒体。回复消息链接直达该条回复（`/dynamics/{id}/comments/{rootId}/replies/{replyId}/locate`），根不可定位或身份不全时不伪造字段（详情见契约）。阶段有效性按领取时绑定的阶段核验，停用后重新启用的旧在途执行不能借新阶段发通知。
 
-逐目标投递相互隔离：某个群缺路由、目的地写错、超时、限流或业务失败只让该目标保留待发并退避重试，其他群照常发送；修复配置的方式是**编辑配置文件后重启通知进程**，记录、阶段与基线保留，已成功目标不重发、不补历史。发送前还会按目的地做**主动限速**（票据 13：每个群 5 次/秒、100 次/分钟，对应飞书自定义机器人官方额度；系统群角色独立额度且领取优先）：超预算不等待也不计失败，只把 `due_at` 顺延约 1 秒，记录留在 `pending` 由下一轮重领。真实失败次数记在 `notification_deliveries.failures`/`last_failed_at`（`attempts` 含等待配置复检，不能当失败次数用）。同一进程每轮轮询还负责北京时间每小时第 40 分钟的系统群心跳（仅在 `:40:00`–`:40:59` 窗口内生成，同小时只生成一次、过期不投递、停机错过与 `:41` 之后首次启动都不补发，已生成待发的仍可在有效期前重试），状态文本只报告本地已记录的采集事实。系统群同时接收**运行告警**：可信凭据失效（只认上游业务码 `-101` 且本次确实配置了来源凭据）、采集异常、主循环捕获异常、飞书持续投递失败（同一业务目标真实失败 ≥3 次且仍在待投递）与路由缺失/错误；同一对象同一类别首次立即提醒，此后每 30 分钟最多一次（节流状态存在 `notification_alerts`，跨重启保留，未投递的同类提醒合并），系统群自身失败不递归告警，也不发故障恢复消息。启动与配置见[通知进程与投递契约](../docs/backend/api/notification-process.md)：
+逐目标投递相互隔离：某个群缺路由、目的地写错、超时、限流或业务失败只让该目标保留待发并退避重试，其他群照常发送；修复配置的方式是**编辑配置文件后重启通知进程**，记录、阶段与基线保留，已成功目标不重发、不补历史。发送前还会按目的地做**主动限速**（票据 13：每个群 5 次/秒、100 次/分钟，对应飞书自定义机器人官方额度；系统群角色独立额度且领取优先）：超预算不等待也不计失败，只把 `due_at` 顺延约 1 秒，记录留在 `pending` 由下一轮重领。真实失败次数记在 `notification_deliveries.failures`/`last_failed_at`（`attempts` 含等待配置复检，不能当失败次数用）。同一进程每轮轮询还负责北京时间每小时第 40 分钟的系统群心跳（仅在 `:40:00`–`:40:59` 窗口内生成，同小时只生成一次、过期不投递、停机错过与 `:41` 之后首次启动都不补发，已生成待发的仍可在有效期前重试），状态文本只报告本地已记录的采集事实。系统群同时接收**运行告警**：可信凭据失效（只认上游业务码 `-101` 且本次确实配置了来源凭据）、采集异常、主循环捕获异常、飞书持续投递失败（同一业务目标真实失败 ≥3 次且仍在待投递）、路由缺失/错误，以及 B 站风控的三个生命周期事实（首次触发／转人工／稳定恢复，来自真实状态转移而非日志解析）；同一对象同一类别首次立即提醒，此后每 30 分钟最多一次（节流状态存在 `notification_alerts`，跨重启保留，未投递的同类提醒合并），系统群自身失败不递归告警，业务故障不发恢复消息。通知为 `off` 时风控告警同样不登记、不排队、不补发，也不暗中改动开关。启动与配置见[通知进程与投递契约](../docs/backend/api/notification-process.md)：
 
 ```sh
 export BILI_DATABASE_PATH=/srv/bili-monitor/monitor.sqlite
@@ -60,7 +60,7 @@ uv run python -m backend.tests.notification_demo --database "$demo_dir/monitor.s
 
 ## 23 独立采集进程
 
-也可按原方式让 API 和采集进程使用同一 SQLite 路径、分别启动，不能增加多个采集进程。处理持久启用的指定集合或近期可信窗口的检查/同步，以及近期 UP 发现，默认最多 4 个同时检查、4 个独立目标同步、2 个独立 UP 发现；同目标不叠加，慢分页期间其他目标仍可检查／同步。固定节拍检查（生产默认 2.7 秒 ±10%，可用 `BILI_COLLECTOR_CADENCE_SECONDS` 覆盖）与慢同步分离：评论计数每节拍读取，页面信号（编辑时间/正文与图片版本/受限状态）默认每 60 秒 ±2 秒采样一次（`BILI_COLLECTOR_PAGE_CHECK_SECONDS` 可覆盖，0 表示每节拍），状态从 `GET /api/manage/ups/{uid}/checks` 读取；完整节拍、重启与状态语义见 [采集契约](../docs/backend/api/collector-api.md)。API 不内嵌定时器。
+也可按原方式让 API 和采集进程使用同一 SQLite 路径、分别启动，不能增加多个采集进程。处理持久启用的指定集合或近期可信窗口的检查/同步，以及近期 UP 发现，默认最多 4 个同时检查、2 个独立 UP 发现；重型归档自 08 起全局只推进一路，按正文／根页／楼中楼页／单图下载的可提交步骤在目标间轮转，慢分页期间其他目标仍可检查，并在每次步骤提交后获得下一次重型机会。同目标由 SQLite 租约互斥，API 手动初始化与 collector 共用同一发送许可。固定节拍检查（生产默认 2.7 秒 ±10%，可用 `BILI_COLLECTOR_CADENCE_SECONDS` 覆盖）与慢同步分离：评论计数每节拍读取，页面信号（编辑时间/正文与图片版本/受限状态）默认每 60 秒 ±2 秒采样一次（`BILI_COLLECTOR_PAGE_CHECK_SECONDS` 可覆盖，0 表示每节拍），状态从 `GET /api/manage/ups/{uid}/checks` 读取；完整节拍、重启与状态语义见 [采集契约](../docs/backend/api/collector-api.md)。API 不内嵌定时器。
 
 ```sh
 # 独立终端、仓库根目录；使用与 API 相同的持久路径和服务端 OSS 环境
@@ -97,7 +97,7 @@ journalctl --user -u bili-charge-live-34.service -n 100 --no-pager
 journalctl --user -u bili-charge-live-34.service -f
 ```
 
-每个节拍的 `collector_tick` 会显示入选目标、待处理数、在途数和本轮新调度数；真正领取后输出 `sync_started`，完成时输出 `sync_finished`。同一同步尝试通过进程内 `attempt` 关联根评论、回复、正文和媒体阶段；失败包含固定分类、页号及 HTTP 状态（如有），不含 URL、业务 ID、来源原文或凭据。详细字段及如何区分空闲、在途、失败重试和进程退出见[采集日志契约](../docs/backend/api/collector-api.md#调度与失败日志)。正常失败仍按原固定节拍重试，日志本身不触发额外采集。本次日志增补按用户要求未经测试或运行验证。
+每个节拍的 `collector_tick` 会显示入选目标、待处理数、在途数和本轮新调度数；真正领取后输出 `sync_started`，完成时输出 `sync_finished`。同一同步尝试通过进程内 `attempt` 关联根评论、回复、正文和媒体阶段；日志按正式设计 §6 放行**已校验的业务 ID**（字符串 UID、动态、根评论、每页评论／回复 ID），失败包含固定分类、页号及 HTTP 状态（如有），仍不含 URL、正文、异常原文、Cookie 或内部领取令牌。楼中楼每页一条 `reply_page_fetched`（含页码、方向、数量、`elapsed_ms`、`wait_ms` 与全部已校验回复 ID）和一条 `reply_page_saved`（含新增／更新数），超长 ID 列表按同一关联号分块（`ids_part`/`ids_chunks`/`ids_total`）。根页由 06 起逐页一条 `root_page_saved`（页码、方向、完整评论 ID、`elapsed_ms`、新增／已确认数与 checkpoint 是否被接受），恢复与重定位另记 `root_scan_position`／`root_scan_resumed`。详细字段及如何区分空闲、在途、失败重试和进程退出见[采集日志契约](../docs/backend/api/collector-api.md#调度与失败日志)。正常失败仍按原固定节拍重试，日志本身不触发额外采集。专项：`uv run pytest backend/tests/test_flow_logs.py -q`。
 
 ## 24 编辑同步与版本提交
 
@@ -117,7 +117,7 @@ journalctl --user -u bili-charge-live-34.service -f
 
 每次检查保留 `/x/v2/reply/count` 独立读取，使用已校验归属的评论 oid/type；首次缺少 locator 时从 detail 获取，之后复用可信持久定位。严格解析 `data.count`，网页／根页／本地计数不冒充独立结果。计数缺失、无效、业务拒绝或网络失败保留旧值和失败状态，不归零。协议来源、尚未实测证明的根＋回复精确包含口径见 [来源证据](../docs/backend/evidence/source-protocol-evidence.md#25-独立评论计数)。
 
-初始化、失败重试或可信总数变化才执行根页同步；楼中楼首次、上次失败或显式 initial 仍正序全量，已有成功回复的楼在到期重扫时从来源末页倒序补采，整页已知后再校验前一页。已有 ID 仍更新，不自动清除来源不可见的旧回复，不自动回填全部动态。计数不变、纯正文／评论编辑和增删抵消不重扫；这些是已知漏检，不增每日校准或内容比对。网页失败／正文受限不阻断实际可读评论，实际接口拒绝如实 failed。评论工作绑定领取计数，旧完成保留其实际 checkpoint，不能清除同步期间登记的新计数工作；关闭重开无新信号可重试。
+初始化、失败重试或可信总数变化才执行根页同步；根页逐页保存上游续采进度（定位、方向、页锚点、下一页），中断、失败或重启后先复核锚点页再续采，不默认从第一页重扫；上一轮已确认的根集合遇到仅计数增长时读到「整页已确认 + 守卫页」即收束。楼中楼逐页保存同样的续采进度（`stage=replies`、`scope_id=<根 ID>`），每页回复与进度同一短事务；首次、显式 initial 或 locator 变化才正序全量，有已归档回复即从来源末页倒序补采，命中整页已知后再校验前一页。失败楼沿用已提交页与同方向断点（先复核锚点），不再整楼从头正扫；热帖新增只重定位一次末页，第二次漂移才让本轮失败并保留断点。已有 ID 仍更新，不自动清除来源不可见的旧回复，不自动回填全部动态。计数不变、纯正文／评论编辑和增删抵消不重扫；这些是已知漏检，不增每日校准或内容比对。网页失败／正文受限不阻断实际可读评论，实际接口拒绝如实 failed。评论工作绑定领取计数，旧完成保留其实际 checkpoint，不能清除同步期间登记的新计数工作；关闭重开无新信号可重试。
 
 checks HTTP 增量返回 `observed.comment_count_status`、`synced_comment_count`、`local_comment_count/local_reply_count`、`comments_last_attempt`；无归档的本地数为 null，不伪造零。`parts` 针对最新检查观察投影，旧评论成功不冒充新计数完成。计数与正文版本分开，成功正文不为纯评论工作重读；检查 `failed` 是任一信号失败的聚合，编辑和计数状态仍可分别判断，计数失败不阻止可信正文编辑。显式 initial 不是计数检查：无独立检查记录时保持 #02 协议，有记录时绑定最近可信独立计数，不允许 STAT/detail 覆盖；媒体仍独立，评论 checkpoint 成功不等于目标 complete。复用 #21 媒体待处理／上传，不另建 OSS。没有新增 schema，旧 v11 配置、归档、cursor 和工作原样保留。
 
@@ -131,11 +131,13 @@ checks HTTP 增量返回 `observed.comment_count_status`、`synced_comment_count
 
 ## 30 分页请求间隔
 
-API 的显式同步和正式采集进程使用共享 `PacedSourceTransport`：每次动态 feed 请求前异步等待随机 **0.8–1.5 秒**，每次根评论页请求前等待 **0.3–0.4 秒**（包括首页和空尾页复查）。楼中楼页间不等待；每个实际处理的楼（成功或失败，含确认零回复的楼）结束后在事务外等待 **0.3–0.4 秒**。范围参考 ignored 示例脚本，但运行不导入该脚本，也不接入飞书。
+API 的显式同步和正式采集进程使用共享 `PacedSourceTransport`：每次动态 feed 请求前异步等待随机 **0.8–1.5 秒**，每次根评论页请求前等待 **0.3–0.4 秒**（包括首页和空尾页复查）。楼中楼改为**每次真实分页请求结束后**异步等待至少 **100ms**（首次全量、末页倒序增量、失败重试、空尾页复查与后续探测同一路径），第一个请求之前不加这段等待、最后一页之后仍然执行；请求与等待在 `ReplyPagePacer` 的同一串行段内，多任务／多调用方不能交错绕过。楼级等待（0.3–0.4 秒）只在实际展开楼中楼后保留：来源明确零回复、跳过未到期或根本未发出请求的楼不再缴纳。范围参考 ignored 示例脚本，但运行不导入该脚本，也不接入飞书。
 
-同一来源客户端的分页共享等待锁，避免多 UP／目标同时突发；仅串行化发送前的等待，不锁网络响应或 SQLite。独立 HTML／detail／评论计数等信号请求不排这个队，固定节拍调度、busy-skip 与有限并发规则不变；它不是自动退避、重试策略或不再限流的保证。API 和采集进程各有独立节奏，不提供跨进程／跨主机限速保证，手工写接口与采集进程并行使用仍可能触发上游限制。
+同一来源客户端的分页共享等待锁，避免多 UP／目标同时突发；仅串行化发送前的等待与楼中楼页后等待，不锁 SQLite 写事务。08 起 API 与 collector 还通过同一 SQLite 的 `source` 租约串行化真实来源发送，楼中楼页后 100ms 跨进程也不能被绕过；固定节拍调度与 busy-skip 不变。它不是自动退避、重试策略或不再限流的保证；跨主机与真实平台阈值仍需另行验证。
 
-测试注入的 transport 由调用方管理时间；可用 `PacedSourceTransport(httpx.MockTransport(...), sleep=...)` 保留节奏逻辑并替换外部时间，不让现有 fixture 等待真实秒数。专项验证包括正式 API／采集入口装配、完整分页与空尾页复查、并发信号读取及取消：`uv run pytest backend/tests/test_source_pacing.py -q`。这只是无凭据自动化，不证明真实上游长期可用。
+测试注入的 transport 由调用方管理时间；可用 `PacedSourceTransport(httpx.MockTransport(...), sleep=...)` 保留节奏逻辑并替换外部时间，不让现有 fixture 等待真实秒数。楼中楼页后等待有自己的注入点 `ReplyPagePacer(sleep=..., clock=..., delay=...)`，可从 `create_app(reply_page_pacer=...)`、`open_collector(reply_page_pacer=...)` 传入，既有只覆盖楼级 0.3—0.4 秒的测试替身不会误吞或误约束它。专项验证包括正式 API／采集入口装配、完整分页、空尾页复查、失败请求、跨调用账本及取消：`uv run pytest backend/tests/test_source_pacing.py backend/tests/test_reply_page_pacing.py -q`。这只是无凭据自动化，不证明真实上游长期可用。
+
+跨进程组合回归（票据 10）用真实 API＋独立采集＋独立通知共享临时 SQLite、外部来源／媒体／OSS／飞书替身，覆盖 8 目标含一万条楼中楼完整归档、412 跨进程暂停与本地可用性、六档探测／人工／观察、强杀重启与 owner 接管、分页与 locator 续采、日志脱敏和三类系统告警；性能只做一次有界对照，无法证明与原始脚本等价且未达非硬性参考目标，**整体性能未验收**。命令与结果见[10 证据](../.scratch/bilibili-risk-control/evidence/10-integrated-performance-verification.md)。
 
 ## 应用工厂与传输边界
 
@@ -143,12 +145,31 @@ API 的显式同步和正式采集进程使用共享 `PacedSourceTransport`：�
 from backend.bili_monitor.app import create_app
 
 app = create_app(database_path, profile_transport=None, media_transport=None, media_uploader=None,
-                 comment_client_factory=None)
+                 comment_client_factory=None, source_gate=None)
 ```
 
 工厂不打开数据库，ASGI lifespan 启动时迁移。默认生产的评论计数、根评论和楼中楼通过 `comment_client_factory` 创建每次尝试独立的 Requests 会话；正文/detail/feed 仍使用 HTTPX。显式注入 `profile_transport` 且未指定评论工厂时，全部来源请求继续经过该 transport，保留既有 `httpx.MockTransport` seam，不会静默绕过替身出真网。也可显式注入提供异步上下文管理器的评论工厂；两种 I/O 共用同一套协议解析、同步和存储。`media_transport` 只替换独立图片下载 HTTP，`media_uploader` 是异步 `upload(key, content, content_type) -> 完整公开URL` 的外部 OSS 边界，测试替身不替换媒体协调或数据库。未注入 uploader 时从服务端环境装配真实 OSS，全部配置缺失则保持待上传。使用包含 lifespan 的服务器或 `with TestClient(app)`。
 
 生产请求 card、通用动态 detail、普通 opus HTML、独立评论计数及根／回复页码接口。HTTPX 信号/正文请求默认超时 10 秒、不跟随重定向、不使用环境代理；评论 Requests 会话采用下节的参考脚本式初始化、15 秒超时及环境代理策略。默认匿名；可选登录 Cookie 仅从服务端私有文件加载，没有前端/API 凭据输入。不绕过受限正文，不依赖 `opus/detail` JSON，不导入或执行 ignored 原脚本。
+
+## 统一源请求发送入口
+
+API 与采集进程的所有 B 站源请求都经 `source_gate.py` 的同一 Interface：发送前 `permit(request)` 取许可，返回或失败后 `report(request, report)` 报告状态。生产默认实现是 `risk.py` 的 `RiskGate`（票据 03）：状态存在同一 SQLite 的 `source_risk` 单行，任一源入口收到 HTTP 412／429 就在同一短事务里触发全局暂停，`permit` 在保护态或状态不可读写时拒绝发送，`report` 记录风控后直接中止当前调用链（不再翻页、重试或补做预热）。`OpenSourceGate` 仍是一律放行的替身实现，供不需要保护的装配与测试使用。
+
+| 接入点 | 覆盖的发送 |
+| --- | --- |
+| `GatedAsyncTransport`（HTTPX 最内层传输） | 正文 opus 页、detail、feed、UP 资料、作者校验、图片下载；跟随重定向时每一跳都重新取许可 |
+| `_SourceSession.send`（Requests 逐跳） | 评论计数、根页、楼中楼页、首页／空间预热；Requests 自己解析跳转，同样逐跳接入 |
+
+接口类型按「主机 + 路径模板」固定归类（`comment_count`、`root_comments`、`replies`、`feed`、`detail`、`opus_page`、`profile`、`homepage_warmup`、`space_warmup`、`image_hdslb`／`image_biliimg` 两个受信图片域族，白名单内未列模板归 `source_other`），query 中的资源 ID 与页码不产生新类型；非 B 站主机返回 `None`、原样放行。分类结果只带方法、主机与路径，不保存 query，避免把凭据或完整 URL 带进日志。
+
+明确不受源站许可控制：OSS 上传（`media_uploader`）、飞书投递（通知进程自己的 client）与所有本地归档／管理只读 HTTP。阅读 GET 不产生上游请求，因此不产生许可或报告。
+
+API 装配的 `source_gate` 覆盖资料查询、作者校验、手动初始化与媒体重试；采集进程的同一参数在 `collector.serve(..., source_gate=...)`，测试可用 `open_collector(...)` 复用同一装配。生产装配的顺序是外层 `PacedSourceTransport`（既有 0.8–1.5 秒 feed／0.3–0.4 秒根页等待）→ 内层 `GatedAsyncTransport`（许可紧贴实际发送）；注入传输的测试装配只替换外部 HTTP，不额外增加等待。Cookie、主机白名单、重定向、代理、超时、解析、会话缓存与既有等待都保持原状。
+
+保护状态的公开只读入口是 `GET /api/manage/risk`（字段与脱敏边界见[采集契约](../docs/backend/api/collector-api.md#跨进程风控暂停03)）；需要来源的管理操作在保护态返回 `503 SOURCE_RISK_PAUSED`（见[管理契约](../docs/backend/api/management-api.md#来源保护状态票据-03)），纯本地读取、停用／删除、已下载数据提交与 OSS 上传照常。采集进程暂停时本轮不派发发现／检查／执行，在途单元保留 pending／running 与已提交分片，不写假失败或成功时间；`collector_paused` 每个状态代次只记一条。票据 04 起，冷却按 1／2／4／8／15／30 分钟六档到期由采集进程执行一轮按接口探测（触发类型 ∪ 当前待执行工作所需类型，串行、失败短路、唯一 owner 租约），全部通过进 `observing` 并按原断点恢复被暂停打断的领取。票据 05 起观察期只按“确有成功业务请求的活跃采集时间”累计，满 10 分钟才回 `normal` 并清零档位（空闲／停机不抵扣，重启重新累计但保留档位）；人工态由 `POST /api/manage/risk/probe` 幂等登记一轮，仍由采集进程领取，通过进同一观察期、失败保持人工态。
+
+专项：`uv run pytest backend/tests/test_source_gate.py -q`。断言以请求账本证明计数、根页、楼中楼、feed、detail、网页、资料、预热与图片下载都经过入口，且传输层发送序列与许可序列一致（无绕过、无额外发送）；预热仍 best-effort 但仍会报告状态；`open_collector` 的真实装配下既有等待次数不变。风控暂停另有 `uv run pytest backend/tests/test_risk_state.py backend/tests/test_risk_pause.py backend/tests/test_risk_collector.py backend/tests/test_risk_processes.py -q`（跨进程用真实 API／collector 子进程、同一临时 SQLite 与上游账本）。以上均为隔离替身自动化，未访问真实上游。
 
 ## 来源 client 初始化
 
@@ -161,7 +182,7 @@ API 与 collector 的来源 `AsyncClient` 共用 `source_client.py` 中的普通
 - 每个 Session 按 `create_session` 顺序预热 `https://www.bilibili.com/`、`https://space.bilibili.com/{uid}/dynamic`，各自 timeout 10 秒、成功取得响应后异步等 1–3 秒；每个 URL 独立 best-effort，异常不阻止下一个 URL。预热只记录 HTTP 成功，不宣称已登录；不再用 nav 预热。工厂创建时不发请求，空闲 API 启动不访问来源。
 - 私有 Cookie 文件每个进程启动读一次；名称和值分别 strip、不 URL 编解码。每轮从该不可变输入重建 Session CookieJar，域 `.bilibili.com`、path `/`；仅本轮保留正常来源 `Set-Cookie` 更新/删除。API、collector、不同尝试和媒体/OSS 不共享可变 jar。
 - Requests 使用环境代理、TLS 验证和默认 GET 重定向行为；实际发送（包括跳转）只允许 HTTPS 默认端口的 `api.bilibili.com`、`www.bilibili.com`、`space.bilibili.com`，其他域/明文/非 GET 在发送前拒绝。此范围约束有意严于参考脚本，Cookie 不会随任意跳转泄露。HTTPX 正文/detail/feed 和独立媒体仍保持各自原有代理策略。
-- 同一进程的 Requests 与 HTTPX 共用 `SourcePacer` 页级等待锁：feed 0.8–1.5 秒、根页0.3–0.4秒；楼中楼改为逐楼结束后等待0.3–0.4秒，不持网络/SQLite 锁，独立计数不加入分页队列。不新增来源请求即时重试。
+- 同一进程的 Requests 与 HTTPX 共用 `SourcePacer` 页级等待锁：feed 0.8–1.5 秒、根页0.3–0.4秒；楼中楼每次真实请求后等待≥100ms（`ReplyPagePacer`，首请求前不加、最后一页后仍执行），楼级 0.3–0.4 秒只在实际展开后保留，不持 SQLite 写事务，独立计数不加入分页队列。不新增来源请求即时重试。
 - locator 按参考脚本优先取合法 basic，再尝试同一已校验目标的 OPUS ID/type11、动态 ID/type11；记录 `source/policy_version`。旧策略下一次检查重新取已校验作者的 detail 核对一次；资源 oid/type 变化会登记新工作，即使计数不变也重扫根/回复。fallback 条目必须携带一致 oid/type，空页不算确认 fallback 成功；正来源计数却整轮无根也不推进成功。
 
 静态对照 ignored `script_demo/bili_charge_monitor.py`，不导入/执行脚本、不读取或复制其凭据。根评论和楼中楼按脚本不额外加 WBI；feed 的 WBI 不属于此次修改。Requests 显式固定为已有锁内的 `2.34.2`，不改变依赖包版本。根元信息版本升到 v2，旧启用归档补采一次，停用目标不采，不重写旧 cursor。修改不证明此前全零分页或 HTTP 412 已解决，不绕过来源权限。本次仅修改并重启后端，不运行测试、审查或额外诊断请求；正常采集会执行上述预热。实现记录见[Requests 评论链路变更](../.scratch/backend-integration/evidence/comment-requests-implementation.md)。

@@ -436,3 +436,46 @@ def test_production_cli_runs_without_api_and_stops_cleanly_with_no_targets(tmp_p
         if daemon.poll() is None:
             daemon.kill()
             daemon.communicate(timeout=5)
+
+
+
+def test_target_session_exit_settles_or_releases_the_lease_exactly_once(tmp_path):
+    """目标会话只有 `_drop_session` 一个退出入口：结算路径由 `_finish_session` 释放租约，
+    不结算路径（租约已失去／尚未领取）在此补释放，两条路径都记入本拍已尝试。
+
+    回归对象是旧的五份复制块：漏一个 `attempted.add` 会在同一轮重复派发同目标，重复
+    `release()` 会把已结算的租约再释放一次。
+    """
+    store = Store(tmp_path / "session-exit.sqlite")
+    store.migrate()
+    collector = Collector(store, None)
+    settled_calls = []
+
+    class Lease:
+        def __init__(self):
+            self.releases = 0
+
+        async def release(self):
+            self.releases += 1
+
+    class Session:
+        def __init__(self):
+            self.target_lease = Lease()
+
+    async def finish(session, *, succeeded=None, archive=None):
+        settled_calls.append((succeeded, archive))
+        await session.target_lease.release()
+
+    collector._finish_session = finish
+    for settled, expected in (("result", (None, None)),
+                              ("failed", (False, None)),
+                              (None, None)):
+        settled_calls.clear()
+        key = (str(settled), "1")
+        session = Session()
+        sessions, attempted = {key: session}, set()
+        asyncio.run(collector._drop_session(sessions, attempted, key, session, settled=settled))
+        assert key not in sessions and key in attempted
+        # 结算路径与补释放路径都只需一次释放：重复释放会让已结算的租约被再交还一次。
+        assert session.target_lease.releases == 1
+        assert settled_calls == ([] if expected is None else [expected])

@@ -379,7 +379,8 @@ def read_checks(path):
 
 
 @pytest.mark.parametrize("entrypoint", ["execute_pending", "run"])
-def test_three_targets_obey_two_sync_slots_without_stalling_checks(tmp_path, entrypoint):
+def test_three_targets_rotate_single_heavy_step_without_stalling_checks(tmp_path, entrypoint):
+    """08：全局只有一个重型发送回合；慢页只阻塞当前分页，其他目标按步骤轮转。"""
     path = tmp_path / "monitor.sqlite"
     ids = ("123", "124", "125")
     configured(path, ids)
@@ -390,8 +391,7 @@ def test_three_targets_obey_two_sync_slots_without_stalling_checks(tmp_path, ent
         started = {id: asyncio.Event() for id in ids}
         release = {id: asyncio.Event() for id in ids}
         active = {id: 0 for id in ids}
-        peak, first_pages = 0, []
-        counts = {id: 0 for id in ids}
+        peak, first_pages, counts = 0, [], {id: 0 for id in ids}
 
         async def upstream(request):
             nonlocal peak
@@ -408,7 +408,6 @@ def test_three_targets_obey_two_sync_slots_without_stalling_checks(tmp_path, ent
                     await release[id].wait()
                 finally:
                     active[id] -= 1
-            # 第一个目标是真实结构的根＋回复；其他目标使用共享零评论原始 JSON。
             if url.path == "/opus/123" or url.params.get("oid") == "99123" or url.params.get("id") == "123":
                 return source(request)
             return empty_upstream(request)
@@ -419,60 +418,36 @@ def test_three_targets_obey_two_sync_slots_without_stalling_checks(tmp_path, ent
                 await collector.check_once(UID, id)
             running = asyncio.create_task(getattr(collector, entrypoint)())
             try:
-                await asyncio.wait_for(asyncio.gather(started["123"].wait(), started["124"].wait()), 3)
-                states = read_checks(path)
-                assert [states[id]["work"] for id in ids] == ["running", "running", "pending"]
-                assert not started["125"].is_set()
-                assert active == {"123": 1, "124": 1, "125": 0}
-                assert peak == 2
-                if entrypoint == "run":
-                    await eventually(lambda: clock.deadlines == [15])
-                    for tick in (15, 30):
-                        clock.advance(tick)
-                        # HTTP 已可见不表示 check coroutine 已退出；仍忙时本槽允许跳过。
-                        await eventually(lambda: clock.deadlines[-1] == tick + 15)
-                        assert not started["125"].is_set()
-                        assert active == {"123": 1, "124": 1, "125": 0}
-                        assert first_pages == ["123", "124"] or first_pages == ["124", "123"]
-                        assert all(row["revision"] == 1 for row in read_checks(path).values())
-                    await eventually(lambda: all(counts[id] >= 3 for id in ids))
-                else:
-                    # 独立执行批次同样不占用检查 I/O 或 SQLite 长事务。
-                    clock.advance(15)
-                    await asyncio.wait_for(asyncio.gather(*(collector.check_once(UID, id) for id in ids)), 3)
-                    assert all(row["last_checked_at"] == clock.now() for row in read_checks(path).values())
-                    assert not started["125"].is_set()
+                await asyncio.wait_for(started["123"].wait(), 3)
+                assert first_pages == ["123"]
+                assert active == {"123": 1, "124": 0, "125": 0}
+                assert peak == 1
 
-                with archive_client(path) as api:
-                    assert api.get(ARCHIVE).status_code == 200
-                    assert api.get(ARCHIVE + "/comments").status_code == 200
-                    assert api.patch(f"/api/manage/ups/{UID}/monitor", json={
-                        "mode": "specified", "recent_n": 11, "enabled": True}).status_code == 200
-                # 释放一个槽，仍暂停另一个同步；第三个必须能够随后执行。
                 release["123"].set()
-                await eventually(lambda: read_checks(path)["123"]["work"] == "complete")
+                await asyncio.wait_for(started["124"].wait(), 3)
+                assert first_pages == ["123", "124"]
+                assert peak == 1
                 if entrypoint == "run":
-                    clock.advance(45)
+                    await eventually(lambda: all(row["last_checked_at"] is not None
+                                                 for row in read_checks(path).values()))
+
+                release["124"].set()
                 await asyncio.wait_for(started["125"].wait(), 3)
-                assert not release["124"].is_set()
-                assert active == {"123": 0, "124": 1, "125": 1}
-                assert peak == 2
+                assert first_pages == ["123", "124", "125"]
+                assert peak == 1
+
+                release["125"].set()
+                if entrypoint == "run":
+                    await eventually(lambda: all(row["work"] == "complete"
+                                                 for row in read_checks(path).values()))
+                else:
+                    await asyncio.wait_for(running, 5)
                 assert sorted(first_pages) == list(ids)
                 assert all(first_pages.count(id) == 1 for id in ids)
-                states = read_checks(path)
-                assert states["124"]["work"] == states["125"]["work"] == "running"
-                release["124"].set()
-                release["125"].set()
-                await eventually(lambda: all(row["work"] == "complete" for row in read_checks(path).values()))
-                if entrypoint == "run":
-                    await eventually(lambda: clock.deadlines[-1] == 60)
-                    clock.advance(60)
-                    await eventually(lambda: clock.deadlines[-1] == 75)
-                else:
-                    await asyncio.wait_for(running, 3)
-                assert peak == 2
+                assert peak == 1
                 assert active == dict.fromkeys(ids, 0)
-                assert sorted(first_pages) == list(ids)  # 完成后不再叠加／重扫同目标。
+                if entrypoint == "run":
+                    await eventually(lambda: all(counts[id] >= 1 for id in ids))
                 with archive_client(path) as api:
                     for id in ids:
                         response = api.get(f"/api/archive/dynamics/{id}")

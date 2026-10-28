@@ -29,5 +29,18 @@ def epoch_from_iso(value):
     return datetime.fromisoformat(text).timestamp()
 
 
+def optional_epoch(value):
+    """ISO 时间 → epoch 秒，缺失或不可解析返回 None（供“失败即关闭”的调用方共用）。
+
+    `epoch_from_iso` 只管解析、不规定错误策略；需要把无法解析同样转成 `None` 的
+    调用方（风控状态与调度租约）共用这一个入口，不在各处再写一份 try/except。
+    需要“回退到真实时间”的调用方在自己的语义处显式写下回退，不藏进解析函数。
+    """
+    try:
+        return epoch_from_iso(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def comment_status(document):
     return {field: document.get(field) for field in COMMENT_STATUS_FIELDS}

@@ -139,9 +139,9 @@ exec .venv/bin/python -m backend.bili_monitor.notifier
 - 只读产品表（`targets`/`recent_discoveries`/`target_checks`）汇总状态，不访问上游、不写检查或归档，因此不能凭心跳推断内容已归档。
 - 时段去重与心跳投递不读写任何“故障节流”状态；告警的 30 分钟节流见 §3.3（状态在 `notification_alerts`），两者只共享队列基础设施。
 
-## 3.3 系统告警（08）
+## 3.3 系统告警（08／09）
 
-五类运行故障只发系统群（`role=system`），与业务群严格分开；不新增故障恢复消息，也没有飞书图片上传降级消息。
+五类运行故障与三个风控生命周期事实只发系统群（`role=system`），与业务群严格分开；不为业务故障发恢复消息，也没有飞书图片上传降级消息。
 
 | 类别 `category` | 触发事实（全部来自真实代码路径，不解析日志文本） | 对象 `object` | 固定原因 `reason` |
 | --- | --- | --- | --- |
@@ -150,6 +150,9 @@ exec .venv/bin/python -m backend.bili_monitor.notifier
 | `loop` | 主循环捕获到的运行异常（`collector_loop_failed`） | `collector_loop` | 固定分类（多为 `internal_error`） |
 | `delivery` | 业务目标**持续投递失败**：`notification_deliveries.failures >= 3` 且 `state='pending'`；心跳、告警自身与系统角色不计 | `{role}:{kind}`（如 `up:root_comment`） | 最近一次失败分类，如 `timeout`／`http_error`／`platform_rejected`／`rate_limited` |
 | `route` | 业务目标路由缺失或目的地不可用（`route_missing`／`route_invalid`） | `{role}:{uid}:{dynamic_id}` | `route_missing`｜`route_invalid` |
+| `risk_triggered` | 真实风控状态转移：`normal`／`observing` 收到 HTTP 412／429 进入冷却（第六档后直接转人工的一次转移只登记 `risk_manual`） | `source_risk` | `risk_cooldown` |
+| `risk_manual` | 真实风控状态转移进入人工态：第六档探测失败，或观察期第六档之后再触发 | `source_risk` | `risk_manual_wait` |
+| `risk_recovered` | 风控观察期按“确有成功业务请求的活跃采集时间”满 10 分钟后回到 `normal`（探测刚通过、尚未稳定不算） | `source_risk` | `risk_stable` |
 
 判定边界：
 
@@ -159,6 +162,10 @@ exec .venv/bin/python -m backend.bili_monitor.notifier
 - **登记与失败事实同事务**：检查结果（`record_check`）、工作回写（`finish_check_work`）、发现结果（`finish_discovery`）与投递回写（`_finish`）在同一事务里登记告警；每条告警用 `SAVEPOINT` 单独隔离，写不进一条告警只丢该告警并记 `alert_registration_failed`，不让采集/投递主链跟着回滚。主循环异常用**独立新建连接的短事务**在退出前登记；该连接或整库不可写时只留脱敏日志，不承诺即时外发（进程被强杀、整机离线同样无法登记）。
 - **节流与合并**：同一 `(category, object)` 首次立即提醒，此后每 **30 分钟**最多一条；节流状态持久在 `notification_alerts`，跨重启保留。若上一条同类提醒**仍未投递完成**（`state` 不是 `sent`／`expired`），新的同类故障合并到它、不再新建事件，因此系统群长期失败时不会按故障次数或采集轮次堆积。不同对象、不同类别分别判定。
 - **告警不套用心跳有效期**：告警投递记录 `expires_at` 为空，不会因为跨过整点被判过期；反之告警节流也不读写 `notification_heartbeats`，两者互不抑制。
+- **风控生命周期告警只认状态转移**：三个类别在风控状态机的对应短事务里登记（`_record_trigger` 的首次触发／冷却升级、`_finish_probe` 的末档失败转人工、`_observing_tick` 的稳定恢复），与状态事实同事务提交，不解析日志文本、不做全表扫描。每档等待、每类探测结果、每页 412 与重复的迟到响应只进结构化日志，不刷群；人工态重复登记、轮次接管、进程重启都不产生新告警。对象是唯一的全局保护状态 `source_risk`，三个事实各占一个类别，因此恢复消息不会被分钟级的触发提醒节流吞掉。
+- **票据 10 组合复验**：真实 API＋独立采集＋独立通知三进程共享临时 SQLite、飞书 HTTP 替身的隔离回放确认，六档冷却与人工探测只投递触发／转人工／稳定恢复三类系统消息，探测与观察期间业务群为 0；恢复后新一级评论仍按既有通知起点与资格投递，系统群不混入评论正文。证据见[10 多进程组合与性能验收](../../../.scratch/bilibili-risk-control/evidence/10-integrated-performance-verification.md)。
+- **通知关闭即不登记**：`off` 时风控告警与其他系统消息一样不登记、不排队、不补发，风控也不改动通知开关；`system_only` 只收这类系统消息，`all` 行为不变。告警写不进时只丢该条告警并留 `alert_registration_failed`，状态转移照常提交——通知失败不能变成风控旁路。
+- **风控告警消息只有固定字段**：类别、对象、发生时间与固定原因；不带正文、完整 URL／query、Cookie、凭据，也不带 owner／探测轮次令牌。逐接口资源定位信息留在采集日志。
 
 配置整体不可解析、`base_url` 非法或路由表结构非法时通知进程仍按启动错误退出（见 §2），此时**没有可用告警通道**：这类故障只能由进程托管与日志发现，不由本能力外发。
 

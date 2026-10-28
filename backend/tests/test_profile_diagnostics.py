@@ -77,8 +77,8 @@ def test_profile_network_failure_has_safe_classification(tmp_path, caplog, error
     [
         (302, "profile_lookup_failed reason=http_status http_status=302"),
         (403, "profile_lookup_failed reason=http_status http_status=403"),
-        (412, "profile_lookup_failed reason=http_status http_status=412"),
-        (429, "profile_lookup_failed reason=http_status http_status=429"),
+        (401, "profile_lookup_failed reason=http_status http_status=401"),
+        (418, "profile_lookup_failed reason=http_status http_status=418"),
         (500, "profile_lookup_failed reason=http_status http_status=500"),
         (999, "profile_lookup_failed reason=http_status http_status=unknown"),
     ],
@@ -161,10 +161,10 @@ def test_profile_http_error_logs_safe_message_or_explicit_unavailability(
     tmp_path, caplog, body, content_type, state, safe_message
 ):
     def rejected(request):
-        return httpx.Response(412, content=body, headers={"Content-Type": content_type})
+        return httpx.Response(403, content=body, headers={"Content-Type": content_type})
 
     expected = (
-        "profile_lookup_failed reason=http_status http_status=412"
+        "profile_lookup_failed reason=http_status http_status=403"
         f" message_state={state} upstream_message={json.dumps(safe_message, ensure_ascii=False)}"
     )
     assert_safe_failure(tmp_path, caplog, rejected, expected)
@@ -177,8 +177,8 @@ def test_profile_http_error_remains_failure_even_with_complete_success_card_body
     assert_safe_failure(
         tmp_path,
         caplog,
-        lambda request: httpx.Response(412, json=payload),
-        'profile_lookup_failed reason=http_status http_status=412'
+        lambda request: httpx.Response(403, json=payload),
+        'profile_lookup_failed reason=http_status http_status=403'
         ' message_state=allowed upstream_message="Forbidden"',
     )
 
@@ -188,14 +188,14 @@ def test_profile_unreadable_http_error_body_does_not_replace_safe_502(tmp_path, 
         raise httpx.HTTPStatusError(
             SECRET,
             request=request,
-            response=httpx.Response(412, stream=httpx.ByteStream(SECRET.encode()), request=request),
+            response=httpx.Response(403, stream=httpx.ByteStream(SECRET.encode()), request=request),
         )
 
     assert_safe_failure(
         tmp_path,
         caplog,
         rejected,
-        "profile_lookup_failed reason=http_status http_status=412"
+        "profile_lookup_failed reason=http_status http_status=403"
         " message_state=unreadable upstream_message=null",
     )
 
@@ -213,7 +213,7 @@ def test_profile_diagnostic_body_failure_does_not_replace_known_upstream_failure
             return super().content
 
     def rejected(request):
-        response = UnreadableResponse(412, request=request)
+        response = UnreadableResponse(403, request=request)
         response.fail_body = True
         raise httpx.HTTPStatusError(SECRET, request=request, response=response)
 
@@ -221,7 +221,7 @@ def test_profile_diagnostic_body_failure_does_not_replace_known_upstream_failure
         tmp_path,
         caplog,
         rejected,
-        "profile_lookup_failed reason=http_status http_status=412"
+        "profile_lookup_failed reason=http_status http_status=403"
         " message_state=unreadable upstream_message=null",
     )
 
@@ -232,7 +232,7 @@ def test_profile_readd_failure_with_message_keeps_previous_identity(tmp_path, ca
 
     def handler(request):
         if state["fail"]:
-            return httpx.Response(412, json={"message": "Forbidden"})
+            return httpx.Response(403, json={"message": "Forbidden"})
         return httpx.Response(200, json=card())
 
     with client_for(tmp_path / "monitor.sqlite", handler) as client:
@@ -246,7 +246,7 @@ def test_profile_readd_failure_with_message_keeps_previous_identity(tmp_path, ca
     events = [record for record in caplog.records if record.name == PROFILE_LOGGER]
     assert len(events) == 1
     assert events[0].getMessage() == (
-        'profile_lookup_failed reason=http_status http_status=412'
+        'profile_lookup_failed reason=http_status http_status=403'
         ' message_state=allowed upstream_message="Forbidden"'
     )
     assert saved["name"] not in caplog.text
@@ -393,3 +393,21 @@ def test_profile_success_preserves_dto_and_does_not_emit_failure_diagnostic(
         assert response.json() == expected
         assert client.get(f"{BASE}/{UID}").json() == expected
     assert not [record for record in caplog.records if record.name == PROFILE_LOGGER]
+
+
+@pytest.mark.parametrize("status", [412, 429])
+def test_profile_risk_response_is_a_protection_signal_not_a_profile_failure(tmp_path, caplog, status):
+    """412／429 触发全局保护（票据 03），不再按 PROFILE_UNAVAILABLE 分类。"""
+    caplog.set_level(logging.DEBUG)
+
+    def rejected(request):
+        return httpx.Response(status, json={"message": "Forbidden"})
+
+    with client_for(tmp_path / "monitor.sqlite", rejected) as client:
+        response = client.post(BASE, json={"uid": UID})
+        assert response.status_code == 503
+        assert response.json()["error"]["code"] == "SOURCE_RISK_PAUSED"
+        assert response.json()["error"]["state"] == "cooldown"
+        assert client.get(BASE).json() == {"ups": []}
+        assert client.get("/api/manage/risk").json()["last_trigger"]["http_status"] == status
+    assert [record for record in caplog.records if record.name == PROFILE_LOGGER] == []

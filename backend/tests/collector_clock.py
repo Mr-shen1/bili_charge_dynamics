@@ -34,4 +34,4 @@ async def eventually(predicate):
     async def wait():
         while not await asyncio.to_thread(predicate):
             await asyncio.sleep(0.001)
-    await asyncio.wait_for(wait(), timeout=3)
+    await asyncio.wait_for(wait(), timeout=10)

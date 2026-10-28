@@ -3,7 +3,7 @@
 import httpx
 
 from .identifiers import is_valid_id
-from .source_endpoints import FEED_URL
+from .source_endpoints import FEED, FEED_URL, note_business_success
 
 
 class DiscoveryError(Exception):
@@ -52,22 +52,26 @@ def _candidate(item, uid):
     return item["id_str"], qualified
 
 
-async def discover_recent(client, uid, n, *, should_continue=None, on_progress=None):
+async def discover_recent(client, uid, n, *, should_continue=None, on_progress=None, pages=None):
     """按 feed 次序凑 N 个唯一 ID；达到 N 不宣称扫描了全部历史。
 
     每页请求前 await should_continue；返回 false 抛 DiscoveryStopped。
     任务取消原样传播 CancelledError，保留调用者的中断恢复边界。
     有效页的累计候选副本经 on_progress 上报，成功提交由调用者另行完成。
     只在不足 N 且协议明确结束时 exhausted=true；失败不返回空集合。
+    `pages` 限制本次读取的真实页数（探测只取首批，不继续翻页）；默认不限。
     客户端由调用者管理；本函数不处理凭据，不增加签名或风控参数，不回填全部历史。
     """
     if not is_valid_id(uid) or type(n) is not int or n <= 0:
         raise DiscoveryError("SIGNAL_INVALID") from None
-    return await _discover(client, uid, n, should_continue, on_progress)
+    if pages is not None and (type(pages) is not int or pages <= 0):
+        raise DiscoveryError("SIGNAL_INVALID") from None
+    return await _discover(client, uid, n, should_continue, on_progress, pages)
 
 
-async def _discover(client, uid, n, should_continue, on_progress):
+async def _discover(client, uid, n, should_continue, on_progress, pages=None):
     ids, seen, offset, cursors = [], set(), None, set()
+    requested = 0
     while True:
         if should_continue is not None and not await should_continue():
             raise DiscoveryStopped() from None
@@ -106,6 +110,7 @@ async def _discover(client, uid, n, should_continue, on_progress):
             cursors.add(next_offset)
         # 先核验整份已请求响应，损坏条目不能靠不合格或提前截断被隐藏。
         candidates = [_candidate(item, uid) for item in items]
+        note_business_success(client, FEED)
         for id, qualified in candidates:
             if qualified:
                 if id not in seen:
@@ -119,4 +124,8 @@ async def _discover(client, uid, n, should_continue, on_progress):
             return {"ids": ids, "exhausted": False}
         if not has_more:
             return {"ids": ids, "exhausted": True}
+        requested += 1
+        if pages is not None and requested >= pages:
+            # 只验证首批：不为了凑 N 继续翻页。
+            return {"ids": ids, "exhausted": not has_more}
         offset = next_offset
