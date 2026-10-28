@@ -120,6 +120,8 @@ function httpError(body: unknown, status: number): ManagementResult<never> {
       ? { status: 'error', message: '未取得 UP 资料，请重试。' } : invalidResponse;
     case 'STORAGE_UNAVAILABLE': return status === 503
       ? { status: 'error', message: '配置存储暂不可用，请重试。' } : invalidResponse;
+    case 'SOURCE_RISK_PAUSED': return status === 503
+      ? { status: 'error', message: 'B 站来源保护中，需要访问来源的操作暂不可用，请稍后再试。' } : invalidResponse;
     case 'INTERNAL_ERROR': return status === 500
       ? { status: 'error', message: '管理服务暂不可用，请重试。' } : invalidResponse;
     default: return invalidResponse;

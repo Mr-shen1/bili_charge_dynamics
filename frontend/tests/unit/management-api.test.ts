@@ -137,6 +137,7 @@ describe('管理接口的输入与响应守卫', () => {
       [409, 'ALREADY_MONITORED', '该 UID 已有监控配置。'],
       [502, 'PROFILE_UNAVAILABLE', '未取得 UP 资料，请重试。'],
       [503, 'STORAGE_UNAVAILABLE', '配置存储暂不可用，请重试。'],
+      [503, 'SOURCE_RISK_PAUSED', 'B 站来源保护中，需要访问来源的操作暂不可用，请稍后再试。'],
       [500, 'INTERNAL_ERROR', '管理服务暂不可用，请重试。'],
     ];
     for (const [status, code, message] of cases) {
