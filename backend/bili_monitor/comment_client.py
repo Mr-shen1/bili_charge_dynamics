@@ -15,10 +15,11 @@ from .collector_logging import collector_event, collector_failure
 from .identifiers import is_valid_id
 from .source_client import comment_request_headers
 from .source_cookies import load_source_cookie_pairs
+from .reply_pacing import ReplyPagePacer
+from .source_gate import OpenSourceGate, SOURCE_HOSTS, SourceReport, ThreadSourceGate, source_request
 from .source_transport import SourcePacer
 
 
-_COMMENT_HOSTS = frozenset({"api.bilibili.com", "www.bilibili.com", "space.bilibili.com"})
 # 会话与预热都按 UP 复用：固定节拍下每次尝试都重开会话会把连接和预热请求放大数倍。
 SESSION_TTL_SECONDS = 30 * 60
 WARMUP_TTL_SECONDS = 5 * 60
@@ -36,28 +37,54 @@ _TRANSPORT_HEADERS = frozenset({"content-encoding", "content-length", "transfer-
 
 
 class _SourceSession(requests.Session):
+    """Requests 的逐跳安装点：重定向的后续发送也先取许可、返回后报告。
+
+    `hop` 由 `RequestsCommentClient.get` 在协程侧设置，因为会话的同步发送在线程池
+    里执行；缺失桥接说明有代码绕过 `get` 直接发送，宁可失败也不静默绕过许可。
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.hop = None
+
     def send(self, request, **kwargs):
         # Requests 会在重定向时再次经过 send；不能把 Cookie 发给任意域或明文 HTTP。
         try:
             url = urlsplit(request.url)
             allowed = (request.method == "GET" and url.scheme == "https"
-                       and url.hostname in _COMMENT_HOSTS and url.port in (None, 443)
+                       and url.hostname in SOURCE_HOSTS and url.port in (None, 443)
                        and not url.username and not url.password)
         except ValueError:
             allowed = False
         if not allowed:
             request.headers.pop("Cookie", None)
             raise requests.RequestException("Unsupported comment source request")
-        return super().send(request, **kwargs)
+        source = source_request(request.method, request.url)
+        if source is None or self.hop is None:
+            raise RuntimeError("Comment source gate is not attached")
+        self.hop.permit(source)
+        try:
+            response = super().send(request, **kwargs)
+        except Exception as error:
+            self.hop.report(source, SourceReport(error=error))
+            raise
+        if not response.history:
+            # 跟随跳转时，最终响应已由它自己那一跳报告；外层不重复计数同一次发送。
+            self.hop.report(source, SourceReport(status_code=response.status_code))
+        return response
 
 
 class RequestsCommentClient:
-    def __init__(self, uid, cookie_pairs, pacer):
+    def __init__(self, uid, cookie_pairs, pacer, gate=None, reply_page_pacer=None):
         if not is_valid_id(uid):
             raise ValueError("Invalid comment source author")
         self.uid = uid
         self.pacer = pacer
         self.lock = asyncio.Lock()
+        self.gate = gate if gate is not None else OpenSourceGate()
+        # 楼中楼页后等待与发送在同一个串行段内；是否进入等待按接口类型分类，不按调用点。
+        self.reply_page_pacer = reply_page_pacer if reply_page_pacer is not None else ReplyPagePacer()
+        self.last_reply_page = None
         self.session = _SourceSession()
         # 与参考 Session 默认一致：验证 TLS，使用环境代理，跟随受信来源内的跳转。
         self.session.trust_env = True
@@ -86,7 +113,24 @@ class RequestsCommentClient:
     async def get(self, url, *, params=None, headers=None, timeout=15):
         async with self.lock:
             await self.pacer.wait(url)
+            source = source_request("GET", url)
+            if source is None or source.endpoint_type != "replies":
+                return await self._send(url, params, headers, timeout)
+            # 楼中楼：发送与页后等待同一个串行段，失败的请求也等待；首个请求前不等待。
+            timing = None
+            try:
+                async with self.reply_page_pacer.page() as timing:
+                    return await self._send(url, params, headers, timeout)
+            finally:
+                self.last_reply_page = timing
+
+    async def _send(self, url, params, headers, timeout):
+        # 每一跳都在线程内重新取许可；桥接持有本次调用所在事件循环。
+        self.session.hop = ThreadSourceGate(self.gate, asyncio.get_running_loop())
+        try:
             return await to_thread.run_sync(self._get, url, params, headers, timeout)
+        finally:
+            self.session.hop = None
 
     async def prepare(self):
         # 与 create_session 相同：每个 URL 独立 best-effort，返回后等 1–3 秒。
@@ -162,11 +206,17 @@ class RequestsCommentClientFactory:
     """按 UP 复用会话：Cookie 变化或超过 session TTL 才重建，预热由 WarmupCache 控制。"""
 
     def __init__(self, *, cookie_pairs=None, pacer=None, client_factory=None,
-                 session_ttl=SESSION_TTL_SECONDS, warmup=None, clock=time.monotonic):
+                 session_ttl=SESSION_TTL_SECONDS, warmup=None, clock=time.monotonic, gate=None,
+                 reply_page_pacer=None):
         self.cookie_pairs = load_source_cookie_pairs() if cookie_pairs is None else cookie_pairs
         self.pacer = pacer if pacer is not None else SourcePacer()
+        self.gate = gate if gate is not None else OpenSourceGate()
+        # 一个进程内一次装配只用一个协调器：不同 UP 的楼中楼页也不能交错绕过等待。
+        self.reply_page_pacer = (reply_page_pacer if reply_page_pacer is not None
+                                 else ReplyPagePacer())
         self._new_client = client_factory or (
-            lambda uid, pairs, pacer: RequestsCommentClient(uid, pairs, pacer))
+            lambda uid, pairs, pacer: RequestsCommentClient(
+                uid, pairs, pacer, gate=self.gate, reply_page_pacer=self.reply_page_pacer))
         self.session_ttl = session_ttl
         self.warmup = warmup if warmup is not None else WarmupCache(clock=clock)
         self.clock = clock

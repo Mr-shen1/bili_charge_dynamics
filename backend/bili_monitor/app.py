@@ -17,6 +17,7 @@ from .safety import configure_safe_logging
 from .storage import Store
 from .source import verify_author
 from .source_transport import PacedSourceTransport, SourcePacer
+from .source_gate import GatedAsyncTransport, OpenSourceGate, SourceGate
 from .source_client import SOURCE_HEADERS, source_client_event_hooks
 from .source_cookies import load_source_cookie_pairs
 from .comment_client import RequestsCommentClientFactory
@@ -42,10 +43,21 @@ def create_app(
     media_transport: httpx.AsyncBaseTransport | None = None,
     media_uploader: MediaUploader | None = None,
     comment_client_factory=None,
+    source_gate: SourceGate | None = None,
+    reply_page_pacer=None,
 ) -> FastAPI:
-    """启动 lifespan 时迁移指定文件数据库；transport 只替换外部 HTTP。"""
+    """启动 lifespan 时迁移指定文件数据库；transport 只替换外部 HTTP。
+
+    `source_gate` 是 B 站源请求的发送许可与结果报告入口：资料查询、作者校验、手动
+    初始化、评论与媒体重试都经同一实例，不另造只供 collector 使用的通道。默认
+    `OpenSourceGate` 一律放行，行为与本票之前一致；跨进程持久策略由后续票接入。
+
+    `reply_page_pacer` 是楼中楼页后等待的协调器（正式设计 §3.2）：默认进程内一个，
+    注入测试替身或与采集进程共用同一实例时才会改变等待方式。
+    """
     configure_safe_logging()
     store = Store(database_path)
+    gate = source_gate if source_gate is not None else OpenSourceGate()
 
     @asynccontextmanager
     async def lifespan(application):
@@ -59,14 +71,21 @@ def create_app(
             pacer = SourcePacer()
             comments = comment_client_factory
             if comments is None and profile_transport is None:
-                comments = RequestsCommentClientFactory(cookie_pairs=cookie_pairs, pacer=pacer)
+                comments = RequestsCommentClientFactory(cookie_pairs=cookie_pairs, pacer=pacer, gate=gate,
+                                                        reply_page_pacer=reply_page_pacer)
             uploader = media_uploader if media_uploader is not None else OSSUploader.from_environment()
             async with httpx.AsyncClient(
-                transport=profile_transport if profile_transport is not None else PacedSourceTransport(pacer=pacer),
+                # 注入替身时沿用既有“只替换外部 HTTP”的语义（不额外分页等待）；
+                # 生产装配把分页等待放在外层、发送许可紧贴实际发送。
+                transport=(GatedAsyncTransport(profile_transport, gate=gate)
+                           if profile_transport is not None
+                           else PacedSourceTransport(GatedAsyncTransport(gate=gate), pacer=pacer)),
                 timeout=10, trust_env=False, follow_redirects=False,
                 headers=SOURCE_HEADERS, event_hooks=source_hooks,
             ) as profiles, httpx.AsyncClient(
-                transport=media_transport, timeout=30, trust_env=False
+                # 图片下载是独立 client：它同样只经源站许可，OSS 上传不走这里。
+                transport=GatedAsyncTransport(media_transport, gate=gate),
+                timeout=30, trust_env=False,
             ) as media_client:
                 application.state.profiles = profiles
                 application.state.downloader = ImageDownloader(media_client)

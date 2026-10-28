@@ -97,7 +97,7 @@ journalctl --user -u bili-charge-live-34.service -n 100 --no-pager
 journalctl --user -u bili-charge-live-34.service -f
 ```
 
-每个节拍的 `collector_tick` 会显示入选目标、待处理数、在途数和本轮新调度数；真正领取后输出 `sync_started`，完成时输出 `sync_finished`。同一同步尝试通过进程内 `attempt` 关联根评论、回复、正文和媒体阶段；失败包含固定分类、页号及 HTTP 状态（如有），不含 URL、业务 ID、来源原文或凭据。详细字段及如何区分空闲、在途、失败重试和进程退出见[采集日志契约](../docs/backend/api/collector-api.md#调度与失败日志)。正常失败仍按原固定节拍重试，日志本身不触发额外采集。本次日志增补按用户要求未经测试或运行验证。
+每个节拍的 `collector_tick` 会显示入选目标、待处理数、在途数和本轮新调度数；真正领取后输出 `sync_started`，完成时输出 `sync_finished`。同一同步尝试通过进程内 `attempt` 关联根评论、回复、正文和媒体阶段；日志按正式设计 §6 放行**已校验的业务 ID**（字符串 UID、动态、根评论、每页评论／回复 ID），失败包含固定分类、页号及 HTTP 状态（如有），仍不含 URL、正文、异常原文、Cookie 或内部领取令牌。楼中楼每页一条 `reply_page_fetched`（含页码、方向、数量、`elapsed_ms`、`wait_ms` 与全部已校验回复 ID）和一条 `reply_page_saved`（含新增／更新数），超长 ID 列表按同一关联号分块（`ids_part`/`ids_chunks`/`ids_total`）。详细字段及如何区分空闲、在途、失败重试和进程退出见[采集日志契约](../docs/backend/api/collector-api.md#调度与失败日志)。正常失败仍按原固定节拍重试，日志本身不触发额外采集。专项：`uv run pytest backend/tests/test_flow_logs.py -q`。
 
 ## 24 编辑同步与版本提交
 
@@ -131,11 +131,11 @@ checks HTTP 增量返回 `observed.comment_count_status`、`synced_comment_count
 
 ## 30 分页请求间隔
 
-API 的显式同步和正式采集进程使用共享 `PacedSourceTransport`：每次动态 feed 请求前异步等待随机 **0.8–1.5 秒**，每次根评论页请求前等待 **0.3–0.4 秒**（包括首页和空尾页复查）。楼中楼页间不等待；每个实际处理的楼（成功或失败，含确认零回复的楼）结束后在事务外等待 **0.3–0.4 秒**。范围参考 ignored 示例脚本，但运行不导入该脚本，也不接入飞书。
+API 的显式同步和正式采集进程使用共享 `PacedSourceTransport`：每次动态 feed 请求前异步等待随机 **0.8–1.5 秒**，每次根评论页请求前等待 **0.3–0.4 秒**（包括首页和空尾页复查）。楼中楼改为**每次真实分页请求结束后**异步等待至少 **100ms**（首次全量、末页倒序增量、失败重试、空尾页复查与后续探测同一路径），第一个请求之前不加这段等待、最后一页之后仍然执行；请求与等待在 `ReplyPagePacer` 的同一串行段内，多任务／多调用方不能交错绕过。楼级等待（0.3–0.4 秒）只在实际展开楼中楼后保留：来源明确零回复、跳过未到期或根本未发出请求的楼不再缴纳。范围参考 ignored 示例脚本，但运行不导入该脚本，也不接入飞书。
 
-同一来源客户端的分页共享等待锁，避免多 UP／目标同时突发；仅串行化发送前的等待，不锁网络响应或 SQLite。独立 HTML／detail／评论计数等信号请求不排这个队，固定节拍调度、busy-skip 与有限并发规则不变；它不是自动退避、重试策略或不再限流的保证。API 和采集进程各有独立节奏，不提供跨进程／跨主机限速保证，手工写接口与采集进程并行使用仍可能触发上游限制。
+同一来源客户端的分页共享等待锁，避免多 UP／目标同时突发；仅串行化发送前的等待与楼中楼页后等待，不锁 SQLite 写事务。独立 HTML／detail／评论计数等信号请求不排这个队，固定节拍调度、busy-skip 与有限并发规则不变；它不是自动退避、重试策略或不再限流的保证。API 和采集进程各有独立节奏，不提供跨进程／跨主机限速保证，手工写接口与采集进程并行使用仍可能触发上游限制。
 
-测试注入的 transport 由调用方管理时间；可用 `PacedSourceTransport(httpx.MockTransport(...), sleep=...)` 保留节奏逻辑并替换外部时间，不让现有 fixture 等待真实秒数。专项验证包括正式 API／采集入口装配、完整分页与空尾页复查、并发信号读取及取消：`uv run pytest backend/tests/test_source_pacing.py -q`。这只是无凭据自动化，不证明真实上游长期可用。
+测试注入的 transport 由调用方管理时间；可用 `PacedSourceTransport(httpx.MockTransport(...), sleep=...)` 保留节奏逻辑并替换外部时间，不让现有 fixture 等待真实秒数。楼中楼页后等待有自己的注入点 `ReplyPagePacer(sleep=..., clock=..., delay=...)`，可从 `create_app(reply_page_pacer=...)`、`open_collector(reply_page_pacer=...)` 传入，既有只覆盖楼级 0.3—0.4 秒的测试替身不会误吞或误约束它。专项验证包括正式 API／采集入口装配、完整分页、空尾页复查、失败请求、跨调用账本及取消：`uv run pytest backend/tests/test_source_pacing.py backend/tests/test_reply_page_pacing.py -q`。这只是无凭据自动化，不证明真实上游长期可用。
 
 ## 应用工厂与传输边界
 
@@ -143,12 +143,29 @@ API 的显式同步和正式采集进程使用共享 `PacedSourceTransport`：�
 from backend.bili_monitor.app import create_app
 
 app = create_app(database_path, profile_transport=None, media_transport=None, media_uploader=None,
-                 comment_client_factory=None)
+                 comment_client_factory=None, source_gate=None)
 ```
 
 工厂不打开数据库，ASGI lifespan 启动时迁移。默认生产的评论计数、根评论和楼中楼通过 `comment_client_factory` 创建每次尝试独立的 Requests 会话；正文/detail/feed 仍使用 HTTPX。显式注入 `profile_transport` 且未指定评论工厂时，全部来源请求继续经过该 transport，保留既有 `httpx.MockTransport` seam，不会静默绕过替身出真网。也可显式注入提供异步上下文管理器的评论工厂；两种 I/O 共用同一套协议解析、同步和存储。`media_transport` 只替换独立图片下载 HTTP，`media_uploader` 是异步 `upload(key, content, content_type) -> 完整公开URL` 的外部 OSS 边界，测试替身不替换媒体协调或数据库。未注入 uploader 时从服务端环境装配真实 OSS，全部配置缺失则保持待上传。使用包含 lifespan 的服务器或 `with TestClient(app)`。
 
 生产请求 card、通用动态 detail、普通 opus HTML、独立评论计数及根／回复页码接口。HTTPX 信号/正文请求默认超时 10 秒、不跟随重定向、不使用环境代理；评论 Requests 会话采用下节的参考脚本式初始化、15 秒超时及环境代理策略。默认匿名；可选登录 Cookie 仅从服务端私有文件加载，没有前端/API 凭据输入。不绕过受限正文，不依赖 `opus/detail` JSON，不导入或执行 ignored 原脚本。
+
+## 统一源请求发送入口
+
+API 与采集进程的所有 B 站源请求都经 `source_gate.py` 的同一 Interface：发送前 `permit(request)` 取许可，返回或失败后 `report(request, report)` 报告状态。默认实现 `OpenSourceGate` 一律放行且不记录，因此本入口上线不改变任何网络行为；后续风控票在同一 Interface 上接入暂停、探测与持久状态，调用方不需要各自实现熔断。
+
+| 接入点 | 覆盖的发送 |
+| --- | --- |
+| `GatedAsyncTransport`（HTTPX 最内层传输） | 正文 opus 页、detail、feed、UP 资料、作者校验、图片下载；跟随重定向时每一跳都重新取许可 |
+| `_SourceSession.send`（Requests 逐跳） | 评论计数、根页、楼中楼页、首页／空间预热；Requests 自己解析跳转，同样逐跳接入 |
+
+接口类型按「主机 + 路径模板」固定归类（`comment_count`、`root_comments`、`replies`、`feed`、`detail`、`opus_page`、`profile`、`homepage_warmup`、`space_warmup`、`media_image`，白名单内未列模板归 `source_other`），query 中的资源 ID 与页码不产生新类型；非 B 站主机返回 `None`、原样放行。分类结果只带方法、主机与路径，不保存 query，避免把凭据或完整 URL 带进日志。
+
+明确不受源站许可控制：OSS 上传（`media_uploader`）、飞书投递（通知进程自己的 client）与所有本地归档／管理只读 HTTP。阅读 GET 不产生上游请求，因此不产生许可或报告。
+
+API 装配的 `source_gate` 覆盖资料查询、作者校验、手动初始化与媒体重试；采集进程的同一参数在 `collector.serve(..., source_gate=...)`，测试可用 `open_collector(...)` 复用同一装配。生产装配的顺序是外层 `PacedSourceTransport`（既有 0.8–1.5 秒 feed／0.3–0.4 秒根页等待）→ 内层 `GatedAsyncTransport`（许可紧贴实际发送）；注入传输的测试装配只替换外部 HTTP，不额外增加等待。Cookie、主机白名单、重定向、代理、超时、解析、会话缓存与既有等待都保持原状。
+
+专项：`uv run pytest backend/tests/test_source_gate.py -q`。断言以请求账本证明计数、根页、楼中楼、feed、detail、网页、资料、预热与图片下载都经过入口，且传输层发送序列与许可序列一致（无绕过、无额外发送）；预热仍 best-effort 但仍会报告状态；`open_collector` 的真实装配下既有等待次数不变。以上均为隔离替身自动化，未访问真实上游，也不代表风控保护已实现。
 
 ## 来源 client 初始化
 
@@ -161,7 +178,7 @@ API 与 collector 的来源 `AsyncClient` 共用 `source_client.py` 中的普通
 - 每个 Session 按 `create_session` 顺序预热 `https://www.bilibili.com/`、`https://space.bilibili.com/{uid}/dynamic`，各自 timeout 10 秒、成功取得响应后异步等 1–3 秒；每个 URL 独立 best-effort，异常不阻止下一个 URL。预热只记录 HTTP 成功，不宣称已登录；不再用 nav 预热。工厂创建时不发请求，空闲 API 启动不访问来源。
 - 私有 Cookie 文件每个进程启动读一次；名称和值分别 strip、不 URL 编解码。每轮从该不可变输入重建 Session CookieJar，域 `.bilibili.com`、path `/`；仅本轮保留正常来源 `Set-Cookie` 更新/删除。API、collector、不同尝试和媒体/OSS 不共享可变 jar。
 - Requests 使用环境代理、TLS 验证和默认 GET 重定向行为；实际发送（包括跳转）只允许 HTTPS 默认端口的 `api.bilibili.com`、`www.bilibili.com`、`space.bilibili.com`，其他域/明文/非 GET 在发送前拒绝。此范围约束有意严于参考脚本，Cookie 不会随任意跳转泄露。HTTPX 正文/detail/feed 和独立媒体仍保持各自原有代理策略。
-- 同一进程的 Requests 与 HTTPX 共用 `SourcePacer` 页级等待锁：feed 0.8–1.5 秒、根页0.3–0.4秒；楼中楼改为逐楼结束后等待0.3–0.4秒，不持网络/SQLite 锁，独立计数不加入分页队列。不新增来源请求即时重试。
+- 同一进程的 Requests 与 HTTPX 共用 `SourcePacer` 页级等待锁：feed 0.8–1.5 秒、根页0.3–0.4秒；楼中楼每次真实请求后等待≥100ms（`ReplyPagePacer`，首请求前不加、最后一页后仍执行），楼级 0.3–0.4 秒只在实际展开后保留，不持 SQLite 写事务，独立计数不加入分页队列。不新增来源请求即时重试。
 - locator 按参考脚本优先取合法 basic，再尝试同一已校验目标的 OPUS ID/type11、动态 ID/type11；记录 `source/policy_version`。旧策略下一次检查重新取已校验作者的 detail 核对一次；资源 oid/type 变化会登记新工作，即使计数不变也重扫根/回复。fallback 条目必须携带一致 oid/type，空页不算确认 fallback 成功；正来源计数却整轮无根也不推进成功。
 
 静态对照 ignored `script_demo/bili_charge_monitor.py`，不导入/执行脚本、不读取或复制其凭据。根评论和楼中楼按脚本不额外加 WBI；feed 的 WBI 不属于此次修改。Requests 显式固定为已有锁内的 `2.34.2`，不改变依赖包版本。根元信息版本升到 v2，旧启用归档补采一次，停用目标不采，不重写旧 cursor。修改不证明此前全零分页或 HTTP 412 已解决，不绕过来源权限。本次仅修改并重启后端，不运行测试、审查或额外诊断请求；正常采集会执行上述预热。实现记录见[Requests 评论链路变更](../.scratch/backend-integration/evidence/comment-requests-implementation.md)。

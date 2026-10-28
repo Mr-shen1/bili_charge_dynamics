@@ -1,12 +1,16 @@
 """根评论来源协议与独立同步；不采回复预览，不以来源计数猜根页数。"""
 
+import time
+
 from anyio import to_thread
 
 from .identifiers import is_valid_id
 from .source import media_sources, published_time, safe_url
 from .source_endpoints import ROOT_COMMENTS_URL
 from .source_client import comment_request_headers
-from .collector_logging import SourceRejected, collector_event, collector_failure
+from .collector_logging import (
+    SourceRejected, collector_event, collector_failure, source_ids, source_refs,
+)
 
 
 def nonnegative(value):
@@ -160,7 +164,8 @@ async def sync_roots(store, client, id, generation, *, now=None, uid=None, on_fa
     if not await to_thread.run_sync(store.begin_roots, id, generation):
         collector_event("root_sync_skipped", reason="stale_generation")
         return
-    collector_event("root_sync_started")
+    sync_refs = source_refs(uid=uid, dynamic_id=id)
+    collector_event("root_sync_started", **sync_refs)
     phase = "page_fetch"
     pin_known, pinned_id = False, None
 
@@ -172,6 +177,7 @@ async def sync_roots(store, client, id, generation, *, now=None, uid=None, on_fa
         number, baseline, seen, roots = 1, None, set(), {}
         while True:
             phase = "page_fetch"
+            started = time.monotonic()
             documents, ids, counts = await fetch_root_page(client, id, locator, number, on_pin=observe_pin, uid=uid)
             phase = "pagination"
             if baseline is not None and counts[0] < baseline[0]:
@@ -179,7 +185,8 @@ async def sync_roots(store, client, id, generation, *, now=None, uid=None, on_fa
                 raise ValueError("Comment counts decreased during scan")
             if baseline is not None and counts != baseline:
                 # 总数增长（多为楼中楼新增）不影响根分页一致性；页偏移由重复 ID 检测负责。
-                collector_event("root_scan_count_grew", baseline=baseline[0], current=counts[0])
+                collector_event("root_scan_count_grew", baseline=baseline[0], current=counts[0],
+                                **sync_refs)
             baseline = counts
             if ids and not set(ids) - seen:
                 raise ValueError("Comment pagination did not advance")
@@ -188,15 +195,24 @@ async def sync_roots(store, client, id, generation, *, now=None, uid=None, on_fa
                 collector_event("root_sync_skipped", reason="stale_generation", page=number)
                 return
             roots.update({document["id"]: document["source_reply_count"] for document in documents})
+            # 每页一条批量 ID；根页节奏仍是发送前等待，这里只记录本次读取耗时。
+            collector_event("root_page_saved", page=number, direction="forward", fetched=len(ids),
+                            comment_ids=source_ids(ids),
+                            elapsed_ms=max(0, int((time.monotonic() - started) * 1000)), **sync_refs)
             if not ids:
                 if number > 1:
                     # 对候选空尾页复查；瞬时空、后续页失败或计数变化不能推进成功。
                     phase = "tail_fetch"
+                    confirm_started = time.monotonic()
                     confirmation, confirmed_ids, confirmed_counts = await fetch_root_page(client, id, locator, number, uid=uid)
                     phase = "tail_save"
                     if not await to_thread.run_sync(store.save_roots, id, generation, confirmation, observed_count):
                         collector_event("root_sync_skipped", reason="stale_generation", page=number)
                         return
+                    collector_event("root_page_saved", page=number, direction="tail_confirmation",
+                                    fetched=len(confirmed_ids), comment_ids=source_ids(confirmed_ids),
+                                    elapsed_ms=max(0, int((time.monotonic() - confirm_started) * 1000)),
+                                    **sync_refs)
                     phase = "tail_validate"
                     if confirmed_ids or confirmed_counts != baseline:
                         raise ValueError("Unstable empty comment tail")
@@ -209,7 +225,7 @@ async def sync_roots(store, client, id, generation, *, now=None, uid=None, on_fa
                 or locator.get("source") in ("opus_fallback", "dynamic_id_fallback")):
             raise ValueError("Unconfirmed empty comment resource")
     except Exception as error:
-        collector_failure("root_sync_failed", error, stage=phase, page=number)
+        collector_failure("root_sync_failed", error, stage=phase, page=number, **sync_refs)
         if on_failure is not None:
             # 采集侧只上报固定分类（含唯一可信的凭据信号），不把异常文本或正文带出去。
             on_failure(error)
@@ -218,6 +234,7 @@ async def sync_roots(store, client, id, generation, *, now=None, uid=None, on_fa
     if await to_thread.run_sync(lambda: store.finish_roots(
             id, generation, "success", observed_count, now() if now is not None else None,
             pin_known=pin_known, pinned_id=pinned_id)):
-        collector_event("root_sync_finished", pages=number, roots=len(roots), pin_known=pin_known)
+        collector_event("root_sync_finished", pages=number, roots=len(roots), pin_known=pin_known,
+                        **sync_refs)
         return roots, observed_count
     collector_event("root_sync_skipped", reason="stale_generation", stage="finish")

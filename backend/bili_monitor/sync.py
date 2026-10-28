@@ -7,7 +7,7 @@ from .root_comments import sync_roots
 from .replies import sync_replies
 from .media import sync_media
 from .comment_status import ROOT_METADATA_VERSION
-from .collector_logging import collector_event, collector_failure
+from .collector_logging import collector_event, collector_failure, source_refs
 from .comment_client import open_comment_client
 
 
@@ -46,7 +46,8 @@ async def sync_body(store, client, uid, id, generation, comment_observation, now
         body = page_body(page)
     except Exception as error:
         # 可解析 metadata 不因正文/编辑字段失败丢失。
-        collector_failure("body_source_failed", error, stage="page")
+        collector_failure("body_source_failed", error, stage="page",
+                          **source_refs(uid=uid, dynamic_id=id))
     if comment_observation is not None:
         page_meta.pop("source_comment_count", None)
         page_meta.update(comment_metadata(comment_observation))
@@ -63,7 +64,8 @@ async def sync_body(store, client, uid, id, generation, comment_observation, now
             status = "restricted"
     except Exception as error:
         # 通用接口失败不阻断独立已解析的 HTML 正文。
-        collector_failure("body_source_failed", error, stage="detail")
+        collector_failure("body_source_failed", error, stage="detail",
+                          **source_refs(uid=uid, dynamic_id=id))
     if body is not None:
         body = dict(body)
         if not body["media_sources"]:
@@ -71,7 +73,8 @@ async def sync_body(store, client, uid, id, generation, comment_observation, now
     succeeded = await to_thread.run_sync(
         store.finish_archive, id, generation, status, body, page_meta.get("observed_version"), now() if now else None
     )
-    collector_event("body_sync_finished", outcome=status, accepted=succeeded)
+    collector_event("body_sync_finished", outcome=status, accepted=succeeded,
+                    **source_refs(uid=uid, dynamic_id=id))
     return succeeded
 
 

@@ -25,14 +25,15 @@ def archive_content(document):
 
 
 @contextmanager
-def archive_client(path, handler=None):
+def archive_client(path, handler=None, *, gate=None):
     def upstream(request):
         if request.url.path == "/x/web-interface/card":
             return profile_response(request)
         assert handler is not None, "Unexpected upstream request"
         return handler(request)
 
-    with TestClient(create_app(path, profile_transport=httpx.MockTransport(upstream))) as client:
+    with TestClient(create_app(path, profile_transport=httpx.MockTransport(upstream),
+                               source_gate=gate)) as client:
         yield client
 
 

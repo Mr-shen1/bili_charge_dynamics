@@ -5,17 +5,18 @@ import asyncio
 import os
 import random
 import signal
+from contextlib import asynccontextmanager, contextmanager
 
 import httpx
 import fcntl
 import time
-from contextlib import contextmanager
 from pathlib import Path
 
 from anyio import to_thread
 
 from .source import fetch_page, page_metadata, fetch_detail, COMMENT_LOCATOR_VERSION
 from .source_transport import PacedSourceTransport, SourcePacer
+from .source_gate import GatedAsyncTransport, OpenSourceGate, SourceGate
 from .source_client import SOURCE_HEADERS, source_client_event_hooks
 from .source_cookies import load_source_cookie_pairs
 from .comment_client import RequestsCommentClientFactory, open_comment_client
@@ -28,6 +29,7 @@ from .oss import OSSUploader
 from .safety import configure_safe_logging
 from .collector_logging import (
     collector_attempt, collector_event, collector_failure, credential_signal, failure_fields,
+    source_ids, source_refs,
 )
 from .storage import Store
 from .selection import selection_matches
@@ -140,7 +142,7 @@ class Collector:
         if claim is None:
             return False
         token = claim["token"]
-        collector_event("discovery_started")
+        collector_event("discovery_started", **source_refs(uid=uid))
 
         async def should_continue():
             return await to_thread.run_sync(self.store.discovery_claim_active, uid, token)
@@ -152,10 +154,11 @@ class Collector:
             result = await discover_recent(
                 self.client, uid, claim["recent_n"], should_continue=should_continue, on_progress=on_progress)
         except DiscoveryStopped:
-            collector_event("discovery_stopped", reason="selection_changed")
+            collector_event("discovery_stopped", reason="selection_changed", **source_refs(uid=uid))
             return False
         except Exception as error:
-            collector_failure("discovery_failed", error, credentials_configured=self.credentials_configured)
+            collector_failure("discovery_failed", error, credentials_configured=self.credentials_configured,
+                              **source_refs(uid=uid))
             code = error.code if isinstance(error, DiscoveryError) else "SOURCE_UNAVAILABLE"
             await to_thread.run_sync(
                 lambda: self.store.finish_discovery(
@@ -163,7 +166,8 @@ class Collector:
                     alerts=(outbox.Alert("collection", uid, code.lower()),)))
             return False
         accepted = await to_thread.run_sync(self.store.finish_discovery, uid, token, result, self.clock.now())
-        collector_event("discovery_finished", accepted=accepted)
+        collector_event("discovery_finished", accepted=accepted,
+                        dynamic_ids=source_ids(result.get("ids") or []), **source_refs(uid=uid))
         return accepted
 
     def _page_due(self, last_checked_at, now):
@@ -180,7 +184,8 @@ class Collector:
         if not selection_matches(current, selection):
             return False
         selection = current
-        collector_event("check_started")
+        target_refs = source_refs(uid=uid, dynamic_id=id)
+        collector_event("check_started", **target_refs)
 
         async def still_selected():
             return await to_thread.run_sync(self.store.check_selection, uid, id) == selection
@@ -201,7 +206,7 @@ class Collector:
                     alerts.append(outbox.Alert("collection", target_object, "signal_invalid"))
             except Exception as exception:
                 collector_failure("check_source_failed", exception, stage="page",
-                                  credentials_configured=self.credentials_configured)
+                                  credentials_configured=self.credentials_configured, **target_refs)
                 page_error = "SOURCE_UNAVAILABLE"
                 alerts.extend(self._failure_alerts(exception, target_object))
             if not await still_selected():
@@ -222,11 +227,11 @@ class Collector:
                     collector_event("comment_locator_refreshed", source=locator.get("source") if locator else None)
                 except Exception as exception:
                     collector_failure("check_source_failed", exception, stage="detail",
-                                      credentials_configured=self.credentials_configured)
+                                      credentials_configured=self.credentials_configured, **target_refs)
                     alerts.extend(self._failure_alerts(exception, target_object))
         elif not valid_locator(locator) or locator.get("policy_version") != COMMENT_LOCATOR_VERSION:
             # 页面信号未到期且没有可用定位：本轮无事可做，不重复打上游，也不落一条失败记录。
-            collector_event("check_skipped", reason="page_interval")
+            collector_event("check_skipped", reason="page_interval", **target_refs)
             return True
         if not await still_selected():
             return False
@@ -241,7 +246,7 @@ class Collector:
             comments["comment_count_status"] = "observed"
         except Exception as exception:
             collector_failure("check_source_failed", exception, stage="comment_count",
-                              credentials_configured=self.credentials_configured)
+                              credentials_configured=self.credentials_configured, **target_refs)
             alerts.extend(self._failure_alerts(exception, target_object))
         # 网页计数不回退冒充独立计数读取成功；两项信号可各自失败。
         if metadata is not None:
@@ -253,7 +258,7 @@ class Collector:
             alerts=alerts))
         collector_event("check_finished", recorded=accepted,
                         edit_status=metadata.get("edit_status") if metadata else None,
-                        comment_count_status=comments["comment_count_status"])
+                        comment_count_status=comments["comment_count_status"], **target_refs)
         return accepted
 
     async def execute_pending(self):
@@ -272,12 +277,13 @@ class Collector:
             started = self.clock.monotonic()
             try:
                 uid, id = target["uid"], target["id"]
+                target_refs = source_refs(uid=uid, dynamic_id=id)
                 claim = await to_thread.run_sync(lambda: self.store.claim_check_work(
                     uid, id, selection=target["selection"]))
                 if claim is None:
-                    collector_event("sync_skipped", reason="not_claimed")
+                    collector_event("sync_skipped", reason="not_claimed", **target_refs)
                     return
-                collector_event("sync_started", revision=claim["revision"])
+                collector_event("sync_started", revision=claim["revision"], **target_refs)
                 succeeded, archive = False, None
                 alerts = []
                 try:
@@ -333,6 +339,7 @@ class Collector:
                                                        alerts=alerts))
                 parts = archive["work"] if archive else {}
                 collector_event("sync_finished", warning=not complete, succeeded=succeeded, complete=complete,
+                                **target_refs,
                                 elapsed_ms=max(0, int((self.clock.monotonic() - started) * 1000)),
                                 text=parts.get("text"), comments=parts.get("comments"),
                                 replies=parts.get("replies"), media=parts.get("media"))
@@ -450,29 +457,53 @@ class Collector:
                 collector_event("collector_stopped")
 
 
-async def serve(database, *, once=False):
+@asynccontextmanager
+async def open_collector(database, *, source_gate: SourceGate | None = None, source_transport=None,
+                         media_transport=None, media_uploader=None, comment_client_factory=None,
+                         clock=None, reply_page_pacer=None):
+    """生产装配：来源 client、评论会话、媒体下载与 Collector；只替换外部传输和时钟。
+
+    `source_gate` 与 API 进程接的是同一 Interface：检查、发现、归档、预热和图片下载
+    不经另一套通道；OSS 上传与通知投递不在其中。`reply_page_pacer` 是楼中楼页后
+    等待的协调器，默认进程内一个，可从外部注入受控时间或与 API 进程共用。
+    """
+    gate = source_gate if source_gate is not None else OpenSourceGate()
+    cookie_pairs = load_source_cookie_pairs()
+    source_hooks = source_client_event_hooks(cookie_pairs=cookie_pairs)
+    pacer = SourcePacer()
+    owns_comments = comment_client_factory is None
+    comments = (RequestsCommentClientFactory(cookie_pairs=cookie_pairs, pacer=pacer, gate=gate,
+                                            reply_page_pacer=reply_page_pacer)
+                if owns_comments else comment_client_factory)
+    owns_uploader = media_uploader is None
+    uploader = None
+    try:
+        uploader = OSSUploader.from_environment() if owns_uploader else media_uploader
+        async with httpx.AsyncClient(
+            transport=PacedSourceTransport(GatedAsyncTransport(source_transport, gate=gate), pacer=pacer),
+            timeout=10, trust_env=False, follow_redirects=False,
+            headers=SOURCE_HEADERS, event_hooks=source_hooks,
+        ) as source_client, httpx.AsyncClient(
+            transport=GatedAsyncTransport(media_transport, gate=gate), timeout=30, trust_env=False
+        ) as media_client:
+            yield Collector(Store(database), source_client, ImageDownloader(media_client), uploader,
+                            comment_client_factory=comments, clock=clock,
+                            credentials_configured=bool(cookie_pairs))
+    finally:
+        if owns_comments:
+            await comments.aclose()
+        if owns_uploader and uploader is not None:
+            await to_thread.run_sync(uploader.close)
+
+
+async def serve(database, *, once=False, source_gate: SourceGate | None = None):
     configure_safe_logging()
     collector_event("collector_initializing")
-    uploader = None
-    comment_factory = None
     try:
-        cookie_pairs = load_source_cookie_pairs()
-        source_hooks = source_client_event_hooks(cookie_pairs=cookie_pairs)
-        pacer = SourcePacer()
-        comment_factory = RequestsCommentClientFactory(cookie_pairs=cookie_pairs, pacer=pacer)
-        uploader = OSSUploader.from_environment()
-        collector_event("collector_configuration", mode="once" if once else "continuous",
-                        comment_engine="requests", proxy_policy="environment",
-                        media_upload="enabled" if uploader is not None else "disabled")
-        async with httpx.AsyncClient(
-            transport=PacedSourceTransport(pacer=pacer), timeout=10, trust_env=False,
-            follow_redirects=False, headers=SOURCE_HEADERS, event_hooks=source_hooks,
-        ) as source_client, httpx.AsyncClient(
-            timeout=30, trust_env=False
-        ) as media_client:
-            collector = Collector(Store(database), source_client, ImageDownloader(media_client), uploader,
-                                  comment_client_factory=comment_factory,
-                                  credentials_configured=bool(cookie_pairs))
+        async with open_collector(database, source_gate=source_gate) as collector:
+            collector_event("collector_configuration", mode="once" if once else "continuous",
+                            comment_engine="requests", proxy_policy="environment",
+                            media_upload="enabled" if collector.uploader is not None else "disabled")
             if once:
                 with collector_lock(database):
                     await to_thread.run_sync(collector.store.migrate)
@@ -495,11 +526,6 @@ async def serve(database, *, once=False):
     except Exception as error:
         collector_failure("collector_failed", error)
         raise
-    finally:
-        if comment_factory is not None:
-            await comment_factory.aclose()
-        if uploader is not None:
-            await to_thread.run_sync(uploader.close)
 
 
 def main():

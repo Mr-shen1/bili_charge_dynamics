@@ -8,7 +8,7 @@ from anyio import to_thread
 
 from .source import safe_url
 from .contracts import APIError
-from .collector_logging import collector_failure
+from .collector_logging import collector_event, collector_failure, source_refs
 
 
 class MediaUploader(Protocol):
@@ -151,9 +151,14 @@ async def sync_media(store, downloader, uploader, id, current_only=False, media_
         except Exception as exception:
             # 不保存异常文本、HTTP headers、签名 URL 或 OSS 凭据。
             collector_failure("media_sync_failed", exception,
-                              stage="download" if error == "MEDIA_DOWNLOAD_FAILED" else "upload")
+                              stage="download" if error == "MEDIA_DOWNLOAD_FAILED" else "upload",
+                              **source_refs(dynamic_id=id, root_id=root_id))
             public_url = None
         accepted = await to_thread.run_sync(store.finish_media, id, item["id"], token, public_url, error, root_id,
                                            now() if now else None)
         result["succeeded" if accepted and error is None else "failed"] += 1
+    if result["processed"]:
+        # 每轮媒体处理一条摘要：每张图的逐条结果仍在失败事件与新下载提交里。
+        collector_event("media_sync_finished", processed=result["processed"], succeeded=result["succeeded"],
+                        failed=result["failed"], **source_refs(dynamic_id=id, root_id=root_id))
     return result

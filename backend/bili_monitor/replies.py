@@ -6,6 +6,7 @@
 
 from asyncio import sleep as sleep_after_root
 import random
+import time
 from datetime import datetime, timezone
 
 from anyio import to_thread
@@ -15,7 +16,9 @@ from .source import media_sources
 from .comment_status import utc_now
 from .source_endpoints import REPLIES_URL
 from .source_client import comment_request_headers
-from .collector_logging import SourceRejected, collector_event, collector_failure
+from .collector_logging import (
+    SourceRejected, collector_event, collector_failure, source_ids, source_refs,
+)
 
 
 # 与参考脚本 FULL_SCAN_INTERVAL 一致：每根每天至少完整校准一次，补偿增删抵消。
@@ -82,7 +85,7 @@ def reply_pictures(content):
     return None
 
 
-async def fetch_reply_page(client, dynamic_id, root_id, locator, number, *, uid=None):
+async def fetch_reply_page(client, dynamic_id, root_id, locator, number, *, uid=None, direction="forward"):
     response = await client.get(REPLIES_URL, params={
         "oid": locator["oid"], "type": locator["type"], "root": root_id, "pn": number, "ps": 20,
     }, headers=comment_request_headers(uid), timeout=15)
@@ -109,6 +112,13 @@ async def fetch_reply_page(client, dynamic_id, root_id, locator, number, *, uid=
     ids = [document["id"] for document in documents]
     if len(set(ids)) != len(ids) or (number == 1 and count > 0 and not ids):
         raise ValueError("Unconfirmed reply page")
+    # 每页一条批量 ID；请求耗时与页后等待分开，分块由日志层按关联号做。
+    timing = getattr(client, "last_reply_page", None)
+    collector_event("reply_page_fetched", endpoint_type="replies", page=number, direction=direction,
+                    fetched=len(ids), reply_ids=source_ids(ids),
+                    elapsed_ms=timing.elapsed_ms if timing is not None else None,
+                    wait_ms=timing.wait_ms if timing is not None else None,
+                    **source_refs(uid=uid, dynamic_id=dynamic_id, root_id=root_id))
     return documents, ids, count
 
 
@@ -124,7 +134,7 @@ async def fetch_reply_tail(client, dynamic_id, root_id, locator, seen_ids, page_
     drifted = False
     while True:
         page_number[0] = 1
-        first = await fetch_reply_page(client, dynamic_id, root_id, locator, 1, uid=uid)
+        first = await fetch_reply_page(client, dynamic_id, root_id, locator, 1, uid=uid, direction="reverse")
         pages_fetched += 1
         count = first[2]
         collected = []
@@ -135,7 +145,7 @@ async def fetch_reply_tail(client, dynamic_id, root_id, locator, seen_ids, page_
         while number >= 1:
             page_number[0] = number
             page = first if number == 1 else await fetch_reply_page(
-                client, dynamic_id, root_id, locator, number, uid=uid)
+                client, dynamic_id, root_id, locator, number, uid=uid, direction="reverse")
             if number != 1:
                 pages_fetched += 1
             documents, page_ids, current = page
@@ -146,7 +156,7 @@ async def fetch_reply_tail(client, dynamic_id, root_id, locator, seen_ids, page_
                 break
             if not page_ids:
                 # count 可包含折叠/不可见条目；沿用正序全量的空尾页复查。
-                confirmation = await fetch_reply_page(client, dynamic_id, root_id, locator, number, uid=uid)
+                confirmation = await fetch_reply_page(client, dynamic_id, root_id, locator, number, uid=uid, direction="reverse")
                 pages_fetched += 1
                 if confirmation[1] or confirmation[2] != count:
                     raise ReplyDrift(pages_fetched)
@@ -157,7 +167,7 @@ async def fetch_reply_tail(client, dynamic_id, root_id, locator, seen_ids, page_
                 number -= 1
                 page_number[0] = number
                 overlap = first if number == 1 else await fetch_reply_page(
-                    client, dynamic_id, root_id, locator, number, uid=uid)
+                    client, dynamic_id, root_id, locator, number, uid=uid, direction="reverse")
                 if number != 1:
                     pages_fetched += 1
                 overlap_docs, overlap_ids, overlap_count = overlap
@@ -167,7 +177,7 @@ async def fetch_reply_tail(client, dynamic_id, root_id, locator, seen_ids, page_
                     drifted = restart = True
                     break
                 if not overlap_ids:
-                    confirmation = await fetch_reply_page(client, dynamic_id, root_id, locator, number, uid=uid)
+                    confirmation = await fetch_reply_page(client, dynamic_id, root_id, locator, number, uid=uid, direction="reverse")
                     pages_fetched += 1
                     if confirmation[1] or confirmation[2] != count:
                         raise ReplyDrift(pages_fetched)
@@ -188,14 +198,16 @@ async def sync_replies(store, client, id, generation, roots_result, *, now=None,
         # 发现新根仍依赖根扫描成功；此处只保证已可读内容不因根失败而被阻塞。
         progress = await to_thread.run_sync(store.reply_progress, id)
         if not progress:
-            collector_event("replies_sync_skipped", reason="roots_unconfirmed")
+            collector_event("replies_sync_skipped", reason="roots_unconfirmed",
+                            **source_refs(dynamic_id=id))
             await to_thread.run_sync(store.finish_replies, id, generation, "unconfirmed", None)
             return
         roots = await to_thread.run_sync(store.roots_for_replies, id, set(progress))
         # 以已存根评论的 rcount 作为本轮基准：失败的楼因 status != success 重扫，
         # 已成功且 rcount 未变的楼仍然跳过，不因根失败而全量重扫。
         observed_replies = {root["id"]: root["source_reply_count"] for root in roots}
-        collector_event("replies_sync_degraded", roots=len(observed_replies))
+        collector_event("replies_sync_degraded", roots=len(observed_replies),
+                        **source_refs(dynamic_id=id))
         roots_result = (observed_replies, None)
     observed_replies, observed_count = roots_result
     if uid is None:
@@ -209,10 +221,12 @@ async def sync_replies(store, client, id, generation, roots_result, *, now=None,
         entry["status"] == "success" for entry in progress.values()) else None
     failed = False
     skipped = 0
-    collector_event("replies_sync_started", roots=len(roots))
+    sync_refs = source_refs(uid=uid, dynamic_id=id)
+    collector_event("replies_sync_started", roots=len(roots), **sync_refs)
     for root_index, root in enumerate(roots, 1):
         observed = observed_replies[root["id"]]
         previous = progress.get(root["id"])
+        root_refs = source_refs(root_id=root["id"], **sync_refs)
         if not full and not scan_due(previous, observed, checked_at):
             # 楼层回复数与上次成功快照相同且校准未到期：不重发回复请求，也不刷新校准计时。
             skipped += 1
@@ -229,6 +243,14 @@ async def sync_replies(store, client, id, generation, roots_result, *, now=None,
         local_ids = seen_by_root.setdefault(root["id"], set())
         incremental = not full and previous is not None and previous["status"] == "success" and bool(local_ids)
         seen_before = local_ids.copy() if incremental else set()
+        expanded = False
+
+        async def fetch_page(number):
+            # 楼级等待只在真正展开楼中楼后缴纳：跳过、零回复与根页失败都不额外等待。
+            nonlocal expanded
+            expanded = True
+            return await fetch_reply_page(client, id, root["id"], root["comment_locator"],
+                                          number, uid=uid)
         try:
             # 只有本轮明确零才可跳页；持久旧零不能冒充新的未知观察。
             if observed == 0:
@@ -236,22 +258,28 @@ async def sync_replies(store, client, id, generation, roots_result, *, now=None,
                         id, generation, root["id"], "success", 0, observed=0,
                         succeeded_at=now() if now is not None else None)):
                     return
-                collector_event("reply_root_finished", local_source_delta=len(local_ids))
+                collector_event("reply_root_finished", local_source_delta=len(local_ids), **root_refs)
                 continue
             if incremental:
-                collector_event("reply_incremental_started", root_index=root_index)
+                collector_event("reply_incremental_started", root_index=root_index, **root_refs)
                 phase = "tail_fetch"
+                expanded = True
                 documents, baseline, pages_fetched, stopped_by = await fetch_reply_tail(
                     client, id, root["id"], root["comment_locator"], local_ids, page_number, uid=uid)
                 phase = "save_page"
                 if not await to_thread.run_sync(store.save_replies, id, generation, root["id"], documents, baseline):
                     return
                 local_ids.update(document["id"] for document in documents)
+                collector_event(
+                    "reply_page_saved", direction="reverse", pages_fetched=pages_fetched,
+                    fetched=len(documents), new=len(local_ids - seen_before),
+                    updated=len(documents) - len(local_ids - seen_before), accepted=True,
+                    **root_refs)
             else:
                 number, baseline, seen = 1, None, set()
                 while True:
                     phase = "page_fetch"
-                    documents, page_ids, count = await fetch_reply_page(client, id, root["id"], root["comment_locator"], number, uid=uid)
+                    documents, page_ids, count = await fetch_page(number)
                     phase = "pagination"
                     # 根页 rcount 与楼中楼 count 可能来自不同快照或口径，以本次分页为准。
                     if baseline is not None and count < baseline:
@@ -262,13 +290,20 @@ async def sync_replies(store, client, id, generation, roots_result, *, now=None,
                     if page_ids and not set(page_ids) - seen:
                         raise ValueError("Reply pagination did not advance")
                     phase = "save_page"
-                    if not await to_thread.run_sync(store.save_replies, id, generation, root["id"], documents, count):
+                    known = set(local_ids)
+                    accepted = await to_thread.run_sync(
+                        store.save_replies, id, generation, root["id"], documents, count)
+                    if not accepted:
                         return
                     local_ids.update(page_ids)
+                    collector_event(
+                        "reply_page_saved", page=number, direction="forward", fetched=len(page_ids),
+                        new=len(set(page_ids) - known), updated=len(set(page_ids) & known),
+                        accepted=True, **root_refs)
                     if not page_ids:
                         if number > 1:
                             phase = "tail_fetch"
-                            confirmation, confirmed_ids, confirmed_count = await fetch_reply_page(client, id, root["id"], root["comment_locator"], number, uid=uid)
+                            confirmation, confirmed_ids, confirmed_count = await fetch_page(number)
                             phase = "tail_save"
                             if not await to_thread.run_sync(store.save_replies, id, generation, root["id"], confirmation, confirmed_count):
                                 return
@@ -279,7 +314,8 @@ async def sync_replies(store, client, id, generation, roots_result, *, now=None,
                         if len(seen) > count:
                             raise ValueError("Reply count does not match root")
                         if len(seen) != count:
-                            collector_event("reply_scan_short", archived=len(seen), source=count)
+                            collector_event("reply_scan_short", archived=len(seen), source=count,
+                                            **root_refs)
                         break
                     seen.update(page_ids)
                     number += 1
@@ -291,24 +327,31 @@ async def sync_replies(store, client, id, generation, roots_result, *, now=None,
             if incremental:
                 collector_event("reply_incremental_finished", pages_fetched=pages_fetched,
                                 new=len(local_ids - seen_before), stopped_by=stopped_by,
-                                local_source_delta=len(local_ids) - baseline)
+                                local_source_delta=len(local_ids) - baseline, **root_refs)
             else:
-                collector_event("reply_root_finished", local_source_delta=len(local_ids) - baseline)
+                collector_event("reply_root_finished", local_source_delta=len(local_ids) - baseline,
+                                **root_refs)
         except Exception as error:
             # 单根失败不阻止其他根的可读回复，也不暴露来源异常文本。
             if isinstance(error, ReplyDrift):
                 collector_event("reply_incremental_finished", warning=True,
-                                pages_fetched=error.pages_fetched, new=0, stopped_by="drift")
+                                pages_fetched=error.pages_fetched, new=0, stopped_by="drift",
+                                **root_refs)
+            timing = getattr(client, "last_reply_page", None)
             collector_failure("reply_sync_failed", error, stage=phase,
-                              page=page_number[0] if incremental else number, root_index=root_index)
+                              page=page_number[0] if incremental else number, root_index=root_index,
+                              elapsed_ms=timing.elapsed_ms if timing is not None else None,
+                              wait_ms=timing.wait_ms if timing is not None else None,
+                              **root_refs)
             if on_failure is not None:
                 on_failure(error)
             failed = True
             if not await to_thread.run_sync(store.change_reply_root, id, generation, root["id"], "failed"):
                 return
         finally:
-            # 楼级节奏在网络与 SQLite 事务外；失败也等待，跳过楼不等待。
-            await sleep_after_root(random.uniform(0.3, 0.4))
+            # 楼级节奏在网络与 SQLite 事务外；只在实际展开楼中楼后等待，失败也等待，跳过楼不等待。
+            if expanded:
+                await sleep_after_root(random.uniform(0.3, 0.4))
     # 降级轮只保证「已存根的可读回复」不落后，未确认根集合，故不宣称全集一致：
     # 沿用 unconfirmed 语义，synced_reply_comment_count 与成功时间不推进。
     await to_thread.run_sync(store.finish_replies, id, generation,
@@ -316,4 +359,4 @@ async def sync_replies(store, client, id, generation, roots_result, *, now=None,
                              None if degraded else observed_count,
                              now() if now is not None and not failed and not degraded else None)
     collector_event("replies_sync_finished", warning=failed, succeeded=not failed and not degraded,
-                    degraded=degraded, roots=len(roots), skipped=skipped)
+                    degraded=degraded, roots=len(roots), skipped=skipped, **sync_refs)

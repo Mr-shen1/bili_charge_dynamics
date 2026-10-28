@@ -1,4 +1,4 @@
-"""采集诊断日志：固定事件与分类，不输出来源内容、身份 ID、URL 或凭据。"""
+"""采集诊断日志：固定事件与分类，只放行已校验业务 ID；不发源内容、URL 或凭据。"""
 
 import asyncio
 from contextlib import contextmanager
@@ -11,11 +11,16 @@ import sqlite3
 
 import httpx
 
+from .identifiers import is_valid_id
+
 
 _LOGGER = logging.getLogger("bili_monitor.collector")
 _ATTEMPT = ContextVar("collector_attempt", default=None)
 _SEQUENCE = count(1)
 _HANDLER = None
+
+# 单条 ID 字段的渲染预算：超长按同一关联号分块，不静默截断定位 ID。
+ID_FIELD_CHARS = 300
 
 # 只识别应用自身的固定错误，不输出其他异常消息或上游响应正文。
 _KNOWN_REASONS = {
@@ -112,18 +117,101 @@ def _safe_value(value):
         return "true" if value else "false"
     if type(value) is int:
         return str(value)
+    if isinstance(value, SourceId):
+        return f'"{value.value}"'
+    if isinstance(value, SourceIds):
+        return "[" + ",".join(f'"{item}"' for item in value) + "]"
     if isinstance(value, str) and re.fullmatch(r"[a-z][a-z0-9_]{0,63}", value):
         return value
     return "unknown"
 
 
-def collector_event(event, *, warning=False, **fields):
-    configure_collector_logging()
+class SourceId:
+    """一个已校验的业务 ID（UP、动态、根评论）：原样字符串，不经浮点数转换。
+
+    只有本类型（与 `SourceIds`）能进日志的 ID 字段；其他字符串仍退化成
+    `unknown`，因此新增定位信息不等于放行 Cookie、正文、URL 或异常原文。
+    """
+
+    __slots__ = ("value",)
+
+    def __init__(self, value):
+        text = str(value) if type(value) is int else value
+        if not is_valid_id(text):
+            raise ValueError("Invalid log identity")
+        self.value = text
+
+    def __eq__(self, other):
+        return isinstance(other, SourceId) and other.value == self.value
+
+    def __hash__(self):
+        return hash(self.value)
+
+    def __repr__(self):
+        return f"SourceId({self.value!r})"
+
+
+class SourceIds(tuple):
+    """一页／一轮的全部已校验业务 ID；超预算时按同一关联号分块输出。"""
+
+    def __new__(cls, values):
+        return super().__new__(cls, [SourceId(value).value for value in values])
+
+
+def source_id(value):
+    return SourceId(value)
+
+
+def source_ids(values):
+    return SourceIds(values)
+
+
+def source_refs(**values):
+    """只保留已校验的业务 ID 字段：缺失或非法的定位不会让日志本身失败。"""
+    refs = {}
+    for key, value in values.items():
+        text = str(value) if type(value) is int else value
+        if is_valid_id(text):
+            refs[key] = SourceId(text)
+    return refs
+
+
+def _id_chunks(values):
+    """按渲染长度贪心分块；单条超长时也单独成块，不丢任何 ID。"""
+    chunks, current, size = [], [], 0
+    for value in values:
+        width = len(f'"{value}",')
+        if current and size + width > ID_FIELD_CHARS:
+            chunks.append(SourceIds(current))
+            current, size = [], 0
+        current.append(value)
+        size += width
+    if current:
+        chunks.append(SourceIds(current))
+    return chunks
+
+
+def _emit(event, fields, warning):
     attempt = _ATTEMPT.get()
     if attempt is not None:
         fields = {"attempt": attempt, **fields}
     values = " ".join(f"{key}={_safe_value(value)}" for key, value in fields.items())
     _LOGGER.log(logging.WARNING if warning else logging.INFO, "%s %s", event, values)
+
+
+def collector_event(event, *, warning=False, **fields):
+    configure_collector_logging()
+    for key, value in fields.items():
+        if not isinstance(value, SourceIds):
+            continue
+        chunks = _id_chunks(value)
+        if len(chunks) > 1:
+            # 同一事件、同一关联号的多行；每块带序号与总数，读日志的人能重建全集。
+            for index, chunk in enumerate(chunks, 1):
+                _emit(event, {**fields, key: chunk, "ids_part": index,
+                              "ids_chunks": len(chunks), "ids_total": len(value)}, warning)
+            return
+    _emit(event, fields, warning)
 
 
 def failure_fields(error, *, allowed_fields=(), credentials_configured=False):
