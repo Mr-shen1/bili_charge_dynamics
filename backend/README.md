@@ -17,7 +17,7 @@ exec .venv/bin/python -m uvicorn backend.bili_monitor.app:app --host 127.0.0.1 -
 
 Python 使用 `.python-version` 的 3.12 系列（记录实际补丁版本）；FastAPI、HTTPX、Uvicorn、OSS SDK 和测试依赖由清单/`uv.lock` 固定。上述路径是示例，须选择**仓库外持久、可写的绝对 SQLite 路径**，与 collector 完全相同，不随发布目录切换；默认 `backend/data/monitor.sqlite` 仅适合本地开发。依赖经 uv 同步后直接 `exec` 其解释器，打印的 shell PID 随即成为 Python PID，不会只杀掉 uv 父进程而留下子进程。仅一个 API，不加 `--workers` / `--reload`；没有内嵌定时器或常驻 Node.js，collector 另起终端。
 
-API 的 ASGI lifespan、取得锁的 collector 与独立通知进程启动都调用 `Store.migrate`（当前 v23）。升级先 TERM/Ctrl-C 停两个进程、等退出，再切换同一代码版本并 `uv sync --locked`；先启动 API 完成迁移并确认 `GET /api/manage/ups` 为 200，再启动 collector。未来 schema 拒绝启动，失败事务回滚；无独立迁移 CLI、自动降级或备份，勿删库、改版本号或让旧进程与新迁移并行。
+API 的 ASGI lifespan、取得锁的 collector 与独立通知进程启动都调用 `Store.migrate`（当前 v26）。升级先 TERM/Ctrl-C 停两个进程、等退出，再切换同一代码版本并 `uv sync --locked`；先启动 API 完成迁移并确认 `GET /api/manage/ups` 为 200，再启动 collector。未来 schema 拒绝启动，失败事务回滚；无独立迁移 CLI、自动降级或备份，勿删库、改版本号或让旧进程与新迁移并行。
 
 **首期无鉴权**：管理、初始化及归档接口均可被访问者调用，可能暴露内容或被修改配置。请通过监听地址、防火墙或反向代理限制暴露；隐藏入口不是保护。本期没有备份或容量治理。
 
@@ -165,7 +165,7 @@ API 与采集进程的所有 B 站源请求都经 `source_gate.py` 的同一 Int
 
 API 装配的 `source_gate` 覆盖资料查询、作者校验、手动初始化与媒体重试；采集进程的同一参数在 `collector.serve(..., source_gate=...)`，测试可用 `open_collector(...)` 复用同一装配。生产装配的顺序是外层 `PacedSourceTransport`（既有 0.8–1.5 秒 feed／0.3–0.4 秒根页等待）→ 内层 `GatedAsyncTransport`（许可紧贴实际发送）；注入传输的测试装配只替换外部 HTTP，不额外增加等待。Cookie、主机白名单、重定向、代理、超时、解析、会话缓存与既有等待都保持原状。
 
-保护状态的公开只读入口是 `GET /api/manage/risk`（字段与脱敏边界见[采集契约](../docs/backend/api/collector-api.md#跨进程风控暂停03)）；需要来源的管理操作在保护态返回 `503 SOURCE_RISK_PAUSED`（见[管理契约](../docs/backend/api/management-api.md#来源保护状态票据-03)），纯本地读取、停用／删除、已下载数据提交与 OSS 上传照常。采集进程暂停时本轮不派发发现／检查／执行，在途单元保留 pending／running 与已提交分片，不写假失败或成功时间；`collector_paused` 每个状态代次只记一条。票据 04 起，冷却按 1／2／4／8／15／30 分钟六档到期由采集进程执行一轮按接口探测（触发类型 ∪ 当前待执行工作所需类型，串行、失败短路、唯一 owner 租约），全部通过进 `observing` 并按原断点恢复被暂停打断的领取；观察期清零与人工探测登记仍属票据 05。
+保护状态的公开只读入口是 `GET /api/manage/risk`（字段与脱敏边界见[采集契约](../docs/backend/api/collector-api.md#跨进程风控暂停03)）；需要来源的管理操作在保护态返回 `503 SOURCE_RISK_PAUSED`（见[管理契约](../docs/backend/api/management-api.md#来源保护状态票据-03)），纯本地读取、停用／删除、已下载数据提交与 OSS 上传照常。采集进程暂停时本轮不派发发现／检查／执行，在途单元保留 pending／running 与已提交分片，不写假失败或成功时间；`collector_paused` 每个状态代次只记一条。票据 04 起，冷却按 1／2／4／8／15／30 分钟六档到期由采集进程执行一轮按接口探测（触发类型 ∪ 当前待执行工作所需类型，串行、失败短路、唯一 owner 租约），全部通过进 `observing` 并按原断点恢复被暂停打断的领取。票据 05 起观察期只按“确有成功业务请求的活跃采集时间”累计，满 10 分钟才回 `normal` 并清零档位（空闲／停机不抵扣，重启重新累计但保留档位）；人工态由 `POST /api/manage/risk/probe` 幂等登记一轮，仍由采集进程领取，通过进同一观察期、失败保持人工态。
 
 专项：`uv run pytest backend/tests/test_source_gate.py -q`。断言以请求账本证明计数、根页、楼中楼、feed、detail、网页、资料、预热与图片下载都经过入口，且传输层发送序列与许可序列一致（无绕过、无额外发送）；预热仍 best-effort 但仍会报告状态；`open_collector` 的真实装配下既有等待次数不变。风控暂停另有 `uv run pytest backend/tests/test_risk_state.py backend/tests/test_risk_pause.py backend/tests/test_risk_collector.py backend/tests/test_risk_processes.py -q`（跨进程用真实 API／collector 子进程、同一临时 SQLite 与上游账本）。以上均为隔离替身自动化，未访问真实上游。
 

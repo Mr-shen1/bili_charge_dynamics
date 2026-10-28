@@ -7,9 +7,14 @@
 
 状态机（正式设计 §4）：`normal` → `cooldown`（六档 1／2／4／8／15／30 分钟）→ 到期
 由唯一 owner 领取 `probing` 并按接口类型串行探测 → 全部通过进 `observing`（保留档位，
-观察窗口由 05 清零）／任一轮失败只推进一档、第六档失败转 `manual`。合法 Retry-After
+观察期由 `observing_tick` 在确有成功业务请求的活跃采集满 10 分钟后清零）／任一轮失败只推进一档、第六档失败转 `manual`。合法 Retry-After
 只会把本地期限推后，不会被更短的档位等待覆盖；档位、期限与人工态随库持久，重启后
 不能凭时间流逝自动放行。
+
+观察期只按“确有成功业务请求的活跃采集时间”累计（`observing_tick`）：空闲、普通失败
+与停机都不抵扣，重启只让观察时间重新累计、档位保留；满 10 分钟才回到 `normal` 并
+清零档位。人工态由管理入口登记一轮探测（`request_probe`），仍由采集进程领取执行，
+通过后进入同一观察期，失败保持人工态；没有强行解除保护的入口。
 """
 
 import json
@@ -21,7 +26,7 @@ from uuid import uuid4
 
 from anyio import to_thread
 
-from .collector_logging import collector_event
+from .collector_logging import collector_event, correlation_id
 from .comment_status import epoch_from_iso, utc_now
 from .contracts import error_response
 from .transaction import write
@@ -33,6 +38,13 @@ TRIGGER_STATUSES = frozenset({412, 429})
 COOLDOWN_STEPS = (60, 120, 240, 480, 900, 1800)
 # 探测 owner 租约：崩溃后必须等它过期才能接管，旧 owner 也不能再提交结果。
 PROBE_LEASE_SECONDS = 300
+# 恢复观察期（秒）：全部接口探测通过后仍需连续成功正常采集这么久才清零档位。
+OBSERVATION_SECONDS = 600
+OBSERVATION_MS = int(OBSERVATION_SECONDS * 1000)
+# 业务“成功”只看真实上游返回的 HTTP 状态；风控状态与普通错误都不算采集活跃。
+SUCCESS_STATUSES = range(200, 400)
+# 预热只是会话前置，不算一次成功业务请求，不能让观察期凭预热空转清零。
+NON_BUSINESS_TYPES = frozenset({"homepage_warmup", "space_warmup"})
 # 禁止普通来源发送的状态；`normal` 与 `observing` 都按正常调度发送。
 BLOCKED_STATES = frozenset({"cooldown", "probing", "manual"})
 ACTIVE_STATES = frozenset({"normal", "observing"})
@@ -52,12 +64,25 @@ _SCHEMA = """CREATE TABLE IF NOT EXISTS source_risk (
     probe_owner TEXT,
     probe_lease_until TEXT,
     probe_results TEXT,
+    probe_origin TEXT,
+    probe_request_generation INTEGER,
+    observing_active_ms INTEGER NOT NULL DEFAULT 0,
+    observing_successes INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL
 )"""
 
 _COLUMNS = ("state, generation, backoff_step, since, next_probe_at, observing_since, "
             "trigger_endpoint, trigger_status, trigger_at, probe_round_id, probe_owner, "
-            "probe_lease_until, probe_results")
+            "probe_lease_until, probe_results, probe_origin, probe_request_generation, "
+            "observing_active_ms, observing_successes")
+
+# v26 新增列：人工探测登记（按人工态代次）、探测来源（人工／自动）与观察期进度。
+_OBSERVATION_COLUMNS = (
+    ("probe_origin", "TEXT"),
+    ("probe_request_generation", "INTEGER"),
+    ("observing_active_ms", "INTEGER NOT NULL DEFAULT 0"),
+    ("observing_successes", "INTEGER NOT NULL DEFAULT 0"),
+)
 
 
 class SourceRiskPaused(Exception):
@@ -77,6 +102,15 @@ def migrate(connection, now=None):
         SELECT 1, 'normal', 0, 0, ?, ? WHERE NOT EXISTS (SELECT 1 FROM source_risk)""",
         (stamp, stamp),
     )
+
+
+def migrate_observation(connection):
+    """v26：观察期进度与人工探测登记，复用 `source_risk` 单行；可重入不重置状态。"""
+    connection.execute(_SCHEMA)
+    present = {row[1] for row in connection.execute("PRAGMA table_info(source_risk)")}
+    for name, definition in _OBSERVATION_COLUMNS:
+        if name not in present:
+            connection.execute(f"ALTER TABLE source_risk ADD COLUMN {name} {definition}")
 
 
 def format_epoch(epoch):
@@ -155,10 +189,12 @@ def paused_response(status, now=None):
 
 
 def public_status(row):
-    """HTTP 与管理日志共用的形状：脱敏触发信息＋探测摘要，不含 owner／租约令牌。
+    """HTTP 与管理日志共用的形状：脱敏触发信息＋探测摘要＋观察／人工摘要。
 
-    探测摘要按接口类型列出本轮状态（`pending`／`passed`／`failed`），因此只读状态查询
-    就能区分“待探测”“通过”“失败”和下一档时间，而不需要新增风控页面。
+    探测摘要按接口类型列出本轮状态（`pending`／`passed`／`failed`）；观察摘要给出已累计的
+    活跃采集时间与成功请求数，人工摘要给出本轮人工态是否已登记探测，因此只读状态查询
+    就能区分“待探测”“通过”“失败”“观察中”“稳定恢复”“人工待登记／已登记”，而不需要
+    新增风控页面；返回形状不含 owner／租约令牌。
     """
     triggered = row["trigger_endpoint"] is not None
     return {
@@ -168,6 +204,16 @@ def public_status(row):
         "backoff_step": row["backoff_step"],
         "next_probe_at": row["next_probe_at"],
         "observing_since": row["observing_since"],
+        "observation": {
+            "since": row["observing_since"],
+            "active_ms": row["observing_active_ms"] or 0,
+            "successes": row["observing_successes"] or 0,
+            "required_ms": OBSERVATION_MS,
+        },
+        "manual": {
+            "probe_registered": (row["state"] == "manual"
+                                 and row["probe_request_generation"] == row["generation"]),
+        },
         "last_trigger": None if not triggered else {
             "endpoint_type": row["trigger_endpoint"],
             "http_status": row["trigger_status"],
@@ -188,6 +234,10 @@ class RiskGate:
         # 受控时钟只替换“现在”，不替换持久状态；跨进程仍读同一份 SQLite。
         self.clock = clock
         self._logged = set()
+        # 观察期的“确有成功业务请求”：只在本进程累积，由采集进程的心跳消费并落库。
+        # API 进程不心跳，它的成功响应不会抵扣观察期（观察期只认正常采集）。
+        self._source_successes = 0
+        self._consumed_successes = 0
 
     def now(self):
         return self.clock.now() if self.clock is not None else utc_now()
@@ -224,11 +274,13 @@ class RiskGate:
                 self._log_once(("merged", row["generation"]), "source_risk_late_response_merged",
                                risk_state=row["state"], backoff_step=row["backoff_step"])
                 return public_status(row)
+            previous_state = row["state"]
             if row["state"] == "observing" and row["backoff_step"] >= len(COOLDOWN_STEPS):
                 # 第 6 档之后再次触发：转人工，不再无限回到自动探测。
                 connection.execute(
                     """UPDATE source_risk SET state = 'manual', generation = generation + 1,
                     since = ?, next_probe_at = NULL, observing_since = NULL,
+                    observing_active_ms = 0, observing_successes = 0,
                     trigger_endpoint = ?, trigger_status = ?, trigger_at = ?, probe_round_id = NULL,
                     probe_owner = NULL, probe_lease_until = NULL, probe_results = NULL,
                     updated_at = ? WHERE singleton = 1""",
@@ -238,6 +290,7 @@ class RiskGate:
                 connection.execute(
                     """UPDATE source_risk SET state = 'cooldown', generation = generation + 1,
                     backoff_step = ?, since = ?, next_probe_at = ?, observing_since = NULL,
+                    observing_active_ms = 0, observing_successes = 0,
                     trigger_endpoint = ?, trigger_status = ?, trigger_at = ?, probe_round_id = NULL,
                     probe_owner = NULL, probe_lease_until = NULL, probe_results = NULL,
                     updated_at = ? WHERE singleton = 1""",
@@ -246,9 +299,8 @@ class RiskGate:
             row = connection.execute(
                 f"SELECT {_COLUMNS} FROM source_risk WHERE singleton = 1").fetchone()
         status = public_status(row)
-        collector_event("source_risk_triggered", endpoint_type=request.endpoint_type,
-                        http_status=status_code, backoff_step=status["backoff_step"],
-                        risk_state=status["state"])
+        self._transition("source_risk_triggered", previous_state, status,
+                         endpoint_type=request.endpoint_type, http_status=status_code)
         if status["state"] == "manual":
             collector_event("source_risk_manual_wait", backoff_step=status["backoff_step"])
         return status
@@ -268,8 +320,12 @@ class RiskGate:
     async def report(self, request, report):
         """风控响应先落库再拒绝这次发送：当前调用链不再翻页、重试或补做预热。
 
-        非风控结果（普通错误、业务码）原样返回，不改变既有分类。
+        非风控结果（普通错误、业务码）原样返回，不改变既有分类；正常 HTTP 响应在本进程
+        记一次“成功业务请求”，供观察期心跳判断这段时间是否真有采集，而不是空转。
         """
+        if (report.status_code in SUCCESS_STATUSES
+                and request.endpoint_type not in NON_BUSINESS_TYPES):
+            self._source_successes += 1
         if report.status_code not in TRIGGER_STATUSES:
             return
         retry_after = getattr(report, "retry_after", None)
@@ -285,7 +341,123 @@ class RiskGate:
         """完整只读状态：调度层据此决定是否到期探测、是否恢复在途中止的工作。"""
         return await to_thread.run_sync(self.status)
 
+    # ---- 恢复观察期：只按成功业务请求的活跃时间累计，满 10 分钟才清零档位 ----
+
+    def _observing_tick(self, elapsed_seconds, successful):
+        """观察心跳：本区间确有成功业务请求才累计活跃时间，满 10 分钟回 normal。
+
+        活跃时间只由采集进程按自己的节拍提交，且每区间最多计入一个节拍的时长；
+        空闲、普通失败、停机与重启都不抵扣，重启由 `restart_observation` 重新累计。
+        """
+        elapsed_ms = max(0, min(int(round(float(elapsed_seconds) * 1000)), OBSERVATION_MS))
+        now = self.now()
+        with write(self.store) as connection:
+            row = connection.execute(
+                f"SELECT {_COLUMNS} FROM source_risk WHERE singleton = 1").fetchone()
+            if row["state"] != "observing":
+                # 不在观察期（稳定、冷却、探测或人工）：心跳不写任何状态。
+                return None
+            active = row["observing_active_ms"] or 0
+            successes = row["observing_successes"] or 0
+            if successful and elapsed_ms:
+                active = min(active + elapsed_ms, OBSERVATION_MS)
+                successes += 1
+            cleared = active >= OBSERVATION_MS and successes > 0
+            if cleared:
+                # 稳定恢复：回到 normal 并清零档位；只 +1 代次，不额外发业务通知。
+                connection.execute(
+                    """UPDATE source_risk SET state = 'normal', generation = generation + 1,
+                    backoff_step = 0, since = ?, next_probe_at = NULL, observing_since = NULL,
+                    observing_active_ms = 0, observing_successes = 0, updated_at = ?
+                    WHERE singleton = 1""",
+                    (now, now))
+            else:
+                connection.execute(
+                    """UPDATE source_risk SET observing_active_ms = ?, observing_successes = ?,
+                    updated_at = ? WHERE singleton = 1""",
+                    (active, successes, now))
+            row = connection.execute(
+                f"SELECT {_COLUMNS} FROM source_risk WHERE singleton = 1").fetchone()
+        status = public_status(row)
+        if cleared:
+            self._transition("source_risk_observation_cleared", "observing", status,
+                             observing_ms=active, successes=successes)
+        return status
+
+    async def observing_tick(self, elapsed_seconds):
+        """采集进程的观察心跳：返回最新公开状态；不在观察期时返回 None。"""
+        seen = self._source_successes
+        successful = seen > self._consumed_successes
+        self._consumed_successes = seen
+        return await to_thread.run_sync(self._observing_tick, elapsed_seconds, successful)
+
+    def _restart_observation(self):
+        """进程重启：保留档位与人工态，观察时间重新累计（停机不抵扣）。"""
+        now = self.now()
+        with write(self.store) as connection:
+            row = connection.execute(
+                f"SELECT {_COLUMNS} FROM source_risk WHERE singleton = 1").fetchone()
+            if row["state"] != "observing":
+                return None
+            connection.execute(
+                """UPDATE source_risk SET observing_since = ?, observing_active_ms = 0,
+                observing_successes = 0, updated_at = ? WHERE singleton = 1""",
+                (now, now))
+            row = connection.execute(
+                f"SELECT {_COLUMNS} FROM source_risk WHERE singleton = 1").fetchone()
+        status = public_status(row)
+        self._transition("source_risk_observation_restarted", "observing", status)
+        return status
+
+    async def restart_observation(self):
+        """采集进程启动时调用：观察态重新累计，其它状态原样不动。"""
+        self._consumed_successes = self._source_successes
+        return await to_thread.run_sync(self._restart_observation)
+
+    def _transition(self, event, previous_state, status, **fields):
+        """统一的状态转移日志：带前态、新态、代次、档位与探测轮次，便于跨重启串联。
+
+        只记已提交的转移（在事务外调用），不输出 owner／租约；09 的告警登记可在各自
+        的短事务内复用同一批转移事实，而不必重读或重现猜测状态。
+        """
+        collector_event(event, previous_state=previous_state, risk_state=status["state"],
+                        risk_generation=status["generation"],
+                        backoff_step=status["backoff_step"],
+                        probe_round_id=correlation_id(status["probe"]["round"])
+                        if status["probe"]["round"] else None,
+                        **fields)
+        return status
+
     # ---- 探测轮次：唯一 owner 租约、冻结类型、结果与短路 ----
+
+    def _request_probe(self):
+        """人工态登记一轮探测：绑定当前人工态代次，重复登记幂等。
+
+        只落一条“已登记”事实，不执行探测、不改档位与截止时间，也不清零任何状态；
+        采集进程未运行时登记会一直保留，直到被唯一 owner 领取。
+        """
+        now = self.now()
+        with write(self.store) as connection:
+            row = connection.execute(
+                f"SELECT {_COLUMNS} FROM source_risk WHERE singleton = 1").fetchone()
+            if row["state"] != "manual":
+                # 冷却未到期、正在探测、普通／观察态都不能借这个入口提前请求。
+                return None
+            registered = row["probe_request_generation"] != row["generation"]
+            if registered:
+                connection.execute(
+                    "UPDATE source_risk SET probe_request_generation = ?, updated_at = ? "
+                    "WHERE singleton = 1", (row["generation"], now))
+                row = connection.execute(
+                    f"SELECT {_COLUMNS} FROM source_risk WHERE singleton = 1").fetchone()
+        status = public_status(row)
+        if registered:
+            self._transition("source_risk_manual_probe_registered", "manual", status)
+        return status
+
+    async def request_probe(self):
+        """登记人工探测；当前状态不允许时返回 None（调用方映射固定 409）。"""
+        return await to_thread.run_sync(self._request_probe)
 
     def _claim_probe(self, endpoint_types):
         now = self.now()
@@ -297,16 +469,25 @@ class RiskGate:
             row = connection.execute(
                 f"SELECT {_COLUMNS} FROM source_risk WHERE singleton = 1").fetchone()
             state = row["state"]
-            if state not in ("cooldown", "probing"):
+            if state not in ("cooldown", "probing", "manual"):
                 return None
             if state == "cooldown":
                 deadline = _epoch(row["next_probe_at"])
                 # 期限缺失/不可解析按“未到期”处理：时间异常不能绕过暂停。
                 if deadline is None or _epoch(now) < deadline:
                     return None
-            elif not self._lease_expired(row["probe_lease_until"], now):
-                # 仍在租约内的 owner 不允许被接管：不能同时探测。
-                return None
+                origin = "cooldown"
+            elif state == "manual":
+                # 人工态只执行已经登记的那一轮：登记要绑在当前人工态代次上。
+                if row["probe_request_generation"] != row["generation"]:
+                    return None
+                origin = "manual"
+            else:
+                if not self._lease_expired(row["probe_lease_until"], now):
+                    # 仍在租约内的 owner 不允许被接管：不能同时探测。
+                    return None
+                # 接管保留本轮来源：人工轮失败仍回人工态，不顺带降为自动冷却。
+                origin = row["probe_origin"] or "cooldown"
             owner = uuid4().hex
             # 轮次是纯数字诊断关联号：可进日志白名单，且与内部领取令牌（owner）分开。
             round_id = str(uuid4().int)
@@ -314,11 +495,14 @@ class RiskGate:
             connection.execute(
                 """UPDATE source_risk SET state = 'probing', generation = generation + 1,
                 next_probe_at = NULL, observing_since = NULL, probe_round_id = ?,
-                probe_owner = ?, probe_lease_until = ?, probe_results = ?, updated_at = ?
+                probe_owner = ?, probe_lease_until = ?, probe_results = ?, probe_origin = ?,
+                probe_request_generation = NULL, updated_at = ?
                 WHERE singleton = 1""",
                 (round_id, owner, format_epoch(epoch_from_iso(now) + PROBE_LEASE_SECONDS),
-                 json.dumps(results, ensure_ascii=False), now))
-        return {"round": round_id, "owner": owner, "types": types}
+                 json.dumps(results, ensure_ascii=False), origin, now))
+        collector_event("risk_probe_claimed", endpoint_types=len(types), probe_origin=origin,
+                        probe_round_id=correlation_id(round_id), backoff_step=row["backoff_step"])
+        return {"round": round_id, "owner": owner, "types": types, "origin": origin}
 
     def _lease_expired(self, lease_until, now):
         deadline = _epoch(lease_until)
@@ -362,35 +546,42 @@ class RiskGate:
                 f"SELECT {_COLUMNS} FROM source_risk WHERE singleton = 1").fetchone()
             if not self._owns(row, claim):
                 return None
+            origin = row["probe_origin"] or "cooldown"
             if passed:
+                # 全部接口通过：进入观察期，档位保留到稳定恢复才清零。
                 connection.execute(
                     """UPDATE source_risk SET state = 'observing', generation = generation + 1,
-                    since = ?, next_probe_at = NULL, observing_since = ?, probe_owner = NULL,
-                    probe_lease_until = NULL, updated_at = ? WHERE singleton = 1""",
+                    since = ?, next_probe_at = NULL, observing_since = ?,
+                    observing_active_ms = 0, observing_successes = 0,
+                    probe_owner = NULL, probe_lease_until = NULL, probe_origin = NULL,
+                    updated_at = ? WHERE singleton = 1""",
                     (now, now, now))
-            elif row["backoff_step"] >= len(COOLDOWN_STEPS):
+            elif origin == "manual" or row["backoff_step"] >= len(COOLDOWN_STEPS):
+                # 人工轮失败仍保持人工态，不自动重试也不回退档位。
                 connection.execute(
                     """UPDATE source_risk SET state = 'manual', generation = generation + 1,
-                    since = ?, next_probe_at = NULL, observing_since = NULL, probe_owner = NULL,
-                    probe_lease_until = NULL, updated_at = ? WHERE singleton = 1""",
+                    since = ?, next_probe_at = NULL, observing_since = NULL,
+                    probe_owner = NULL, probe_lease_until = NULL, probe_origin = NULL,
+                    updated_at = ? WHERE singleton = 1""",
                     (now, now))
             else:
                 connection.execute(
                     """UPDATE source_risk SET state = 'cooldown', generation = generation + 1,
                     backoff_step = backoff_step + 1, since = ?, next_probe_at = ?,
                     observing_since = NULL, probe_owner = NULL, probe_lease_until = NULL,
-                    updated_at = ? WHERE singleton = 1""",
+                    probe_origin = NULL, updated_at = ? WHERE singleton = 1""",
                     (now, _deadline(now, COOLDOWN_STEPS[row["backoff_step"]], paused_seconds), now))
             row = connection.execute(
                 f"SELECT {_COLUMNS} FROM source_risk WHERE singleton = 1").fetchone()
         status = public_status(row)
-        collector_event("risk_probe_round_finished", passed=passed, risk_state=status["state"],
-                        backoff_step=status["backoff_step"],
+        collector_event("risk_probe_round_finished", passed=passed, probe_origin=origin,
+                        risk_state=status["state"], backoff_step=status["backoff_step"],
+                        probe_round_id=correlation_id(claim["round"]),
                         next_probe_in_s=retry_after_seconds(status["next_probe_at"], now) or 0)
         if status["state"] == "manual":
             collector_event("source_risk_manual_wait", backoff_step=status["backoff_step"])
         elif status["state"] == "observing":
-            collector_event("source_risk_observing", backoff_step=status["backoff_step"])
+            self._transition("source_risk_observing", "probing", status)
         return status
 
     async def claim_probe(self, endpoint_types):

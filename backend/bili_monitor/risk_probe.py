@@ -126,7 +126,8 @@ class RiskProber:
     async def probe_if_due(self):
         """到期（或租约过期可接管）时执行一轮探测；返回新的公开状态，否则 None。"""
         status = await self.gate.snapshot()
-        if status["state"] not in ("cooldown", "probing"):
+        if status["state"] not in ("cooldown", "probing", "manual"):
+            # 人工态只有在管理入口登记过一轮时才会被领取（由 `claim_probe` 判定）。
             return None
         facts = await to_thread.run_sync(self.store.risk_probe_facts)
         trigger = (status.get("last_trigger") or {}).get("endpoint_type")

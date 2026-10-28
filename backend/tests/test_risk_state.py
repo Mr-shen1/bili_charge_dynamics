@@ -137,4 +137,4 @@ def test_migration_adds_a_single_normal_row_and_preserves_existing_state(tmp_pat
         rows = connection.execute("SELECT singleton, state, generation FROM source_risk").fetchall()
         version = connection.execute("PRAGMA user_version").fetchone()[0]
     assert [tuple(row) for row in rows] == [(1, "cooldown", 1)]
-    assert version == 25
+    assert version == 26

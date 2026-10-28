@@ -56,7 +56,7 @@ def test_existing_database_keeps_archive_and_checks_and_reuses_trusted_baseline(
 
     Store(path).migrate()
 
-    assert version(path) == 25
+    assert version(path) == 26
     assert set(NOTIFICATION_TABLES) <= tables(path)
     assert Store(path).read_archive(DYNAMIC) == before["archive"]
     assert Store(path).read_checks(UID) == before["checks"]
@@ -67,7 +67,7 @@ def test_existing_database_keeps_archive_and_checks_and_reuses_trusted_baseline(
     assert events(path) == [] and deliveries(path) == []
 
     Store(path).migrate()
-    assert version(path) == 25
+    assert version(path) == 26
     assert len(query(path, "SELECT token FROM notification_phases")) == 1
     assert events(path) == []
 
@@ -88,7 +88,7 @@ def test_failed_notification_migration_rolls_back_and_can_retry(tmp_path):
     with sqlite3.connect(path) as connection:
         connection.execute("DROP TABLE notification_phases")
     Store(path).migrate()
-    assert version(path) == 25
+    assert version(path) == 26
     assert set(NOTIFICATION_TABLES) <= tables(path)
     assert Store(path).read_archive(DYNAMIC) == before["archive"]
 
@@ -96,7 +96,7 @@ def test_failed_notification_migration_rolls_back_and_can_retry(tmp_path):
 def test_fresh_database_migrates_without_phases_or_events(tmp_path):
     path = tmp_path / "fresh.sqlite"
     Store(path).migrate()
-    assert version(path) == 25
+    assert version(path) == 26
     assert set(NOTIFICATION_TABLES) <= tables(path)
     assert query(path, "SELECT * FROM notification_phases") == []
     assert query(path, "SELECT * FROM notification_deliveries") == []
@@ -139,7 +139,7 @@ def test_upgrade_never_backfills_already_archived_comments(tmp_path):
         connection.execute("PRAGMA user_version = 16")
 
     Store(path).migrate()
-    assert version(path) == 25
+    assert version(path) == 26
     phase = query(path, "SELECT started_at, comment_started_at FROM notification_phases")[0]
     # 已有的 01 起点保留为正文基线，但评论起点从升级时刻重新建立。
     assert phase["comment_started_at"] > phase["started_at"]
@@ -191,7 +191,7 @@ def test_v16_outbox_is_upgraded_in_place_with_heartbeat_state(tmp_path):
     heartbeat_database(path)
     before_deliveries = deliveries(path)
     assert [(row["kind"], row["state"]) for row in before_deliveries] == [("dynamic_changed", "pending")]
-    assert version(path) == 25
+    assert version(path) == 26
 
     # 退回 01 交付时的 v16 形状：没有心跳时段表，投递表也没有有效期列。
     with sqlite3.connect(path) as connection:
@@ -201,7 +201,7 @@ def test_v16_outbox_is_upgraded_in_place_with_heartbeat_state(tmp_path):
 
     Store(path).migrate()
 
-    assert version(path) == 25
+    assert version(path) == 26
     assert "notification_heartbeats" in tables(path)
     with sqlite3.connect(path) as connection:
         columns = {row[1] for row in connection.execute("PRAGMA table_info(notification_deliveries)")}
@@ -229,7 +229,7 @@ def test_v18_outbox_gains_failure_facts_without_backfilling_attempts(tmp_path):
 
     Store(path).migrate()
 
-    assert version(path) == 25
+    assert version(path) == 26
     rows = query(path, "SELECT state, attempts, failures, last_failed_at FROM notification_deliveries")
     assert rows == [{"state": "waiting_config", "attempts": 7, "failures": 0, "last_failed_at": None}]
     index_names = {row["name"] for row in query(
@@ -283,19 +283,19 @@ def test_v19_upgrade_keys_existing_candidates_by_their_owning_root(tmp_path):
 
     Store(path).migrate()
 
-    assert version(path) == 25
+    assert version(path) == 26
     assert root_query(path, "SELECT comment_id, root_id, phase FROM notification_candidates") == [
         {"comment_id": "861201", "root_id": "861201",
          "phase": root_query(path, "SELECT token FROM notification_phases")[0]["token"]}]
     # 可重复执行：已是最新形态时不再重建，也不丢候选。
     Store(path).migrate()
-    assert version(path) == 25
+    assert version(path) == 26
     assert len(root_query(path, "SELECT 1 FROM notification_candidates")) == 1
 def test_v20_outbox_gains_alert_throttle_state_in_place(tmp_path):
     """v20 → v21：新增告警节流表，已入队事件与投递状态原样保留。"""
     path = tmp_path / "v20.sqlite"
     heartbeat_database(path)
-    assert version(path) == 25
+    assert version(path) == 26
     with sqlite3.connect(path) as connection:
         # 先写入一条真实节流状态，再退回 08 之前的 v20 形状（05 交付）。
         connection.execute("INSERT INTO notification_alerts(category, object, last_alert_at, event_id)"
@@ -305,7 +305,7 @@ def test_v20_outbox_gains_alert_throttle_state_in_place(tmp_path):
 
     Store(path).migrate()
 
-    assert version(path) == 25
+    assert version(path) == 26
     assert "notification_alerts" in tables(path)
     assert query(path, "SELECT * FROM notification_alerts") == []
     # 旧事件与投递记录不动，节流状态从空开始（不凭空补历史告警）。
@@ -328,7 +328,7 @@ def test_v22_database_converts_the_boolean_gate_to_off(tmp_path):
 
     Store(path).migrate()
 
-    assert version(path) == 25
+    assert version(path) == 26
     assert "notification_gate" in tables(path)
     # 新语义下“默认不发”：升级后一律 off，由用户显式选择收哪一类。
     assert Store(path).read_notification_switch() == {"state": "off", "pending": 1}

@@ -11,7 +11,10 @@ from typing import Annotated, Literal
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException
 
-from .contracts import UID, AddUP, AddTarget, APIError, MonitorConfig, NotificationSwitch, error_response
+from .contracts import (
+    UID, AddUP, AddTarget, APIError, MonitorConfig, NotificationSwitch, ProbeRequest,
+    error_response,
+)
 from .profiles import fetch_profile
 from .safety import configure_safe_logging
 from .storage import Store
@@ -207,6 +210,19 @@ def create_app(
         """只读本地保护状态；不触发采集、探测或任何上游请求。"""
         validate_query(request)
         return await run_store(risk.status)
+
+    @application.post("/api/manage/risk/probe", status_code=202)
+    async def request_probe(body: ProbeRequest | None = None, request: Request = None):
+        """人工态登记一轮探测：202 只表示已登记，由采集进程领取执行。
+
+        不直接发起探测，也不接受 query 或可写状态字段；不适用状态返回固定
+        `409 RISK_PROBE_NOT_ALLOWED`，没有强行解除保护的入口。
+        """
+        validate_query(request)
+        status = await risk.request_probe()
+        if status is None:
+            raise APIError("RISK_PROBE_NOT_ALLOWED")
+        return status
 
     @application.get("/api/manage/notifications")
     async def get_notifications(request: Request):

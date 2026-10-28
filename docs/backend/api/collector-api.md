@@ -1,6 +1,6 @@
 # 固定节拍采集与检查状态（票据 23 / 24 / 25 / 26 / 27 / 28 / 29 / 30）
 
-已确认后续设计：修改 B 站请求发送、分页续采、风控恢复或采集日志时，先读[B 站限流／风控保护与全量归档续采](../../design/bilibili-risk-control.md)。票据 03 已实施其中的「HTTP 412／429 跨进程持久暂停与只读状态查询」（见下文「跨进程风控暂停（03）」），票据 04 已实施「六档冷却与按接口探测」（见下文「六档冷却与按接口探测（04）」），票据 02／06／07 已把页后 100ms 等待、根页与楼中楼持久续采及按页日志接入本契约；观察期清零与人工探测登记（05）、全局单路重型调度与分页公平轮转（08）、系统告警（09）及完整组合／性能验收（10）仍按设计待实施，本文不据此声称这些已完成。
+已确认后续设计：修改 B 站请求发送、分页续采、风控恢复或采集日志时，先读[B 站限流／风控保护与全量归档续采](../../design/bilibili-risk-control.md)。票据 03 已实施其中的「HTTP 412／429 跨进程持久暂停与只读状态查询」（见下文「跨进程风控暂停（03）」），票据 04 已实施「六档冷却与按接口探测」（见下文「六档冷却与按接口探测（04）」），票据 05 已实施「恢复观察期与人工探测」（见下文「恢复观察期与人工探测（05）」）；票据 02／06／07 已把页后 100ms 等待、根页与楼中楼持久续采及按页日志接入本契约；全局单路重型调度与分页公平轮转（08）、系统告警（09）及完整组合／性能验收（10）仍按设计待实施，本文不据此声称这些已完成。
 
 后续范围说明：[飞书通知需求与设计](../../design/feishu-notifications.md)已确认新增归档提交时的事务发件箱与独立通知进程，尚未实现。本文继续描述现有采集接口和检测策略，不因设计确认而声称已产生事件或投递消息；飞书退避不改变本页采集节拍。
 
@@ -43,17 +43,17 @@ collector 使用独立 INFO 级别的 stderr handler，保持 HTTPX/HTTPCore、O
 
 ## 跨进程风控暂停（03）
 
-保护状态是唯一一份持久事实，存在同一 SQLite 的 `source_risk` 单行（v24 迁移），API 与采集进程共读共写，不按 UP 或动态拆开，也不存在进程内放行开关。
+保护状态是唯一一份持久事实，存在同一 SQLite 的 `source_risk` 单行（v24 建立，v26 补观察进度与人工登记列），API 与采集进程共读共写，不按 UP 或动态拆开，也不存在进程内放行开关。
 
 - **触发**：只有真实上游 **HTTP 412／429** 触发。其他 HTTP 状态、业务码（含评论业务码 `-412`／`-352`）、凭据信号、网络与内容受限分类保持原处理，不因名称相似扩大。触发入口覆盖全部源请求：业务接口、首页／空间预热、图片 CDN、API 手动初始化与媒体重试，以及 HTTPX／Requests 跟随跳转后的每一跳。
 - **报告点**：结果报告在传输层、业务异常处理之前完成，预热仍 best-effort 不抛异常也照样报告。风控响应被记录后，当前调用链不会拿到该响应，因此不再翻页、重试、重定向或补做预热；已在途返回的数据仍按原版本／令牌规则提交。
-- **状态机（03 建立，04 扩展）**：`normal → cooldown`（第 1 档，冷却 60 秒）。状态代次在同一短事务内 +1，并记录进入时间、下次探测时间与触发接口／HTTP 状态；同一代次内迟到的 412／429 只合并，不推进档位、不延长期限/不重复计数。六档到期探测、`probing`／`observing`／`manual` 与 owner 租约由 04 接入同一 `state`／`backoff_step`／`next_probe_at`／`probe_*` 字段（见下一节）；没有“强行清除风控”的入口，观察期清零与人工探测登记由 05 完成。
+- **状态机（03 建立，04 扩展）**：`normal → cooldown`（第 1 档，冷却 60 秒）。状态代次在同一短事务内 +1，并记录进入时间、下次探测时间与触发接口／HTTP 状态；同一代次内迟到的 412／429 只合并，不推进档位、不延长期限/不重复计数。六档到期探测、`probing`／`observing`／`manual` 与 owner 租约由 04 接入同一 `state`／`backoff_step`／`next_probe_at`／`probe_*` 字段（见下一节）；没有“强行清除风控”的入口，观察期清零与人工探测登记见「恢复观察期与人工探测（05）」。
 - **拒绝发送**：发送前原子核验状态；保护态或状态不可读写都拒绝，前端与采集侧都拿不到「放行」。状态不可读写返回存储错误（`503 STORAGE_UNAVAILABLE`），不降级放行。
 - **采集调度**：暂停时本轮不派发发现、检查或执行，错过的槽不补发；在途单元被保护打断时保留 `pending`／`running` 领取与已提交分片，不写检查失败、`sync_error`、成功时间或告警，进程重启由既有恢复路径归还。
 - **日志（脱敏、可关联）**：`source_risk_triggered`（含 `endpoint_type`、`http_status`、`backoff_step`、`risk_state`）、`source_risk_late_response_merged`、`source_risk_blocked`（拒绝原因：状态与档位）、`collector_paused`（每个状态代次一条，不每 2.7 秒重复同一警告）、`source_risk_paused_work_aborted`、`comment_session_warmup_paused`。暂停期间仍每节拍输出 `collector_tick paused=true` 心跳（只含在途数与 0 启动，不查库、不代表有工作）；不含 URL、query、Cookie、正文或领取令牌；采集侧事件共享进程内 `attempt` 流水号。
 - **接口类型**：按「主机＋路径模板」固定归类（`comment_count`、`root_comments`、`replies`、`feed`、`detail`、`opus_page`、`profile`、`homepage_warmup`、`space_warmup`，以及 `hdslb.com`／`biliimg.com` 两个受信图片域族 `image_hdslb`／`image_biliimg`；其余白名单内路径归 `source_other`，仍受许可）。不同域族是不同拦截面，后续按类型探测不能互相代替。
 
-`GET /api/manage/risk` → `200`，只读本地 SQLite，不触发采集、探测或任何上游请求；不接受查询参数（非法或重复参数 `422 INVALID_INPUT`），不接受写方法。
+`GET /api/manage/risk` → `200`，只读本地 SQLite，不触发采集、探测或任何上游请求；不接受查询参数（非法或重复参数 `422 INVALID_INPUT`）。人工探测登记走 `POST /api/manage/risk/probe`（见「恢复观察期与人工探测（05）」与[管理契约](management-api.md)），登记本身同样不发探测请求。
 
 | 字段 | 含义 |
 | --- | --- |
@@ -62,9 +62,11 @@ collector 使用独立 INFO 级别的 stderr handler，保持 HTTPX/HTTPCore、O
 | `since` | 进入当前状态的时间（带时区 UTC ISO） |
 | `backoff_step` | 当前退避档位，正常为 0，第 1 档为 1 |
 | `next_probe_at` | 下次到期探测时间，可空；`cooldown` 为未来期限，`probing`／`observing`／`manual` 为 null |
-| `observing_since` | 观察期起点；进入 `observing` 时写入，05 在稳定清零时处理 |
+| `observing_since` | 观察期起点；进入 `observing` 时写入，稳定清零或重启重新累计时更新 |
 | `last_trigger` | `{"endpoint_type","http_status","at"}`，脱敏触发信息；从未触发为 null |
 | `probe` | `{"round","results"}` 最近一轮探测摘要；`results` 每项含 `endpoint_type`、`status`（`pending`／`passed`／`failed`）、`http_status`、`reason`、`elapsed_ms`、`wait_ms` 与可空业务 ID（`uid`／`dynamic_id`／`root_id`） |
+| `observation` | `{"since","active_ms","successes","required_ms"}` 观察期进度：已累计的活跃采集毫秒数、其中确有成功业务请求的节拍数、清零所需毫秒数（600000）；不在观察期为 0 与 null |
+| `manual` | `{"probe_registered"}` 当前人工态代次是否已登记一轮探测；非人工态恒为 false |
 
 不返回凭据、完整 URL／query、内部 owner 或领取令牌。需要访问来源的管理操作在此状态下返回 `503 SOURCE_RISK_PAUSED`，见[管理契约](management-api.md)；纯本地读取、停用／删除、已下载数据提交与 OSS 上传继续可用。
 
@@ -80,6 +82,17 @@ collector 使用独立 INFO 级别的 stderr handler，保持 HTTPX/HTTPCore、O
 - **唯一 owner 租约**：轮次、owner 与租约（300 秒）随状态落库。租约内其他进程不能领取；进程崩溃后只能等租约到期再接管，接管重新确认本轮类型；旧 owner 提交结果或结束新一轮会被拒绝（owner＋轮次 fencing）。探测期间其他 `permit` 一律拒绝。
 - **采集调度**：探测由采集进程的固定节拍驱动（API 进程只读状态，不探测）。进入 `observing` 后，采集进程在没有在途任务时把上次被暂停打断的 `running` 领取归还为 `pending` 并从原断点继续，不需要重启进程。
 - **日志（脱敏）**：`risk_probe_started`（轮次关联号、类型数、档位）、`risk_probe_finished`（每类：类型、结果、HTTP 状态、固定原因、耗时、等待、业务 ID）、`risk_probe_round_finished`（通过与否、状态、档位、距下次探测秒数）、`source_risk_observing`／`source_risk_manual_wait`、`risk_work_resumed`。不含 URL、query、Cookie、正文或 owner／令牌。
+
+## 恢复观察期与人工探测（05）
+
+探测全部通过后仍保留档位，先进入 `observing`：普通发送与等待策略立即恢复，不为观察期额外降速。只有**确有成功业务请求的活跃采集时间连续满 10 分钟**（600 秒）才回到 `normal` 并把 `backoff_step` 清零。
+
+- **活跃时间的边界**：观察进度由采集进程的固定节拍提交，每拍最多计入一个节拍的时长；该区间内没有成功业务请求（空闲、只有普通错误）就不累计。API 进程的成功响应不抵扣观察期，稳定只看正常采集。
+- **停机与重启**：停机时间不计入；采集进程启动时把观察进度重新累计（`observing_since` 改为启动时刻，`active_ms`／`successes` 归零），档位与人工态保留。
+- **观察期再遇风控**：`observing` 遇到 HTTP 412／429 进入当前档的下一档（第 6 档后转 `manual`），观察进度归零，不从第 1 档重来。
+- **人工态**：`manual` 只接受管理入口登记一轮探测；登记绑定当前人工态代次，重复登记幂等、不排多轮，采集进程未运行时保持“已登记”，API 自己不探测。采集进程领取后按 04 的同一执行器验证全部必需类型：通过进入同样的观察期，失败回到 `manual`（档位不变、需重新登记），没有“强行恢复发送”的入口。
+- **状态查询**：`GET /api/manage/risk` 的 `manual.probe_registered` 表达人工态登记，`observation` 表达观察进度；`state=normal`＋`backoff_step=0` 即稳定恢复。
+- **日志（脱敏、可关联）**：`source_risk_manual_probe_registered`、`source_risk_observation_restarted`、`source_risk_observation_cleared`、`risk_probe_claimed`、`risk_probe_round_finished`（含 `probe_origin=manual|cooldown`）。状态转移日志统一带 `previous_state`、`risk_state`、`risk_generation`、`backoff_step` 与 `probe_round_id`（数字关联号），不含 owner／租约令牌，也不产生业务通知。
 
 ## 状态 HTTP
 

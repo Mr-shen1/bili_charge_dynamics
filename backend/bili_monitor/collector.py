@@ -125,6 +125,8 @@ class Collector:
         self._paused_generation = None
         # 进入 observing 后只归还一次在途中止的工作，不重复重置。
         self._resumed_generation = None
+        # 观察期心跳的上一个节拍时间（单调时钟）；不在观察态时保持 None。
+        self._observation_mark = None
         # 启动时一次性读取的来源凭据是否存在；判定处不再读文件，也不为了告警额外访问来源。
         self.credentials_configured = bool(credentials_configured)
         self.cadence = cadence if cadence is not None else cadence_provider()
@@ -137,6 +139,24 @@ class Collector:
         if self.risk is None:
             return None
         return await self.risk.snapshot()
+
+    async def _observation_tick(self, status, cap):
+        """观察期心跳：只有确有成功业务请求的节拍才累计活跃采集时间。
+
+        采集进程是观察进度的唯一提交者：API 进程的成功响应不抵扣观察期；空闲与普通
+        失败不累计，每拍最多计入一个节拍（停顿不被放大成十分钟），重启由
+        `restart_observation` 重新累计。满 10 分钟回到 normal 并清零档位。
+        """
+        if self.risk is None or status is None or status["state"] != "observing":
+            self._observation_mark = None
+            return status
+        mark = self.clock.monotonic()
+        previous, self._observation_mark = self._observation_mark, mark
+        if previous is None:
+            # 刚进入观察态：先建立基线，不把进入前的空档算作观察时间。
+            return status
+        updated = await self.risk.observing_tick(min(max(0.0, mark - previous), cap))
+        return updated if updated is not None else status
 
     async def _resume_abandoned(self, status, inflight):
         """进入 observing 后把上次被暂停打断的领取归还为 pending，不需要重启进程。
@@ -425,6 +445,10 @@ class Collector:
             await to_thread.run_sync(self.store.migrate)
             await to_thread.run_sync(self.store.recover_check_work)
             await to_thread.run_sync(self.store.recover_discoveries, self.clock.now())
+            # 重启不抵扣观察期：停机时间不算正常运行，观察时间重新累计但档位保留。
+            if self.risk is not None:
+                await self.risk.restart_observation()
+                self._observation_mark = None
             collector_event("collector_started", cadence_ms=int(CADENCE_SECONDS * 1000),
                             cadence_jitter_pct=int(round(CADENCE_JITTER * 100)),
                             page_check_ms=int(PAGE_CHECK_SECONDS * 1000),
@@ -434,6 +458,7 @@ class Collector:
             checks, executions, discoveries = {}, {}, {}
             offset = sync_offset = discovery_offset = 0
             deadline = self.clock.monotonic()
+            observation_cap = self.cadence()
             try:
                 while True:
                     for key, task in list(checks.items()):
@@ -450,13 +475,18 @@ class Collector:
                             del discoveries[uid]
                     discoveries_started = checks_started = syncs_started = 0
                     status = await self._risk_status()
+                    registered_manual_probe = (status is not None
+                                               and status["manual"]["probe_registered"])
                     if (status is not None and self.probe is not None
-                            and status["state"] in ("cooldown", "probing")):
-                        # 到期（或租约过期可接管）就实际执行一轮按接口探测；网络与解析在
-                        # 写事务外，失败按阶梯推进，同一节拍不重试。
+                            and (status["state"] in ("cooldown", "probing")
+                                 or registered_manual_probe)):
+                        # 到期（或租约过期可接管）就实际执行一轮按接口探测；人工态只执行
+                        # 已登记的那一轮。网络与解析在写事务外，同一节拍不重试。
                         finished = await self.probe.probe_if_due()
                         if finished is not None:
                             status = finished
+                    # 观察期心跳：只有确有成功业务请求的节拍才累计活跃采集时间。
+                    status = await self._observation_tick(status, observation_cap)
                     pause = status if (status is not None
                                        and status["state"] in BLOCKED_STATES) else None
                     if pause is not None:
@@ -517,6 +547,7 @@ class Collector:
                         sync_offset = (sync_offset + max(1, launched)) % len(pending)
                         syncs_started = launched
                     cadence = self.cadence()
+                    observation_cap = cadence
                     deadline += cadence
                     # 进程/事件循环停顿越过节拍时跳过错过的槽，绝不补发积压。
                     now = self.clock.monotonic()

@@ -67,6 +67,10 @@ class FileClock:
         return format_epoch(value if value is not None else time.time())
 
     async def sleep(self, seconds):
+        # 跨进程受控时间下，真实等待时长由测试决定：节拍只决定“现在”的推进粒度。
+        override = os.environ.get("RISK_PROBE_CLOCK_SLEEP")
+        if override:
+            seconds = float(override)
         await asyncio.sleep(seconds)
 
 

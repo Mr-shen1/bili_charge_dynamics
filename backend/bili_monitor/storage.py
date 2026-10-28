@@ -151,7 +151,7 @@ class Store(CheckStore, DiscoveryStore):
             connection.execute("BEGIN IMMEDIATE")
             try:
                 version = connection.execute("PRAGMA user_version").fetchone()[0]
-                if version > 25:
+                if version > 26:
                     raise RuntimeError("Unsupported database schema version")
                 if version == 0:
                     connection.execute("""CREATE TABLE identities (
@@ -316,7 +316,10 @@ class Store(CheckStore, DiscoveryStore):
                 if version < 25:
                     # 06 根页续采进度：页锚点、方向、下一位置与处理代次，独立于阅读 cursor。
                     scan_progress.migrate(connection)
-                connection.execute("PRAGMA user_version = 25")
+                if version < 26:
+                    # 05 观察期进度与人工探测登记：复用 03／04 的 source_risk 单行。
+                    risk.migrate_observation(connection)
+                connection.execute("PRAGMA user_version = 26")
                 connection.commit()
             except BaseException:
                 connection.rollback()

@@ -34,6 +34,16 @@ class MonitorConfig(BaseModel):
     enabled: Annotated[bool, Field(strict=True)]
 
 
+class ProbeRequest(BaseModel):
+    """人工探测登记：绑定当前人工态代次，不接受任何可写状态字段。
+
+    空对象与空请求体都是合法登记；任何 `state`／`backoff_step`／`next_probe_at` 之类字段
+    都被拒绝，避免用请求体清零档位或修改截止时间。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class NotificationSwitch(BaseModel):
     """通知状态：三态枚举之一，禁止额外字段，非法入参统一 422。
 
@@ -55,6 +65,7 @@ ERRORS = {
     "TARGET_UNVERIFIED": (502, "无法确认动态归属"),
     "STORAGE_UNAVAILABLE": (503, "存储暂不可用"),
     "SOURCE_RISK_PAUSED": (503, "B 站来源保护中，需要访问来源的操作暂不可用"),
+    "RISK_PROBE_NOT_ALLOWED": (409, "当前保护状态不允许登记人工探测"),
     "INTERNAL_ERROR": (500, "服务暂不可用"),
 }
 
