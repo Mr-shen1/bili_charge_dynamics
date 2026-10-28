@@ -5,7 +5,7 @@ import asyncio
 import os
 import random
 import signal
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import asynccontextmanager, contextmanager, nullcontext
 
 import httpx
 import fcntl
@@ -26,7 +26,7 @@ from .risk import BLOCKED_STATES, RiskGate, SourceRiskPaused
 from .risk_probe import RiskProber
 from .reply_pacing import ReplyPagePacer
 from .root_comments import fetch_comment_count, valid_locator
-from .sync import sync_target
+from .dispatch import DispatchLeases, TargetSession
 from .media import ImageDownloader
 from .oss import OSSUploader
 from .safety import configure_safe_logging
@@ -106,7 +106,7 @@ class Collector:
     def __init__(self, store, client, downloader=None, uploader=None, *, clock=None,
                  max_checks=4, max_syncs=4, max_discoveries=2, comment_client_factory=None,
                  cadence=None, page_check_seconds=None, credentials_configured=False, risk=None,
-                 probe=None):
+                 probe=None, scheduler=None):
         if max_checks < 1 or max_syncs < 1 or max_discoveries < 1:
             raise ValueError("Invalid collector concurrency")
         self.store = store
@@ -122,6 +122,8 @@ class Collector:
         self.risk = risk
         # 到期探测的 owner：只有采集进程持有它，API 不能绕过领取直接发送。
         self.probe = probe
+        # 08：跨进程发送许可、单路重型与目标互斥；直接构造的隔离测试可省略。
+        self.scheduler = scheduler
         self._paused_generation = None
         # 进入 observing 后只归还一次在途中止的工作，不重复重置。
         self._resumed_generation = None
@@ -330,101 +332,181 @@ class Collector:
         return accepted
 
     async def execute_pending(self):
-        """一次领取遍历；失败留待下一节拍，不在本轮无限重试。"""
-        targets = await to_thread.run_sync(lambda: self.store.pending_checks(with_selection=True))
-        pending = iter(targets)
+        """按目标轮转推进重型步骤，直到本轮待处理目标都至少尝试一次。
 
-        async def worker():
-            for target in pending:
-                try:
-                    await self._execute_target(target)
-                except SourceRiskPaused:
-                    # 被保护暂停：停止本 worker 领取后续工作，不写失败事实。
-                    collector_event("source_risk_paused_work_aborted")
+        每个目标只持有自己的互斥租约；每次 `advance()` 只提交一个根页／楼中楼页／单图
+        步骤，随后释放全局重型回合，让其他目标或 API 进程获得下一次机会。失败留待下一
+        节拍，不在本轮无限重试；风控暂停原样抛出，保留 running 领取与已提交分片。
+        """
+        sessions = {}
+        attempted = set()
+        try:
+            while True:
+                targets = await to_thread.run_sync(
+                    lambda: self.store.pending_checks(with_selection=True))
+                for target in targets:
+                    key = (target["uid"], target["id"])
+                    if key in attempted or key in sessions:
+                        continue
+                    session = await self._open_session(target)
+                    if session is None:
+                        attempted.add(key)
+                    else:
+                        sessions[key] = session
+                active = [key for key in sessions if key not in attempted]
+                if not active:
                     return
-
-        await asyncio.gather(*(worker() for _ in range(min(self.max_syncs, len(targets)))))
-
-    async def _execute_target(self, target):
-        with collector_attempt():
-            started = self.clock.monotonic()
-            try:
-                uid, id = target["uid"], target["id"]
-                target_refs = source_refs(uid=uid, dynamic_id=id)
-                claim = await to_thread.run_sync(lambda: self.store.claim_check_work(
-                    uid, id, selection=target["selection"]))
-                if claim is None:
-                    collector_event("sync_skipped", reason="not_claimed", **target_refs)
+                progressed = False
+                for key in active:
+                    if key in attempted:
+                        continue
+                    session = sessions[key]
+                    if session.generation is None:
+                        # 尚未发出首个请求：重新核验资格后才领取归档。已开始的领取继续
+                        # 完成自身 generation，最终由 finish_check_work 保留 pending。
+                        selection = await to_thread.run_sync(
+                            lambda: self.store.check_selection(session.uid, session.id))
+                        if not selection_matches(selection, session.claim["selection"]):
+                            collector_event("sync_skipped", reason="selection_changed",
+                                            stage=session.stage,
+                                            **source_refs(uid=session.uid, dynamic_id=session.id))
+                            await self._finish_session(session, succeeded=False, archive=None)
+                            if session.target_lease is not None:
+                                await session.target_lease.release()
+                            sessions.pop(key, None)
+                            attempted.add(key)
+                            continue
+                        try:
+                            generation = await to_thread.run_sync(lambda: self.store.claim_archive(
+                                session.uid, session.id, selection=session.claim["selection"]))
+                        except Exception as error:
+                            collector_failure("sync_execution_failed", error,
+                                              credentials_configured=self.credentials_configured)
+                            await self._finish_session(session, succeeded=False, archive=None)
+                            if session.target_lease is not None:
+                                await session.target_lease.release()
+                            sessions.pop(key, None)
+                            attempted.add(key)
+                            continue
+                        if generation is None:
+                            await self._finish_session(session, succeeded=False, archive=None)
+                            if session.target_lease is not None:
+                                await session.target_lease.release()
+                            sessions.pop(key, None)
+                            attempted.add(key)
+                            continue
+                        session.generation = generation
+                    if self.scheduler is not None and not await session.target_lease.renew():
+                        collector_event("sync_skipped", reason="target_lease_lost",
+                                        **source_refs(uid=session.uid, dynamic_id=session.id))
+                        await session.target_lease.release()
+                        sessions.pop(key, None)
+                        attempted.add(key)
+                        continue
+                    heavy = (self.scheduler.heavy_slot(f"{session.uid}:{session.id}", session.stage)
+                             if self.scheduler is not None else nullcontext())
+                    try:
+                        with collector_attempt():
+                            async with heavy:
+                                outcome = await session.advance()
+                    except SourceRiskPaused:
+                        raise
+                    except Exception as error:
+                        collector_failure("sync_execution_failed", error,
+                                          credentials_configured=self.credentials_configured)
+                        session.alerts.extend(
+                            self._failure_alerts(error, f"{session.uid}:{session.id}"))
+                        await self._finish_session(session, succeeded=False, archive=None)
+                        sessions.pop(key, None)
+                        attempted.add(key)
+                        continue
+                    progressed = True
+                    collector_event("dispatch_turn", stage=outcome.stage, result=outcome.status,
+                                    page=outcome.page, done=outcome.done,
+                                    heavy_owner=self.scheduler.owner if self.scheduler is not None else None,
+                                    **source_refs(uid=session.uid, dynamic_id=session.id))
+                    if session.done:
+                        await self._finish_session(session)
+                        sessions.pop(key, None)
+                        attempted.add(key)
+                if not progressed:
                     return
-                collector_event("sync_started", revision=claim["revision"], **target_refs)
-                succeeded, archive = False, None
-                alerts = []
-                try:
-                    generation = await to_thread.run_sync(lambda: self.store.claim_archive(
-                        uid, id, selection=claim["selection"]))
-                    if generation is not None:
-                        text_succeeded = await sync_target(
-                            self.store, self.client, uid, id, generation, self.downloader, self.uploader,
-                            pending_comments_only=True, comment_observation=claim["observed"], now=self.clock.now,
-                            comment_client_factory=self.comment_client_factory,
-                            on_failure=lambda error: alerts.extend(
-                                self._failure_alerts(error, f"{uid}:{id}")))
-                        archive = await to_thread.run_sync(self.store.read_archive, id)
-                        version = claim["observed"].get("observed_version")
-                        restricted_current = (archive["work"]["text"] == "restricted"
-                                              and archive.get("restricted_version") == version
-                                              and claim["observed"].get("content_visible") is not True)
-                        # 未配置媒体上传时 media.py 直接返回、从不推进媒体状态，有图的
-                        # 归档永远无法完成；此时不把媒体当完成条件，否则目标永久未完成
-                        # 并每 tick 重领工作。媒体分项仍如实保持 pending。
-                        media_upload = self.uploader is not None
-                        succeeded = ((text_succeeded or restricted_current)
-                                     and all(value in ("success", "restricted")
-                                             for part, value in archive["work"].items()
-                                             if media_upload or part != "media")
-                                     and archive["work"]["comments"] == archive["work"]["replies"] == "success"
-                                     and (not media_upload or archive["work"]["media"] != "restricted"
-                                          or restricted_current)
-                                     and (archive["synced_version"] == version or restricted_current)
-                                     and archive["synced_comment_count"] == claim["observed"].get("source_comment_count"))
-                        if media_upload:
-                            for root_id in await to_thread.run_sync(self.store.media_root_ids, id):
-                                root = await to_thread.run_sync(self.store.read_media_owner, id, root_id)
-                                succeeded = succeeded and root["work"]["media"] == "success"
-                except SourceRiskPaused:
-                    # 保留 running 领取与已提交分片；不写失败事实、不伪造完成时间。
-                    raise
-                except Exception as error:
-                    # 仅固定分类；取消仍保留 running 供持锁重启恢复。
-                    collector_failure("sync_execution_failed", error,
-                                      credentials_configured=self.credentials_configured)
-                    alerts.extend(self._failure_alerts(error, f"{uid}:{id}"))
-                # 同步阶段的显式失败事实（正文读取失败、根／回复分页失败）也登记告警；
-                # 普通的“待同步／媒体待完成”不是故障，不据此告警。
-                if archive is not None and not alerts:
-                    if archive["work"].get("text") == "failed":
-                        alerts.append(outbox.Alert("collection", f"{uid}:{id}", "body_failed"))
-                    elif archive.get("comments_error"):
-                        alerts.append(outbox.Alert("collection", f"{uid}:{id}", "comments_failed"))
-                complete = await to_thread.run_sync(
-                    lambda: self.store.finish_check_work(uid, id, claim["revision"], succeeded, self.clock.now(),
-                                                       None if succeeded else "SYNC_INCOMPLETE", token=claim["token"],
-                                                       selection=claim["selection"], record_success=(
-                                                           archive is not None
-                                                           and archive["work"]["text"] in ("success", "restricted")),
-                                                       alerts=alerts))
-                parts = archive["work"] if archive else {}
-                collector_event("sync_finished", warning=not complete, succeeded=succeeded, complete=complete,
-                                **target_refs,
-                                elapsed_ms=max(0, int((self.clock.monotonic() - started) * 1000)),
-                                text=parts.get("text"), comments=parts.get("comments"),
-                                replies=parts.get("replies"), media=parts.get("media"))
-            except SourceRiskPaused:
-                raise
-            except Exception as error:
-                # 领取或完成写入失败不会静默消失，随后由调度循环明确报错退出。
-                collector_failure("sync_task_failed", error)
-                raise
+        except SourceRiskPaused as paused:
+            # 暂停不是失败：停止本轮派发，保留 running 领取与已提交分片。
+            collector_event("source_risk_paused_work_aborted", risk_state=paused.status["state"],
+                            backoff_step=paused.status["backoff_step"])
+        finally:
+            # 风控、取消或异常退出时只释放本进程持有权；running 领取留给既有恢复路径。
+            for session in sessions.values():
+                if self.scheduler is not None:
+                    await session.target_lease.release()
+
+    async def _open_session(self, target):
+        uid, id = target["uid"], target["id"]
+        target_refs = source_refs(uid=uid, dynamic_id=id)
+        lease = None
+        if self.scheduler is not None:
+            lease = await self.scheduler.acquire_target(uid, id, wait=False)
+            if lease is None:
+                collector_event("sync_skipped", reason="target_busy",
+                                stage="claim", **target_refs)
+                return None
+        try:
+            claim = await to_thread.run_sync(lambda: self.store.claim_check_work(
+                uid, id, selection=target["selection"]))
+            if claim is None:
+                collector_event("sync_skipped", reason="not_claimed", **target_refs)
+                if lease is not None:
+                    await lease.release()
+                return None
+            collector_event("sync_started", revision=claim["revision"], **target_refs)
+            alerts = []
+            session = TargetSession(
+                self.store, self.client, uid, id, None, claim["observed"],
+                downloader=self.downloader, uploader=self.uploader,
+                comment_client_factory=self.comment_client_factory,
+                now=self.clock.now, pending_comments_only=True, full_replies=False,
+                on_failure=lambda error: alerts.extend(
+                    self._failure_alerts(error, f"{uid}:{id}")))
+            session.claim = claim
+            session.alerts = alerts
+            session.target_lease = lease
+            return session
+        except BaseException:
+            if lease is not None:
+                await lease.release()
+            raise
+
+    async def _finish_session(self, session, *, succeeded=None, archive=None):
+        if archive is None:
+            if succeeded is None:
+                succeeded, archive, _ = await session.result()
+        if succeeded is None:
+            succeeded = False
+        # 同步阶段的显式失败事实（正文读取失败、根／回复分页失败）也登记告警；
+        # 普通的“待同步／媒体待完成”不是故障，不据此告警。
+        if archive is not None and not session.alerts:
+            if archive["work"].get("text") == "failed":
+                session.alerts.append(outbox.Alert("collection", f"{session.uid}:{session.id}",
+                                                   "body_failed"))
+            elif archive.get("comments_error"):
+                session.alerts.append(outbox.Alert("collection", f"{session.uid}:{session.id}",
+                                                   "comments_failed"))
+        claim = session.claim
+        record_success = (archive is not None
+                          and archive["work"]["text"] in ("success", "restricted"))
+        complete = await to_thread.run_sync(lambda: self.store.finish_check_work(
+            session.uid, session.id, claim["revision"], succeeded, self.clock.now(),
+            None if succeeded else "SYNC_INCOMPLETE", token=claim["token"],
+            selection=claim["selection"], record_success=record_success,
+            alerts=session.alerts))
+        parts = archive["work"] if archive else {}
+        collector_event("sync_finished", warning=not complete, succeeded=succeeded,
+                        complete=complete, **source_refs(uid=session.uid, dynamic_id=session.id),
+                        text=parts.get("text"), comments=parts.get("comments"),
+                        replies=parts.get("replies"), media=parts.get("media"))
+        if session.target_lease is not None:
+            await session.target_lease.release()
 
     def _record_loop_alert(self, error):
         """独立连接短事务登记主循环故障；写失败只留固定分类日志，不掩盖原异常。"""
@@ -455,8 +537,9 @@ class Collector:
                             page_check_jitter_ms=int(PAGE_CHECK_JITTER_SECONDS * 1000),
                             max_checks=self.max_checks, max_syncs=self.max_syncs,
                             max_discoveries=self.max_discoveries, recovery="complete")
-            checks, executions, discoveries = {}, {}, {}
-            offset = sync_offset = discovery_offset = 0
+            checks, discoveries = {}, {}
+            drain = None
+            offset = discovery_offset = 0
             deadline = self.clock.monotonic()
             observation_cap = self.cadence()
             try:
@@ -465,10 +548,9 @@ class Collector:
                         if task.done():
                             self._settle(task)
                             del checks[key]
-                    for key, task in list(executions.items()):
-                        if task.done():
-                            self._settle(task)
-                            del executions[key]
+                    if drain is not None and drain.done():
+                        self._settle(drain)
+                        drain = None
                     for uid, task in list(discoveries.items()):
                         if task.done():
                             self._settle(task)
@@ -502,16 +584,18 @@ class Collector:
                             self._paused_generation = pause["generation"]
                             collector_event("collector_paused", risk_state=pause["state"],
                                             backoff_step=pause["backoff_step"],
-                                            checks_in_flight=len(checks), syncs_in_flight=len(executions))
+                                            checks_in_flight=len(checks),
+                                            syncs_in_flight=int(drain is not None))
                         # 仍保留节拍心跳：暂停不是进程退出，只是不派发工作。
                         collector_event("collector_tick", paused=True,
-                                        checks_in_flight=len(checks), syncs_in_flight=len(executions),
+                                        checks_in_flight=len(checks),
+                                        syncs_in_flight=int(drain is not None),
                                         discoveries_in_flight=len(discoveries), checks_started=0,
                                         syncs_started=0, discoveries_started=0)
                         await self.clock.sleep(max(0, deadline - now))
                         continue
                     # 探测全部通过后的观察态：归还上次被暂停打断的领取，继续原断点。
-                    await self._resume_abandoned(status, bool(checks or executions or discoveries))
+                    await self._resume_abandoned(status, bool(checks or drain is not None or discoveries))
                     recent_ups = await to_thread.run_sync(self.store.enabled_recent)
                     if recent_ups:
                         discovery_offset %= len(recent_ups)
@@ -536,16 +620,10 @@ class Collector:
                         offset = (offset + max(1, launched)) % len(targets)
                         checks_started = launched
                     pending = await to_thread.run_sync(lambda: self.store.pending_checks(with_selection=True))
-                    if pending:
-                        sync_offset %= len(pending)
-                        launched = 0
-                        for target in pending[sync_offset:] + pending[:sync_offset]:
-                            key = (target["uid"], target["id"])
-                            if key not in executions and len(executions) < self.max_syncs:
-                                executions[key] = asyncio.create_task(self._execute_target(target))
-                                launched += 1
-                        sync_offset = (sync_offset + max(1, launched)) % len(pending)
-                        syncs_started = launched
+                    if pending and drain is None:
+                        # 单路重型：一个 drain 内按目标轮转步骤，完成一个分页就释放回合。
+                        drain = asyncio.create_task(self.execute_pending())
+                        syncs_started = 1
                     cadence = self.cadence()
                     observation_cap = cadence
                     deadline += cadence
@@ -557,7 +635,8 @@ class Collector:
                         collector_event("collector_ticks_skipped", skipped=skipped)
                     collector_event("collector_tick", targets=len(targets), recent_ups=len(recent_ups),
                                     pending=len(pending), checks_in_flight=len(checks),
-                                    syncs_in_flight=len(executions), discoveries_in_flight=len(discoveries),
+                                    syncs_in_flight=int(drain is not None),
+                                    discoveries_in_flight=len(discoveries),
                                     checks_started=checks_started, syncs_started=syncs_started,
                                     discoveries_started=discoveries_started)
                     await self.clock.sleep(max(0, deadline - now))
@@ -572,7 +651,9 @@ class Collector:
                 self._record_loop_alert(error)
                 raise
             finally:
-                tasks = list(checks.values()) + list(executions.values()) + list(discoveries.values())
+                tasks = list(checks.values()) + list(discoveries.values())
+                if drain is not None:
+                    tasks.append(drain)
                 for task in tasks:
                     task.cancel()
                 await asyncio.gather(*tasks, return_exceptions=True)
@@ -582,7 +663,8 @@ class Collector:
 @asynccontextmanager
 async def open_collector(database, *, source_gate: SourceGate | None = None, source_transport=None,
                          media_transport=None, media_uploader=None, comment_client_factory=None,
-                         clock=None, reply_page_pacer=None, risk_clock=None, probe=None):
+                         clock=None, reply_page_pacer=None, risk_clock=None, probe=None,
+                         scheduler=None):
     """生产装配：来源 client、评论会话、媒体下载与 Collector；只替换外部传输和时钟。
 
     `source_gate` 与 API 进程接的是同一 Interface：检查、发现、归档、预热和图片下载
@@ -599,25 +681,29 @@ async def open_collector(database, *, source_gate: SourceGate | None = None, sou
     source_hooks = source_client_event_hooks(cookie_pairs=cookie_pairs)
     pacer = SourcePacer()
     page_pacer = reply_page_pacer if reply_page_pacer is not None else ReplyPagePacer()
+    leases = scheduler if scheduler is not None else DispatchLeases(store, clock=risk_clock or clock)
     owns_comments = comment_client_factory is None
     comments = (RequestsCommentClientFactory(cookie_pairs=cookie_pairs, pacer=pacer, gate=gate,
-                                            reply_page_pacer=page_pacer)
+                                            reply_page_pacer=page_pacer, source_lease=leases)
                 if owns_comments else comment_client_factory)
     owns_uploader = media_uploader is None
     uploader = None
     try:
         uploader = OSSUploader.from_environment() if owns_uploader else media_uploader
         async with httpx.AsyncClient(
-            transport=PacedSourceTransport(GatedAsyncTransport(source_transport, gate=gate), pacer=pacer),
+            transport=PacedSourceTransport(
+                GatedAsyncTransport(source_transport, gate=gate, source_lease=leases), pacer=pacer),
             timeout=10, trust_env=False, follow_redirects=False,
             headers=SOURCE_HEADERS, event_hooks=source_hooks,
         ) as source_client, httpx.AsyncClient(
-            transport=GatedAsyncTransport(media_transport, gate=gate), timeout=30, trust_env=False
+            transport=GatedAsyncTransport(media_transport, gate=gate, source_lease=leases),
+            timeout=30, trust_env=False
         ) as media_client:
             if probe is not None:
                 yield Collector(store, source_client, ImageDownloader(media_client), uploader,
                                 comment_client_factory=comments, clock=clock,
-                                credentials_configured=bool(cookie_pairs), risk=risk, probe=probe)
+                                credentials_configured=bool(cookie_pairs), risk=risk, probe=probe,
+                                scheduler=leases)
                 return
             # 探测装配：同一凭据、代理、pacer 与解析，只是不再取“普通请求”的发送许可。
             probe_comments = RequestsCommentClientFactory(
@@ -633,7 +719,7 @@ async def open_collector(database, *, source_gate: SourceGate | None = None, sou
                     yield Collector(store, source_client, ImageDownloader(media_client), uploader,
                                     comment_client_factory=comments, clock=clock,
                                     credentials_configured=bool(cookie_pairs), risk=risk,
-                                    probe=prober)
+                                    probe=prober, scheduler=leases)
             finally:
                 await probe_comments.aclose()
     finally:

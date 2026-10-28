@@ -109,6 +109,72 @@ class ImageDownloader:
         return response.content, content_type
 
 
+async def _download_and_upload(store, downloader, uploader, id, item, token, root_id, *, now=None):
+    """单图步骤：下载与上传都不持 SQLite 写事务；来源许可只包住下载。"""
+    error, public_url = "MEDIA_DOWNLOAD_FAILED", None
+    try:
+        content, content_type = await downloader.download(item["source_url"])
+        # 来源 URL 可能无后缀或与响应格式不同，按下载响应的 MIME 选择固定后缀。
+        extension = IMAGE_EXTENSIONS.get(content_type)
+        if extension is None:
+            raise ValueError("Unsupported image content type")
+        error = "MEDIA_UPLOAD_FAILED"
+        owner_path = (f"bili-charge/dynamics/{id}" if root_id is None
+                      else f"bili-charge/comments/{id}/{root_id}")
+        public_url = await uploader.upload(f"{owner_path}/{item['id']}/{token}{extension}", content, content_type)
+        if not is_archive_delivery_url(public_url):
+            raise ValueError("Invalid public media URL")
+        error = None
+    except SourceRiskPaused:
+        # 保护暂停不是下载失败：不记账、不继续下一张，已成功的媒体保留。
+        raise
+    except Exception as exception:
+        # 不保存异常文本、HTTP headers、签名 URL 或 OSS 凭据。
+        collector_failure("media_sync_failed", exception,
+                          stage="download" if error == "MEDIA_DOWNLOAD_FAILED" else "upload",
+                          **source_refs(dynamic_id=id, root_id=root_id))
+        public_url = None
+    accepted = await to_thread.run_sync(store.finish_media, id, item["id"], token, public_url, error, root_id,
+                                       now() if now else None)
+    return accepted and error is None
+
+
+async def media_step(store, downloader, uploader, id, root_id=None, *, media_id=None,
+                     current_only=False, now=None, skip=()):
+    """推进一个可提交的单图步骤；没有可处理图片时返回 None。
+
+    08 把「一张图」当作调度片：下载、提交与 OSS 上传都在这一步完成，但 OSS 上传
+    不经过来源许可。返回 `processed/succeeded/failed` 供调度层记录一次让出。
+    """
+    archive = await to_thread.run_sync(store.read_media_owner, id, root_id)
+    if archive is None:
+        return None
+    items = archive["media"]
+    if media_id is not None:
+        items = [item for item in items if item["id"] == media_id]
+    stale_version = archive["media_version"] != archive["observed_version"]
+    if current_only and stale_version and root_id is not None and not items and not archive.get("media_sources"):
+        if _comment_version_count(archive["media_version"]) > _comment_version_count(archive["observed_version"]):
+            await to_thread.run_sync(store.settle_empty_media, id, root_id, archive["observed_version"])
+            return None
+    if uploader is None or (current_only and stale_version):
+        return None
+    skip = set(skip)
+    for item in items:
+        if item["status"] == "success" or item["id"] in skip:
+            continue
+        token = await to_thread.run_sync(store.claim_media, id, item["id"], root_id)
+        if token is None:
+            continue
+        succeeded = await _download_and_upload(store, downloader, uploader, id, item, token,
+                                               root_id, now=now)
+        collector_event("media_sync_finished", processed=1, succeeded=int(succeeded),
+                        failed=int(not succeeded), **source_refs(dynamic_id=id, root_id=root_id))
+        return {"processed": 1, "succeeded": int(succeeded), "failed": int(not succeeded),
+                "media_id": item["id"]}
+    return None
+
+
 async def sync_media(store, downloader, uploader, id, current_only=False, media_id=None, root_id=None, *, now=None):
     archive = await to_thread.run_sync(store.read_media_owner, id, root_id)
     if archive is None:
@@ -135,32 +201,10 @@ async def sync_media(store, downloader, uploader, id, current_only=False, media_
         if token is None:
             continue
         result["processed"] += 1
-        error, public_url = "MEDIA_DOWNLOAD_FAILED", None
-        try:
-            content, content_type = await downloader.download(item["source_url"])
-            # 来源 URL 可能无后缀或与响应格式不同，按下载响应的 MIME 选择固定后缀。
-            extension = IMAGE_EXTENSIONS.get(content_type)
-            if extension is None:
-                raise ValueError("Unsupported image content type")
-            error = "MEDIA_UPLOAD_FAILED"
-            owner_path = (f"bili-charge/dynamics/{id}" if root_id is None
-                          else f"bili-charge/comments/{id}/{root_id}")
-            public_url = await uploader.upload(f"{owner_path}/{item['id']}/{token}{extension}", content, content_type)
-            if not is_archive_delivery_url(public_url):
-                raise ValueError("Invalid public media URL")
-            error = None
-        except SourceRiskPaused:
-            # 保护暂停不是下载失败：不记账、不继续下一张，已成功的媒体保留。
-            raise
-        except Exception as exception:
-            # 不保存异常文本、HTTP headers、签名 URL 或 OSS 凭据。
-            collector_failure("media_sync_failed", exception,
-                              stage="download" if error == "MEDIA_DOWNLOAD_FAILED" else "upload",
-                              **source_refs(dynamic_id=id, root_id=root_id))
-            public_url = None
-        accepted = await to_thread.run_sync(store.finish_media, id, item["id"], token, public_url, error, root_id,
-                                           now() if now else None)
-        result["succeeded" if accepted and error is None else "failed"] += 1
+        if await _download_and_upload(store, downloader, uploader, id, item, token, root_id, now=now):
+            result["succeeded"] += 1
+        else:
+            result["failed"] += 1
     if result["processed"]:
         # 每轮媒体处理一条摘要：每张图的逐条结果仍在失败事件与新下载提交里。
         collector_event("media_sync_finished", processed=result["processed"], succeeded=result["succeeded"],

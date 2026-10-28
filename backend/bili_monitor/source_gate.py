@@ -11,6 +11,7 @@
 
 import asyncio
 import re
+from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Protocol
 from urllib.parse import urlsplit
@@ -90,6 +91,10 @@ def source_request(method, url):
     return SourceRequest(endpoint_type=kind, method=str(method).upper(), host=host, path=parts.path)
 
 
+def _null_context():
+    return nullcontext()
+
+
 class SourceGate(Protocol):
     """发送许可与结果报告的接缝；实现必须逐次调用，不得缓存许可。"""
 
@@ -122,9 +127,11 @@ class GatedAsyncTransport(httpx.AsyncBaseTransport):
     不跟随重定向（`follow_redirects=False`），跳转仍须逐跳重新取许可。
     """
 
-    def __init__(self, transport=None, *, gate=None):
+    def __init__(self, transport=None, *, gate=None, source_lease=None):
         self.transport = transport if transport is not None else httpx.AsyncHTTPTransport(trust_env=False)
         self.gate = gate if gate is not None else OpenSourceGate()
+        # 08：跨进程发送许可包住「许可→发送→报告」；OSS 与本地处理不经过这里。
+        self.source_lease = source_lease
 
     # 包装不改写被包装 transport 的启动／关闭语义：客户端进入本层时同样进入内层，
     # 内层启动失败照旧在 lifespan 处被替换为脱敏错误，而不是被包装层悄悄吞掉。
@@ -139,20 +146,23 @@ class GatedAsyncTransport(httpx.AsyncBaseTransport):
         source = source_request(request.method, request.url)
         if source is None:
             return await self.transport.handle_async_request(request)
-        await self.gate.permit(source)
-        try:
-            response = await self.transport.handle_async_request(request)
-        except Exception as error:
-            await self.gate.report(source, SourceReport(error=error))
-            raise
-        try:
-            await self.gate.report(source, SourceReport(
-                status_code=response.status_code, retry_after=response.headers.get("retry-after")))
-        except BaseException:
-            # 报告拒绝这次发送时先释放连接，再让保护异常中止调用链。
-            await response.aclose()
-            raise
-        return response
+        lease = (self.source_lease.source_slot(source.endpoint_type)
+                 if self.source_lease is not None else _null_context())
+        async with lease:
+            await self.gate.permit(source)
+            try:
+                response = await self.transport.handle_async_request(request)
+            except Exception as error:
+                await self.gate.report(source, SourceReport(error=error))
+                raise
+            try:
+                await self.gate.report(source, SourceReport(
+                    status_code=response.status_code, retry_after=response.headers.get("retry-after")))
+            except BaseException:
+                # 报告拒绝这次发送时先释放连接，再让保护异常中止调用链。
+                await response.aclose()
+                raise
+            return response
 
     async def aclose(self):
         await self.transport.aclose()

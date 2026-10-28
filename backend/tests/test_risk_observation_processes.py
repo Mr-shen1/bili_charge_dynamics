@@ -103,7 +103,11 @@ def test_registered_manual_probe_runs_in_the_collector_and_clears_only_after_ten
     # 重启：观察时间重新累计（停机不抵扣），档位仍然保留在第六档。
     deployment.stop(collector)
     deployment.wait(lambda: collector.poll() is not None)
+    restart_ticks = deployment.log_text().count("collector_tick")
     restarted = deployment.start_collector()
+    # 等重启后的第一个节拍建立观察基线，避免进程尚未循环就推进受控时钟。
+    deployment.wait(lambda: deployment.log_text().count("collector_tick") > restart_ticks,
+                    process=restarted)
     deployment.wait(lambda: deployment.status()["observation"]["active_ms"] == 0,
                     process=restarted)
     status = deployment.status()

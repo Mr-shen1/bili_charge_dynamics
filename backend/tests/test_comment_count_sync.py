@@ -409,7 +409,7 @@ def test_old_pagination_only_commits_its_count_and_reopen_keeps_new_work(tmp_pat
     asyncio.run(scenario())
 
 
-def test_slow_comment_pages_do_not_block_fixed_checks_or_another_targets_sync(tmp_path):
+def test_slow_comment_pages_do_not_block_fixed_checks_and_other_heavy_resumes(tmp_path):
     path = tmp_path / "monitor.sqlite"
     configured(path, ("123", "124"))
     source = CommentSource()
@@ -457,8 +457,9 @@ def test_slow_comment_pages_do_not_block_fixed_checks_or_another_targets_sync(tm
                 await eventually(lambda: clock.deadlines[-1] == 15)
                 clock.advance(15)
                 await asyncio.wait_for(blocked.wait(), 3)
-                await eventually(lambda: Store(path).read_checks(UID)[1]["work"] == "complete")
-                # 明确等本节拍检查完成、调度器进入下一等待，再推进受控时钟。
+                # 单路重型：慢页只允许一个目标持有发送回合，其他目标等待让出，
+                # 但固定节拍检查仍持续进行。
+                assert Store(path).read_checks(UID)[1]["work"] in ("pending", "running")
                 await eventually(lambda: all(row["last_checked_at"] == clock.now() for row in Store(path).read_checks(UID)))
                 await eventually(lambda: clock.deadlines[-1] == 30)
                 clock.advance(30)
@@ -466,13 +467,17 @@ def test_slow_comment_pages_do_not_block_fixed_checks_or_another_targets_sync(tm
                 assert check_counts["99123"] >= 3 and check_counts["99124"] >= 3
                 await eventually(lambda: clock.deadlines[-1] == 45)
                 clock.advance(45)
-                await eventually(lambda: Store(path).read_archive("124")["synced_comment_count"] == 1)
+                assert Store(path).read_archive("124")["synced_comment_count"] != 1
                 assert not release.is_set()
+                release.set()
+                await eventually(lambda: Store(path).read_checks(UID)[0]["work"] == "complete")
+                # 单路重型让出后由下一节拍重新领取另一个目标。
+                clock.advance(60)
+                await eventually(lambda: Store(path).read_checks(UID)[1]["work"] == "complete")
+                await eventually(lambda: Store(path).read_archive("124")["synced_comment_count"] == 1)
                 with archive_client(path) as api:
                     assert api.get("/api/archive/dynamics/124").json()["comments_last_attempt"] == "success"
                     assert api.get(ARCHIVE + "/comments").status_code == 200
-                release.set()
-                await eventually(lambda: Store(path).read_checks(UID)[0]["work"] == "complete")
             finally:
                 running.cancel()
                 await asyncio.gather(running, return_exceptions=True)

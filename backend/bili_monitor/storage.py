@@ -17,7 +17,7 @@ from .checks import CheckStore
 from .selection import refresh_selections, selection_token, selection_matches
 from .discovery_state import DiscoveryStore
 from .comment_status import comment_status, utc_now, ROOT_METADATA_VERSION
-from . import scan_progress
+from . import dispatch, scan_progress
 from .media import reconcile_media, refresh_media_progress
 from .transaction import write
 
@@ -151,7 +151,7 @@ class Store(CheckStore, DiscoveryStore):
             connection.execute("BEGIN IMMEDIATE")
             try:
                 version = connection.execute("PRAGMA user_version").fetchone()[0]
-                if version > 26:
+                if version > 27:
                     raise RuntimeError("Unsupported database schema version")
                 if version == 0:
                     connection.execute("""CREATE TABLE identities (
@@ -319,7 +319,10 @@ class Store(CheckStore, DiscoveryStore):
                 if version < 26:
                     # 05 观察期进度与人工探测登记：复用 03／04 的 source_risk 单行。
                     risk.migrate_observation(connection)
-                connection.execute("PRAGMA user_version = 26")
+                if version < 27:
+                    # 08 跨进程发送许可、单路重型与目标互斥租约；短事务，网络不占写事务。
+                    dispatch.migrate(connection)
+                connection.execute("PRAGMA user_version = 27")
                 connection.commit()
             except BaseException:
                 connection.rollback()

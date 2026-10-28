@@ -1,7 +1,7 @@
 """参考脚本式评论会话：按 UP 复用session，预热按 TTL 缓存，网络在线程池运行。"""
 
 import asyncio
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 import hashlib
 import random
 import time
@@ -83,13 +83,15 @@ class _SourceSession(requests.Session):
 
 
 class RequestsCommentClient:
-    def __init__(self, uid, cookie_pairs, pacer, gate=None, reply_page_pacer=None):
+    def __init__(self, uid, cookie_pairs, pacer, gate=None, reply_page_pacer=None, source_lease=None):
         if not is_valid_id(uid):
             raise ValueError("Invalid comment source author")
         self.uid = uid
         self.pacer = pacer
         self.lock = asyncio.Lock()
         self.gate = gate if gate is not None else OpenSourceGate()
+        # 08：同一 SQLite 的跨进程发送许可；楼中楼页后等待也在这个串行段内。
+        self.source_lease = source_lease
         # 楼中楼页后等待与发送在同一个串行段内；是否进入等待按接口类型分类，不按调用点。
         self.reply_page_pacer = reply_page_pacer if reply_page_pacer is not None else ReplyPagePacer()
         self.last_reply_page = None
@@ -122,15 +124,18 @@ class RequestsCommentClient:
         async with self.lock:
             await self.pacer.wait(url)
             source = source_request("GET", url)
-            if source is None or source.endpoint_type != "replies":
-                return await self._send(url, params, headers, timeout)
-            # 楼中楼：发送与页后等待同一个串行段，失败的请求也等待；首个请求前不等待。
-            timing = None
-            try:
-                async with self.reply_page_pacer.page() as timing:
+            lease = (self.source_lease.source_slot(source.endpoint_type)
+                     if self.source_lease is not None and source is not None else nullcontext())
+            async with lease:
+                if source is None or source.endpoint_type != "replies":
                     return await self._send(url, params, headers, timeout)
-            finally:
-                self.last_reply_page = timing
+                # 楼中楼：发送与页后等待同一个串行段，失败的请求也等待；首个请求前不等待。
+                timing = None
+                try:
+                    async with self.reply_page_pacer.page() as timing:
+                        return await self._send(url, params, headers, timeout)
+                finally:
+                    self.last_reply_page = timing
 
     async def _send(self, url, params, headers, timeout):
         # 每一跳都在线程内重新取许可；桥接持有本次调用所在事件循环。
@@ -222,16 +227,18 @@ class RequestsCommentClientFactory:
 
     def __init__(self, *, cookie_pairs=None, pacer=None, client_factory=None,
                  session_ttl=SESSION_TTL_SECONDS, warmup=None, clock=time.monotonic, gate=None,
-                 reply_page_pacer=None):
+                 reply_page_pacer=None, source_lease=None):
         self.cookie_pairs = load_source_cookie_pairs() if cookie_pairs is None else cookie_pairs
         self.pacer = pacer if pacer is not None else SourcePacer()
         self.gate = gate if gate is not None else OpenSourceGate()
+        self.source_lease = source_lease
         # 一个进程内一次装配只用一个协调器：不同 UP 的楼中楼页也不能交错绕过等待。
         self.reply_page_pacer = (reply_page_pacer if reply_page_pacer is not None
                                  else ReplyPagePacer())
         self._new_client = client_factory or (
             lambda uid, pairs, pacer: RequestsCommentClient(
-                uid, pairs, pacer, gate=self.gate, reply_page_pacer=self.reply_page_pacer))
+                uid, pairs, pacer, gate=self.gate, reply_page_pacer=self.reply_page_pacer,
+                source_lease=self.source_lease))
         self.session_ttl = session_ttl
         self.warmup = warmup if warmup is not None else WarmupCache(clock=clock)
         self.clock = clock

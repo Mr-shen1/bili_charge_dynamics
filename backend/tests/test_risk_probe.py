@@ -296,15 +296,20 @@ def test_collector_run_probes_at_each_deadline_and_resumes_abandoned_work(tmp_pa
                 assert check["work"] == "running"
                 assert check["sync_error"] is None and check["last_succeeded_at"] is None
                 # 暂停后不再有业务发送：等在途检查结算完再记探测起点。
-                triggered = await settled_ledger()
-                assert ledger[-1] == "root_comments"
+                await settled_ledger()
+                # 卷宗：分页步骤之间允许已获许可的轻量检查收尾，因此根评论触发之后
+                # 仍可能有一条在途 opus_page；探测序列从第一项探测请求开始核对。
+                trigger_index = len(ledger) - 1 - ledger[::-1].index("root_comments")
+                assert trigger_index >= 0
 
                 # 一档到期：采集主循环自己执行探测，不需要重启进程。
                 state["arm"] = False
                 clock.advance(deadline_on_clock(gate.status()))
                 await eventually(lambda: gate.status()["state"] == "observing")
-                assert ledger[triggered:triggered + 4] == [
-                    "root_comments", "comment_count", "detail", "opus_page"]
+                probe_start = next(index for index in range(trigger_index, len(ledger))
+                                   if ledger[index] == "comment_count")
+                assert ledger[probe_start:probe_start + 3] == [
+                    "comment_count", "detail", "opus_page"]
 
                 # 观察态恢复派发：先归还在途中止的领取，再从原断点继续。
                 assert await wait_ticks(

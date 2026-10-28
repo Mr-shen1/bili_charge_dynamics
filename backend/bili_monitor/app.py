@@ -21,6 +21,7 @@ from .storage import Store
 from .source import verify_author
 from .source_transport import PacedSourceTransport, SourcePacer
 from .risk import RiskGate, SourceRiskPaused, paused_response
+from .dispatch import DispatchLeases
 from .source_gate import GatedAsyncTransport, SourceGate
 from .source_client import SOURCE_HEADERS, source_client_event_hooks
 from .source_cookies import load_source_cookie_pairs
@@ -67,6 +68,8 @@ def create_app(
     # 保护状态读的是同一个 SQLite 文件：状态查询入口与发送许可共用一份持久事实。
     risk = RiskGate(store, clock=risk_clock)
     gate = source_gate if source_gate is not None else risk
+    # 08：API 的手动初始化／媒体重试与 collector 共用同一份 SQLite 租约。
+    scheduler = DispatchLeases(store, clock=risk_clock)
 
     @asynccontextmanager
     async def lifespan(application):
@@ -81,19 +84,21 @@ def create_app(
             comments = comment_client_factory
             if comments is None and profile_transport is None:
                 comments = RequestsCommentClientFactory(cookie_pairs=cookie_pairs, pacer=pacer, gate=gate,
-                                                        reply_page_pacer=reply_page_pacer)
+                                                        reply_page_pacer=reply_page_pacer,
+                                                        source_lease=scheduler)
             uploader = media_uploader if media_uploader is not None else OSSUploader.from_environment()
             async with httpx.AsyncClient(
                 # 注入替身时沿用既有“只替换外部 HTTP”的语义（不额外分页等待）；
                 # 生产装配把分页等待放在外层、发送许可紧贴实际发送。
-                transport=(GatedAsyncTransport(profile_transport, gate=gate)
+                transport=(GatedAsyncTransport(profile_transport, gate=gate, source_lease=scheduler)
                            if profile_transport is not None
-                           else PacedSourceTransport(GatedAsyncTransport(gate=gate), pacer=pacer)),
+                           else PacedSourceTransport(
+                               GatedAsyncTransport(gate=gate, source_lease=scheduler), pacer=pacer)),
                 timeout=10, trust_env=False, follow_redirects=False,
                 headers=SOURCE_HEADERS, event_hooks=source_hooks,
             ) as profiles, httpx.AsyncClient(
                 # 图片下载是独立 client：它同样只经源站许可，OSS 上传不走这里。
-                transport=GatedAsyncTransport(media_transport, gate=gate),
+                transport=GatedAsyncTransport(media_transport, gate=gate, source_lease=scheduler),
                 timeout=30, trust_env=False,
             ) as media_client:
                 application.state.profiles = profiles
@@ -244,7 +249,8 @@ def create_app(
     async def initial_sync(body: AddUP):
         return await initialize(store, application.state.profiles, body.uid,
                                 application.state.downloader, application.state.media_uploader,
-                                comment_client_factory=application.state.comment_client_factory)
+                                comment_client_factory=application.state.comment_client_factory,
+                                scheduler=scheduler)
 
     @application.post("/api/sync/media/{id}")
     async def retry_media(

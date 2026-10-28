@@ -374,27 +374,19 @@ def test_unexpected_exception_is_safe_in_response_and_debug_logs(tmp_path, caplo
 
 
 def test_simultaneous_duplicate_add_has_one_winner_without_profile_overwrite(tmp_path):
-    entered = Event()
-    release = Event()
     count = []
 
     async def handler(request):
+        # 08 起所有来源发送经同一跨进程许可：两个请求不再在外部边界同时发出，
+        # 但仍并发进入 API，由持久状态保证只有一个成功、另一个不覆盖资料。
         count.append(len(count) + 1)
-        ordinal = count[-1]
-        if len(count) == 2:
-            entered.set()
-        await anyio.to_thread.run_sync(release.wait, 5)
-        return httpx.Response(200, json=card(UID, f"虚构并发{ordinal}"))
+        return httpx.Response(200, json=card(UID, f"虚构并发{count[-1]}"))
 
     with (
         client_for(tmp_path / "monitor.sqlite", handler) as client,
         ThreadPoolExecutor(max_workers=2) as pool,
     ):
         requests = [pool.submit(client.post, BASE, json={"uid": UID}) for _ in range(2)]
-        try:
-            assert entered.wait(5), "Both requests should reach the external boundary"
-        finally:
-            release.set()
         responses = [future.result(timeout=5) for future in requests]
         assert sorted(response.status_code for response in responses) == [201, 409]
         winner = next(

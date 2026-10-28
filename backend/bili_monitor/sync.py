@@ -12,24 +12,51 @@ from .comment_client import open_comment_client
 from .risk import SourceRiskPaused
 
 
-async def initialize(store, client, uid, downloader=None, uploader=None, *, comment_client_factory=None):
+async def initialize(store, client, uid, downloader=None, uploader=None, *, comment_client_factory=None,
+                     scheduler=None):
+    # 局部导入避免 `dispatch` → `sync`（步骤机复用 sync_body）的模块循环。
+    from .dispatch import TargetSession
+
     targets = await to_thread.run_sync(lambda: store.selected_targets(uid, with_selection=True))
     checks = {item["id"]: item["observed"] for item in await to_thread.run_sync(store.read_checks, uid)}
     result = {"processed": 0, "succeeded": 0, "failed": 0}
     for target in targets:
         id = target["id"]
-        generation = await to_thread.run_sync(lambda: store.claim_archive(uid, id, selection=target["selection"]))
-        if generation is None:
+        lease = await scheduler.acquire_api_target(uid, id) if scheduler is not None else None
+        if scheduler is not None and lease is None:
+            # collector 正在执行同一目标：不重复执行，也不把跳过报成同步成功。
             continue
-        result["processed"] += 1
-        observed = checks.get(id, {})
-        # 已接入独立计数的目标，显式初始化也不得以旧 STAT/detail 覆盖可信观察。
-        # 尚无检查记录的旧初始化协议保持兼容；它不是固定检查或计数观察入口。
-        comments = observed if "comment_count_status" in observed else None
-        succeeded = await sync_target(store, client, uid, id, generation, downloader, uploader,
-                                      comment_observation=comments, comment_client_factory=comment_client_factory,
-                                      full_replies=True)
-        result["succeeded" if succeeded else "failed"] += 1
+        try:
+            generation = await to_thread.run_sync(lambda: store.claim_archive(
+                uid, id, selection=target["selection"]))
+            if generation is None:
+                continue
+            result["processed"] += 1
+            observed = checks.get(id, {})
+            # 已接入独立计数的目标，显式初始化也不得以旧 STAT/detail 覆盖可信观察。
+            # 尚无检查记录的旧初始化协议保持兼容；它不是固定检查或计数观察入口。
+            comments = observed if "comment_count_status" in observed else None
+            session = TargetSession(
+                store, client, uid, id, generation, comments,
+                downloader=downloader, uploader=uploader,
+                comment_client_factory=comment_client_factory,
+                pending_comments_only=False, full_replies=True)
+            while not session.done:
+                if scheduler is not None:
+                    if not await lease.renew():
+                        result["failed"] += 1
+                        break
+                    async with scheduler.heavy_slot(f"{uid}:{id}", session.stage):
+                        await session.advance()
+                else:
+                    await session.advance()
+            # 显式初始化的既有统计口径只表示本次正文（含受限判定）是否成功；
+            # 评论／媒体分项仍各自持久，不能因为分项未完成改报正文失败。
+            succeeded = session.text_succeeded
+            result["succeeded" if succeeded else "failed"] += 1
+        finally:
+            if lease is not None:
+                await lease.release()
     return result
 
 

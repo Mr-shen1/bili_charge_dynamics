@@ -17,7 +17,7 @@ exec .venv/bin/python -m uvicorn backend.bili_monitor.app:app --host 127.0.0.1 -
 
 Python 使用 `.python-version` 的 3.12 系列（记录实际补丁版本）；FastAPI、HTTPX、Uvicorn、OSS SDK 和测试依赖由清单/`uv.lock` 固定。上述路径是示例，须选择**仓库外持久、可写的绝对 SQLite 路径**，与 collector 完全相同，不随发布目录切换；默认 `backend/data/monitor.sqlite` 仅适合本地开发。依赖经 uv 同步后直接 `exec` 其解释器，打印的 shell PID 随即成为 Python PID，不会只杀掉 uv 父进程而留下子进程。仅一个 API，不加 `--workers` / `--reload`；没有内嵌定时器或常驻 Node.js，collector 另起终端。
 
-API 的 ASGI lifespan、取得锁的 collector 与独立通知进程启动都调用 `Store.migrate`（当前 v26）。升级先 TERM/Ctrl-C 停两个进程、等退出，再切换同一代码版本并 `uv sync --locked`；先启动 API 完成迁移并确认 `GET /api/manage/ups` 为 200，再启动 collector。未来 schema 拒绝启动，失败事务回滚；无独立迁移 CLI、自动降级或备份，勿删库、改版本号或让旧进程与新迁移并行。
+API 的 ASGI lifespan、取得锁的 collector 与独立通知进程启动都调用 `Store.migrate`（当前 v27）。升级先 TERM/Ctrl-C 停两个进程、等退出，再切换同一代码版本并 `uv sync --locked`；先启动 API 完成迁移并确认 `GET /api/manage/ups` 为 200，再启动 collector。未来 schema 拒绝启动，失败事务回滚；无独立迁移 CLI、自动降级或备份，勿删库、改版本号或让旧进程与新迁移并行。
 
 **首期无鉴权**：管理、初始化及归档接口均可被访问者调用，可能暴露内容或被修改配置。请通过监听地址、防火墙或反向代理限制暴露；隐藏入口不是保护。本期没有备份或容量治理。
 
@@ -60,7 +60,7 @@ uv run python -m backend.tests.notification_demo --database "$demo_dir/monitor.s
 
 ## 23 独立采集进程
 
-也可按原方式让 API 和采集进程使用同一 SQLite 路径、分别启动，不能增加多个采集进程。处理持久启用的指定集合或近期可信窗口的检查/同步，以及近期 UP 发现，默认最多 4 个同时检查、4 个独立目标同步、2 个独立 UP 发现；同目标不叠加，慢分页期间其他目标仍可检查／同步。固定节拍检查（生产默认 2.7 秒 ±10%，可用 `BILI_COLLECTOR_CADENCE_SECONDS` 覆盖）与慢同步分离：评论计数每节拍读取，页面信号（编辑时间/正文与图片版本/受限状态）默认每 60 秒 ±2 秒采样一次（`BILI_COLLECTOR_PAGE_CHECK_SECONDS` 可覆盖，0 表示每节拍），状态从 `GET /api/manage/ups/{uid}/checks` 读取；完整节拍、重启与状态语义见 [采集契约](../docs/backend/api/collector-api.md)。API 不内嵌定时器。
+也可按原方式让 API 和采集进程使用同一 SQLite 路径、分别启动，不能增加多个采集进程。处理持久启用的指定集合或近期可信窗口的检查/同步，以及近期 UP 发现，默认最多 4 个同时检查、2 个独立 UP 发现；重型归档自 08 起全局只推进一路，按正文／根页／楼中楼页／单图下载的可提交步骤在目标间轮转，慢分页期间其他目标仍可检查，并在每次步骤提交后获得下一次重型机会。同目标由 SQLite 租约互斥，API 手动初始化与 collector 共用同一发送许可。固定节拍检查（生产默认 2.7 秒 ±10%，可用 `BILI_COLLECTOR_CADENCE_SECONDS` 覆盖）与慢同步分离：评论计数每节拍读取，页面信号（编辑时间/正文与图片版本/受限状态）默认每 60 秒 ±2 秒采样一次（`BILI_COLLECTOR_PAGE_CHECK_SECONDS` 可覆盖，0 表示每节拍），状态从 `GET /api/manage/ups/{uid}/checks` 读取；完整节拍、重启与状态语义见 [采集契约](../docs/backend/api/collector-api.md)。API 不内嵌定时器。
 
 ```sh
 # 独立终端、仓库根目录；使用与 API 相同的持久路径和服务端 OSS 环境
@@ -133,7 +133,7 @@ checks HTTP 增量返回 `observed.comment_count_status`、`synced_comment_count
 
 API 的显式同步和正式采集进程使用共享 `PacedSourceTransport`：每次动态 feed 请求前异步等待随机 **0.8–1.5 秒**，每次根评论页请求前等待 **0.3–0.4 秒**（包括首页和空尾页复查）。楼中楼改为**每次真实分页请求结束后**异步等待至少 **100ms**（首次全量、末页倒序增量、失败重试、空尾页复查与后续探测同一路径），第一个请求之前不加这段等待、最后一页之后仍然执行；请求与等待在 `ReplyPagePacer` 的同一串行段内，多任务／多调用方不能交错绕过。楼级等待（0.3–0.4 秒）只在实际展开楼中楼后保留：来源明确零回复、跳过未到期或根本未发出请求的楼不再缴纳。范围参考 ignored 示例脚本，但运行不导入该脚本，也不接入飞书。
 
-同一来源客户端的分页共享等待锁，避免多 UP／目标同时突发；仅串行化发送前的等待与楼中楼页后等待，不锁 SQLite 写事务。独立 HTML／detail／评论计数等信号请求不排这个队，固定节拍调度、busy-skip 与有限并发规则不变；它不是自动退避、重试策略或不再限流的保证。API 和采集进程各有独立节奏，不提供跨进程／跨主机限速保证，手工写接口与采集进程并行使用仍可能触发上游限制。
+同一来源客户端的分页共享等待锁，避免多 UP／目标同时突发；仅串行化发送前的等待与楼中楼页后等待，不锁 SQLite 写事务。08 起 API 与 collector 还通过同一 SQLite 的 `source` 租约串行化真实来源发送，楼中楼页后 100ms 跨进程也不能被绕过；固定节拍调度与 busy-skip 不变。它不是自动退避、重试策略或不再限流的保证；跨主机与真实平台阈值仍需另行验证。
 
 测试注入的 transport 由调用方管理时间；可用 `PacedSourceTransport(httpx.MockTransport(...), sleep=...)` 保留节奏逻辑并替换外部时间，不让现有 fixture 等待真实秒数。楼中楼页后等待有自己的注入点 `ReplyPagePacer(sleep=..., clock=..., delay=...)`，可从 `create_app(reply_page_pacer=...)`、`open_collector(reply_page_pacer=...)` 传入，既有只覆盖楼级 0.3—0.4 秒的测试替身不会误吞或误约束它。专项验证包括正式 API／采集入口装配、完整分页、空尾页复查、失败请求、跨调用账本及取消：`uv run pytest backend/tests/test_source_pacing.py backend/tests/test_reply_page_pacing.py -q`。这只是无凭据自动化，不证明真实上游长期可用。
 

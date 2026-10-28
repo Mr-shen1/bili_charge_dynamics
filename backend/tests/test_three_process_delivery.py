@@ -542,7 +542,7 @@ def test_repeated_migration_keeps_archive_configuration_and_checkpoints(stack, t
     store = Store(migrated)
     assert store.read_archive(DYNAMIC) == saved_archive
     assert store.enabled_targets() == [{"uid": UP, "id": DYNAMIC}]
-    assert query(migrated, "PRAGMA user_version") == [{"user_version": 26}]
+    assert query(migrated, "PRAGMA user_version") == [{"user_version": 27}]
     assert query(migrated, "SELECT token, started_at, comment_started_at, sealed"
                            " FROM notification_phases ORDER BY started_at") == phase_before
     assert deliveries(migrated) == deliveries_before
