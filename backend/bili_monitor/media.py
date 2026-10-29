@@ -157,9 +157,10 @@ async def media_step(store, downloader, uploader, id, root_id=None, *, media_id=
         items = [item for item in items if item["id"] == media_id]
     stale_version = archive["media_version"] != archive["observed_version"]
     if current_only and stale_version and root_id is not None and not items and not archive.get("media_sources"):
-        if _comment_version_count(archive["media_version"]) > _comment_version_count(archive["observed_version"]):
-            await to_thread.run_sync(store.settle_empty_media, id, root_id, archive["observed_version"])
-            return None
+        # 该根组没有任何图片源，版本失配时不存在待 fencing 的图片，直接按当前观察结算。
+        # 否则热帖计数持续增长会让未被重读的根组版本永久落后，work.media 卡在 pending。
+        await to_thread.run_sync(store.settle_empty_media, id, root_id, archive["observed_version"])
+        return None
     if uploader is None or (current_only and stale_version):
         return None
     skip = set(skip)
@@ -190,11 +191,9 @@ async def sync_media(store, downloader, uploader, id, current_only=False, media_
     result = {"processed": 0, "succeeded": 0, "failed": 0}
     stale_version = archive["media_version"] != archive["observed_version"]
     if current_only and stale_version and root_id is not None and not items and not archive.get("media_sources"):
-        # 只有「媒体版本反而领先观察版本」（计数回落）才结算：此时新快照不可能新增图片。
-        # 观察版本更新但媒体还没跟上时不结算，避免用未成功的观察推进媒体。
-        if _comment_version_count(archive["media_version"]) > _comment_version_count(archive["observed_version"]):
-            await to_thread.run_sync(store.settle_empty_media, id, root_id, archive["observed_version"])
-            return result
+        # 同上：无图片源的根组按当前观察结算，不让版本失配卡住整轮同步。
+        await to_thread.run_sync(store.settle_empty_media, id, root_id, archive["observed_version"])
+        return result
     if uploader is None or (current_only and stale_version):
         return result
     for item in items:
