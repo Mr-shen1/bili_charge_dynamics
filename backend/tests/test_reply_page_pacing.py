@@ -84,7 +84,7 @@ def test_every_real_reply_page_waits_after_response_through_real_archive_chain(t
 
     state = {}
     run_initial(tmp_path / "pacing.sqlite", monkeypatch, events, state,
-                pacer=ReplyPagePacer(sleep=wait))
+                pacer=ReplyPagePacer(sleep=wait, jitter=0))
     assert state["reply_pages"] == [1, 2, 2]
     assert events == [
         ("send", "1"), ("done", "1"), ("wait", 0.1),
@@ -102,7 +102,7 @@ def test_failed_reply_request_still_pays_the_page_wait(tmp_path, monkeypatch):
         await asyncio.sleep(0)
 
     run_initial(tmp_path / "failing.sqlite", monkeypatch, events, {},
-                pacer=ReplyPagePacer(sleep=wait), fail_page=2)
+                pacer=ReplyPagePacer(sleep=wait, jitter=0), fail_page=2)
     assert events[-3:] == [("send", "2"), ("failed", "2"), ("wait", 0.1)]
 
 
@@ -119,7 +119,7 @@ def test_zero_reply_root_pays_no_page_or_per_root_wait(tmp_path, monkeypatch):
 
     monkeypatch.setattr("backend.bili_monitor.replies.sleep_after_root", root_wait)
     run_initial(tmp_path / "zero.sqlite", monkeypatch, events, {},
-                pacer=ReplyPagePacer(sleep=wait))
+                pacer=ReplyPagePacer(sleep=wait, jitter=0))
     # 固件里第二栋楼来源明确零回复：没有真实楼中楼请求，也没有楼级等待。
     assert [event for event in events if event[0] == "wait"] == [("wait", 0.1)] * 3
     assert len(root_waits) == 1
@@ -155,7 +155,7 @@ def test_two_callers_cannot_interleave_past_the_page_wait(monkeypatch):
     monkeypatch.setattr(requests.Session, "get", comment_get)
 
     async def scenario():
-        pacer = ReplyPagePacer(sleep=clock.sleep, clock=clock)
+        pacer = ReplyPagePacer(sleep=clock.sleep, clock=clock, jitter=0)
         first = RequestsCommentClient("101", (), SourcePacer(sleep=clock.sleep), reply_page_pacer=pacer)
         second = RequestsCommentClient("102", (), SourcePacer(sleep=clock.sleep), reply_page_pacer=pacer)
         await first.get(REPLIES_URL, params={"root": "1"})
@@ -185,7 +185,7 @@ def test_reply_page_wait_holds_no_sqlite_write_transaction(tmp_path, monkeypatch
         write_locks.append(seconds)
         await asyncio.sleep(0)
 
-    run_initial(path, monkeypatch, [], {}, pacer=ReplyPagePacer(sleep=wait))
+    run_initial(path, monkeypatch, [], {}, pacer=ReplyPagePacer(sleep=wait, jitter=0))
     assert write_locks == [0.1, 0.1, 0.1]
 
 
@@ -223,7 +223,7 @@ def test_incremental_tail_pages_share_the_same_wait_and_log_reverse_direction(tm
     """末页倒序增量与探测走同一条 `client.get` 路径，因此同样有页后等待。"""
     clock, events = VirtualTime(), []
     state = {"replies": tail_fixture(25)}
-    pacer = ReplyPagePacer(sleep=clock.sleep, clock=clock)
+    pacer = ReplyPagePacer(sleep=clock.sleep, clock=clock, jitter=0)
     path = tmp_path / "tail-wait.sqlite"
     run_initial(path, monkeypatch, events, state, pacer=pacer)
     # 初始化那轮的页后等待另算；这里只看末页倒序增量的账本。

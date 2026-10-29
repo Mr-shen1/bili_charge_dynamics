@@ -145,8 +145,8 @@ def test_probe_round_covers_every_needed_type_with_minimal_gets(tmp_path):
     # 楼中楼探测同样缴纳页后等待（100ms），其余类型不额外等待。
     replies = next(item for item in status["probe"]["results"]
                    if item["endpoint_type"] == "replies")
-    assert replies["wait_ms"] == 100
-    assert waits.waits == [0.1]
+    assert 100 <= replies["wait_ms"] <= 200
+    assert len(waits.waits) == 1 and 0.1 <= waits.waits[0] <= 0.2
     # 没有暗补预热：探测集合之外的类型一个请求都没有。
     assert "homepage_warmup" not in state["ledger"] and "space_warmup" not in state["ledger"]
 
@@ -435,11 +435,11 @@ def test_reply_probe_goes_through_the_production_comment_session_for_one_hundred
     # 评论类型的探测走生产会话：计数、根页、楼中楼各一次，没有第二个等待层。
     assert [url for url, _ in session.requests] == [
         REPLIES_URL, "https://api.bilibili.com/x/v2/reply/count", ROOT_COMMENTS_URL]
-    assert waits.waits == [0.1]
-    assert comments_client.last_reply_page.wait_ms == 100
+    assert len(waits.waits) == 1 and 0.1 <= waits.waits[0] <= 0.2
+    assert 100 <= comments_client.last_reply_page.wait_ms <= 200
     status = state_of(path, clock)
     results = {item["endpoint_type"]: item for item in status["probe"]["results"]}
-    assert results["replies"]["wait_ms"] == 100
+    assert 100 <= results["replies"]["wait_ms"] <= 200
     assert all(item["status"] == "passed" for item in status["probe"]["results"])
     # 探测没有暗补预热：会话上只有这三类评论请求。
     assert all("homepage" not in url and "space.bilibili.com" not in url

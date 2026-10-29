@@ -169,7 +169,7 @@ async def serve(database):
             httpx.AsyncClient(transport=httpx.MockTransport(Source()), trust_env=False) as probe_media:
         prober = RiskProber(store, gate, probe_client,
                             downloader=ImageDownloader(probe_media),
-                            reply_page_pacer=ReplyPagePacer())
+                            reply_page_pacer=ReplyPagePacer(jitter=0))
         collector = Collector(store, client, ImageDownloader(media), Uploader(), risk=gate,
                              probe=prober, clock=clock, credentials_configured=False)
         task = asyncio.create_task(collector.run())

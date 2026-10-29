@@ -216,7 +216,7 @@ async def serve_collector(database):
     async with open_collector(database, source_transport=httpx.MockTransport(source),
                               media_transport=httpx.MockTransport(source),
                               media_uploader=Uploader(),
-                              reply_page_pacer=ReplyPagePacer()) as collector:
+                              reply_page_pacer=ReplyPagePacer(jitter=0)) as collector:
         await collector.execute_pending()
 
 

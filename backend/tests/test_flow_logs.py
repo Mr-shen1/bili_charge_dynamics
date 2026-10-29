@@ -148,7 +148,8 @@ def test_initial_archive_logs_business_ids_pages_and_waits(tmp_path, monkeypatch
     for line in fetched:
         assert f'root_id="{ROOT_ID}"' in line and 'dynamic_id="123"' in line
         assert "direction=forward" in line and "endpoint_type=replies" in line
-        assert "wait_ms=100" in line and "elapsed_ms=" in line
+        wait_ms = int(line.split("wait_ms=")[1].split(" ")[0])
+        assert 100 <= wait_ms <= 200 and "elapsed_ms=" in line
         assert 'reply_ids=[' in line
     assert 'reply_ids=["900719925474099312350"' in fetched[0]
     saved = events(messages, "reply_page_saved")

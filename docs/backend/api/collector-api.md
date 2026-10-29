@@ -22,9 +22,9 @@
 
 ## 分页请求节奏（30）
 
-正式 API／采集进程的 HTTPX feed 与 Requests 评论会话共享同一 `SourcePacer`：feed 每次发送前随机异步等待0.8–1.5秒，根评论每页0.3–0.4秒，包含首页和空尾页确认。楼中楼改为**每次真实分页请求结束后**异步等待至少100ms（`ReplyPagePacer`）：首个请求前不加，失败请求、末页倒序增量、空尾页复查与后续探测（同一 `client.get(REPLIES_URL, ...)` 路径）都一样；发送与页后等待在同一串行段内，多调用者不能交错绕过。楼级0.3–0.4秒只在实际展开楼中楼后保留，来源明确零回复或未发出请求的楼不再缴纳。页级共享锁只覆盖 feed/根评论等待与楼中楼页后等待，不占 SQLite 写事务。HTML/detail/独立计数不排分页队列。每个正式评论尝试单独创建 Requests Session，线程池执行网络，按参考顺序预热首页和UP空间页（每页返回后异步等1–3秒），结束关闭；不再以nav预热，不导入其主循环或飞书逻辑。Requests采用环境代理和受信B站内的GET重定向；HTTPX信号与媒体路径保持原独立策略。
+正式 API／采集进程的 HTTPX feed 与 Requests 评论会话共享同一 `SourcePacer`：feed 每次发送前随机异步等待0.8–1.5秒，根评论每页0.3–0.4秒，包含首页和空尾页确认。楼中楼改为**每次真实分页请求结束后**异步等待0.1～0.2秒（`ReplyPagePacer`，最小100ms＋0～100ms随机抖动）：首个请求前不加，失败请求、末页倒序增量、空尾页复查与后续探测（同一 `client.get(REPLIES_URL, ...)` 路径）都一样；发送与页后等待在同一串行段内，多调用者不能交错绕过。楼级0.3–0.4秒只在实际展开楼中楼后保留，来源明确零回复或未发出请求的楼不再缴纳。页级共享锁只覆盖 feed/根评论等待与楼中楼页后等待，不占 SQLite 写事务。HTML/detail/独立计数不排分页队列。每个正式评论尝试单独创建 Requests Session，线程池执行网络，按参考顺序预热首页和UP空间页（每页返回后异步等1–3秒），结束关闭；不再以nav预热，不导入其主循环或飞书逻辑。Requests采用环境代理和受信B站内的GET重定向；HTTPX信号与媒体路径保持原独立策略。
 
-该节奏不改变固定节拍调度或失败重试规则；分页慢不会改成“同步完再等下一节拍”，忙检查仍跳过、不积压。等待和网络均在 SQLite 事务外。08 起 API 与 collector 共享 SQLite `source` 许可，跨进程也不能在楼中楼页后 100ms 内提前发送；仍不保证上游永不限流，真实持续运行需另行验证。测试传输可另行注入外部时间（`PacedSourceTransport(sleep=...)`、`ReplyPagePacer(sleep=..., clock=...)`，后者可从 `create_app(reply_page_pacer=...)`、`open_collector(reply_page_pacer=...)` 传入），见 [后端说明](../../../backend/README.md#30-分页请求间隔)。
+该节奏不改变固定节拍调度或失败重试规则；分页慢不会改成“同步完再等下一节拍”，忙检查仍跳过、不积压。等待和网络均在 SQLite 事务外。08 起 API 与 collector 共享 SQLite `source` 许可，跨进程也不能在楼中楼页后等待结束前提前发送；仍不保证上游永不限流，真实持续运行需另行验证。测试传输可另行注入外部时间（`PacedSourceTransport(sleep=...)`、`ReplyPagePacer(sleep=..., clock=...)`，后者可从 `create_app(reply_page_pacer=...)`、`open_collector(reply_page_pacer=...)` 传入），见 [后端说明](../../../backend/README.md#30-分页请求间隔)。
 
 ## 调度与失败日志
 

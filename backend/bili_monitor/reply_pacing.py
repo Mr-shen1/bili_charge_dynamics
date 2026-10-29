@@ -13,6 +13,7 @@
 """
 
 import asyncio
+import random
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -20,6 +21,8 @@ from dataclasses import dataclass, field
 
 # 每次真实楼中楼分页请求结束后的最小等待；参数来源见正式设计 §3.2 等待规则表。
 REPLY_PAGE_DELAY_SECONDS = 0.1
+# 在最小等待之上再随机 0～0.1 秒，避免固定节拍形成可识别模式；合计 0.1～0.2 秒。
+REPLY_PAGE_DELAY_JITTER_SECONDS = 0.1
 
 
 @dataclass
@@ -34,16 +37,26 @@ class PageTiming:
 class ReplyPagePacer:
     """楼中楼页后等待的协调器；同一实例被多个客户端共享时仍不能交错绕过。"""
 
-    def __init__(self, *, sleep=None, clock=None, delay=REPLY_PAGE_DELAY_SECONDS):
+    def __init__(self, *, sleep=None, clock=None, delay=REPLY_PAGE_DELAY_SECONDS,
+                 jitter=REPLY_PAGE_DELAY_JITTER_SECONDS, rand=random.uniform):
         self.sleep = sleep if sleep is not None else asyncio.sleep
         self.clock = clock if clock is not None else time.monotonic
         self.delay = delay
+        self.jitter = jitter
+        self.rand = rand
         self.lock = asyncio.Lock()
+
+    def _next_delay(self):
+        """本次页后等待秒数：最小等待 + 0～jitter 的随机抖动。"""
+        if self.jitter > 0:
+            return self.delay + self.rand(0.0, self.jitter)
+        return self.delay
 
     @asynccontextmanager
     async def page(self):
         """包住一次真实楼中楼发送：返回后等待；失败也等待；进入前不等待。"""
-        timing = PageTiming(delay_ms=int(round(self.delay * 1000)))
+        delay = self._next_delay()
+        timing = PageTiming(delay_ms=int(round(delay * 1000)))
         async with self.lock:
             started = self.clock()
             try:
@@ -51,5 +64,5 @@ class ReplyPagePacer:
             finally:
                 # 请求耗时与主动等待分开记录；等待失败请求也已发生，不能在异常路径漏掉。
                 timing.elapsed_ms = max(0, int((self.clock() - started) * 1000))
-                await self.sleep(self.delay)
-                timing.wait_ms = int(round(self.delay * 1000))
+                await self.sleep(delay)
+                timing.wait_ms = int(round(delay * 1000))

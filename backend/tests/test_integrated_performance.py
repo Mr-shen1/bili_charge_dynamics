@@ -137,7 +137,7 @@ def test_bounded_performance_comparison_reports_truthfully(tmp_path, monkeypatch
 
     async def scenario():
         pacer = SourcePacer(sleep=clock.sleep)
-        page_pacer = ReplyPagePacer(sleep=clock.sleep, clock=clock.monotonic)
+        page_pacer = ReplyPagePacer(sleep=clock.sleep, clock=clock.monotonic, jitter=0)
         factory = RequestsCommentClientFactory(
             cookie_pairs=[], pacer=pacer, gate=OpenSourceGate(), reply_page_pacer=page_pacer,
             warmup=NoWarmup(), clock=clock.monotonic, source_lease=leases)
