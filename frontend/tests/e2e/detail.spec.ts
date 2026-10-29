@@ -196,6 +196,8 @@ test.describe('动态详情与阅读恢复', () => {
         const time = card.querySelector<HTMLElement>('.time')!;
         const strip = document.querySelector<HTMLElement>('.up-strip')!;
         const cardBox = card.getBoundingClientRect();
+        const stripBox = strip.getBoundingClientRect();
+        const stripStyle = style(strip);
         return {
           bodyFont: style(body).fontSize,
           bodyLine: style(body).lineHeight,
@@ -210,10 +212,14 @@ test.describe('动态详情与阅读恢复', () => {
           cardPaddingLeft: style(card).paddingLeft,
           cardWidth: Math.round(cardBox.width),
           cardGap: Math.round(cards[1]!.getBoundingClientRect().top - cardBox.bottom),
-          stripLeft: Math.round(strip.getBoundingClientRect().left),
+          stripLeft: Math.round(stripBox.left),
           cardLeft: Math.round(cardBox.left),
-          stripRight: Math.round(strip.getBoundingClientRect().right),
+          stripRight: Math.round(stripBox.right),
           cardRight: Math.round(cardBox.right),
+          // 票 12：选择条用内边距给自己的选中/焦点轮廓留空间，并配等量负外边距抵回，
+          // 所以边框盒会比卡片宽；与卡片对齐的是内容盒——头像与昵称的起止点。
+          stripContentLeft: Math.round(stripBox.left + Number.parseFloat(stripStyle.paddingLeft)),
+          stripContentRight: Math.round(stripBox.right - Number.parseFloat(stripStyle.paddingRight)),
         };
       });
       const pad = compact ? '16px' : '24px';
@@ -232,9 +238,9 @@ test.describe('动态详情与阅读恢复', () => {
       expect(list.cardGap, `${width}px 卡片间距`).toBe(compact ? 12 : 16);
       // 主栏约 724px：窄屏占满视口减去 12px 留白，桌面保持 724px。
       expect(list.cardWidth, `${width}px 主栏宽度`).toBe(compact ? width - 24 : 724);
-      // 选择条与卡片左右边缘对齐。
-      expect(list.stripLeft, `${width}px 左边缘`).toBe(list.cardLeft);
-      expect(list.stripRight, `${width}px 右边缘`).toBe(list.cardRight);
+      // 选择条内容与卡片左右边缘对齐。
+      expect(list.stripContentLeft, `${width}px 左边缘`).toBe(list.cardLeft);
+      expect(list.stripContentRight, `${width}px 右边缘`).toBe(list.cardRight);
     }
   });
 

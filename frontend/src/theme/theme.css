@@ -54,6 +54,13 @@
   --card-gap: 16px;
   /* 主栏左右留白：桌面由居中的 max-width 承担，窄屏才留边。 */
   --gutter: 0px;
+  /*
+   * 主栏至少留出的左右余量（票 12）：UP 选择条用内边距给选中/焦点轮廓留空间，
+   * 主栏贴住视口时（窄屏留白与居中余量都不够的宽度）那点空间也必须落在视口内，
+   * 否则轮廓会被视口裁掉并多出 6px 页面横滚。max-width 同步加回两侧余量，
+   * 桌面主栏内容宽仍是 --column-max。
+   */
+  --gutter-min: 6px;
 
   --el-color-primary: #12a3ae;
   --el-color-primary-light-3: #59bfc6;
@@ -66,11 +73,12 @@
   /* Element Plus 的输入框等表单控件按该变量取高度；按钮由各自的 min-height 兜底。 */
   --el-component-size: var(--touch);
   /*
-   * 输入类控件字号不覆盖，跟库默认走（`--el-font-size-base`，实测 14px）。
+   * 输入类控件字号不在这里统一覆盖，跟库默认走（`--el-font-size-base`，实测 14px）。
    * 覆盖成 16px 能避开 iOS Safari 聚焦放大（票据 15 F-15-02），但会改动用户签收过的截图；
    * 票据 17 按 R1 裁决以视觉一致为先，该放大作为已知限制记录（evidence/17-release-readiness.md §7）。
-   * manage.spec.ts 的断言锁的就是库默认值 14px：任何覆盖（含把 base 改成 16px）都会失败。
-   * 本轮窄屏 16px 是 08 的票内目标，因此 01 只交 token，不动这一行。
+   * 票据 08 按本轮签收目标只在管理页输入行局部覆盖手机 16px（`manage.css`，不改这个基础变量，
+   * 也不放大按钮），断言在 `tests/e2e/manage.spec.ts` 与 `tests/e2e-visual/layout.spec.ts`；
+   * 真机聚焦/失焦仍待票据 10，原已知限制不因此关闭。
    */
   --el-text-color-primary: var(--text);
 }
@@ -109,10 +117,10 @@ body {
 .app-main {
   flex: 1;
   width: 100%;
-  max-width: var(--column-max);
+  max-width: calc(var(--column-max) + 2 * var(--gutter-min));
   min-width: 0;
   margin: 0 auto;
-  padding: 16px var(--gutter) 40px;
+  padding: 16px max(var(--gutter), var(--gutter-min)) 40px;
   outline: none;
 }
 

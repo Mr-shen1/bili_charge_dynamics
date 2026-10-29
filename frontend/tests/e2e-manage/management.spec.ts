@@ -304,3 +304,42 @@ test('检查、发现与窗口状态按真实记录读取，读取本身不触�
   await page.reload();
   await expect(checksPanel.getByText('尚未读取检查状态。')).toBeVisible();
 });
+
+test('启停只提交已保存配置，保存草稿不隐式启停（实际 API）', async ({ page }) => {
+  await page.goto('/manage');
+  const uidInput = page.getByRole('textbox', { name: 'UP UID' });
+  await uidInput.fill('808');
+  await uidInput.press('Enter');
+  await expect(page.getByRole('link', { name: '管理 UP 808', exact: true })).toBeVisible();
+
+  await page.goto('/manage/ups/808');
+  const card = upCard(page, '808');
+  await expect(card).toContainText('虚构楼阁');
+  await expect(card).toContainText('监控：已停止');
+  await expect(card.getByRole('textbox', { name: '近期 N 条' })).toHaveValue('10');
+
+  // 草稿改成 25 后直接启停：提交的是已保存的 10，草稿不静默生效。
+  await card.getByRole('textbox', { name: '近期 N 条' }).fill('25');
+  await card.getByRole('button', { name: '启用监控', exact: true }).click();
+  await expect(card).toContainText('启停已保存。');
+  await expect(card).toContainText('已保存模式：近期 N 条；N：10。');
+  await page.reload();
+  await expect(card).toContainText('监控：已启用');
+  await expect(card.getByRole('textbox', { name: '近期 N 条' })).toHaveValue('10');
+
+  // 保存草稿只提交配置：已保存的启用状态不变，保存动作不隐式启停。
+  await card.getByRole('textbox', { name: '近期 N 条' }).fill('25');
+  await card.getByRole('button', { name: '保存配置', exact: true }).click();
+  await expect(card).toContainText('保存成功。');
+  await expect(card).toContainText('已保存模式：近期 N 条；N：25。');
+  await expect(card).toContainText('监控：已启用');
+  await page.reload();
+  await expect(card).toContainText('已保存模式：近期 N 条；N：25。');
+  await expect(card).toContainText('监控：已启用');
+
+  // 删除仍是独立危险操作：只删配置、保留身份，日常启停不在同一分组。
+  await card.getByRole('button', { name: '删除监控配置', exact: true }).click();
+  await expect(card).toContainText('监控配置已删除；身份和已保存的动态保留。');
+  await expect(card.getByRole('button', { name: '重新添加监控', exact: true })).toBeVisible();
+  await expect(card.getByRole('button', { name: '启用监控', exact: true })).toHaveCount(0);
+});

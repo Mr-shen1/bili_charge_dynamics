@@ -217,11 +217,4 @@ onUnmounted(() => {
 .manage-target-add {
   margin-top: 12px;
 }
-
-@media (max-width: 640px) {
-  .manage-target-remove,
-  .manage-target-submit {
-    width: 100%;
-  }
-}
 </style>

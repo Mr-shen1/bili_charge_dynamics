@@ -144,8 +144,14 @@ function selected(userId: string): boolean {
   display: flex;
   align-items: flex-start;
   gap: 24px;
-  margin: 0;
-  padding: 0;
+  /*
+   * 选中轮廓（2px + offset 2px）与键盘焦点轮廓（3px + offset 2px）都画在元素盒外，
+   * 而横滑容器按 padding box 裁剪。这里留 6px 内边距、再用等量负外边距抵回：
+   * 头像与昵称的位置、这一排的高度、卡片间距都不变，只把裁剪边界向外挪 6px。
+   * 负外边距多出的 6px 靠主栏的 `--gutter-min` 留在视口内（见 theme.css）。
+   */
+  margin: -6px;
+  padding: 6px;
   list-style: none;
   overflow-x: auto;
   overscroll-behavior-x: contain;
