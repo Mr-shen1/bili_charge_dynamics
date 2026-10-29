@@ -119,6 +119,7 @@ export async function verifyProductionDeployment({
           ['/ups/202', target.getByText('部署隔离正文', { exact: false }).first()],
           ['/dynamics/91001', target.getByText('部署隔离正文', { exact: false }).first()],
           ['/dynamics/91001/comments/91002', target.getByRole('button', { name: '返回评论' })],
+          ['/dynamics/91001/comments/91002/replies/91002/conversation', target.getByText('‹ 会话列表')],
           ['/manage', target.getByRole('link', { name: '管理 UP 202' })],
           ['/manage/ups/202', target.getByRole('heading', { name: '指定动态目标' })],
         ];

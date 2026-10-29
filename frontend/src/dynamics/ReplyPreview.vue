@@ -56,7 +56,7 @@ const bodyText = computed(() => {
   min-width: 0;
   margin-top: 6px;
   padding: 4px 10px;
-  background: var(--brand-soft, #e6f6f7);
+  background: var(--brand-soft);
   border-radius: 8px;
 }
 .reply-preview__body {
@@ -75,8 +75,8 @@ const bodyText = computed(() => {
 }
 .reply-preview__nickname {
   color: var(--author);
-  font-size: 13px;
-  line-height: 18px;
+  font-size: var(--font-comment-author);
+  line-height: var(--line-comment-author);
   font-weight: 600;
   overflow-wrap: anywhere;
 }
@@ -85,24 +85,25 @@ const bodyText = computed(() => {
   border-radius: 999px;
   background: #fdebf3;
   color: var(--author);
-  font-size: 12px;
-  line-height: 20px;
+  font-size: var(--font-badge);
+  line-height: var(--line-badge);
   white-space: nowrap;
 }
 .reply-preview__text {
   margin: 4px 0;
-  font-size: 15px;
-  line-height: 24px;
+  font-size: var(--font-comment);
+  line-height: var(--line-comment);
   overflow-wrap: anywhere;
 }
 .reply-preview__target {
   color: var(--brand-strong);
 }
 .reply-preview__entry {
-  /* 回复入口是次级操作：视觉行高 36px，整条背景块仍约 44px。 */
-  min-height: 36px;
+  /* 回复入口是次级操作：视觉行高 36px，点击区仍由 44px 的按钮盒承担。 */
+  min-height: var(--touch);
   padding: 0;
-  font-size: 13px;
+  font-size: var(--font-link);
+  line-height: var(--line-link);
 }
 .reply-preview__arrow {
   margin-left: 4px;

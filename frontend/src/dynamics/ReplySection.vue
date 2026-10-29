@@ -80,9 +80,9 @@ const hasItems = computed(() => (state.value.data?.items.length ?? 0) > 0);
 // 本地零条不等于来源没有回复：未完成/失败/未确认的归档单独表达，不冒充确认空。
 const emptyNotice = computed<string>(() => {
   const attempt = state.value.data?.repliesLastAttempt;
-  if (attempt === 'pending') return '回复尚未完成归档。';
-  if (attempt === 'failed') return '回复最近归档失败。';
-  if (attempt === 'unconfirmed') return '回复归档尚未确认完成。';
+  if (attempt === 'pending') return '回复尚未完成保存。';
+  if (attempt === 'failed') return '回复最近保存失败。';
+  if (attempt === 'unconfirmed') return '回复保存尚未确认完成。';
   return '暂无回复';
 });
 const canExpand = computed(() => !expanded.value && !invalidCursor.value
@@ -187,7 +187,7 @@ watch([() => preview.state.value, expanded, () => live.state.value.page, expande
       <el-button type="primary" link class="reply-action" @click="restart">重新开始读取</el-button>
     </section>
     <section v-if="locateMissing" class="reply-status" aria-label="定位结果">
-      <p role="status">目标回复不存在或未归档，无法定位到这条回复。</p>
+      <p role="status">目标回复不存在或未保存，无法定位到这条回复。</p>
       <el-button type="primary" link class="reply-action" @click="navigation.showDetail(dynamicId)">
         返回动态
       </el-button>
@@ -269,8 +269,8 @@ watch([() => preview.state.value, expanded, () => live.state.value.page, expande
   padding: 4px 0;
   margin: 0;
   color: var(--muted);
-  font-size: 13px;
-  line-height: 22px;
+  font-size: var(--font-meta);
+  line-height: var(--line-meta);
   overflow-wrap: anywhere;
 }
 .reply-list {
@@ -288,7 +288,7 @@ watch([() => preview.state.value, expanded, () => live.state.value.page, expande
 }
 /* 精确定位的一次性标记：定位完成后保持可见，但不再改变滚动位置。 */
 .reply--target {
-  background: var(--brand-soft, #e6f6f7);
+  background: var(--brand-soft);
   border-radius: var(--radius);
   box-shadow: inset 3px 0 0 var(--brand);
   outline: 1px solid var(--brand);
@@ -306,8 +306,8 @@ watch([() => preview.state.value, expanded, () => live.state.value.page, expande
 }
 .reply__nickname {
   color: var(--author);
-  font-size: 13px;
-  line-height: 18px;
+  font-size: var(--font-comment-author);
+  line-height: var(--line-comment-author);
   font-weight: 600;
   overflow-wrap: anywhere;
 }
@@ -316,8 +316,8 @@ watch([() => preview.state.value, expanded, () => live.state.value.page, expande
   border-radius: 999px;
   background: #fdebf3;
   color: var(--author);
-  font-size: 12px;
-  line-height: 20px;
+  font-size: var(--font-badge);
+  line-height: var(--line-badge);
   white-space: nowrap;
 }
 .reply__target {
@@ -325,8 +325,8 @@ watch([() => preview.state.value, expanded, () => live.state.value.page, expande
 }
 .reply :deep(.text) {
   margin: 4px 0;
-  font-size: 15px;
-  line-height: 24px;
+  font-size: var(--font-comment);
+  line-height: var(--line-comment);
 }
 .reply__metrics {
   display: flex;
@@ -334,14 +334,16 @@ watch([() => preview.state.value, expanded, () => live.state.value.page, expande
   align-items: center;
   gap: 12px;
   color: var(--muted);
-  font-size: 13px;
-  line-height: 22px;
+  font-size: var(--font-meta);
+  line-height: var(--line-meta);
+  font-variant-numeric: tabular-nums;
 }
 .reply__time {
   overflow-wrap: anywhere;
 }
 .reply-action {
   min-height: var(--touch);
-  font-size: 13px;
+  font-size: var(--font-link);
+  line-height: var(--line-link);
 }
 </style>

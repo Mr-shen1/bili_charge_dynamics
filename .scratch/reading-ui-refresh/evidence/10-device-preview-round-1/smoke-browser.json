@@ -1,0 +1,800 @@
+{
+  "kind": "browser-prep-smoke",
+  "checkedAt": "2026-10-29T05:14:51.643Z",
+  "assertions": [
+    {
+      "scope": "A home",
+      "ok": true,
+      "detail": "代理目标探针 /api/test/source-requests → 200（200 = 4180 live_app）"
+    },
+    {
+      "scope": "A home",
+      "ok": true,
+      "detail": "A 的 /images 请求 0 次（期望 0：归档无图片）"
+    },
+    {
+      "scope": "A home",
+      "ok": true,
+      "detail": "A 的意外失败请求 0 个："
+    },
+    {
+      "scope": "A home",
+      "ok": true,
+      "detail": "A 的 img：/default-avatar.svg:80"
+    },
+    {
+      "scope": "A home-mobile",
+      "ok": true,
+      "detail": "代理目标探针 /api/test/source-requests → 200（200 = 4180 live_app）"
+    },
+    {
+      "scope": "A home-mobile",
+      "ok": true,
+      "detail": "A 的 /images 请求 0 次（期望 0：归档无图片）"
+    },
+    {
+      "scope": "A home-mobile",
+      "ok": true,
+      "detail": "A 的意外失败请求 0 个："
+    },
+    {
+      "scope": "A home-mobile",
+      "ok": true,
+      "detail": "A 的 img：/default-avatar.svg:80"
+    },
+    {
+      "scope": "A deep-dynamic",
+      "ok": true,
+      "detail": "代理目标探针 /api/test/source-requests → 200（200 = 4180 live_app）"
+    },
+    {
+      "scope": "A deep-dynamic",
+      "ok": true,
+      "detail": "A 的 /images 请求 0 次（期望 0：归档无图片）"
+    },
+    {
+      "scope": "A deep-dynamic",
+      "ok": true,
+      "detail": "A 的意外失败请求 0 个："
+    },
+    {
+      "scope": "A deep-dynamic",
+      "ok": true,
+      "detail": "A 的 img：/default-avatar.svg:80"
+    },
+    {
+      "scope": "A mobile-conversation",
+      "ok": true,
+      "detail": "代理目标探针 /api/test/source-requests → 200（200 = 4180 live_app）"
+    },
+    {
+      "scope": "A mobile-conversation",
+      "ok": true,
+      "detail": "会话请求 1 次，query=''"
+    },
+    {
+      "scope": "A mobile-conversation",
+      "ok": true,
+      "detail": "整段条目 11 条（期望 11）"
+    },
+    {
+      "scope": "A mobile-conversation",
+      "ok": true,
+      "detail": "“共 11 条”出现 1 次"
+    },
+    {
+      "scope": "A mobile-conversation",
+      "ok": true,
+      "detail": "分页控件 0 个、下一页按钮 0 个（期望 0）"
+    },
+    {
+      "scope": "A mobile-conversation",
+      "ok": true,
+      "detail": "“刚才查看”出现 1 次（期望 1）"
+    },
+    {
+      "scope": "A mobile-conversation",
+      "ok": true,
+      "detail": "入口标记 1 个，data-reading-id=reply:860001:960013"
+    },
+    {
+      "scope": "A mobile-conversation",
+      "ok": true,
+      "detail": "入口垂直中心偏差 0.5px（期望 ≤2）"
+    },
+    {
+      "scope": "A mobile-conversation",
+      "ok": true,
+      "detail": "滚动位置 scrollY=141（期望 >0）"
+    },
+    {
+      "scope": "A mobile-conversation",
+      "ok": true,
+      "detail": "A 的 /images 请求 0 次（期望 0：归档无图片）"
+    },
+    {
+      "scope": "A mobile-conversation",
+      "ok": true,
+      "detail": "A 的意外失败请求 0 个："
+    },
+    {
+      "scope": "A mobile-conversation",
+      "ok": true,
+      "detail": "A 的 img：/default-avatar.svg:80"
+    },
+    {
+      "scope": "A manage-list",
+      "ok": true,
+      "detail": "代理目标探针 /api/test/source-requests → 200（200 = 4180 live_app）"
+    },
+    {
+      "scope": "A manage-list",
+      "ok": true,
+      "detail": "A 的 /images 请求 0 次（期望 0：归档无图片）"
+    },
+    {
+      "scope": "A manage-list",
+      "ok": true,
+      "detail": "A 的意外失败请求 0 个："
+    },
+    {
+      "scope": "A manage-list",
+      "ok": true,
+      "detail": "A 的 img：/default-avatar.svg:80"
+    },
+    {
+      "scope": "A manage-up",
+      "ok": true,
+      "detail": "代理目标探针 /api/test/source-requests → 200（200 = 4180 live_app）"
+    },
+    {
+      "scope": "A manage-up",
+      "ok": true,
+      "detail": "A 的 /images 请求 0 次（期望 0：归档无图片）"
+    },
+    {
+      "scope": "A manage-up",
+      "ok": true,
+      "detail": "A 的意外失败请求 0 个："
+    },
+    {
+      "scope": "A manage-up",
+      "ok": true,
+      "detail": "A 的 img：/default-avatar.svg:80"
+    },
+    {
+      "scope": "B mock-home",
+      "ok": true,
+      "detail": "代理目标探针 /api/test/source-requests → 200（200 = 4180 live_app）"
+    },
+    {
+      "scope": "B mock-home",
+      "ok": true,
+      "detail": "B 的 /images 响应：/images/thumb/archive-quad-3.svg:200 /images/thumb/archive-quad-2.svg:200 /images/thumb/archive-quad-4.svg:200 /images/thumb/archive-quad-1.svg:200"
+    },
+    {
+      "scope": "B mock-home",
+      "ok": true,
+      "detail": "B 的夹具图片解码：/images/thumb/archive-quad-1.svg:320 /images/thumb/archive-quad-2.svg:320 /images/thumb/archive-quad-3.svg:320 /images/thumb/archive-quad-4.svg:320"
+    },
+    {
+      "scope": "B mock-home",
+      "ok": true,
+      "detail": "B 首页夹具图片：4 个 200 响应 / 4 个已解码远程图片"
+    },
+    {
+      "scope": "B mock-home",
+      "ok": true,
+      "detail": "B 的意外失败请求 0 个"
+    },
+    {
+      "scope": "B mock-fixtures",
+      "ok": true,
+      "detail": "代理目标探针 /api/test/source-requests → 200（200 = 4180 live_app）"
+    },
+    {
+      "scope": "B mock-fixtures",
+      "ok": true,
+      "detail": "B 的 /images 响应：（无）"
+    },
+    {
+      "scope": "B mock-fixtures",
+      "ok": true,
+      "detail": "B 的夹具图片解码：（无）"
+    },
+    {
+      "scope": "B mock-fixtures",
+      "ok": true,
+      "detail": "B 首页夹具图片：0 个 200 响应 / 0 个已解码远程图片"
+    },
+    {
+      "scope": "B mock-fixtures",
+      "ok": true,
+      "detail": "B 的意外失败请求 0 个"
+    }
+  ],
+  "targets": [
+    {
+      "env": "A",
+      "name": "home",
+      "url": "http://127.0.0.1:4318/",
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "status": 200,
+      "renderedElements": 72,
+      "textLength": 165,
+      "textHead": "全部动态 全部动态 虚构晨光 虚构晚风 虚构楼阁 虚构楼阁 2026-10-09 10:38:16 虚构正文 800300 45 虚构晚风 2026-10-09 10:38:16 虚构正文 900707 45 虚构晨光 2026-10-09 10:38:16 虚构正文 9007199254740993123 12 动态",
+      "consoleErrors": 0,
+      "consoleErrorTexts": [],
+      "expectedFailedRequests": 3,
+      "expectedFailedUrls": [
+        "https://example.invalid/dawn.png",
+        "https://example.invalid/dusk.png",
+        "https://example.invalid/pavilion.png"
+      ],
+      "unexpectedFailedRequests": [],
+      "pageErrors": [],
+      "apiRequests": 2,
+      "apiStatuses": [
+        200
+      ],
+      "apiPaths": [
+        "/api/archive/ups",
+        "/api/archive/dynamics"
+      ],
+      "imageRequests": [],
+      "images": [
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        }
+      ],
+      "conversation": null,
+      "proxyProbe": {
+        "path": "/api/test/source-requests",
+        "status": 200
+      }
+    },
+    {
+      "env": "A",
+      "name": "home-mobile",
+      "url": "http://127.0.0.1:4318/",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "status": 200,
+      "renderedElements": 72,
+      "textLength": 165,
+      "textHead": "全部动态 全部动态 虚构晨光 虚构晚风 虚构楼阁 虚构楼阁 2026-10-09 10:38:16 虚构正文 800300 45 虚构晚风 2026-10-09 10:38:16 虚构正文 900707 45 虚构晨光 2026-10-09 10:38:16 虚构正文 9007199254740993123 12 动态",
+      "consoleErrors": 0,
+      "consoleErrorTexts": [],
+      "expectedFailedRequests": 3,
+      "expectedFailedUrls": [
+        "https://example.invalid/dawn.png",
+        "https://example.invalid/dusk.png",
+        "https://example.invalid/pavilion.png"
+      ],
+      "unexpectedFailedRequests": [],
+      "pageErrors": [],
+      "apiRequests": 2,
+      "apiStatuses": [
+        200
+      ],
+      "apiPaths": [
+        "/api/archive/ups",
+        "/api/archive/dynamics"
+      ],
+      "imageRequests": [],
+      "images": [
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        }
+      ],
+      "conversation": null,
+      "proxyProbe": {
+        "path": "/api/test/source-requests",
+        "status": 200
+      }
+    },
+    {
+      "env": "A",
+      "name": "deep-dynamic",
+      "url": "http://127.0.0.1:4318/dynamics/800300",
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "status": 200,
+      "renderedElements": 345,
+      "textLength": 1422,
+      "textHead": "动态详情 虚构楼阁 2026-10-09 10:38:16 虚构正文 800300 评论 45 ☰ 按时间 虚构楼主 虚构一级评论 1 第二行：换行与 emoji 🙂 2026-10-09 10:38:16 45 回复 25 虚构回复者 虚构回复 1 第二行：换行与 emoji 🙂 2026-10-09 10:40",
+      "consoleErrors": 0,
+      "consoleErrorTexts": [],
+      "expectedFailedRequests": 1,
+      "expectedFailedUrls": [
+        "https://example.invalid/pavilion.png"
+      ],
+      "unexpectedFailedRequests": [],
+      "pageErrors": [],
+      "apiRequests": 3,
+      "apiStatuses": [
+        200
+      ],
+      "apiPaths": [
+        "/api/archive/dynamics/800300",
+        "/api/archive/dynamics/800300/comments",
+        "/api/archive/dynamics/800300/comments/860001/replies"
+      ],
+      "imageRequests": [],
+      "images": [
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        }
+      ],
+      "conversation": null,
+      "proxyProbe": {
+        "path": "/api/test/source-requests",
+        "status": 200
+      }
+    },
+    {
+      "env": "A",
+      "name": "mobile-conversation",
+      "url": "http://127.0.0.1:4318/dynamics/800300/comments/860001/replies/960013/conversation",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "status": 200,
+      "renderedElements": 140,
+      "textLength": 696,
+      "textHead": "‹ 会话列表 共 11 条 虚构回复者 虚构回复 2 第二行：换行与 emoji 🙂 2026-10-09 10:40:01 1 虚构回复者 回复 虚构回复者:虚构回复 3 第二行：换行与 emoji 🙂 2026-10-09 10:40:02 2 虚构回复者 回复 虚构回复者:虚构回复 4 第二行：换行与 emo",
+      "consoleErrors": 0,
+      "consoleErrorTexts": [],
+      "expectedFailedRequests": 0,
+      "expectedFailedUrls": [],
+      "unexpectedFailedRequests": [],
+      "pageErrors": [],
+      "apiRequests": 1,
+      "apiStatuses": [
+        200
+      ],
+      "apiPaths": [
+        "/api/archive/dynamics/800300/comments/860001/replies/960013/conversation"
+      ],
+      "imageRequests": [],
+      "images": [
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        }
+      ],
+      "conversation": {
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "conversationRequests": [
+          {
+            "path": "/api/archive/dynamics/800300/comments/860001/replies/960013/conversation",
+            "search": ""
+          }
+        ],
+        "itemCount": 11,
+        "countText": 1,
+        "pagerControls": 0,
+        "nextPageButtons": 0,
+        "markerCount": 1,
+        "entryCount": 1,
+        "entryId": "reply:860001:960013",
+        "entryText": "虚构回复者 刚才查看 回复 虚构回复者:虚构回复 13 第二行：换行与 emoji 🙂 2026-10-09 10:40:12 12",
+        "entryFaces": [
+          "/default-avatar.svg"
+        ],
+        "centerOffset": 0.5,
+        "scrollY": 141
+      },
+      "proxyProbe": {
+        "path": "/api/test/source-requests",
+        "status": 200
+      }
+    },
+    {
+      "env": "A",
+      "name": "manage-list",
+      "url": "http://127.0.0.1:4318/manage",
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "status": 200,
+      "renderedElements": 52,
+      "textLength": 225,
+      "textHead": "UP 监控管理 返回阅读 监控管理 飞书通知 全部通知 仅心跳与告警 全部关闭 飞书通知：全部关闭，待发 0 条。 一条飞书消息都不发，包括心跳与告警；飞书通知进程照常运行。 切回「全部通知」只通知切换之后的新变化：关闭或仅系统期间发生的变化不会补发。 UP UID 添加监控 仅输入 UID，由服务端取得昵称与头像；不",
+      "consoleErrors": 0,
+      "consoleErrorTexts": [],
+      "expectedFailedRequests": 3,
+      "expectedFailedUrls": [
+        "https://example.invalid/dawn.png",
+        "https://example.invalid/dusk.png",
+        "https://example.invalid/pavilion.png"
+      ],
+      "unexpectedFailedRequests": [],
+      "pageErrors": [],
+      "apiRequests": 2,
+      "apiStatuses": [
+        200
+      ],
+      "apiPaths": [
+        "/api/manage/notifications",
+        "/api/manage/ups"
+      ],
+      "imageRequests": [],
+      "images": [
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        }
+      ],
+      "conversation": null,
+      "proxyProbe": {
+        "path": "/api/test/source-requests",
+        "status": 200
+      }
+    },
+    {
+      "env": "A",
+      "name": "manage-up",
+      "url": "http://127.0.0.1:4318/manage/ups/808",
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "status": 200,
+      "renderedElements": 84,
+      "textLength": 545,
+      "textHead": "UP 监控管理 返回阅读 UP 列表 监控管理 虚构楼阁 UID：808 监控已启用 监控：已启用 停止监控 监控配置 已保存模式：指定动态 ID。 启停立即生效，使用已保存配置，不会保存下方草稿。 监控模式 近期 N 条 指定动态 ID 保存配置 保存指定模式后仅监控下方关联目标；不附加近期动态。 指定动态目标 仅在",
+      "consoleErrors": 0,
+      "consoleErrorTexts": [],
+      "expectedFailedRequests": 1,
+      "expectedFailedUrls": [
+        "https://example.invalid/pavilion.png"
+      ],
+      "unexpectedFailedRequests": [],
+      "pageErrors": [],
+      "apiRequests": 2,
+      "apiStatuses": [
+        200
+      ],
+      "apiPaths": [
+        "/api/manage/ups",
+        "/api/manage/ups/808/targets"
+      ],
+      "imageRequests": [],
+      "images": [
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        }
+      ],
+      "conversation": null,
+      "proxyProbe": {
+        "path": "/api/test/source-requests",
+        "status": 200
+      }
+    },
+    {
+      "env": "B",
+      "name": "mock-home",
+      "url": "http://127.0.0.1:4337/",
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "status": 200,
+      "renderedElements": 335,
+      "textLength": 1470,
+      "textHead": "全部动态 全部动态 纸飞机 另一位 UP 纸飞机 2026-03-01 10:03:04 今天把小小的想法写在这里。🙂 换一行，继续记录那些值得记住的瞬间。 https://example.test/very-long-path-segment-very-long-path-segment-very-long-pat",
+      "consoleErrors": 0,
+      "consoleErrorTexts": [],
+      "expectedFailedRequests": 0,
+      "expectedFailedUrls": [],
+      "unexpectedFailedRequests": [],
+      "pageErrors": [],
+      "apiRequests": 0,
+      "apiStatuses": [],
+      "apiPaths": [],
+      "imageRequests": [
+        "/images/thumb/archive-quad-3.svg:200",
+        "/images/thumb/archive-quad-2.svg:200",
+        "/images/thumb/archive-quad-4.svg:200",
+        "/images/thumb/archive-quad-1.svg:200"
+      ],
+      "images": [
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/images/thumb/archive-quad-1.svg",
+          "width": 320
+        },
+        {
+          "src": "/images/thumb/archive-quad-2.svg",
+          "width": 320
+        },
+        {
+          "src": "/images/thumb/archive-quad-3.svg",
+          "width": 320
+        },
+        {
+          "src": "/images/thumb/archive-quad-4.svg",
+          "width": 320
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        },
+        {
+          "src": "/default-avatar.svg",
+          "width": 80
+        }
+      ],
+      "conversation": null,
+      "proxyProbe": {
+        "path": "/api/test/source-requests",
+        "status": 200
+      }
+    },
+    {
+      "env": "B",
+      "name": "mock-fixtures",
+      "url": "http://127.0.0.1:4337/__preview-fixtures",
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "status": 200,
+      "renderedElements": 179,
+      "textLength": 243,
+      "textHead": "返回阅读 图片自检 自检第二页 图片预览与浏览器历史验证 受控夹具：缩略图与预览使用不同地址；混合组包含坏图、未上传、无效地址与可重试失败。本页不连接真实 API、OSS 或上游采集。 向下滚动后打开图片，验证关闭预览时的位置恢复。 单图（动态图片） 四图（动态图片） 十二图（动态图片） +3 长图（动态图片） 成功与",
+      "consoleErrors": 0,
+      "consoleErrorTexts": [],
+      "expectedFailedRequests": 0,
+      "expectedFailedUrls": [],
+      "unexpectedFailedRequests": [],
+      "pageErrors": [],
+      "apiRequests": 0,
+      "apiStatuses": [],
+      "apiPaths": [],
+      "imageRequests": [],
+      "images": [],
+      "conversation": null,
+      "proxyProbe": {
+        "path": "/api/test/source-requests",
+        "status": 200
+      }
+    }
+  ]
+}

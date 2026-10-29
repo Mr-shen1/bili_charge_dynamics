@@ -1,0 +1,373 @@
+{
+  "purpose": "11 收尾：只把本轮未推送历史中的 style(frontend) 改为允许的 refactor(frontend)；其余提交仅因父 ID 变化换提交对象。",
+  "base": "0c77c720112cdf151f6e812bc2512e7985ca5660",
+  "expected_integration_tip": "14b44c24a1e68b5018c4cb9456e9e48e8cc7bf9f",
+  "old_tip": "4014a390b969b6e653b3061678461b50d879e029",
+  "new_tip": "a292a3d84c141ce0f7f060358a2fcc35046a411a",
+  "same_tree": true,
+  "rewritten_messages": [
+    {
+      "old": "e7924b39478d5b36ed8264753661a3b3fc73ffd6",
+      "headline": "style(frontend): 会话页与查看对话入口沿用统一阅读标尺",
+      "new_headline": "refactor(frontend): 会话页与查看对话入口沿用统一阅读标尺"
+    }
+  ],
+  "entries": [
+    {
+      "old": "8edbb2d0097cfb049b7a80cfe8bbde85c05438b1",
+      "new": "8edbb2d0097cfb049b7a80cfe8bbde85c05438b1",
+      "subject": "docs(docs): 记录已确认的阅读改版设计与实施任务图",
+      "sameTree": true
+    },
+    {
+      "old": "eca658b4071c2196e1eb11910e926452c7e20cdd",
+      "new": "eca658b4071c2196e1eb11910e926452c7e20cdd",
+      "subject": "chore(docs): 领取阅读改版首批并行任务",
+      "sameTree": true
+    },
+    {
+      "old": "0b872ab4ac3bb1d822d5542c4b0c79ebc13453d9",
+      "new": "0b872ab4ac3bb1d822d5542c4b0c79ebc13453d9",
+      "subject": "feat(dynamics): 一级评论默认按时间并改用单按钮排序",
+      "sameTree": true
+    },
+    {
+      "old": "91db5189aa9b93ea492e9e8cb8596243490c5fbf",
+      "new": "91db5189aa9b93ea492e9e8cb8596243490c5fbf",
+      "subject": "docs(docs): 记录一级评论默认排序与区域身份的契约和证据",
+      "sameTree": true
+    },
+    {
+      "old": "b018a88f4e6a21921c8172b88a50d9bee7f4977a",
+      "new": "b018a88f4e6a21921c8172b88a50d9bee7f4977a",
+      "subject": "feat(frontend): 阅读与管理文案统一称动态，保存动作按语义改写",
+      "sameTree": true
+    },
+    {
+      "old": "8141cb47544687a48abe2ddb1d1ab20a8201a8c2",
+      "new": "8141cb47544687a48abe2ddb1d1ab20a8201a8c2",
+      "subject": "feat(frontend): 阅读页移除公共顶栏与主导航，管理保留独立入口",
+      "sameTree": true
+    },
+    {
+      "old": "61db5bf783d66ed9d75884b1b6b744e2efd2e920",
+      "new": "61db5bf783d66ed9d75884b1b6b744e2efd2e920",
+      "subject": "feat(frontend): 阅读排版按统一标尺显示，UP 选择条改为紧凑上图下字",
+      "sameTree": true
+    },
+    {
+      "old": "bc957bc5e5ba45b067af53bd97b4289ff7089865",
+      "new": "bc957bc5e5ba45b067af53bd97b4289ff7089865",
+      "subject": "test(frontend): 视觉审计按单按钮排序定位评论区控件",
+      "sameTree": true
+    },
+    {
+      "old": "5d26773c04ab17b54f89cddf2ca4001c3cda7e37",
+      "new": "5d26773c04ab17b54f89cddf2ca4001c3cda7e37",
+      "subject": "docs(frontend): 记录 01 阅读壳与排版标尺的实现、验证与限制",
+      "sameTree": true
+    },
+    {
+      "old": "870c7c18ee59036d2d78d7e0c6739e344b8d7f90",
+      "new": "870c7c18ee59036d2d78d7e0c6739e344b8d7f90",
+      "subject": "chore(docs): 领取桌面卡片评论与紧凑管理布局",
+      "sameTree": true
+    },
+    {
+      "old": "8044350ab3f84ebd5518c5f05f99193b08fdc8a4",
+      "new": "8044350ab3f84ebd5518c5f05f99193b08fdc8a4",
+      "subject": "feat(frontend): 管理页启停靠右、紧凑按钮与手机输入字号",
+      "sameTree": true
+    },
+    {
+      "old": "ee70c8d448c8bbb57080b8f048ebb1d1a684f5ff",
+      "new": "ee70c8d448c8bbb57080b8f048ebb1d1a684f5ff",
+      "subject": "feat(backend): 回复对话投影与只读 conversation 子资源",
+      "sameTree": true
+    },
+    {
+      "old": "bd1495e0cbb8dc924ad9eceaad28d6b999fdb966",
+      "new": "bd1495e0cbb8dc924ad9eceaad28d6b999fdb966",
+      "subject": "feat(frontend): 手机「查看对话」的只读会话页与入口",
+      "sameTree": true
+    },
+    {
+      "old": "a420b0b4746e89b8e37b8d4e4b1fd1f24e63966f",
+      "new": "a420b0b4746e89b8e37b8d4e4b1fd1f24e63966f",
+      "subject": "docs(docs): 记录 06 查看对话的交付证据与契约指针",
+      "sameTree": true
+    },
+    {
+      "old": "273fb302f0f047773cde6eb94d3cd76c059a249d",
+      "new": "273fb302f0f047773cde6eb94d3cd76c059a249d",
+      "subject": "merge: 合入 spec/reading-ui-refresh 最新 tip（02 一级评论默认排序）",
+      "sameTree": true
+    },
+    {
+      "old": "ec8dec4078e57619896b6ce461dc179f719ed039",
+      "new": "ec8dec4078e57619896b6ce461dc179f719ed039",
+      "subject": "docs(docs): 补 06 合并集成 tip 的复验记录",
+      "sameTree": true
+    },
+    {
+      "old": "5381cb166638dd5a6d6c77f9ed6cb574c1011d9d",
+      "new": "5381cb166638dd5a6d6c77f9ed6cb574c1011d9d",
+      "subject": "Merge branch 'spec/reading-ui-refresh' into wt/reading-ui-refresh-06",
+      "sameTree": true
+    },
+    {
+      "old": "e7924b39478d5b36ed8264753661a3b3fc73ffd6",
+      "new": "096a508d734968f7ef10b29b9ebc7c5969928307",
+      "subject": "refactor(frontend): 会话页与查看对话入口沿用统一阅读标尺",
+      "sameTree": true
+    },
+    {
+      "old": "25c72668024e62b1ff8037e6d60a6add46aee5db",
+      "new": "6007b744170e2a662c894328d461dbaa0f048ca2",
+      "subject": "docs(docs): 记录合入 01 后的复验与会话页标尺对齐",
+      "sameTree": true
+    },
+    {
+      "old": "352134b55f2f434f0d1f4676a0f8cad431884978",
+      "new": "52f4bf938032f06c44a8604df4172e7d560dc743",
+      "subject": "Merge branch 'spec/reading-ui-refresh' into wt/reading-ui-refresh-06",
+      "sameTree": true
+    },
+    {
+      "old": "dd81f4dd9427fe854d5added72180dc3464add48",
+      "new": "c397acefda508ac1763ff6962f54050c69775c8b",
+      "subject": "chore(docs): 领取手机回复排序闭环",
+      "sameTree": true
+    },
+    {
+      "old": "e061ea7f74570594cde9bc96ee18052cb724b736",
+      "new": "600fb3ff8852446ea8edc36b490defedca77bb62",
+      "subject": "Merge branch 'spec/reading-ui-refresh' into wt/reading-ui-refresh-08",
+      "sameTree": true
+    },
+    {
+      "old": "b4a4714b98146118fbdc37d486673a5b465f0a3c",
+      "new": "0bc32bab7ff0e05fc847279b137526cdeb0972cc",
+      "subject": "docs(frontend): 记录 08 管理紧凑布局的实现、四宽度实测与限制",
+      "sameTree": true
+    },
+    {
+      "old": "a473152a942dcf277ba7cd4b8305f9675b3a11fa",
+      "new": "56cd922d747ddb9b038a9cd748a3d9a49f8ddf59",
+      "subject": "feat(backend,frontend): 回复详情支持按时间或热度排序",
+      "sameTree": true
+    },
+    {
+      "old": "83e040f054153dc90eeef1d2ef16423ddd9a3660",
+      "new": "41129983623ab929c41ba4e67a615a461c42ae0d",
+      "subject": "docs(docs): 记录回复排序契约、测试证据与票据结论",
+      "sameTree": true
+    },
+    {
+      "old": "c2e4237b7dbf2d1c8ce5d2f4f75d3ba301b7cc4a",
+      "new": "438789f100a89b2974ff7bc7d9360872badaea0b",
+      "subject": "chore(docs): 领取会话导航与阅读恢复",
+      "sameTree": true
+    },
+    {
+      "old": "5f87a828bbf0be5d0937eca36d21086368f5f70a",
+      "new": "aab683b562e00fac7d2ebee34f6745b8823be8a6",
+      "subject": "feat(frontend): 会话返回恢复回复访问的排序页码与位置",
+      "sameTree": true
+    },
+    {
+      "old": "ce71eca1135fa46d9ac5f004184245f0d3017808",
+      "new": "ce71eca1135fa46d9ac5f004184245f0d3017808",
+      "subject": "feat(dynamics): 桌面卡片内展开一级评论并各自保存阅读状态",
+      "sameTree": true
+    },
+    {
+      "old": "c0eec71d4cb8ec6edf18ebd5177cedb034f3f138",
+      "new": "ed8d5a6525883339e9019aac76f8c2a17deee4eb",
+      "subject": "Merge branch 'spec/reading-ui-refresh' into wt/reading-ui-refresh-03",
+      "sameTree": true
+    },
+    {
+      "old": "df5c2dc6490141c5eb3ffd39684be0e7eb7388a1",
+      "new": "0c1ec66fc1547c1d7e4c10f57ee552fce14a2a7e",
+      "subject": "Merge branch 'spec/reading-ui-refresh' into wt/reading-ui-refresh-03",
+      "sameTree": true
+    },
+    {
+      "old": "56d9a81ac2847ae0b6f3083921ced8cd9a574d5f",
+      "new": "1c7b91aa626b666b08a609cc4250c3b564922251",
+      "subject": "Merge branch 'spec/reading-ui-refresh' into wt/reading-ui-refresh-03",
+      "sameTree": true
+    },
+    {
+      "old": "a81909b04d8d52356a757ba671dd11f69cd0afc4",
+      "new": "10217adda0932cedb192206ef5e893d173ae8208",
+      "subject": "test(frontend): 列表内评论恢复用例等详情区读完再记请求基线",
+      "sameTree": true
+    },
+    {
+      "old": "69a2e9609d5aec4139c0238e5e1ea43333e9c8ff",
+      "new": "11cdcaaf282c8c21946b221538589dffa5a6e845",
+      "subject": "test(frontend): UP 条长昵称断言改为等待测量帧",
+      "sameTree": true
+    },
+    {
+      "old": "94ae4b4448a46e533d248d87f35db20b56eaec06",
+      "new": "5058c134d52ea47a588d82caf974526d5f92c79d",
+      "subject": "docs(docs): 记录桌面卡片评论的实现、验证与限制",
+      "sameTree": true
+    },
+    {
+      "old": "e137a8f1c1e232c27dc8df376afc4b03fb4ce058",
+      "new": "ba00cd076ae7179c571f748bd69083d128b30c58",
+      "subject": "Merge branch 'spec/reading-ui-refresh' into wt/reading-ui-refresh-07",
+      "sameTree": true
+    },
+    {
+      "old": "9522c8840126a71078c9a86f7e449c1c65576204",
+      "new": "da40532208b6dbb41b705e126b8239d8e26453b8",
+      "subject": "chore(docs): 领取详情新标签与手机返回导航",
+      "sameTree": true
+    },
+    {
+      "old": "fef2464a1ecf911f8b1581725af222c38cf0a2cc",
+      "new": "eebc8f3f9513561157465f3436268026cb9d5187",
+      "subject": "Merge branch 'spec/reading-ui-refresh' into wt/reading-ui-refresh-07",
+      "sameTree": true
+    },
+    {
+      "old": "fb93ba07946382063ea0222f2c33e79f1651e72b",
+      "new": "44e9e5a7c938d17de1537593f9818facc88328eb",
+      "subject": "fix(frontend): 修复静态交付回退脚本的陈旧断言",
+      "sameTree": true
+    },
+    {
+      "old": "bce12dc31e4fa23b23eff75a8160bd1605846e5e",
+      "new": "f5f0632970d7747477cd600e7f0e22ea8c9c4d68",
+      "subject": "docs(docs): 记录会话往返恢复的契约、证据与票据结论",
+      "sameTree": true
+    },
+    {
+      "old": "a60b3bb3bc6a212a71ed90f8f506343fd4c1ac6a",
+      "new": "792d108512760c4c2a67d9a573116e9c4c6666a4",
+      "subject": "fix(frontend): 恢复的定位访问重试仍按目标身份定位",
+      "sameTree": true
+    },
+    {
+      "old": "01716b28eba2df42e75d7aba366372983ba5327d",
+      "new": "786c0c07c743dbb278e13b7350f51feaf6604c37",
+      "subject": "docs(docs): 补齐 07 证据的定位重试语义与复验数字",
+      "sameTree": true
+    },
+    {
+      "old": "43164d2c2046b863aaf8e4343aecca5f6d7e51c2",
+      "new": "1e5ccd8c8511b3b1136b31ecedecd86687b2de90",
+      "subject": "feat(frontend): 桌面正文新标签与按宽窄屏收敛详情页头",
+      "sameTree": true
+    },
+    {
+      "old": "4ff63404ce3870abaa9b905c29e1214b6176168d",
+      "new": "e8ad91af4c8f5c58621149989ed8a461983ecfc0",
+      "subject": "docs(docs): 记录详情新标签的契约、证据与票据结论",
+      "sameTree": true
+    },
+    {
+      "old": "1d071c4a67a71cd138dc8274579650006b6bfebc",
+      "new": "5d4873f8d7677a583b43628804e282259266d523",
+      "subject": "chore(docs): 领取阅读改版组合验证与候选交付",
+      "sameTree": true
+    },
+    {
+      "old": "8294ba7d3eb7370826a6dc15fe12bafc4d8e1125",
+      "new": "c89a80f306b7d70c9939419caa23a6e3741100d6",
+      "subject": "fix(scripts): 视觉差异报告不再因未定义的 magick 崩溃",
+      "sameTree": true
+    },
+    {
+      "old": "4f7130b8d4fb224a9ee11286de3e17ab6a71b6c6",
+      "new": "4cb04f2c8050503a245ccd1b260ab97abce401d3",
+      "subject": "fix(scripts): 交付回退演练用构建标记确认旧产物",
+      "sameTree": true
+    },
+    {
+      "old": "d526488b8bc32da992199eb2a1bf9ddee0cf3872",
+      "new": "655e5eaa5de170c61c41ed30ae905f517c2c60d5",
+      "subject": "test(backend): 阅读改版组合回归覆盖排序关系与只读边界",
+      "sameTree": true
+    },
+    {
+      "old": "b72d55501127642a1987a5d491d1735cdb575171",
+      "new": "ac72a161fc178bc701c847e76e031733ddcf686d",
+      "subject": "test(frontend): 阅读与管理组合回归在同一候选串联各票路径",
+      "sameTree": true
+    },
+    {
+      "old": "703f9318b1f90eac4567bfd22adabcaaeaaf56a4",
+      "new": "2f485c3854b52019e401dfc98a9839ece6a048eb",
+      "subject": "chore(evidence): 记录 09 候选四宽度受控截图与差异报告",
+      "sameTree": true
+    },
+    {
+      "old": "4d431e15eb279235dd571212b7ae7f29e05ce2f6",
+      "new": "3ff7c6c5303429619454feae3e7c5b6eea80d0f6",
+      "subject": "docs(docs): 记录 09 组合回归、候选交付与票 10 待办",
+      "sameTree": true
+    },
+    {
+      "old": "14b44c24a1e68b5018c4cb9456e9e48e8cc7bf9f",
+      "new": "37a7dd770e2c0d9e07594dc6a54b5aea69f3d09a",
+      "subject": "chore(docs): 记录双轴审查并领取统一整改",
+      "sameTree": true
+    },
+    {
+      "old": "88849e67f5e7f8044df75185f0808102c22d9bbc",
+      "new": "1470e258de658a6eca648dc98001ee5b0c7e193b",
+      "subject": "fix(backend): 环状回复的对话起点不再随请求排序漂移",
+      "sameTree": true
+    },
+    {
+      "old": "b8ef00a557525daab88e4570a4db89905feb5b9b",
+      "new": "dac828ef6ec17b60d9aa68becefbf3e30990c179",
+      "subject": "refactor(backend): 对话段关系函数按返回内容命名",
+      "sameTree": true
+    },
+    {
+      "old": "c045f4e72310700bf7bbafeeaadec0173eaae0ec",
+      "new": "0eba8df1dd4265d96f7910ca4e9173df9367437d",
+      "subject": "fix(frontend): 会话返回控件的无障碍名包含可见标签",
+      "sameTree": true
+    },
+    {
+      "old": "fd39cb06b0aaf34d57e0a976e1ebf573a56a6991",
+      "new": "da6fcb96e1996f7443f8ced7c7f9bd781ae87144",
+      "subject": "fix(frontend): 列表页签与图片状态文案改用当前用语和保存语义",
+      "sameTree": true
+    },
+    {
+      "old": "3b9b99dcb16e0ffc55e440b7d00be58967cccf21",
+      "new": "6d01f043c669255440de13f7e0b3253eb56e3b0f",
+      "subject": "refactor(frontend): 排序控件、回复页样式与读取状态共用一个定义",
+      "sameTree": true
+    },
+    {
+      "old": "9bfdbafe4c7a5ec623686367b9f17f971678f591",
+      "new": "2e1d0017a8208a0adfe26d65cc43b830f5c4f0d3",
+      "subject": "test(frontend): 锁定入口静态标题与列表页兜底标题一致",
+      "sameTree": true
+    },
+    {
+      "old": "446301dfcc6d29d8f7dc8b8e9a337165d44527c0",
+      "new": "b43ce3d576ff503f7693433eabf66dcdee56b252",
+      "subject": "chore(evidence): 保存 11 最终候选的四宽度受控截图",
+      "sameTree": true
+    },
+    {
+      "old": "4014a390b969b6e653b3061678461b50d879e029",
+      "new": "a292a3d84c141ce0f7f060358a2fcc35046a411a",
+      "subject": "docs(docs): 记录 11 审查整改处置与最终候选复验",
+      "sameTree": true
+    }
+  ],
+  "special_headers": false,
+  "merge_commits_preserved": 9
+}

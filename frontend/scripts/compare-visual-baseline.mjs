@@ -6,6 +6,7 @@ import { copyFile, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promi
 import { join, basename } from 'node:path';
 import {
   arg, conditionKeys, diffPixels, fuzz, goldenDir, hasFlag, imageSize, maxDiffRatio, sha256File,
+  writeDiffImage,
 } from './lib/visual-baseline.mjs';
 
 const defaultCurrent = join(
@@ -148,7 +149,7 @@ async function compare() {
     if (ratio > maxDiffRatio) {
       await mkdir(diffDir, { recursive: true });
       const diffPath = join(diffDir, basename(file.name));
-      magick(['compare', '-highlight-color', 'red', '-lowlight-color', 'white', golden, current, diffPath]);
+      writeDiffImage(golden, current, diffPath);
       failures.push({ name: file.name, detail: `差异 ${Math.round(pixels)} px（${(ratio * 100).toFixed(3)}%）` });
     }
   }

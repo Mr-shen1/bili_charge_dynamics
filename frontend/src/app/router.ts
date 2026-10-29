@@ -3,7 +3,7 @@ import { previewFixturesEnabled } from './assembly';
 
 /**
  * 正式页面路由：六条基线路由（全部/单 UP 列表、动态详情、独立楼中楼、管理列表、单 UP 管理）
- * 加一级评论与楼中楼回复两个精确入口；图片自检页只在 mock/fault 装配注册。
+ * 加一级评论与楼中楼回复两个精确入口、一段对话的只读会话页；图片自检页只在 mock/fault 装配注册。
  * 图片自检页只在 mock/fault 装配注册，生产构建不会得到该入口。
  */
 export function createAppRouter(): Router {
@@ -24,8 +24,14 @@ export function createAppRouter(): Router {
         component: () => import('../pages/ReplyLocatePage.vue'), props: true,
       },
       {
+        // 会话列表：一段对话的独立只读页，身份含动态、根评论与入口回复，支持直达与刷新。
+        path: '/dynamics/:dynamicId/comments/:rootId/replies/:replyId/conversation', name: 'conversation',
+        component: () => import('../pages/ConversationPage.vue'), props: true,
+      },
+      {
+        // 楼中楼页：外层按访问标识重建，同一路径的多次访问各存各的回复访问快照。
         path: '/dynamics/:dynamicId/comments/:rootId', name: 'thread',
-        component: () => import('../pages/CommentThreadPage.vue'), props: true,
+        component: () => import('../pages/ThreadPage.vue'), props: true,
       },
       { path: '/manage', name: 'manage', component: () => import('../pages/ManagePage.vue') },
       { path: '/manage/ups/:upId', name: 'manage-up', component: () => import('../pages/ManageUpPage.vue'), props: true },

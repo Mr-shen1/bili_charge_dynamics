@@ -101,7 +101,7 @@ it('窄屏精确根入口进入楼中楼后返回：恢复已读批次与位置�
   expect(await screen.findByText('相关回复共25条')).toBeTruthy();
   expect(replyReads.at(-1)!.page).toBe(1);
 
-  await fireEvent.click(screen.getByRole('button', { name: '返回评论' }));
+  await fireEvent.click(screen.getByRole('button', { name: '评论详情，返回动态详情' }));
   await waitFor(() => expect(router.currentRoute.value.name).toBe('comment-locate'));
 
   const restored = await screen.findByRole('region', { name: '评论区' });

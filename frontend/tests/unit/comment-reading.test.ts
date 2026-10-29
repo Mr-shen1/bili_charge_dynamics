@@ -5,12 +5,14 @@ import { comment, commentArchive, comments, commentDynamic, targetCheck } from '
 import { createReader, deferred } from '../support/reader';
 import { showApp } from '../support/app';
 import { installFakeLayout, type FakeLayout } from '../support/layout';
+import { installCompactViewport, removeCompactViewport } from '../support/viewport';
 
 let layout: FakeLayout;
 beforeEach(() => { layout = installFakeLayout(); });
 afterEach(() => {
   cleanup();
   layout.restore();
+  removeCompactViewport();
 });
 
 function requests() {
@@ -18,7 +20,7 @@ function requests() {
   return seen;
 }
 
-it('无会话新访问的详情默认按最热读取首批 20 条，置顶标识来自服务端顺序', async () => {
+it('无会话新访问的详情默认按时间读取首批 20 条，置顶标识来自服务端顺序', async () => {
   const seen = requests();
   const first = comments(20).map((item, index) => index === 0 ? { ...item, isPinned: true } : item);
   const reader = createReader({
@@ -33,10 +35,14 @@ it('无会话新访问的详情默认按最热读取首批 20 条，置顶标识
 
   const region = await screen.findByRole('region', { name: '评论区' });
   await waitFor(() => expect(within(region).getAllByRole('listitem')).toHaveLength(20));
-  expect(seen).toEqual([{ sort: 'hot', cursor: undefined }]);
-  const hot = within(region).getByRole('radio', { name: '最热' }) as HTMLInputElement;
-  const latest = within(region).getByRole('radio', { name: '最新' }) as HTMLInputElement;
-  expect([hot.checked, latest.checked]).toEqual([true, false]);
+  // 新访问显式请求 latest，不依赖服务端省略 sort 时的 hot 兼容默认。
+  expect(seen).toEqual([{ sort: 'latest', cursor: undefined }]);
+  // 区域身份来自挂载上下文，不是 DOM id：详情入口不需要额外传参也能直接使用。
+  expect(region.getAttribute('data-comment-region')).toBe('detail:1001');
+  // 单个按钮显示“当前”排序，点击切到另一种。
+  const sort = within(region).getByRole('button', { name: '当前按时间，点击切换为按热度' });
+  expect(sort.textContent).toContain('按时间');
+  expect(within(region).queryByRole('radiogroup')).toBeNull();
   const items = within(region).getAllByRole('listitem');
   expect(items[0]!.textContent).toContain('置顶');
   expect(items[1]!.textContent).not.toContain('置顶');
@@ -102,7 +108,7 @@ it('追加失败保留已读内容，重试沿用同一 cursor，双击不重复
 
   second.resolve({ status: 'error' });
   expect(await within(region).findByRole('alert')).toHaveProperty(
-    'textContent', '最热评论追加读取失败，请重试。');
+    'textContent', '最新评论追加读取失败，请重试。');
   // 失败不推进 cursor，也不丢掉已读的 20 条。
   expect(within(region).getAllByRole('listitem')).toHaveLength(20);
   await fireEvent.click(within(region).getByRole('button', { name: '重试' }));
@@ -113,17 +119,17 @@ it('追加失败保留已读内容，重试沿用同一 cursor，双击不重复
 
 it('切换排序重置为目标排序首批，不沿用旧排序的分页进度', async () => {
   const seen: { sort: CommentSort; cursor: string | null | undefined }[] = [];
-  const hotItems = comments(40);
-  const latestItems = Array.from({ length: 12 }, (_value, index) => comment(100 + index));
+  const latestItems = comments(40);
+  const hotItems = Array.from({ length: 12 }, (_value, index) => comment(100 + index));
   const reader = createReader({
     readDetail: async () => ({ status: 'success', data: commentDynamic() }),
     readComments: async input => {
       seen.push({ sort: input.sort, cursor: input.cursor });
-      if (input.sort === 'hot') {
+      if (input.sort === 'latest') {
         const offset = input.cursor === 'c20' ? 20 : 0;
-        return { status: 'success', data: { items: hotItems.slice(offset, offset + 20), nextCursor: offset === 0 ? 'c20' : null } };
+        return { status: 'success', data: { items: latestItems.slice(offset, offset + 20), nextCursor: offset === 0 ? 'c20' : null } };
       }
-      return { status: 'success', data: { items: latestItems, nextCursor: 'l12' } };
+      return { status: 'success', data: { items: hotItems, nextCursor: 'h12' } };
     },
   });
 
@@ -133,70 +139,73 @@ it('切换排序重置为目标排序首批，不沿用旧排序的分页进度'
   await fireEvent.click(within(region).getByRole('button', { name: '加载更多评论' }));
   await waitFor(() => expect(within(region).getAllByRole('listitem')).toHaveLength(40));
 
-  await fireEvent.click(within(region).getByRole('radio', { name: '最新' }));
+  // 单按钮显示当前排序：按时间时点击切到按热度。
+  await fireEvent.click(within(region).getByRole('button', { name: '当前按时间，点击切换为按热度' }));
 
   await waitFor(() => expect(within(region).getAllByRole('listitem')).toHaveLength(12));
   // 切换先定位评论区，再读目标排序首批（cursor 为空，不带旧进度）。
   expect(seen).toEqual([
-    { sort: 'hot', cursor: undefined },
-    { sort: 'hot', cursor: 'c20' },
     { sort: 'latest', cursor: undefined },
+    { sort: 'latest', cursor: 'c20' },
+    { sort: 'hot', cursor: undefined },
   ]);
   expect(within(region).getAllByRole('listitem').map(item => item.getAttribute('data-reading-id')))
-    .toEqual(latestItems.map(item => `comment:${item.id}`));
-  const latest = within(region).getByRole('radio', { name: '最新' }) as HTMLInputElement;
-  const hot = within(region).getByRole('radio', { name: '最热' }) as HTMLInputElement;
-  expect([latest.checked, hot.checked]).toEqual([true, false]);
+    .toEqual(hotItems.map(item => `comment:${item.id}`));
+  expect(within(region).getByRole('button', { name: '当前按热度，点击切换为按时间' })).toBeTruthy();
 });
 
-it('点击已在用的排序不重置也不重复请求', async () => {
-  const seen: (string | null | undefined)[] = [];
+it('单按钮每次点击都切到另一种排序，并各自重读目标排序首批', async () => {
+  const seen: CommentSort[] = [];
   const reader = createReader({
     readDetail: async () => ({ status: 'success', data: commentDynamic() }),
     readComments: async input => {
-      seen.push(input.cursor);
+      seen.push(input.sort);
       return { status: 'success', data: { items: comments(20), nextCursor: 'c20' } };
     },
   });
   await showApp(reader, '/dynamics/1001');
   const region = await screen.findByRole('region', { name: '评论区' });
   await waitFor(() => expect(within(region).getAllByRole('listitem')).toHaveLength(20));
-  await fireEvent.click(within(region).getByRole('radio', { name: '最热' }));
-  await Promise.resolve();
-  expect(seen).toEqual([undefined]);
+  await fireEvent.click(within(region).getByRole('button', { name: '当前按时间，点击切换为按热度' }));
+  await waitFor(() => expect(within(region).getByRole('button', { name: '当前按热度，点击切换为按时间' })).toBeTruthy());
+  await fireEvent.click(within(region).getByRole('button', { name: '当前按热度，点击切换为按时间' }));
+  await waitFor(() => expect(within(region).getByRole('button', { name: '当前按时间，点击切换为按热度' })).toBeTruthy());
+  // 每次点击都切到另一种排序并重读首批：三个请求，没有把同一排序重复读一批。
+  expect(seen).toEqual(['latest', 'hot', 'latest']);
   expect(within(region).getAllByRole('listitem')).toHaveLength(20);
 });
 
 for (const outcome of ['success', 'error', 'reject'] as const) {
   it(`快速切换排序时旧排序迟到的 ${outcome} 不污染最后选择`, async () => {
-    const hot = deferred<ReadResult<CommentBatch>>();
     const latest = deferred<ReadResult<CommentBatch>>();
+    const hot = deferred<ReadResult<CommentBatch>>();
     const reader = createReader({
       readDetail: async () => ({ status: 'success', data: commentDynamic() }),
-      readComments: async input => (input.sort === 'hot' ? hot.promise : latest.promise),
+      readComments: async input => (input.sort === 'latest' ? latest.promise : hot.promise),
     });
 
     await showApp(reader, '/dynamics/1001');
     const region = await screen.findByRole('region', { name: '评论区' });
-    await fireEvent.click(within(region).getByRole('radio', { name: '最新' }));
+    // 首批（按时间）仍在读取时切到按热度：最后选择是热度。
+    await fireEvent.click(within(region).getByRole('button', { name: '当前按时间，点击切换为按热度' }));
 
     if (outcome === 'success') {
-      hot.resolve({ status: 'success', data: { items: comments(20), nextCursor: null } });
+      latest.resolve({ status: 'success', data: { items: comments(20), nextCursor: null } });
     } else if (outcome === 'error') {
-      hot.resolve({ status: 'error' });
+      latest.resolve({ status: 'error' });
     } else {
-      hot.reject(new Error('late hot failure'));
+      latest.reject(new Error('late latest failure'));
     }
     await Promise.resolve();
     await Promise.resolve();
 
     // 旧排序的结果/失败/拒绝都不能解除新排序的加载态或写入条目。
     expect(within(region).queryAllByRole('listitem')).toHaveLength(0);
-    expect(within(region).getByText('最新评论加载中…')).toBeTruthy();
+    expect(within(region).getByText('最热评论加载中…')).toBeTruthy();
     expect(within(region).queryByRole('alert')).toBeNull();
-    expect((within(region).getByRole('radio', { name: '最新' }) as HTMLInputElement).checked).toBe(true);
+    expect(within(region).getByRole('button', { name: '当前按热度，点击切换为按时间' })).toBeTruthy();
 
-    latest.resolve({ status: 'success', data: { items: comments(5), nextCursor: null } });
+    hot.resolve({ status: 'success', data: { items: comments(5), nextCursor: null } });
     await waitFor(() => expect(within(region).getAllByRole('listitem')).toHaveLength(5));
     expect(region.textContent).not.toContain('一级评论 6');
     expect(within(region).queryByRole('alert')).toBeNull();
@@ -212,20 +221,21 @@ function listWithDetail(): Partial<DynamicReader> {
 }
 
 it('历史返回恢复排序、已读批次与 cursor，继续追加不重读首批', async () => {
+  installCompactViewport(true);
   const seen: { sort: CommentSort; cursor: string | null | undefined }[] = [];
   const reader = createReader({
     ...listWithDetail(),
     readComments: async input => {
       seen.push({ sort: input.sort, cursor: input.cursor });
-      if (input.sort === 'hot') {
+      if (input.sort === 'latest') {
         const offset = input.cursor === 'c20' ? 20 : 0;
         return { status: 'success', data: { items: comments(45).slice(offset, offset + 20), nextCursor: offset === 0 ? 'c20' : 'c40' } };
       }
       const first = Array.from({ length: 12 }, (_value, index) => comment(200 + index));
-      if (input.cursor === 'l12') {
+      if (input.cursor === 'h12') {
         return { status: 'success', data: { items: Array.from({ length: 5 }, (_value, index) => comment(400 + index)), nextCursor: null } };
       }
-      return { status: 'success', data: { items: first, nextCursor: 'l12' } };
+      return { status: 'success', data: { items: first, nextCursor: 'h12' } };
     },
   });
   const router = await showApp(reader);
@@ -236,11 +246,12 @@ it('历史返回恢复排序、已读批次与 cursor，继续追加不重读首
   await waitFor(() => expect(within(region).getAllByRole('listitem')).toHaveLength(20));
   await fireEvent.click(within(region).getByRole('button', { name: '加载更多评论' }));
   await waitFor(() => expect(within(region).getAllByRole('listitem')).toHaveLength(40));
-  await fireEvent.click(within(region).getByRole('radio', { name: '最新' }));
+  // 切到非默认排序（按热度），让历史恢复也覆盖“不是默认值”的排序。
+  await fireEvent.click(within(region).getByRole('button', { name: '当前按时间，点击切换为按热度' }));
   await waitFor(() => expect(within(region).getAllByRole('listitem')).toHaveLength(12));
 
   layout.setScrollY(500);
-  await fireEvent.click(screen.getByRole('button', { name: '返回列表' }));
+  await fireEvent.click(screen.getByRole('button', { name: '‹ 动态列表' }));
   await waitFor(() => expect(router.currentRoute.value.name).toBe('list'));
 
   const requestsBeforeRestore = seen.length;
@@ -248,17 +259,19 @@ it('历史返回恢复排序、已读批次与 cursor，继续追加不重读首
   await waitFor(() => expect(router.currentRoute.value.name).toBe('detail'));
   const restored = await screen.findByRole('region', { name: '评论区' });
   expect(within(restored).getAllByRole('listitem')).toHaveLength(12);
-  expect((within(restored).getByRole('radio', { name: '最新' }) as HTMLInputElement).checked).toBe(true);
+  expect(within(restored).getByRole('button', { name: '当前按热度，点击切换为按时间' })).toBeTruthy();
   // 恢复已读内容不重复请求首批。
   expect(seen).toHaveLength(requestsBeforeRestore);
   await waitFor(() => expect(layout.scrollY()).toBe(500));
 
   await fireEvent.click(within(restored).getByRole('button', { name: '加载更多评论' }));
   await waitFor(() => expect(within(restored).getAllByRole('listitem')).toHaveLength(17));
-  expect(seen.at(-1)).toEqual({ sort: 'latest', cursor: 'l12' });
+  expect(seen.at(-1)).toEqual({ sort: 'hot', cursor: 'h12' });
 });
 
-it('评论入口进入同页详情并重建讨论状态，不沿用旧阅读位置', async () => {
+it('窄屏评论入口进入同页详情并重建讨论状态，不沿用旧阅读位置', async () => {
+  // 宽屏卡片评论改为列表内展开（由 list-card-comments 覆盖），站内进入详情只剩窄屏入口。
+  installCompactViewport(true);
   const reader = createReader({
     ...listWithDetail(),
     readComments: async () => ({ status: 'success', data: { items: comments(20), nextCursor: null } }),
@@ -271,26 +284,27 @@ it('评论入口进入同页详情并重建讨论状态，不沿用旧阅读位�
   await waitFor(() => expect(router.currentRoute.value.name).toBe('detail'));
   await screen.findByRole('region', { name: '评论区' });
   layout.setScrollY(700);
-  await fireEvent.click(screen.getByRole('button', { name: '返回列表' }));
+  await fireEvent.click(screen.getByRole('button', { name: '‹ 动态列表' }));
   await waitFor(() => expect(router.currentRoute.value.name).toBe('list'));
 
   await fireEvent.click(screen.getByRole('button', { name: '来源评论 45' }));
   await waitFor(() => expect(router.currentRoute.value.name).toBe('detail'));
   const region = await screen.findByRole('region', { name: '评论区' });
   await waitFor(() => expect(within(region).getAllByRole('listitem')).toHaveLength(20));
-  // 新访问重新读最热首批，且不回到旧访问的 700px 位置。
+  // 新访问重新读按时间首批，且不回到旧访问的 700px 位置。
   await waitFor(() => expect(within(region).getAllByRole('listitem')).toHaveLength(20));
-  expect((within(region).getByRole('radio', { name: '最热' }) as HTMLInputElement).checked).toBe(true);
+  expect(within(region).getByRole('button', { name: '当前按时间，点击切换为按热度' })).toBeTruthy();
   expect(layout.scrollY()).not.toBe(700);
 });
 
 it('同一动态的多次访问各自保留排序与批次，互不覆盖', async () => {
+  installCompactViewport(true);
   const seen: { sort: CommentSort; cursor: string | null | undefined }[] = [];
   const reader = createReader({
     ...listWithDetail(),
     readComments: async input => {
       seen.push({ sort: input.sort, cursor: input.cursor });
-      if (input.sort === 'hot') {
+      if (input.sort === 'latest') {
         const offset = input.cursor === 'c20' ? 20 : 0;
         return { status: 'success', data: { items: comments(40).slice(offset, offset + 20), nextCursor: offset === 0 ? 'c20' : null } };
       }
@@ -352,18 +366,18 @@ it('成功空与未完成同步区分：确认同步后才显示暂无评论', a
   await showApp(emptyDouble('success', 'success'), '/dynamics/1001');
   const region = await screen.findByRole('region', { name: '评论区' });
   await waitFor(() => expect(within(region).getByText('暂无评论')).toBeTruthy());
-  expect(region.textContent).not.toContain('评论尚未归档');
+  expect(region.textContent).not.toContain('评论尚未保存');
 
   cleanup();
   await showApp(emptyDouble('pending'), '/dynamics/1001');
   const pending = await screen.findByRole('region', { name: '评论区' });
-  await waitFor(() => expect(within(pending).getByText('评论尚未归档；来源计数不代表本地已有评论。')).toBeTruthy());
+  await waitFor(() => expect(within(pending).getByText('评论尚未保存；来源计数不代表本地已有评论。')).toBeTruthy());
   expect(within(pending).queryByText('暂无评论')).toBeNull();
 
   cleanup();
   await showApp(emptyDouble('success', 'failed'), '/dynamics/1001');
   const failedSync = await screen.findByRole('region', { name: '评论区' });
-  await waitFor(() => expect(within(failedSync).getByText('评论尚未归档；来源计数不代表本地已有评论。')).toBeTruthy());
+  await waitFor(() => expect(within(failedSync).getByText('评论尚未保存；来源计数不代表本地已有评论。')).toBeTruthy());
 });
 
 it('读取失败可在评论区重试，取消不被当作失败', async () => {
@@ -379,7 +393,7 @@ it('读取失败可在评论区重试，取消不被当作失败', async () => {
   });
   await showApp(reader, '/dynamics/1001');
   const region = await screen.findByRole('region', { name: '评论区' });
-  expect((await within(region).findByRole('alert')).textContent).toBe('最热评论读取失败，请重试。');
+  expect((await within(region).findByRole('alert')).textContent).toBe('最新评论读取失败，请重试。');
   // 失败只影响评论区：详情正文仍在。
   expect(screen.getByText('详情正文')).toBeTruthy();
 
@@ -483,7 +497,7 @@ it('一级评论按作者 ID 标注 UP、安全渲染文本，计数与时间缺
   expect(like.querySelector('button, a')).toBeNull();
   // 纯图评论不写“暂无评论内容”，只提示待归档数量。
   expect(list[3]!.textContent).not.toContain('暂无评论内容');
-  expect(list[3]!.textContent).toContain('评论图片待归档（2 张）');
+  expect(list[3]!.textContent).toContain('评论图片待保存（2 张）');
 
   expect(document.body.textContent).not.toContain('归档状态');
   expect(document.body.textContent).not.toContain('读取评论同步状态');
@@ -523,6 +537,7 @@ it('跨批重复的评论按 ID 去重，不重复展示', async () => {
 });
 
 it('离开未完成的追加读取再返回，从原 cursor 继续且不遗留永久加载态', async () => {
+  installCompactViewport(true);
   const seen: (string | null | undefined)[] = [];
   const pending = deferred<ReadResult<CommentBatch>>();
   const all = comments(40);
@@ -544,7 +559,7 @@ it('离开未完成的追加读取再返回，从原 cursor 继续且不遗留�
   const region = await screen.findByRole('region', { name: '评论区' });
   await waitFor(() => expect(within(region).getAllByRole('listitem')).toHaveLength(20));
   await fireEvent.click(within(region).getByRole('button', { name: '加载更多评论' }));
-  await fireEvent.click(screen.getByRole('button', { name: '返回列表' }));
+  await fireEvent.click(screen.getByRole('button', { name: '‹ 动态列表' }));
   await waitFor(() => expect(router.currentRoute.value.name).toBe('list'));
 
   await router.go(1);
@@ -555,7 +570,7 @@ it('离开未完成的追加读取再返回，从原 cursor 继续且不遗留�
   pending.resolve({ status: 'success', data: { items: all.slice(20), nextCursor: null } });
   await Promise.resolve();
   expect(seen).toEqual([undefined, 'c20', 'c20']);
-  expect(within(restored).queryByText('最热评论追加加载中…')).toBeNull();
+  expect(within(restored).queryByText('最新评论追加加载中…')).toBeNull();
   expect(within(restored).queryByRole('alert')).toBeNull();
 });
 
@@ -571,8 +586,9 @@ it('读取器声明不具备讨论能力时显示未归档且不发评论请求'
   });
   await showApp(reader, '/dynamics/1001');
   const region = await screen.findByRole('region', { name: '评论区' });
-  expect(within(region).getByText('评论尚未归档；来源计数不代表本地已有评论。')).toBeTruthy();
-  // 未归档不显示排序组，也不读取评论。
+  // 01 的文案改名与 02 的单按钮排序同时成立：文案说“尚未保存”，且不出现排序控件。
+  expect(within(region).getByText('评论尚未保存；来源计数不代表本地已有评论。')).toBeTruthy();
+  expect(within(region).queryByRole('button', { name: /^当前按/ })).toBeNull();
   expect(within(region).queryByRole('radio')).toBeNull();
   expect(within(region).queryAllByRole('listitem')).toHaveLength(0);
   expect(calls).toBe(0);
@@ -615,7 +631,7 @@ it('直开一级评论定位链接：按目标身份取定位批次、展开正�
   await waitFor(() => expect(within(region).getAllByRole('listitem')).toHaveLength(15));
 
   // 只按目标身份取定位批次，不先读首批，也不因定位渲染全部评论。
-  expect(located).toEqual([{ rootId: target.id, sort: 'hot' }]);
+  expect(located).toEqual([{ rootId: target.id, sort: 'latest' }]);
   expect(reads).toEqual([]);
   const first = within(region).getAllByRole('listitem')[0]!;
   expect(first.getAttribute('data-reading-id')).toBe(`comment:${target.id}`);
@@ -627,6 +643,35 @@ it('直开一级评论定位链接：按目标身份取定位批次、展开正�
   // 续读沿用定位窗口的 cursor，不回退到首批 cursor。
   await fireEvent.click(within(region).getByRole('button', { name: '加载更多评论' }));
   await waitFor(() => expect(reads).toEqual(['located-40']));
+});
+
+it('根评论精确定位显式传入当前排序：切换后按新排序重新定位同一目标', async () => {
+  const scrolled = recordScrollIntoView();
+  const target = comments(45)[24]!;
+  const located: { rootId: string; sort: CommentSort }[] = [];
+  const reader = createReader({
+    readDetail: async () => ({ status: 'success', data: commentDynamic() }),
+    locateComment: async input => {
+      located.push({ rootId: input.rootId, sort: input.sort });
+      return { status: 'success', data: { items: [target], nextCursor: null } };
+    },
+  });
+
+  await showApp(reader, `/dynamics/1001/comments/${target.id}/locate`);
+  const region = await screen.findByRole('region', { name: '评论区' });
+  await waitFor(() => expect(within(region).getAllByRole('listitem')).toHaveLength(1));
+  // 显示“按时间”就必须用 latest 的位置结果，不能拿 hot 的批次冒充。
+  expect(located).toEqual([{ rootId: target.id, sort: 'latest' }]);
+
+  await fireEvent.click(within(region).getByRole('button', { name: '当前按时间，点击切换为按热度' }));
+  await waitFor(() => expect(located).toHaveLength(2));
+  // 切换后同一目标改用当前排序重新定位，仍落在目标本身。
+  expect(located[1]).toEqual({ rootId: target.id, sort: 'hot' });
+  await waitFor(() => expect(within(region).getAllByRole('listitem')).toHaveLength(1));
+  const item = within(region).getAllByRole('listitem')[0]!;
+  expect(item.getAttribute('data-located')).toBe('true');
+  expect(scrolled.at(-1)).toBe(item);
+  expect(within(region).getByRole('button', { name: '当前按热度，点击切换为按时间' })).toBeTruthy();
 });
 
 it('定位目标不存在时明确提示并可返回动态，不请求普通分页也不把页首当成功', async () => {
@@ -642,7 +687,7 @@ it('定位目标不存在时明确提示并可返回动态，不请求普通分�
 
   const router = await showApp(reader, '/dynamics/1001/comments/9999/locate');
   const region = await screen.findByRole('region', { name: '评论区' });
-  await waitFor(() => expect(within(region).getByRole('status').textContent).toContain('不存在或未归档'));
+  await waitFor(() => expect(within(region).getByRole('status').textContent).toContain('不存在或未保存'));
   expect(within(region).queryAllByRole('listitem')).toHaveLength(0);
   expect(reads).toEqual([]);
 

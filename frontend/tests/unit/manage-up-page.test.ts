@@ -134,7 +134,7 @@ describe('/manage/ups/:upId 单 UP 管理页', () => {
     }));
     const card = await upCard('789');
     expect(card.getByText('监控：无配置')).toBeTruthy();
-    expect(card.getByText(/已有归档/)).toBeTruthy();
+    expect(card.getByText(/已保存的动态/)).toBeTruthy();
     // 无配置时不提供启停，但可按基线重新添加监控。
     expect(card.queryByRole('button', { name: /^(停止|启用)监控$/ })).toBeNull();
     expect(card.queryByRole('button', { name: '删除监控配置' })).toBeNull();
@@ -292,7 +292,7 @@ describe('/manage/ups/:upId 删除配置与指定目标', () => {
     await waitFor(() => expect(screen.getByText('配置已删除')).toBeTruthy());
     expect(screen.getByText('监控：无配置')).toBeTruthy();
     expect(screen.getByText('暂无监控配置，重新添加后可编辑。')).toBeTruthy();
-    expect(screen.getByText('监控配置已删除；身份和已有归档保留。')).toBeTruthy();
+    expect(screen.getByText('监控配置已删除；身份和已保存的动态保留。')).toBeTruthy();
     expect(screen.queryByRole('textbox', { name: '近期 N 条' })).toBeNull();
     expect(deleteMonitor).toHaveBeenCalledWith(expect.objectContaining({ uid: '123' }));
 
@@ -314,7 +314,7 @@ describe('/manage/ups/:upId 删除配置与指定目标', () => {
     expect((await card.findByRole('alert')).textContent).toContain('管理服务暂不可用');
     expect(card.getByText('已保存模式：近期 N 条；N：10。')).toBeTruthy();
     await fireEvent.click(card.getByRole('button', { name: '重试删除' }));
-    expect(await screen.findByText('监控配置已删除；身份和已有归档保留。')).toBeTruthy();
+    expect(await screen.findByText('监控配置已删除；身份和已保存的动态保留。')).toBeTruthy();
     expect(deleteMonitor).toHaveBeenCalledTimes(2);
   });
 
@@ -376,7 +376,7 @@ describe('/manage/ups/:upId 删除配置与指定目标', () => {
       deleteTarget,
     }));
     await fireEvent.click(await card.findByRole('button', { name: '移除目标 1000' }));
-    expect(await card.findByText('目标已移除；已有归档保留。')).toBeTruthy();
+    expect(await card.findByText('目标已移除；已保存的动态保留。')).toBeTruthy();
     expect(card.queryByText('1000')).toBeNull();
     expect(card.getByText('1001')).toBeTruthy();
     expect(deleteTarget).toHaveBeenCalledWith(expect.objectContaining({ uid: '123', id: '1000' }));
@@ -441,7 +441,7 @@ describe('/manage/ups/:upId 删除配置与指定目标', () => {
     expect((card.getByRole('button', { name: '移除目标 1001' }) as HTMLButtonElement).disabled).toBe(false);
 
     await fireEvent.click(card.getByRole('button', { name: '移除目标 1001' }));
-    expect(await card.findByText('目标已移除；已有归档保留。')).toBeTruthy();
+    expect(await card.findByText('目标已移除；已保存的动态保留。')).toBeTruthy();
     expect(deleteTarget).toHaveBeenCalledTimes(2);
   });
 

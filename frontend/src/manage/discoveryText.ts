@@ -3,7 +3,7 @@ import type { DiscoveryError, DiscoveryState } from './discoveryState';
 export const discoveryStatusText: Readonly<Record<DiscoveryState['status'], string>> = {
   undiscovered: '尚未开始发现。',
   running: '本轮发现进行中。',
-  discovered: '本轮发现成功；不代表归档成功。',
+  discovered: '本轮发现成功；不代表内容已保存。',
   failed: '本轮发现未完整完成。',
 };
 export const discoveryErrorText: Readonly<Record<DiscoveryError, string>> = {

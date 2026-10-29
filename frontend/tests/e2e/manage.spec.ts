@@ -59,8 +59,15 @@ function upCard(page: Page, uid: string) {
   return page.getByRole('article', { name: `UP ${uid}`, exact: true });
 }
 
-/** 读取库默认字号：签收过的输入框字号就是它（票据 17 R1），不能靠局部覆盖来“修” iOS 放大。 */
+/**
+ * 未覆盖的基础字号仍是签收时的 14px：窄屏 16px 只落在输入类控件上，按钮与基础字号不跟着放大（票据 08）。
+ */
 const SIGNED_FONT_SIZE = 14;
+/**
+ * 输入类控件字号按视口分档（正式设计 §6 / UI-14）：手机 16px、桌面 14px。
+ * 这是管理页局部的库内部覆盖，原因与断言登记在 evidence/08-management-layout-and-controls.md。
+ */
+const inputFontFor = (width: number) => (width <= 640 ? 16 : 14);
 async function readFontSizes(page: import('@playwright/test').Page) {
   return page.evaluate(() => ({
     base: Math.round(parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--el-font-size-base'))),
@@ -77,6 +84,64 @@ async function readFontSizes(page: import('@playwright/test').Page) {
       })
       .map(node => Math.round(parseFloat(getComputedStyle(node).fontSize))),
   }));
+}
+
+/** 管理操作按钮的可见外观与真实点击区分开量：::before 的上下 inset 决定看见的描边/底色块。 */
+interface ManageActionMetrics {
+  readonly font: number;
+  readonly hitHeight: number;
+  readonly visualHeight: number;
+  readonly width: number;
+  readonly hitAtVisualEdge: boolean;
+}
+
+async function actionMetrics(page: Page, selector: string): Promise<ManageActionMetrics> {
+  return page.evaluate(sel => {
+    const button = document.querySelector<HTMLElement>(sel)!;
+    const style = getComputedStyle(button);
+    const visual = getComputedStyle(button, '::before');
+    const rect = button.getBoundingClientRect();
+    const inset = visual.content === 'none'
+      ? 0
+      : (Number.parseFloat(visual.top) || 0) + (Number.parseFloat(visual.bottom) || 0);
+    // 点击盒顶部 2px 落在视觉块之外：仍命中同一个按钮，才证明视觉缩小没有牺牲可点击区。
+    const hitTarget = document.elementFromPoint(rect.left + rect.width / 2, rect.top + 2);
+    return {
+      font: Math.round(Number.parseFloat(style.fontSize)),
+      hitHeight: Math.round(rect.height),
+      visualHeight: Math.round(rect.height - inset),
+      width: Math.round(rect.width),
+      hitAtVisualEdge: hitTarget === button || button.contains(hitTarget),
+    };
+  }, selector);
+}
+
+/** 控制行两端坐标：状态文字贴内容盒左边缘，操作按钮贴内容盒右边缘。 */
+async function controlRowMetrics(page: Page) {
+  return page.evaluate(() => {
+    const card = document.querySelector<HTMLElement>('.manage-up')!;
+    const row = document.querySelector<HTMLElement>('.manage-control-row')!;
+    const state = row.querySelector<HTMLElement>('.manage-state')!;
+    const button = row.querySelector<HTMLElement>('.manage-toggle')!;
+    const cardStyle = getComputedStyle(card);
+    const cardRect = card.getBoundingClientRect();
+    const stateRect = state.getBoundingClientRect();
+    const buttonRect = button.getBoundingClientRect();
+    // 卡片有 1px 边框：内容盒右边缘要同时扣掉边框与内距，否则对齐会差 1px。
+    const paddingLeft = Number.parseFloat(cardStyle.paddingLeft) + Number.parseFloat(cardStyle.borderLeftWidth);
+    const paddingRight = Number.parseFloat(cardStyle.paddingRight) + Number.parseFloat(cardStyle.borderRightWidth);
+    return {
+      contentLeft: Math.round(cardRect.left + paddingLeft),
+      contentRight: Math.round(cardRect.right - paddingRight),
+      contentWidth: Math.round(cardRect.width - paddingLeft - paddingRight),
+      stateLeft: Math.round(stateRect.left),
+      stateRight: Math.round(stateRect.right),
+      stateBottom: Math.round(stateRect.bottom),
+      buttonLeft: Math.round(buttonRect.left),
+      buttonRight: Math.round(buttonRect.right),
+      buttonTop: Math.round(buttonRect.top),
+    };
+  });
 }
 
 test.describe('UP 监控管理', () => {
@@ -263,7 +328,7 @@ test.describe('UP 监控管理', () => {
     const card = upCard(page, '789');
     await expect(card).toContainText('未知用户');
     await expect(card).toContainText('监控：无配置');
-    await expect(card).toContainText('已有归档保留');
+    await expect(card).toContainText('已保存的动态保留');
     await expect(card.getByRole('button', { name: '重新添加监控', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: /^(停止|启用)监控$/ })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '删除监控配置', exact: true })).toHaveCount(0);
@@ -322,7 +387,7 @@ test.describe('UP 监控管理', () => {
       await expect(page.getByRole('list', { name: 'UP 列表' })).toBeVisible();
       const list = await page.evaluate(() => {
         const heights = [...document.querySelectorAll<HTMLElement>(
-          '.app-nav a, .manage-crumbs a, .notify-switch-toggle, .manage-up-link, .manage-submit',
+          '.manage-crumbs a, .notify-switch-toggle, .manage-up-link, .manage-submit',
         )].map(node => Math.round(node.getBoundingClientRect().height));
         const cards = [...document.querySelectorAll<HTMLElement>('.manage-up-link')];
         return {
@@ -336,13 +401,13 @@ test.describe('UP 监控管理', () => {
         };
       });
       expect(list.scrollWidth, `${width}px 管理列表不应横向溢出`).toBeLessThanOrEqual(list.clientWidth);
-      // 输入框字号是签收过的视觉基准的一部分（票据 17 R1 裁决）：等于库默认字号，且默认字号仍是签收时的 14px。
-      // 两段一起看才能同时挡住「局部 16px 覆盖」和「把 base 改成 16px」这两种绕过。
+      // 输入类控件字号按视口分档（票据 08）：手机 16px、桌面 14px；基础字号仍是 14px，
+      // 两段一起看才能同时挡住「手机没生效」和「把 base 改成 16px 把按钮一起放大」这两种偏差。
       const listFonts = await readFontSizes(page);
-      expect(listFonts.base).toBe(SIGNED_FONT_SIZE);
+      expect(listFonts.base, `${width}px 基础字号不应被输入覆盖带大`).toBe(SIGNED_FONT_SIZE);
       expect(listFonts.list.length).toBeGreaterThan(0);
       for (const size of listFonts.list) {
-        expect(size, `${width}px 新增 UID 输入框字号应为库默认字号`).toBe(listFonts.base);
+        expect(size, `${width}px 新增 UID 输入框字号`).toBe(inputFontFor(width));
       }
       expect(list.heights.length).toBeGreaterThan(0);
       for (const height of list.heights) {
@@ -403,24 +468,54 @@ test.describe('UP 监控管理', () => {
       for (const height of specified.heights) {
         expect(height, `${width}px 指定模式触控区域高度`).toBeGreaterThanOrEqual(44);
       }
-      // 保持库默认字号：iOS Safari 聚焦会放大整页（票据 15 F-15-02），但改成 16px 会改动签收过的视觉，
-      // 用户裁决以视觉一致为先（票据 17 R1），该放大作为已知限制记录。
+      // 输入字号只作用于输入类控件：手机 16px 降低 iOS Safari 聚焦放大风险，桌面 14px 维持签收视觉。
+      // 真机聚焦/失焦仍待票据 10 验证，这里不关闭原已知限制。
       const upFonts = await readFontSizes(page);
-      expect(upFonts.base).toBe(SIGNED_FONT_SIZE);
+      expect(upFonts.base, `${width}px 基础字号不应被输入覆盖带大`).toBe(SIGNED_FONT_SIZE);
       expect(specified.inputFontSizes.length).toBeGreaterThan(0);
       for (const size of specified.inputFontSizes) {
-        expect(size, `${width}px 输入框字号应为库默认字号`).toBe(upFonts.base);
+        expect(size, `${width}px 输入框字号`).toBe(inputFontFor(width));
       }
+
+      // 票 12：输入可见外框与相邻按钮等高（桌面 32 / 手机 36），命中盒仍不缩水，标签与同行控件居中。
+      const frames = await page.evaluate(() => {
+        const visibleHeight = (node: HTMLElement) => {
+          const before = getComputedStyle(node, '::before');
+          const rect = node.getBoundingClientRect();
+          const inset = before.content === 'none'
+            ? 0
+            : (Number.parseFloat(before.top) || 0) + (Number.parseFloat(before.bottom) || 0);
+          return { visible: Math.round(rect.height - inset), hit: Math.round(rect.height) };
+        };
+        const field = document.querySelector<HTMLElement>('.manage-target-add .el-form-item')!;
+        const label = field.querySelector<HTMLElement>('.el-form-item__label')!;
+        const content = field.querySelector<HTMLElement>('.el-form-item__content')!.getBoundingClientRect();
+        const range = document.createRange();
+        range.selectNodeContents(label);
+        const text = range.getBoundingClientRect();
+        return {
+          input: visibleHeight(field.querySelector<HTMLElement>('.el-input__wrapper')!),
+          button: visibleHeight(document.querySelector<HTMLElement>('.manage-target-submit')!),
+          labelDelta: Math.abs((text.top + text.bottom) / 2 - (content.top + content.bottom) / 2),
+        };
+      });
+      expect(frames.input.visible, `${width}px 输入可见外框高度`).toBe(width <= 640 ? 36 : 32);
+      expect(Math.abs(frames.input.visible - frames.button.visible),
+        `${width}px 输入与按钮可见外框等高：${frames.input.visible} vs ${frames.button.visible}`)
+        .toBeLessThanOrEqual(1);
+      expect(frames.input.hit, `${width}px 输入命中盒高度`).toBeGreaterThanOrEqual(43);
+      expect(frames.button.hit, `${width}px 按钮命中盒高度`).toBeGreaterThanOrEqual(43);
+      expect(frames.labelDelta, `${width}px 标签与同行控件中心`).toBeLessThanOrEqual(1);
 
       // 检查与发现状态：读取按钮、折叠头与展开后的详情同样不横溢且可点按。
       await page.getByRole('button', { name: '读取检查状态' }).click();
-      const checksRegion = page.getByRole('region', { name: '目标检查与归档状态' });
+      const checksRegion = page.getByRole('region', { name: '目标检查与保存状态' });
       await expect(checksRegion.getByRole('button', { name: /动态 900/ })).toBeVisible();
       await checksRegion.getByRole('button', { name: /动态 900/ }).click();
       await expect(checksRegion.getByText('检查无变化；不代表同步完成。')).toBeVisible();
       await page.getByRole('button', { name: '读取发现状态' }).click();
       await expect(page.getByRole('region', { name: '近期发现与当前窗口' })
-        .getByText('本轮发现成功；不代表归档成功。')).toBeVisible();
+        .getByText('本轮发现成功；不代表内容已保存。')).toBeVisible();
       const status = await page.evaluate(() => {
         const heights = [...document.querySelectorAll<HTMLElement>(
           '.manage-read, .el-collapse-item__header',
@@ -439,6 +534,81 @@ test.describe('UP 监控管理', () => {
       expect(status.heights.length).toBeGreaterThanOrEqual(3);
       for (const height of status.heights) {
         expect(height, `${width}px 状态控件触控区域高度`).toBeGreaterThanOrEqual(44);
+      }
+    }
+  });
+
+  test('控制行右对齐，按钮视觉 32/36px 而点击区 44px（四视口）', async ({ page }) => {
+    const writes: { body: string | null }[] = [];
+    await manageApi(page, call => {
+      if (call.method === 'GET') {
+        if (call.path.endsWith('/checks')) return { body: { checks: [] } };
+        if (call.path.endsWith('/discovery')) return { body: discoveryDto({ uid: '123' }) };
+        if (call.path.endsWith('/targets')) return { body: { targets: [] } };
+        return { body: { ups: [up('123')] } };
+      }
+      writes.push({ body: call.body });
+      return {
+        body: up('123', {
+          monitor: { mode: 'recent', recent_n: 10, enabled: false, last_checked_at: null, last_succeeded_at: null },
+        }),
+      };
+    });
+
+    for (const width of [360, 390, 768, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/manage/ups/123');
+      await expect(upCard(page, '123')).toContainText('监控：已启用');
+      const row = await controlRowMetrics(page);
+      const action = await actionMetrics(page, '.manage-toggle');
+
+      // 状态在左、操作在右：两端贴住卡片内容盒，手机也不再占满整行（容许 1px 取整）。
+      expect(Math.abs(row.stateLeft - row.contentLeft), `${width}px 状态文字左边缘`).toBeLessThanOrEqual(1);
+      expect(Math.abs(row.buttonRight - row.contentRight), `${width}px 操作按钮右边缘应贴住内容盒右边缘`)
+        .toBeLessThanOrEqual(1);
+      expect(action.width, `${width}px 四字按钮宽度`).toBeGreaterThanOrEqual(72);
+      expect(action.width, `${width}px 四字按钮宽度`).toBeLessThanOrEqual(84);
+      expect(action.width, `${width}px 按钮不应占满整行`).toBeLessThan(row.contentWidth);
+      // 同一行时状态在按钮左侧；换行时状态在按钮上方。两种都不重叠。
+      expect(
+        row.stateRight <= row.buttonLeft || row.stateBottom <= row.buttonTop,
+        `${width}px 状态文字与操作按钮不应重叠`,
+      ).toBe(true);
+
+      // 视觉更小、点击区不缩水：文字 13px，视觉 32（桌面）/36（手机），点击盒不小于 44px。
+      expect(action.font, `${width}px 按钮字号`).toBe(13);
+      expect(action.visualHeight, `${width}px 按钮视觉高度`).toBe(width <= 640 ? 36 : 32);
+      expect(action.hitHeight, `${width}px 按钮点击区高度`).toBeGreaterThanOrEqual(44);
+      expect(action.hitAtVisualEdge, `${width}px 视觉块外仍应命中同一按钮`).toBe(true);
+
+      // 相邻管理操作的实际点击盒互不重叠。
+      const buttons = await page.evaluate(() => {
+        const rects = [...document.querySelectorAll<HTMLElement>('.manage-up .el-button')]
+          .map(node => node.getBoundingClientRect());
+        const overlaps: string[] = [];
+        for (let i = 0; i < rects.length; i += 1) {
+          for (let j = i + 1; j < rects.length; j += 1) {
+            const a = rects[i]!;
+            const b = rects[j]!;
+            if (a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) {
+              overlaps.push(`${i}-${j}`);
+            }
+          }
+        }
+        return { count: rects.length, overlaps };
+      });
+      expect(buttons.count, `${width}px 管理操作按钮`).toBeGreaterThanOrEqual(3);
+      expect(buttons.overlaps, `${width}px 相邻操作点击区不应重叠`).toEqual([]);
+
+      if (width === 360) {
+        // 真实点击视觉块之外的点击盒边缘：不是只看 rect 的自证。
+        const box = await page.locator('.manage-toggle').boundingBox();
+        await page.mouse.click(box!.x + box!.width / 2, box!.y + 2);
+        await expect(upCard(page, '123')).toContainText('启停已保存。');
+        await expect(upCard(page, '123')).toContainText('监控：已停止');
+        expect(writes, '视觉块外侧点击仍提交一次启停').toEqual([
+          { body: JSON.stringify({ mode: 'recent', recent_n: 10, enabled: false }) },
+        ]);
       }
     }
   });
@@ -545,7 +715,7 @@ test.describe('监控模式与指定目标', () => {
     await expect(card.getByRole('list', { name: '指定动态目标列表' })).toContainText('901');
 
     await card.getByRole('button', { name: '移除目标 900', exact: true }).click();
-    await expect(card.getByRole('alert').filter({ hasText: '目标已移除；已有归档保留。' })).toBeVisible();
+    await expect(card.getByRole('alert').filter({ hasText: '目标已移除；已保存的动态保留。' })).toBeVisible();
     await expect(card.getByRole('list', { name: '指定动态目标列表' })).not.toContainText('900');
 
     // 切回近期模式：默认不显示目标草稿，也不沿用目标区的反馈。
@@ -609,7 +779,7 @@ test.describe('检查与发现状态', () => {
     // 打开单 UP 页只读身份与配置：检查/发现面板不自动请求，也不轮询。
     expect(calls.map(call => `${call.method} ${call.path}`)).toEqual(['GET /api/manage/ups']);
 
-    const checksPanel = page.getByRole('region', { name: '目标检查与归档状态' });
+    const checksPanel = page.getByRole('region', { name: '目标检查与保存状态' });
     const readChecks = checksPanel.getByRole('button', { name: '读取检查状态' });
     await readChecks.focus();
     await expect(readChecks).toBeFocused();
@@ -637,11 +807,11 @@ test.describe('检查与发现状态', () => {
     await expect(header).toHaveAttribute('aria-expanded', 'true');
     await expect(detail).toBeVisible();
     await expect(checksPanel.getByText('同步：同步未全部完成，将在固定节拍重试。')).toBeVisible();
-    await expect(checksPanel.getByText('动态图：图片上传失败；保留已有归档，将在固定节拍重试。')).toBeVisible();
+    await expect(checksPanel.getByText('动态图：图片上传失败；已保存内容保留，将在固定节拍重试。')).toBeVisible();
 
     const discoveryPanel = page.getByRole('region', { name: '近期发现与当前窗口' });
     await discoveryPanel.getByRole('button', { name: '读取发现状态' }).click();
-    await expect(discoveryPanel.getByText('本轮发现成功；不代表归档成功。')).toBeVisible();
+    await expect(discoveryPanel.getByText('本轮发现成功；不代表内容已保存。')).toBeVisible();
     await expect(discoveryPanel.getByText('读取时已保存模式：近期 N 条；N：2；监控：已启用。')).toBeVisible();
     await expect(discoveryPanel.getByRole('list', { name: '当前启用近期目标' })).toContainText('900707');
     // 远程读取不写入未提交草稿，也不产生额外写请求。

@@ -43,6 +43,8 @@ test.describe('动态图片阅读', () => {
   });
 
   test('详情展示完整图片组，点击第 11 张打开所点图片', async ({ page }) => {
+    // 宽屏正文入口在独立标签页打开，站内往返与图片历史按窄屏语义验证。
+    await page.setViewportSize({ width: 390, height: 800 });
     await page.goto('/');
     const many = card(page, ids.many);
     await many.getByRole('button', { name: '预览动态图片 1' }).scrollIntoViewIfNeeded();
@@ -105,7 +107,7 @@ test.describe('动态图片阅读', () => {
 
   test('浏览器后退优先关闭预览，前进恢复对应图片且不多退一级', async ({ page }) => {
     await page.goto('/ups/123');
-    await expect(page.getByRole('heading', { name: 'UP 123 归档' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'UP 123 动态' })).toBeVisible();
     // 单 UP 只保留该作者的动态：范围内第三张对应 12 图组。
     const scopeCard = card(page, ids.many);
     const tile = scopeCard.getByRole('button', { name: '预览动态图片 3' });
@@ -121,7 +123,7 @@ test.describe('动态图片阅读', () => {
     await page.goBack();
     await expect(viewer(page)).toHaveCount(0);
     await expect(page).toHaveURL(/\/ups\/123$/);
-    await expect(page.getByRole('heading', { name: 'UP 123 归档' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'UP 123 动态' })).toBeVisible();
 
     await page.goForward();
     await expect(viewer(page)).toBeVisible();
@@ -141,9 +143,9 @@ test.describe('动态图片阅读', () => {
     await grid.scrollIntoViewIfNeeded();
 
     // 缩略图直接表达上传状态；无效地址不回退来源业务图。
-    await expect(mixed.getByText('图片待归档')).toBeVisible();
-    await expect(mixed.getByText('图片归档失败')).toBeVisible();
-    await expect(mixed.getByText('归档图片地址不可用')).toBeVisible();
+    await expect(mixed.getByText('图片待保存')).toBeVisible();
+    await expect(mixed.getByText('图片保存失败')).toBeVisible();
+    await expect(mixed.getByText('已保存图片地址不可用')).toBeVisible();
     const tiles = mixed.getByRole('button', { name: /^预览动态图片 / });
     await expect(tiles).toHaveCount(6);
 
@@ -160,16 +162,16 @@ test.describe('动态图片阅读', () => {
     await expect(viewer(page)).toBeVisible();
     await expect(counter(page)).toHaveText('2 / 6');
     await expect.poll(async () => viewerImage(page).getAttribute('src')).toBe('/images/unavailable/placeholder.svg');
-    await expect(page.locator('.preview-note')).toContainText('图片待归档');
+    await expect(page.locator('.preview-note')).toContainText('图片待保存');
 
     await nextImage(page);
     await expect(counter(page)).toHaveText('3 / 6');
     await expect.poll(async () => viewerImage(page).getAttribute('src')).toBe('/images/unavailable/placeholder.svg');
-    await expect(page.locator('.preview-note')).toContainText('图片归档失败');
+    await expect(page.locator('.preview-note')).toContainText('图片保存失败');
 
     await nextImage(page);
     await expect(counter(page)).toHaveText('4 / 6');
-    await expect(page.locator('.preview-note')).toContainText('归档图片地址不可用');
+    await expect(page.locator('.preview-note')).toContainText('已保存图片地址不可用');
     await expect(page.getByRole('button', { name: '重试', exact: true })).toHaveCount(0);
 
     await nextImage(page);
@@ -293,7 +295,7 @@ test.describe('动态图片阅读', () => {
   });
 
   test('带图片与异常图片的详情返回仍恢复列表阅读位置', async ({ page }) => {
-    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.setViewportSize({ width: 390, height: 800 });
     await page.goto('/');
     const mixed = card(page, ids.mixed);
     await mixed.evaluate(element => {
@@ -304,12 +306,14 @@ test.describe('动态图片阅读', () => {
     await mixed.getByRole('link', { name: /^阅读全文 / }).click({ position: { x: 8, y: 8 } });
     const detail = page.getByRole('article');
     await expect(detail.getByRole('button', { name: /^预览动态图片 / })).toHaveCount(6);
-    await page.getByRole('button', { name: '返回列表' }).click();
+    await page.getByRole('button', { name: '‹ 动态列表' }).click();
     await expect(page.getByRole('article')).toHaveCount(10);
     await expect.poll(() => mixed.evaluate(element => Math.round(element.getBoundingClientRect().top))).toBe(offset);
   });
 
   test('历史前进跨详情重新挂载后仍恢复对应图片', async ({ page }) => {
+    // 宽屏正文入口在独立标签页打开，站内往返与图片历史按窄屏语义验证。
+    await page.setViewportSize({ width: 390, height: 800 });
     await page.goto('/');
     const many = card(page, ids.many);
     await many.getByRole('link', { name: /^阅读全文 / }).click({ position: { x: 8, y: 8 } });

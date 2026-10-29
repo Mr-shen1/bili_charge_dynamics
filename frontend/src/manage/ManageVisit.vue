@@ -115,9 +115,10 @@ function editUid(value: string): void {
 
 .manage-notice {
   margin: 0 0 16px;
-  padding: 16px;
+  padding: var(--card-padding);
   color: var(--muted);
-  line-height: 1.7;
+  font-size: var(--font-manage-text);
+  line-height: var(--line-manage-text);
   overflow-wrap: anywhere;
 }
 
@@ -133,7 +134,7 @@ function editUid(value: string): void {
 .manage-ups {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--card-gap);
   margin: 16px 0 0;
   padding: 0;
   list-style: none;
@@ -144,7 +145,7 @@ function editUid(value: string): void {
   align-items: center;
   gap: 12px;
   min-height: var(--touch);
-  padding: 12px 16px;
+  padding: 12px var(--card-padding);
   background: var(--card-bg);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -166,8 +167,10 @@ function editUid(value: string): void {
 }
 
 .manage-author {
-  font-weight: 600;
   color: var(--author);
+  font-size: var(--font-author);
+  line-height: var(--line-author);
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 
@@ -177,13 +180,8 @@ function editUid(value: string): void {
   border-radius: 999px;
   background: var(--el-color-primary-light-9);
   color: var(--brand-strong);
-  font-size: 12px;
+  font-size: var(--font-badge);
+  line-height: var(--line-badge);
   white-space: nowrap;
-}
-
-@media (max-width: 640px) {
-  .manage-submit {
-    width: 100%;
-  }
 }
 </style>

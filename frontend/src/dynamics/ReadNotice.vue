@@ -19,10 +19,11 @@ const emit = defineEmits<{ retry: [] }>();
 
 <style scoped>
 .read-notice {
-  padding: 16px;
+  padding: 12px 0;
   margin: 0;
   color: var(--muted);
-  line-height: 25px;
+  font-size: var(--font-link);
+  line-height: var(--line-link);
   overflow-wrap: anywhere;
 }
 .read-notice--action {

@@ -151,7 +151,7 @@ onUnmounted(() => {
 
 <style scoped>
 .notify-switch {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
   padding-bottom: 16px;
   border-bottom: 1px solid var(--line);
 }
@@ -165,7 +165,8 @@ onUnmounted(() => {
 }
 
 .notify-switch-title {
-  font-size: 14px;
+  font-size: var(--font-manage-section);
+  line-height: var(--line-manage-section);
   font-weight: 600;
 }
 
@@ -184,8 +185,8 @@ onUnmounted(() => {
 }
 
 @media (max-width: 640px) {
-  .notify-switch-retry {
-    width: 100%;
+  .notify-switch {
+    margin-bottom: 20px;
   }
 }
 </style>

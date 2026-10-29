@@ -5,6 +5,7 @@ import type { DetailResult, DynamicBatch, ReadResult } from '../../src/data/cont
 import { archiveDynamic, archiveMedia, archiveUser } from '../fixtures/archive';
 import { createReader, deferred } from '../support/reader';
 import { installFakeLayout, type FakeLayout } from '../support/layout';
+import { installCompactViewport, removeCompactViewport } from '../support/viewport';
 import { showApp } from '../support/app';
 
 const show = showApp;
@@ -14,7 +15,11 @@ afterEach(() => {
   cleanup();
   layout?.restore();
   layout = null;
+  removeCompactViewport();
 });
+
+// 宽屏正文入口在独立标签页打开（由 detail-tab-entry 与浏览器用例取证），
+// 因此“列表→详情→返回列表”这条站内往返按窄屏语义测试：只有窄屏才在详情保留 `‹ 动态列表`。
 
 /** 列表读取 + 指定动态详情；详情用到 /api/archive/dynamics/:id。 */
 function archiveTransport(options: { total?: number; detailIds?: readonly string[]; failDetail?: boolean } = {}) {
@@ -41,6 +46,7 @@ function archiveTransport(options: { total?: number; detailIds?: readonly string
 }
 
 it('卡片进入详情顶部并全文展示，返回恢复来源列表的已加载批次与位置', async () => {
+  installCompactViewport(true);
   layout = installFakeLayout();
   const { reader } = archiveTransport();
   const router = await show(reader);
@@ -61,7 +67,7 @@ it('卡片进入详情顶部并全文展示，返回恢复来源列表的已加�
   // 返回后布局变化 40px，仍按稳定锚点保持原视口偏移。
   layout.shift = 40;
   layout.scrollTo.mockClear();
-  await fireEvent.click(screen.getByRole('button', { name: '返回列表' }));
+  await fireEvent.click(screen.getByRole('button', { name: '‹ 动态列表' }));
   await waitFor(() => expect(router.currentRoute.value.name).toBe('list'));
   expect(await screen.findByText('归档正文 20')).toBeTruthy();
   expect(screen.getAllByRole('article')).toHaveLength(20);
@@ -70,6 +76,7 @@ it('卡片进入详情顶部并全文展示，返回恢复来源列表的已加�
 });
 
 it('从单 UP 来源进入详情，返回仍在同一 scope 并恢复已加载批次', async () => {
+  installCompactViewport(true);
   layout = installFakeLayout();
   const { reader } = archiveTransport({ total: 12 });
   const router = await show(reader, '/ups/123');
@@ -80,13 +87,14 @@ it('从单 UP 来源进入详情，返回仍在同一 scope 并恢复已加载�
   await fireEvent.click(screen.getByRole('link', { name: '阅读全文 1001' }));
   await waitFor(() => expect(router.currentRoute.value.name).toBe('detail'));
   await screen.findByRole('heading', { name: '动态详情' });
-  await fireEvent.click(screen.getByRole('button', { name: '返回列表' }));
+  await fireEvent.click(screen.getByRole('button', { name: '‹ 动态列表' }));
   await waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/ups/123'));
   expect(await screen.findByText('归档正文 12')).toBeTruthy();
   expect(screen.getAllByRole('article')).toHaveLength(12);
 });
 
 it('同一动态的多次访问各存快照，后退/前进分别恢复自己的位置', async () => {
+  installCompactViewport(true);
   layout = installFakeLayout();
   const { reader } = archiveTransport({ total: 10 });
   const router = await show(reader);
@@ -120,6 +128,7 @@ it('同一动态的多次访问各存快照，后退/前进分别恢复自己的
 });
 
 it('回到首页的新访问不继承旧列表访问的批次与位置，旧访问快照也不被覆盖', async () => {
+  installCompactViewport(true);
   layout = installFakeLayout();
   const { reader } = archiveTransport({ total: 25 });
   const router = await show(reader);
@@ -158,6 +167,7 @@ it('回到首页的新访问不继承旧列表访问的批次与位置，旧访�
 });
 
 it('主动再次进入同一动态走新访问并从顶部开始，不沿用旧位置', async () => {
+  installCompactViewport(true);
   layout = installFakeLayout();
   const { reader } = archiveTransport({ total: 10 });
   const router = await show(reader);
@@ -166,7 +176,7 @@ it('主动再次进入同一动态走新访问并从顶部开始，不沿用旧�
   await fireEvent.click(screen.getByRole('link', { name: '阅读全文 1001' }));
   await waitFor(() => expect(router.currentRoute.value.name).toBe('detail'));
   layout.setScrollY(500);
-  await fireEvent.click(screen.getByRole('button', { name: '返回列表' }));
+  await fireEvent.click(screen.getByRole('button', { name: '‹ 动态列表' }));
   await waitFor(() => expect(router.currentRoute.value.name).toBe('list'));
 
   layout.scrollTo.mockClear();
@@ -176,24 +186,26 @@ it('主动再次进入同一动态走新访问并从顶部开始，不沿用旧�
 });
 
 it('详情直达、刷新后重新读取，没有列表来源时返回首页', async () => {
+  installCompactViewport(true);
   layout = installFakeLayout();
   const { reader, urls } = archiveTransport({ total: 3, detailIds: ['1001'] });
   const router = await show(reader, '/dynamics/1001');
   expect(await screen.findByText('归档正文 1')).toBeTruthy();
   expect(urls.filter(url => url === '/api/archive/dynamics/1001')).toHaveLength(1);
 
-  await fireEvent.click(screen.getByRole('button', { name: '返回列表' }));
+  await fireEvent.click(screen.getByRole('button', { name: '‹ 动态列表' }));
   await waitFor(() => expect(router.currentRoute.value.name).toBe('list'));
   expect(await screen.findByText('归档正文 1')).toBeTruthy();
 });
 
 it('不存在的动态与请求失败分别表达，失败可重试且不泄露原始错误', async () => {
+  installCompactViewport(true);
   layout = installFakeLayout();
   const missing = archiveTransport({ total: 1 });
   const missingRouter = await show(missing.reader, '/dynamics/1009');
   expect(await screen.findByText('动态不存在或不可用')).toBeTruthy();
   expect(screen.queryByRole('button', { name: '重试' })).toBeNull();
-  await fireEvent.click(screen.getByRole('button', { name: '返回列表' }));
+  await fireEvent.click(screen.getByRole('button', { name: '‹ 动态列表' }));
   await waitFor(() => expect(missingRouter.currentRoute.value.name).toBe('list'));
 
   cleanup();
@@ -254,6 +266,7 @@ it('详情安全展示正文、北京时间与来源计数，不显示编辑时�
 });
 
 it('离开未完成的追加读取再返回，从原 cursor 继续且不遗留永久加载态', async () => {
+  installCompactViewport(true);
   layout = installFakeLayout();
   const pending = deferred<ReadResult<DynamicBatch>>();
   let appendAttempts = 0;
@@ -282,7 +295,7 @@ it('离开未完成的追加读取再返回，从原 cursor 继续且不遗留�
   await fireEvent.click(screen.getByRole('link', { name: '阅读全文 1001' }));
   await waitFor(() => expect(router.currentRoute.value.name).toBe('detail'));
   await screen.findByText('详情正文');
-  await fireEvent.click(screen.getByRole('button', { name: '返回列表' }));
+  await fireEvent.click(screen.getByRole('button', { name: '‹ 动态列表' }));
   await waitFor(() => expect(router.currentRoute.value.name).toBe('list'));
   expect(await screen.findByText('归档正文 20')).toBeTruthy();
   expect(appendAttempts).toBe(2);
@@ -291,6 +304,7 @@ it('离开未完成的追加读取再返回，从原 cursor 继续且不遗留�
 });
 
 it('旧访问的迟到详情成功/失败不覆盖新访问', async () => {
+  installCompactViewport(true);
   layout = installFakeLayout();
   const first = deferred<DetailResult>();
   const second = deferred<DetailResult>();
@@ -311,7 +325,7 @@ it('旧访问的迟到详情成功/失败不覆盖新访问', async () => {
   await fireEvent.click(screen.getByRole('link', { name: '阅读全文 1001' }));
   await waitFor(() => expect(router.currentRoute.value.name).toBe('detail'));
   expect(await screen.findByText('动态详情加载中…')).toBeTruthy();
-  await fireEvent.click(screen.getByRole('button', { name: '返回列表' }));
+  await fireEvent.click(screen.getByRole('button', { name: '‹ 动态列表' }));
   await waitFor(() => expect(router.currentRoute.value.name).toBe('list'));
   await fireEvent.click(await screen.findByRole('link', { name: '阅读全文 1001' }));
   await waitFor(() => expect(router.currentRoute.value.name).toBe('detail'));

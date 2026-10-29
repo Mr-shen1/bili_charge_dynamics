@@ -49,6 +49,15 @@ MEDIA_BYTES = (
     b"\x00\x00\x00\x00IEND\xaeB`\x82"
 )
 EDIT_TIMES = {"v1": "2026年10月26日 09:01", "v2": "2026年10月26日 09:02", "v3": "2026年10月26日 09:03"}
+# 楼中楼的真实父回复关系（1 基序号 → 父回复 ID）：投递消息链接进入的楼也能读对话。
+# 与 live_app 相同的最小关系样例：两条分支 + 跨页成员、父未保存、互指成环。
+REPLY_PARENTS = {
+    3: "960002", 4: "960002",
+    7: "990000", 8: "960007",
+    13: "960002", 14: "960002", 15: "960002", 16: "960002",
+    17: "960002", 18: "960002", 19: "960002", 20: "960002",
+    21: "960022", 22: "960021",
+}
 
 
 def state_path():
@@ -133,6 +142,7 @@ def reply_items(dynamic, spec, root_id):
         ctime = fresh_ctime() if self_authored else 1791513600 + index
         item = reply_item(960000 + index, root=root_id, author=author, nickname=nickname,
                           ctime=ctime, text=f"虚构回复 {index}\n第二行：换行与 emoji 🙂")
+        item["parent_str"] = REPLY_PARENTS.get(index, root_id)
         items.append(item)
     return items
 

@@ -36,7 +36,7 @@ test.describe('图片组、异常与资源请求', () => {
 
     await nextImage(page);
     await expect(counter(page)).toHaveText('4 / 5');
-    await expect(page.locator('.preview-error')).toContainText('归档图片地址不可用');
+    await expect(page.locator('.preview-error')).toContainText('已保存图片地址不可用');
     await expect(page.getByRole('button', { name: '重试', exact: true })).toHaveCount(0);
 
     await nextImage(page);

@@ -160,12 +160,12 @@ test.describe('精确根入口的返回与恢复（窄屏）', () => {
     await expect(region.getByRole('listitem')).toHaveCount(20);
     await expect(locatedItem(page)).toHaveAttribute('data-located', 'true');
     await expect.poll(() => viewportTop(page, `comment:${rootId}`)).toBeLessThan(24);
-    expect(requests).toEqual([{ kind: 'comment-location', detail: `${rootId}:hot` }]);
+    expect(requests).toEqual([{ kind: 'comment-location', detail: `${rootId}:latest` }]);
 
     // 定位后继续阅读：追加最后一批，并把视口移到批次中段。
     await region.getByRole('button', { name: '加载更多评论' }).click();
     await expect(region.getByRole('listitem')).toHaveCount(21);
-    expect(requests.at(-1)).toEqual({ kind: 'comments', detail: 'loc:44:hot' });
+    expect(requests.at(-1)).toEqual({ kind: 'comments', detail: 'loc:44:latest' });
     await page.evaluate(() => window.scrollTo(0, 320));
     const before = await scrollY(page);
     expect(before).toBe(320);
@@ -175,7 +175,7 @@ test.describe('精确根入口的返回与恢复（窄屏）', () => {
     await expect(page).toHaveURL(new RegExp(`/comments/${rootId}$`));
     await expect(page.getByRole('list', { name: '相关回复' }).locator('> li')).toHaveCount(10);
 
-    await page.getByRole('button', { name: '返回评论' }).click();
+    await page.getByRole('button', { name: '评论详情，返回动态详情' }).click();
     await expect(page).toHaveURL(new RegExp(`/comments/${rootId}/locate$`));
 
     // 同一次访问恢复：21 条已读批次、唯一高亮与同一位置；不再请求定位端点。

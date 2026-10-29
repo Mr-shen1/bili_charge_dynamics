@@ -16,11 +16,18 @@ export async function startFromOtherPage(page: Page): Promise<void> {
 }
 
 /**
- * 评论排序按可见分段标签点击：Element Plus 隐藏原生 radio，用户点到的是 label 文本。
- * 用 radiogroup 的可访问名称与文字定位，不依赖库内部 class。
+ * 一级评论排序是单个切换按钮：文字显示当前排序，可访问名同时说明点击后的目标排序。
+ * 用可访问名定位，不依赖库内部 class、固定 DOM id 或唯一全局排序。
  */
-export function sortOption(region: Locator, name: '最热' | '最新'): Locator {
-  return region.getByRole('radiogroup', { name: '评论排序' }).getByText(name, { exact: true });
+export function commentSort(region: Locator, current: 'latest' | 'hot'): Locator {
+  return region.getByRole('button', {
+    name: current === 'latest' ? '当前按时间，点击切换为按热度' : '当前按热度，点击切换为按时间',
+  });
+}
+
+/** 点一次切换按钮：切到另一种排序；断言切到的是哪一种由用例自己用 commentSort() 做。 */
+export async function switchCommentSort(region: Locator): Promise<void> {
+  await region.getByRole('button', { name: /^当前按(时间|热度)，点击切换为按/ }).click();
 }
 
 // Element Plus 没给预览根节点与预览图公开 role/可访问名，

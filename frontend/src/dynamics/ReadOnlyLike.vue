@@ -22,7 +22,8 @@ defineProps<{ count: number | null }>();
   gap: 4px;
   min-height: 24px;
   color: var(--muted);
-  font-size: 13px;
+  /* 计数属时间/计数层 13px；行高跟 24px 图标/命中盒同值以垂直居中，不是排版行高。 */
+  font-size: var(--font-meta);
   line-height: 24px;
 }
 </style>

@@ -27,6 +27,11 @@ export async function verifyProductionDelivery(baseURL, buildDir, secret, { auth
         { path: `/ups/${uid}`, anchor: () => page.getByText('部署隔离正文', { exact: false }).first() },
         { path: `/dynamics/${dynamicId}`, anchor: () => page.getByText('部署隔离正文', { exact: false }).first() },
         { path: `/dynamics/${dynamicId}/comments/91002`, anchor: () => page.getByRole('button', { name: '返回评论' }) },
+        // 会话页身份含动态、根评论与入口回复：直达/刷新由 SPA 回退提供壳，读取仍只走只读接口。
+        {
+          path: `/dynamics/${dynamicId}/comments/91002/replies/91002/conversation`,
+          anchor: () => page.getByText('‹ 会话列表'),
+        },
         { path: '/manage', anchor: () => page.getByRole('link', { name: `管理 UP ${uid}` }) },
         { path: `/manage/ups/${uid}`, anchor: () => page.getByRole('heading', { name: '指定动态目标' }) },
       ];
@@ -95,8 +100,10 @@ export async function verifyProductionDelivery(baseURL, buildDir, secret, { auth
         const entry = await page.goto(`${authBaseURL}/manage`);
         assert.equal(entry.status(), 200, 'Page shell stays loadable; only the API is protected');
         assert.equal(entry.headers()['cache-control'], 'no-cache');
-        await page.getByRole('alert').filter({ hasText: '管理访问需要身份验证' }).waitFor();
-        await page.getByRole('button', { name: '重新读取', exact: true }).waitFor();
+        // 401 提示按管理区块分别出现（通知区块与目标区块各自读取）：断言"有该提示、无新增表单"，
+        // 不对提示条数做假设。
+        await page.getByRole('alert').filter({ hasText: '管理访问需要身份验证' }).first().waitFor();
+        await page.getByRole('button', { name: '重新读取', exact: true }).first().waitFor();
         assert.equal(await page.getByRole('textbox', { name: 'UP UID' }).count(), 0, '401 must not expose the add form');
       } finally {
         await page.close();

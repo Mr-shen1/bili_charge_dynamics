@@ -1,0 +1,65 @@
+{
+  "total": 63,
+  "identicalBytes": 56,
+  "antiAliasOnly": 7,
+  "changed": [],
+  "maxRatio": 0,
+  "nonzero": [
+    {
+      "name": "comments-1280.png",
+      "sameBytes": false,
+      "aeFuzz": 0,
+      "aeRaw": 0.0627451,
+      "ratio": 0,
+      "size": "1280x900"
+    },
+    {
+      "name": "comments-error-1280.png",
+      "sameBytes": false,
+      "aeFuzz": 0,
+      "aeRaw": 0.0196078,
+      "ratio": 0,
+      "size": "1280x900"
+    },
+    {
+      "name": "list-1280.png",
+      "sameBytes": false,
+      "aeFuzz": 0,
+      "aeRaw": 0.0143791,
+      "ratio": 0,
+      "size": "1280x900"
+    },
+    {
+      "name": "list-360.png",
+      "sameBytes": false,
+      "aeFuzz": 0,
+      "aeRaw": 0.113725,
+      "ratio": 0,
+      "size": "360x900"
+    },
+    {
+      "name": "list-768.png",
+      "sameBytes": false,
+      "aeFuzz": 0,
+      "aeRaw": 0.0261438,
+      "ratio": 0,
+      "size": "768x900"
+    },
+    {
+      "name": "manage-360.png",
+      "sameBytes": false,
+      "aeFuzz": 0,
+      "aeRaw": 0.143791,
+      "ratio": 0,
+      "size": "360x900"
+    },
+    {
+      "name": "manage-768.png",
+      "sameBytes": false,
+      "aeFuzz": 0,
+      "aeRaw": 0.135948,
+      "ratio": 0,
+      "size": "768x900"
+    }
+  ]
+}

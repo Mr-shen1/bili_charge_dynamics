@@ -1,8 +1,161 @@
 /* 管理页共享版式：列表、身份卡与目标区复用同一套类名，不在各 SFC 里重复声明。 */
+
+/*
+ * 操作按钮与输入框共用的“可见块”内缩量：可见高度 = 44px 命中盒减掉上下各这个值，
+ * 桌面 6px（可见 32px）、手机 4px（可见 36px）。按钮与输入各自由同一个 `::before` 画出可见块。
+ */
+.manage-shell {
+  --manage-action-inset: 6px;
+}
+
+/*
+ * 管理操作按钮（正式设计 §7）：文字 13px，可见高度桌面 32px、手机 36px，四字按钮约 76px 宽。
+ * 可点击区仍是 44px：用 `::before` 画描边与底色，按钮本体保留 44px 命中盒。
+ * 视觉与点击区分离，但不改变彼此独立的布局盒，所以不会遮挡相邻操作。
+ * 库的悬停/按下底色画在按钮本体上，这里一并接到同一视觉块，避免悬停时露出整块 44px 底色。
+ */
+.manage-shell .el-button {
+  position: relative;
+  isolation: isolate;
+  min-height: var(--touch);
+  padding: 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--action);
+  font-size: var(--font-manage-action);
+  line-height: var(--line-manage-action);
+  white-space: nowrap;
+}
+
+.manage-shell .el-button::before {
+  content: '';
+  position: absolute;
+  inset: var(--manage-action-inset) 0;
+  z-index: -1;
+  border: 1px solid #a8c7ce;
+  border-radius: 5px;
+  background: #fff;
+  pointer-events: none;
+}
+
+.manage-shell .el-button:hover,
+.manage-shell .el-button:focus,
+.manage-shell .el-button:active {
+  border-color: transparent;
+  background: transparent;
+}
+
+.manage-shell .el-button:hover::before {
+  filter: brightness(0.97);
+}
+
+.manage-shell .el-button--primary {
+  color: #fff;
+}
+
+.manage-shell .el-button--primary::before {
+  border-color: var(--action);
+  background: var(--action);
+}
+
+/* 禁用态不跟着主色走：保持白底灰字，避免看起来仍可点击。 */
+.manage-shell .el-button.is-disabled,
+.manage-shell .el-button.is-disabled:hover,
+.manage-shell .el-button.is-disabled:active {
+  border-color: transparent;
+  background: transparent;
+  color: var(--el-text-color-placeholder, #a8abb2);
+}
+
+.manage-shell .el-button.is-disabled::before {
+  border-color: #dcdfe6;
+  background: #fff;
+}
+
+@media (max-width: 640px) {
+  /* 手机视觉高度 36px：点击盒 44px 不变；输入框共用同一内缩量。 */
+  .manage-shell {
+    --manage-action-inset: 4px;
+  }
+}
+
+/*
+ * 输入类控件字号（正式设计 §6、验收 UI-14）：手机 16px、桌面 14px。
+ * 这里覆盖 Element Plus 内部类 `.el-input__inner`：库把字号挂在 `.el-input` 的
+ * `--el-font-size-base`（14px）上，把这个变量改成 16px 会连普通按钮一起放大；
+ * 需求只放大输入控件，因此只在管理页输入行局部覆盖。
+ * 外部行为断言：tests/e2e/manage.spec.ts（四视口字号与按钮不放大）与
+ * tests/e2e-visual/layout.spec.ts（四宽度布局审计）。
+ * 实际 iPhone Safari 聚焦/失焦仍待票据 10 验证，原已知限制不因此关闭。
+ */
+.manage-shell .el-input__inner {
+  font-size: 14px;
+}
+
+@media (max-width: 640px) {
+  .manage-shell .el-input__inner {
+    font-size: 16px;
+  }
+}
+
+/*
+ * 输入可见外框（正式设计 §7）：可见高度与相邻按钮一致——桌面 32px、手机 36px，
+ * 命中/聚焦盒仍是 44px，手机 16px、桌面 14px 的字号不变。
+ * 做法与按钮同源：`.el-input__wrapper` 保持 44px 命中盒，把框的可见描边换成 `::before`
+ * 按同一个 `--manage-action-inset` 内缩。
+ * 这里覆盖 Element Plus 内部类 `.el-input__wrapper` 及其 `:hover` / `.is-focus` / `.is-disabled`：
+ * 库用 inset box-shadow 表达边框与状态色，收掉后必须把默认/悬停/聚焦/禁用四态自己接回来
+ * （否则悬停与聚焦看起来和可编辑态一样，或者整块 44px 又变成可见底色）。
+ * 不改 `--el-component-size` / `--el-font-size-base`：那会把图片触发区、链接与按钮一起放大。
+ * 外部行为断言：tests/e2e-visual/layout.spec.ts（四宽度可见等高、命中 ≥43；390px 四态框色）与
+ * tests/e2e/manage.spec.ts（四宽度输入与按钮可见外框等高、字号）。
+ */
+.manage-shell .el-input__wrapper {
+  position: relative;
+  isolation: isolate;
+  background-color: transparent;
+  box-shadow: none;
+}
+
+.manage-shell .el-input__wrapper::before {
+  content: '';
+  position: absolute;
+  inset: var(--manage-action-inset) 0;
+  z-index: -1;
+  border: 1px solid var(--el-input-border-color, #dcdfe6);
+  border-radius: inherit;
+  background-color: var(--el-input-bg-color, #fff);
+  pointer-events: none;
+}
+
+/* 库把状态色写在 wrapper 的 inset box-shadow 上：收掉后逐态接到可见框。 */
+.manage-shell .el-input__wrapper:hover,
+.manage-shell .el-input__wrapper.is-focus,
+.manage-shell .el-input.is-disabled .el-input__wrapper {
+  background-color: transparent;
+  box-shadow: none;
+}
+
+.manage-shell .el-input__wrapper:hover::before {
+  border-color: var(--el-input-hover-border-color, #c0c4cc);
+}
+
+.manage-shell .el-input__wrapper.is-focus::before {
+  border-color: var(--el-input-focus-border-color, var(--el-color-primary));
+}
+
+/* 禁用态保持灰底灰边，不跟可编辑态同一样式。 */
+.manage-shell .el-input.is-disabled .el-input__wrapper::before {
+  border-color: var(--el-disabled-border-color, #e4e7ed);
+  background-color: var(--el-disabled-bg-color, #f5f7fa);
+}
+
 .manage-muted {
   margin: 4px 0 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--font-manage-text);
+  line-height: var(--line-manage-text);
   overflow-wrap: anywhere;
 }
 
@@ -11,33 +164,40 @@
 }
 
 .manage-notice {
-  padding: 16px;
+  padding: var(--card-padding);
   color: var(--muted);
-  line-height: 1.7;
+  font-size: var(--font-manage-text);
+  line-height: var(--line-manage-text);
   overflow-wrap: anywhere;
 }
 
+/* 管理分区间距：手机约 20px、桌面约 24px（正式设计 §6）。 */
 .manage-section {
-  margin-top: 20px;
+  margin-top: 24px;
   padding-top: 16px;
   border-top: 1px solid var(--line);
 }
 
 .manage-section-title {
   margin: 0 0 8px;
-  font-size: 14px;
+  font-size: var(--font-manage-section);
+  line-height: var(--line-manage-section);
+  font-weight: 600;
 }
 
 /* 管理区通用的状态行、错误行与读取按钮：面板不再各自重复声明。 */
 .manage-state {
   margin: 4px 0 0;
-  line-height: 1.6;
+  font-size: var(--font-manage-text);
+  line-height: var(--line-manage-text);
   overflow-wrap: anywhere;
 }
 
 .manage-state-error {
   margin: 4px 0 0;
   color: var(--el-color-danger);
+  font-size: var(--font-manage-text);
+  line-height: var(--line-manage-text);
   overflow-wrap: anywhere;
 }
 
@@ -47,10 +207,12 @@
 }
 
 @media (max-width: 640px) {
-  .manage-read {
-    width: 100%;
+  .manage-section {
+    margin-top: 20px;
   }
 }
+
+/* 表单标签沿用基础字号 14px（等于管理说明标尺 14/22），不额外覆盖库的标签行高。 */
 
 /* 新增 UP 表单与配置表单共用同一套字段布局；各 SFC 不再各写一份。 */
 .manage-add,
@@ -63,7 +225,7 @@
 }
 
 .manage-add {
-  padding: 16px;
+  padding: var(--card-padding);
   background: var(--card-bg);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -75,16 +237,23 @@
   border: 0;
 }
 
-.manage-add .el-form-item {
+/*
+ * 标签与同行控件居中（正式设计 §7）：库的标签盒固定 32px 高、32px 行高，
+ * 而管理行里的输入/单选/按钮是 44px 命中盒；`.el-form-item` 默认让标签盒从行顶起排，
+ * 文字中心就比同行控件高 (44-32)/2 = 6px。这里只把行内交叉轴改成居中，
+ * 不动标签高度、行高与库的默认变量。外部行为断言：tests/e2e-visual/layout.spec.ts
+ * （四宽度标签中心差与同排文字中心）。
+ */
+.manage-add .el-form-item,
+.manage-fields .el-form-item {
   flex: 1 1 220px;
   min-width: 0;
   margin-bottom: 0;
+  align-items: center;
 }
 
 .manage-fields .el-form-item {
   flex: 1 1 200px;
-  min-width: 0;
-  margin-bottom: 0;
 }
 
 .manage-fields .el-radio {
@@ -105,5 +274,11 @@
   .manage-fields .el-form-item {
     flex: none;
     width: 100%;
+  }
+
+  /* 操作按钮按文字自然增宽并靠右，不占满整行（正式设计 §7）。 */
+  .manage-add > .el-button,
+  .manage-fields > .el-button {
+    align-self: flex-end;
   }
 }

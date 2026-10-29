@@ -25,7 +25,7 @@ defineProps<{ listLink?: boolean }>();
 <style scoped>
 .manage-shell {
   width: 100%;
-  max-width: 724px;
+  max-width: var(--column-max);
   min-width: 0;
   margin: 0 auto;
   padding: 0 0 40px;
@@ -41,7 +41,9 @@ defineProps<{ listLink?: boolean }>();
 
 .manage-header h1 {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--font-title-page);
+  line-height: var(--line-title-page);
+  font-weight: 600;
 }
 
 .manage-crumbs {
@@ -50,7 +52,8 @@ defineProps<{ listLink?: boolean }>();
   flex-wrap: nowrap;
   gap: 14px;
   margin-left: auto;
-  font-size: 13px;
+  font-size: var(--font-manage-action);
+  line-height: var(--line-manage-action);
 }
 
 /* 链接与当前页标签共用同一盒模型：文字都垂直居中，当前页不会比链接高。 */

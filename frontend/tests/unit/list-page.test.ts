@@ -14,8 +14,13 @@ import type { DynamicBatch, ReadResult } from '../../src/data/contracts';
 import { archiveDynamic, archiveMedia, archiveUser } from '../fixtures/archive';
 import { createReader, deferred } from '../support/reader';
 import { createManagement } from '../support/management';
+import { installCompactViewport, removeCompactViewport } from '../support/viewport';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  removeCompactViewport();
+  vi.unstubAllGlobals();
+});
 
 const appUser = { id: '123', nickname: '归档作者', avatarUrl: null };
 
@@ -241,7 +246,7 @@ describe('归档列表页面', () => {
     });
     await show(reader, '/ups/789');
     expect(await screen.findByText('已删除配置的 UP 归档')).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'UP 789 归档' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'UP 789 动态' })).toBeTruthy();
     expect(screen.queryByText('UP 不存在')).toBeNull();
   });
 
@@ -293,14 +298,19 @@ describe('归档列表页面', () => {
     expect(card.textContent).not.toContain('2026-03-02 13:01');
   });
 
-  it('卡片提供独立阅读链接，选中文字时不触发导航', async () => {
+  it('卡片提供独立阅读链接：宽屏新标签、窄屏站内进入，选中文字不触发导航', async () => {
     const reader = createArchiveReader(async url => Response.json(url === '/api/archive/ups'
       ? { ups: [] }
       : { items: [archiveDynamic(1)], next_cursor: null }));
+    const opened = vi.fn(() => null);
+    vi.stubGlobal('open', opened);
     const { router } = await show(reader);
     await screen.findByText('归档正文 1');
     const link = screen.getByRole('link', { name: '阅读全文 1001' });
     expect(link.getAttribute('href')).toBe('/dynamics/1001');
+    // 宽屏：链接自带新标签与 opener 隔离，地址可直接读取。
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(link.getAttribute('rel')).toBe('noopener');
 
     const text = screen.getByText('归档正文 1');
     const selection = window.getSelection();
@@ -309,11 +319,19 @@ describe('归档列表页面', () => {
     selection?.removeAllRanges();
     selection?.addRange(range);
     await fireEvent.click(text);
+    expect(opened).not.toHaveBeenCalled();
     expect(router.currentRoute.value.name).toBe('list');
 
+    // 窄屏：同一入口在站内进入详情顶部，不新开标签。
     selection?.removeAllRanges();
+    installCompactViewport(true);
+    cleanup();
+    const narrow = await show(reader);
+    await screen.findByText('归档正文 1');
+    expect(screen.getByRole('link', { name: '阅读全文 1001' }).getAttribute('target')).toBeNull();
     await fireEvent.click(screen.getByRole('article'));
-    await waitFor(() => expect(router.currentRoute.value.name).toBe('detail'));
+    await waitFor(() => expect(narrow.router.currentRoute.value.name).toBe('detail'));
+    expect(opened).not.toHaveBeenCalled();
   });
 
   it('按数据顺序展示缩略图，列表最多九张，点击第九张从完整组进入且不误触卡片导航', async () => {
@@ -353,9 +371,9 @@ describe('归档列表页面', () => {
       : { items: [archiveDynamic(1, { text: '', media })], next_cursor: null }));
     await show(reader);
     const card = await screen.findByRole('article');
-    expect(within(card).getByText('图片待归档')).toBeTruthy();
-    expect(within(card).getByText('图片归档失败')).toBeTruthy();
-    expect(within(card).getByText('归档图片地址不可用')).toBeTruthy();
+    expect(within(card).getByText('图片待保存')).toBeTruthy();
+    expect(within(card).getByText('图片保存失败')).toBeTruthy();
+    expect(within(card).getByText('已保存图片地址不可用')).toBeTruthy();
     expect(card.querySelector('img[src*="upstream.example.test"]')).toBeNull();
   });
 });

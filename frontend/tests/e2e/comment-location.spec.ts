@@ -1,6 +1,6 @@
 // @projects desktop-chromium-archive, mobile-chromium-archive
 import { expect, test, type Page } from '@playwright/test';
-import { scrollY, sortOption } from './support';
+import { commentSort, scrollY, switchCommentSort } from './support';
 
 // 一级评论精确入口跑生产装配 + 归档 HTTP 替身：路由、生产 Adapter、DTO 映射、
 // 分页与阅读恢复都是真实实现，只有归档响应由替身给出。定位、展开与滚动必须真实浏览器。
@@ -152,12 +152,13 @@ test.describe('一级评论精确链接', () => {
     await expect(region.getByRole('listitem')).toHaveCount(20);
 
     // 只请求定位批次，没有先读首批，也没有把全部评论渲染出来。
-    expect(requests).toEqual([{ kind: 'location', sort: 'hot', cursor: null }]);
+    // 新访问默认按时间：定位请求也显式带 latest，不显示“按时间”却用 hot 的位置结果。
+    expect(requests).toEqual([{ kind: 'location', sort: 'latest', cursor: null }]);
     const item = page.locator(`[data-reading-id="comment:${target.id}"]`);
     await expect(item).toHaveAttribute('data-located', 'true');
     await expect(located(page)).toHaveCount(1);
     await expect(item).toHaveAttribute('aria-current', 'true');
-    await expect(page.getByRole('region', { name: '评论区' }).getByRole('radio', { name: '最热' })).toBeChecked();
+    await expect(commentSort(region, 'latest')).toBeVisible();
 
     // 定位落在目标评论本身：目标贴近视口顶部，而不是页首。
     await expect.poll(() => viewportTop(page, target.id)).toBeLessThan(24);
@@ -170,7 +171,7 @@ test.describe('一级评论精确链接', () => {
     await region.getByRole('button', { name: '加载更多评论' }).click();
     await expect(region.getByRole('listitem')).toHaveCount(21);
     await expect(region.getByRole('button', { name: '加载更多评论' })).toHaveCount(0);
-    expect(requests.at(-1)).toEqual({ kind: 'comments', sort: 'hot', cursor: 'loc:44' });
+    expect(requests.at(-1)).toEqual({ kind: 'comments', sort: 'latest', cursor: 'loc:44' });
     expect(requests).toHaveLength(2);
 
     // 刷新后同样从链接定位，不依赖旧会话或已加载的 DOM。
@@ -194,7 +195,7 @@ test.describe('一级评论精确链接', () => {
     const region = page.getByRole('region', { name: '评论区' });
     await expect(region.getByRole('listitem')).toHaveCount(20);
     await expect(located(page)).toHaveCount(0);
-    expect(requests).toEqual([{ kind: 'comments', sort: 'hot', cursor: null }]);
+    expect(requests).toEqual([{ kind: 'comments', sort: 'latest', cursor: null }]);
     // 首批仍是原排序的前 20 条。
     await expect(region.getByRole('listitem').first()).toHaveAttribute('data-reading-id', `comment:${ids[0]}`);
   });
@@ -203,7 +204,7 @@ test.describe('一级评论精确链接', () => {
     const requests = await mockArchive(page);
     await page.goto(locatePath('9999'));
     const region = page.getByRole('region', { name: '评论区' });
-    await expect(region.getByRole('status').filter({ hasText: '不存在或未归档' })).toBeVisible();
+    await expect(region.getByRole('status').filter({ hasText: '不存在或未保存' })).toBeVisible();
     await expect(region.getByRole('listitem')).toHaveCount(0);
     await expect(located(page)).toHaveCount(0);
     expect(requests.every(request => request.kind === 'location')).toBe(true);
@@ -231,20 +232,20 @@ test.describe('一级评论精确链接', () => {
     const requests = await mockArchive(page, { locationDelay: () => 600 });
     await page.goto(locatePath(target.id));
     const region = page.getByRole('region', { name: '评论区' });
-    await expect(region.getByText('最热评论加载中…')).toBeVisible();
-    await sortOption(region, '最新').click();
-    await expect(region.getByRole('radio', { name: '最新' })).toBeChecked();
+    await expect(region.getByText('最新评论加载中…')).toBeVisible();
+    await switchCommentSort(region);
+    await expect(commentSort(region, 'hot')).toBeVisible();
     await expect(region.getByRole('listitem')).toHaveCount(20);
     await expect(page.locator(`[data-reading-id="comment:${target.id}"]`)).toHaveAttribute('data-located', 'true');
 
-    // 等最热的迟到响应真正到达：页面仍是最新排序的定位批次，不出现失败提示。
+    // 等按时间的迟到响应真正到达：页面仍是按热度排序的定位批次，不出现失败提示。
     await page.waitForTimeout(900);
-    await expect(region.getByRole('radio', { name: '最新' })).toBeChecked();
+    await expect(commentSort(region, 'hot')).toBeVisible();
     await expect(region.getByRole('listitem')).toHaveCount(20);
     await expect(located(page)).toHaveCount(1);
     await expect(region.getByRole('alert')).toHaveCount(0);
     expect(requests.filter(request => request.kind === 'location').map(request => request.sort))
-      .toEqual(['hot', 'latest']);
+      .toEqual(['latest', 'hot']);
   });
 
   test('宽窄屏都不产生横向溢出，定位后目标仍可读', async ({ page }) => {

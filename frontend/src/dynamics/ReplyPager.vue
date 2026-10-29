@@ -4,7 +4,10 @@ import { ElButton } from 'element-plus';
 import { replyPageEntries } from './replyPaging';
 import { useCompactViewport } from '../app/useCompactViewport';
 
-const props = defineProps<{ page: number; pages: number; busy: boolean }>();
+// `dismissible` 只给需要“收起”的楼中楼用；会话页没有可收起的内容。
+const props = withDefaults(defineProps<{ page: number; pages: number; busy: boolean; dismissible?: boolean }>(), {
+  dismissible: true,
+});
 const emit = defineEmits<{ select: [number]; collapse: [] }>();
 
 const compact = useCompactViewport();
@@ -39,7 +42,7 @@ const entries = computed(() => replyPageEntries(props.page, props.pages, compact
       :aria-busy="busy || undefined"
       @click="emit('select', Math.min(page + 1, pages))"
     >下一页</el-button>
-    <el-button link class="reply-pager__action" @click="emit('collapse')">收起</el-button>
+    <el-button v-if="dismissible" link class="reply-pager__action" @click="emit('collapse')">收起</el-button>
   </nav>
 </template>
 
@@ -54,14 +57,16 @@ const entries = computed(() => replyPageEntries(props.page, props.pages, compact
 .reply-pager__total {
   margin-right: 4px;
   color: var(--muted);
-  font-size: 13px;
+  /* 计数属时间/计数层 13px；行高跟相邻分页按钮的行盒对齐，不是标尺的 meta 行高。 */
+  font-size: var(--font-meta);
   line-height: 24px;
 }
 .reply-pager__action,
 .reply-pager__page {
   min-height: var(--touch);
   padding: 0 6px;
-  font-size: 13px;
+  /* 分页按钮文字与“共N页”同为时间/计数层；行高由库按钮行盒决定。 */
+  font-size: var(--font-meta);
 }
 .reply-pager__page[aria-current='page'] {
   color: var(--brand-strong);

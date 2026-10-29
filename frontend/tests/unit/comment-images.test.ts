@@ -45,7 +45,7 @@ it('未提供 media 的旧评论不渲染图片组，仍按待归档数量提示
   const region = await screen.findByRole('region', { name: '评论区' });
   const item = (await within(region).findAllByRole('listitem'))[0]!;
   expect(within(item).queryByRole('group', { name: '评论图片' })).toBeNull();
-  expect(item.textContent).toContain('评论图片待归档（2 张）');
+  expect(item.textContent).toContain('评论图片待保存（2 张）');
   expect(item.textContent).not.toContain('暂无评论内容');
 });
 
@@ -117,9 +117,9 @@ it('未上传、归档失败与无效公开地址显示状态占位，不渲染�
   const region = await screen.findByRole('region', { name: '评论区' });
   const item = (await within(region).findAllByRole('listitem'))[0]!;
   const group = within(item).getByRole('group', { name: '评论图片' });
-  expect(within(group).getByText('图片待归档')).toBeTruthy();
-  expect(within(group).getByText('图片归档失败')).toBeTruthy();
-  expect(within(group).getByText('归档图片地址不可用')).toBeTruthy();
+  expect(within(group).getByText('图片待保存')).toBeTruthy();
+  expect(within(group).getByText('图片保存失败')).toBeTruthy();
+  expect(within(group).getByText('已保存图片地址不可用')).toBeTruthy();
   // 异常项仍占位为可点缩略图：跳过与关闭不受局部异常阻断。
   expect(within(group).getAllByRole('button', { name: /^预览评论图片 / })).toHaveLength(4);
   // 无效地址不回退来源业务图，也不伪造可加载的图片节点。
@@ -149,8 +149,8 @@ it('打开、切图与关闭评论图片预览不重置排序与已加载评论�
   const region = await screen.findByRole('region', { name: '评论区' });
   await waitFor(() => expect(within(region).getAllByRole('listitem')).toHaveLength(2));
   // 预览不能把用户选过的排序与已加载批次重置回默认。
-  await fireEvent.click(within(region).getByRole('radio', { name: '最新' }));
-  await waitFor(() => expect((within(region).getByRole('radio', { name: '最新' }) as HTMLInputElement).checked).toBe(true));
+  await fireEvent.click(within(region).getByRole('button', { name: '当前按时间，点击切换为按热度' }));
+  await waitFor(() => expect(within(region).getByRole('button', { name: '当前按热度，点击切换为按时间' })).toBeTruthy());
   const readsBeforePreview = reads;
   const push = vi.spyOn(router, 'push');
   const replace = vi.spyOn(router, 'replace');
@@ -172,7 +172,7 @@ it('打开、切图与关闭评论图片预览不重置排序与已加载评论�
   router.go(-1);
   await waitFor(() => expect(screen.getByTestId('preview-session').textContent).toBe('closed'));
   const after = screen.getByRole('region', { name: '评论区' });
-  expect((within(after).getByRole('radio', { name: '最新' }) as HTMLInputElement).checked).toBe(true);
+  expect(within(after).getByRole('button', { name: '当前按热度，点击切换为按时间' })).toBeTruthy();
   expect(within(after).getAllByRole('listitem')).toHaveLength(2);
   // 关闭预览不重读评论，仍停留在当前访问。
   expect(reads).toBe(readsBeforePreview);

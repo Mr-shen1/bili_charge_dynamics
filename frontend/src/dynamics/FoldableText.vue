@@ -57,8 +57,9 @@ watch(() => props.text, measure, { flush: 'post' });
   --collapsed-lines: 6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  line-height: 25px;
-  font-size: 16px;
+  /* 正式设计 §6：动态正文 16/28；折叠按 6 行与这个行高一起重新验证。 */
+  line-height: var(--line-body);
+  font-size: var(--font-body);
   font-weight: 400;
   margin: 8px 0;
   min-width: 0;
@@ -72,7 +73,7 @@ watch(() => props.text, measure, { flush: 'post' });
 }
 .fold-toggle {
   min-height: var(--touch);
-  font-size: 16px;
-  line-height: 25px;
+  font-size: var(--font-link);
+  line-height: var(--line-link);
 }
 </style>

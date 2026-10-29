@@ -1,6 +1,6 @@
 // @projects desktop-chromium-archive
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { scrollY, sortOption, viewer } from './support';
+import { commentSort, scrollY, switchCommentSort, viewer } from './support';
 
 // 精确入口的返回与恢复（宽屏）跑生产装配 + 归档 HTTP 替身：路由、生产 Adapter、
 // 分页与阅读恢复都是真实实现，只有归档响应由替身给出。
@@ -203,7 +203,7 @@ test.describe('精确入口的返回与恢复（宽屏）', () => {
     const target = page.locator(`[data-reading-id="comment:${rootId}"]`);
     await expect(target).toHaveAttribute('data-located', 'true');
     expect(requests).toEqual([
-      { kind: 'comment-location', detail: `${rootId}:hot` },
+      { kind: 'comment-location', detail: `${rootId}:latest` },
       // 目标根评论的回复区按常规首屏读 3 条预览（与普通详情一致）。
       { kind: 'replies', detail: 'null:3' },
     ]);
@@ -240,8 +240,8 @@ test.describe('精确入口的返回与恢复（宽屏）', () => {
     await expect.poll(() => viewportTop(page, `reply:${rootId}:${targetReplyId}`)).toBeLessThan(24);
 
     const region = page.getByRole('region', { name: '评论区' });
-    await sortOption(region, '最新').click();
-    await expect(region.getByRole('radio', { name: '最新' })).toBeChecked();
+    await switchCommentSort(region);
+    await expect(commentSort(region, 'hot')).toBeVisible();
 
     // 等晚到的根评论定位批次真正落地：目标回复仍在视口顶部，没有被根评论定位抢走。
     await expect(target).toHaveAttribute('data-located', 'true');
@@ -252,7 +252,7 @@ test.describe('精确入口的返回与恢复（宽屏）', () => {
     await expect(page.locator(`[data-reading-id="comment:${rootId}"]`).getByRole('button', { name: '2' }))
       .toHaveAttribute('aria-current', 'page');
     expect(requests.filter(request => request.kind === 'comment-location').map(request => request.detail))
-      .toEqual([`${rootId}:hot`, `${rootId}:latest`]);
+      .toEqual([`${rootId}:latest`, `${rootId}:hot`]);
     expect(requests.filter(request => request.kind === 'replies')).toEqual([]);
   });
 
@@ -263,7 +263,8 @@ test.describe('精确入口的返回与恢复（宽屏）', () => {
     await expect(target).toHaveAttribute('data-located', 'true');
 
     const region = page.getByRole('region', { name: '评论区' });
-    await sortOption(region, '最新').click();
+    await switchCommentSort(region);
+    await expect(commentSort(region, 'hot')).toBeVisible();
     await page.waitForTimeout(1400);
 
     await expect.poll(() => viewportTop(page, `reply:${rootId}:${targetReplyId}`)).toBeLessThan(24);

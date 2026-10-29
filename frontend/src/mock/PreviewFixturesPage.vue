@@ -2,6 +2,7 @@
 import ThumbnailGrid from '../preview/ThumbnailGrid.vue';
 import { imageGroups } from './fixtures';
 import { useImagePreview } from '../preview/useImagePreview';
+import SelfCheckNav from './SelfCheckNav.vue';
 
 const preview = useImagePreview();
 const groups = imageGroups;
@@ -12,6 +13,7 @@ preview.registerGroups(groups);
 
 <template>
   <section class="page">
+    <SelfCheckNav />
     <h1>图片预览与浏览器历史验证</h1>
     <p class="page__note">
       受控夹具：缩略图与预览使用不同地址；混合组包含坏图、未上传、无效地址与可重试失败。本页不连接真实 API、OSS 或上游采集。

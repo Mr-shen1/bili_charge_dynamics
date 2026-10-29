@@ -181,8 +181,13 @@ test.describe('宽屏回复预览与实时页码', () => {
 
   test('详情历史返回恢复展开状态与页码，并按保存页码实时重读', async ({ page }) => {
     const api = await mockApi(page);
+    // 宽屏正文入口在独立标签页打开，站内往返只剩窄屏入口：
+    // 先用窄屏评论入口建立这次详情访问，再换成宽屏观察回复预览与页码。
+    await page.setViewportSize({ width: 390, height: 800 });
     await page.goto('/');
     await page.getByRole('button', { name: '来源评论 45' }).click();
+    await expect(page).toHaveURL(/\/dynamics\/1001$/);
+    await page.setViewportSize({ width: 1280, height: 900 });
     const region = page.getByRole('region', { name: '评论区' });
     await expect(replyList(page).locator('> li')).toHaveCount(3);
     // 预览里先展开长回复正文，验证文字状态随详情快照恢复。

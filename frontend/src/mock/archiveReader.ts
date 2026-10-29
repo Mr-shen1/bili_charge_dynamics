@@ -1,4 +1,4 @@
-import type { ArchiveMetadata, Comment, Dynamic, DynamicImage, DynamicReader, ReadResult, Reply, User } from '../data/contracts';
+import type { ArchiveMetadata, Comment, Dynamic, DynamicImage, DynamicReader, ReadResult, Reply, ReplyConversation, ReplySort, User } from '../data/contracts';
 import { replyAppendSize, replyPreviewSize } from '../data/contracts';
 
 // 仅供 mock/fault 装配：确定性 25 条动态，不访问真实 API，也不进入生产构建。
@@ -113,17 +113,98 @@ export function createMockArchiveReader(): DynamicReader {
   const replyLong = Array.from({ length: 7 }, (_value, line) =>
     `第七行边界 ${line + 1}：这是一段足够长的回复正文，用于验证实际超过六行才折叠。`).join('\n');
   const replySecondId = '90071992547401102';
-  const mockReplies: Reply[] = Array.from({ length: 25 }, (_value, index) => ({
+  const rawReplies: Reply[] = Array.from({ length: 25 }, (_value, index) => ({
     id: `900719925474011${String(1 + index).padStart(2, '0')}`,
-    author: index % 4 === 0 ? first : third,
+    // 第二条第 1 条是对话起点，由动态作者本人发出，嵌套目标才能指向真实作者身份。
+    author: index === 1 || index % 4 === 0 ? first : third,
     publishedAt: index === 4 ? null : new Date(Date.UTC(2026, 2, 1, 3, 3, 4) + index * 60_000).toISOString(),
     text: index === 1 ? replyLong
       : index === 2 ? '回复 @纸飞机: 来源前缀由界面剥离，不重复。'
       : `回复内容 ${index + 1}\n第二行：换行与 emoji 🙂`,
     likeCount: index % 6 === 0 ? null : index,
-    replyTo: index === 2 ? first : null,
-    parentId: index === 2 ? replySecondId : null,
+    replyTo: null,
+    parentId: null,
   }));
+  // 对话关系夹具：同楼真实父回复 ID，覆盖 A→B、旁支、跨页成员、缺祖先与独立发言。
+  // 昵称相同（多人同昵称）与正文前缀相同都不构成关系；`null` 表示直接回根。
+  const replyWiring: Readonly<Record<number, string>> = {
+    2: replySecondId,
+    3: replySecondId,
+    12: replySecondId,
+    6: '90071992547401990',
+    7: '90071992547401107',
+  };
+  const repliesById = new Map(rawReplies.map(item => [item.id, item]));
+  const mockReplies: Reply[] = rawReplies.map((item, index) => {
+    const parent = replyWiring[index];
+    return parent === undefined ? item
+      : { ...item, parentId: parent, replyTo: repliesById.get(parent)?.author ?? null };
+  });
+
+  /**
+   * mock 的对话关系：与生产同语义的最小实现——只认父回复 ID，缺祖先与环在断点止步，
+   * 路径压缩保证整楼计算不随条数平方增长。
+   */
+  const conversationIndex = (() => {
+    const parents = new Map(mockReplies.map(item => [item.id, item.parentId ?? null]));
+    const resolved = new Map<string, { start: string; complete: boolean }>();
+    for (const item of mockReplies) {
+      if (resolved.has(item.id)) continue;
+      const path: string[] = [];
+      const seen = new Set<string>();
+      let current = item.id;
+      let outcome = resolved.get(current);
+      while (outcome === undefined) {
+        if (seen.has(current)) {
+          // 异常环：没有可确认的更早起点，以当前条目作为可确认部分的起点。
+          outcome = { start: current, complete: false };
+          break;
+        }
+        seen.add(current);
+        path.push(current);
+        const parent = parents.get(current) ?? null;
+        if (parent === null) {
+          outcome = { start: current, complete: true };
+          break;
+        }
+        if (!parents.has(parent)) {
+          outcome = { start: current, complete: false };
+          break;
+        }
+        current = parent;
+        outcome = resolved.get(current);
+      }
+      for (const id of path) resolved.set(id, outcome);
+    }
+    const members = new Map<string, string[]>();
+    for (const item of mockReplies) {
+      const start = resolved.get(item.id)!.start;
+      members.set(start, [...(members.get(start) ?? []), item.id]);
+    }
+    return { resolved, members };
+  })();
+  const conversationOf = (id: string): ReplyConversation | null => {
+    const entry = conversationIndex.resolved.get(id);
+    if (!entry) return null;
+    const count = (conversationIndex.members.get(entry.start) ?? []).length;
+    return count < 2 ? null : { startId: entry.start, count, incomplete: !entry.complete };
+  };
+  /**
+   * 回复排序与生产同语义：时间序是既有夹具顺序，热度按点赞降序、缺失值后置，
+   * 同赞先比发布时间降序，再按 ID 升序。定位与会话仍然只读时间序。
+   */
+  const replyOrder = (sort: ReplySort): readonly Reply[] => {
+    if (sort !== 'hot') return mockReplies;
+    const time = (item: Reply): number => (item.publishedAt === null
+      ? Number.NEGATIVE_INFINITY : Date.parse(item.publishedAt));
+    const likes = (item: Reply): number => (item.likeCount === null
+      ? Number.NEGATIVE_INFINITY : item.likeCount);
+    return [...mockReplies].sort((a, b) => {
+      if (likes(a) !== likes(b)) return likes(b) - likes(a);
+      if (time(a) !== time(b)) return time(b) - time(a);
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    });
+  };
 
   const openingText = [
     '今天把小小的想法写在这里。🙂',
@@ -231,21 +312,28 @@ export function createMockArchiveReader(): DynamicReader {
         },
       };
     },
-    async readReplies({ dynamicId, rootId, limit, page, cursor, signal }) {
+    async readReplies({ dynamicId, rootId, limit, page, cursor, sort, signal }) {
       if (signal.aborted) return cancelled;
       if (!(cursor == null || typeof cursor === 'string')) return failed;
+      if (sort !== undefined && sort !== 'time' && sort !== 'hot') return failed;
       // 只有第一条动态的首个一级评论带回复夹具；其余根评论返回成功空集。
       const isFirst = dynamicId === dynamics[0]!.id && rootId === replyRoot.id;
       if (page !== undefined) {
         if (!Number.isSafeInteger(page) || page < 1 || limit !== replyAppendSize || cursor != null) return failed;
         if (!isFirst) return { status: 'error' };
+        const ordered = replyOrder(sort ?? 'time');
         const offset = (page - 1) * replyAppendSize;
         return { status: 'success', data: {
-          items: mockReplies.slice(offset, offset + replyAppendSize), nextCursor: null,
+          // page 模式带可空对话投影；cursor 预览不带，缺失即不推断入口。
+          items: ordered.slice(offset, offset + replyAppendSize)
+            .map(item => ({ ...item, conversation: conversationOf(item.id) })),
+          nextCursor: null,
           count: mockReplies.length, root: replyRoot, sourceReplyCount: replyRoot.replyCount,
           localReplyCount: mockReplies.length, repliesLastAttempt: 'success',
         } };
       }
+      // cursor 首批与续批是时间序冻结快照，没有排序维度。
+      if (sort !== undefined) return failed;
       if (limit !== (cursor == null ? replyPreviewSize : replyAppendSize)) return failed;
       if (!isFirst) return { status: 'success', data: { items: [], nextCursor: null } };
       const prefix = `mock-replies:${dynamicId}:${rootId}:`;
@@ -271,6 +359,20 @@ export function createMockArchiveReader(): DynamicReader {
         items: mockReplies.slice(offset, offset + replyAppendSize), nextCursor: null, page,
         count: mockReplies.length, root: replyRoot, sourceReplyCount: replyRoot.replyCount,
         localReplyCount: mockReplies.length, repliesLastAttempt: 'success',
+      } };
+    },
+    async readConversation({ dynamicId, rootId, replyId, signal }) {
+      if (signal.aborted) return cancelled;
+      // 与生产一致：只有带回复夹具的第一条动态首个根评论可读会话，其余按不存在处理。
+      const isFirst = dynamicId === dynamics[0]!.id && rootId === replyRoot.id;
+      const entry = isFirst ? conversationIndex.resolved.get(replyId) : undefined;
+      if (!entry) return { status: 'not-found' };
+      const ids = conversationIndex.members.get(entry.start) ?? [];
+      // 整段一次返回：与生产契约一样没有页码，不截成每页 10 条。
+      return { status: 'success', data: {
+        dynamicId, rootId, replyId, startId: entry.start, incomplete: !entry.complete,
+        count: ids.length, nextCursor: null,
+        items: ids.map(id => repliesById.get(id)).filter((item): item is Reply => item !== undefined),
       } };
     },
   };

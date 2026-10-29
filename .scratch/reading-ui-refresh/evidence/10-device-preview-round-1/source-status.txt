@@ -1,0 +1,29 @@
+== git status --porcelain（sourceStatus 原文） ==
+?? .scratch/reading-ui-refresh/evidence/10-device-preview-round-1/
+?? frontend/playwright.tmp-final.config.ts
+== HEAD 与固定候选 ==
+16dc3b64075a504c853c78a1a3a8b9a945d5e54c
+344235a88b418dc07b644aef578487d0693e65d9
+== frontend/backend 树 ==
+79f45fd947bbe46b7ed8d63f4f4a45dabcb9160e
+b33aa187c2055a901cd568908679ff448c71f37e
+79f45fd947bbe46b7ed8d63f4f4a45dabcb9160e
+b33aa187c2055a901cd568908679ff448c71f37e
+== 产品树差异（应为空） ==
+== artifacts.sha256 汇总 ==
+460514e5f03d26db073708fcce5c4268e140827460d414549c1e5b7e6dbe159a  artifacts.sha256
+74
+== 截图文件 ==
+24d6b27d56119858fe2ce43dbe3c0f27b7ad891cbe2220d70ba29aa236b597dd  screens/344235a-1280-list.png
+cfe5053af5f43c607dad48374746192a9fca3829a0f0919c5981eb0b2c970bac  screens/344235a-1280-manage-202.png
+729e741ed3c1ab6f644604880ee7cfb7d0ff2cbf5bb75efe5b60938b6a9dc290  screens/344235a-1280-manage.png
+e821f3a4143a4efd28f1740f17ec215eed7e0f92140cb397b4ce3fdebfe24cde  screens/344235a-390-conversation-960013.png
+6b93a1c2740df2d50bf81ee4b34c2c221c1d3f480e65e3887e83b94fbbe37489  screens/344235a-390-list.png
+f2224b942bcd57ca2b03e3871f07780b468bf12ff3bab4a9b887f38a655988f5  screens/344235a-390-manage-202.png
+9a8ebc534a2ab2dffe675ba071070351945ceb3c28a5d13469e6602ad59a421d  screens/344235a-390-manage.png
+
+== 后续观察（2026-10-29T13:19+08:00） ==
+git status --porcelain
+?? .scratch/reading-ui-refresh/evidence/10-device-preview-round-1/
+说明：上面的 ?? frontend/playwright.tmp-final.config.ts 已被 merger 清理；本快照保留准备时的原始状态，
+当前工作树只剩本准备目录未跟踪（受跟踪的 frontend/backend 与 344235a 仍无差异）。

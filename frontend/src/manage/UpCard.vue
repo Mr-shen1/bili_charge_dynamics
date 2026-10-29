@@ -204,16 +204,16 @@ function remove(): Promise<void> {
     <footer class="manage-section manage-footer">
       <template v-if="up.monitor">
         <el-button class="manage-delete" :disabled="busy" @click="remove()">{{ deleteLabel }}</el-button>
-        <span class="manage-muted">仅删除配置，保留身份和已有归档。</span>
+        <span class="manage-muted">仅删除配置，保留身份和已保存的动态。</span>
       </template>
-      <p v-else class="manage-muted">监控配置已删除；身份和已有归档保留。</p>
+      <p v-else class="manage-muted">监控配置已删除；身份和已保存的动态保留。</p>
     </footer>
   </article>
 </template>
 
 <style scoped>
 .manage-up {
-  padding: 16px;
+  padding: var(--card-padding);
   background: var(--card-bg);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -233,8 +233,10 @@ function remove(): Promise<void> {
 
 .manage-author {
   margin: 0;
-  font-size: 16px;
   color: var(--author);
+  font-size: var(--font-author);
+  line-height: var(--line-author);
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 
@@ -244,10 +246,12 @@ function remove(): Promise<void> {
   border-radius: 999px;
   background: var(--el-color-primary-light-9);
   color: var(--brand-strong);
-  font-size: 12px;
+  font-size: var(--font-badge);
+  line-height: var(--line-badge);
   white-space: nowrap;
 }
 
+/* 状态在左、操作在右：按钮不超过内容宽度，换行时仍靠右（正式设计 §7）。 */
 .manage-control-row {
   display: flex;
   flex-wrap: wrap;
@@ -256,15 +260,13 @@ function remove(): Promise<void> {
   margin-top: 16px;
 }
 
+.manage-control-row .manage-toggle {
+  margin-inline-start: auto;
+}
+
 .manage-state {
   /* 卡片内的状态行紧跟上一行，覆盖共享版式的默认上边距。 */
   margin: 0;
-}
-
-.manage-toggle,
-.manage-save,
-.manage-delete {
-  min-height: var(--touch);
 }
 
 .manage-config {
@@ -280,13 +282,5 @@ function remove(): Promise<void> {
 
 .manage-footer .manage-muted {
   margin: 0;
-}
-
-@media (max-width: 640px) {
-  .manage-toggle,
-  .manage-save,
-  .manage-delete {
-    width: 100%;
-  }
 }
 </style>

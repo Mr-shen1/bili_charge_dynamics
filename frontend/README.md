@@ -41,6 +41,40 @@
 及代理语义下的表现；它是 10 的隔离证据，不替代真实飞书客户端或真机验收。
 证据见[票据 10](../.scratch/feishu-notifications/evidence/10-integrated-delivery-readiness.md)。
 
+阅读改版票据 06 另增回复对话的只读读取与手机「查看对话」：回复 `page`/定位响应为当前页条目带可空
+`conversation:{start_id,count,incomplete}` 投影，新只读资源 `GET .../replies/{reply_id}/conversation`
+不带查询参数，一次读完整个本地可确认集合（票据 13 起这是唯一读取方式；显式 `?page=N&limit=10` 只为冻结的旧预览产物保留兼容，本轮 UI 不使用），
+窄屏楼中楼页的条目入口进入独立会话页 `/dynamics/{id}/comments/{rootId}/replies/{replyId}/conversation`。
+投影只表达本机真实父回复关系（含缺祖先与异常环的安全止步），不新增表、迁移或采集。契约见
+[归档 API](../docs/backend/api/archive-api.md#阅读改版-06-增量回复对话投影与只读-conversation-子资源)与
+[客户端契约](../docs/backend/api/archive-api-client.md#阅读改版-06-增量对话投影与手机会话页)，证据见
+[06 证据](../.scratch/reading-ui-refresh/evidence/06-conversation-reading.md)。
+
+阅读改版票据 07 在同一链路上补会话往返恢复，**不改任何归档 HTTP 契约**：独立回复访问（窄屏楼中楼页与
+窄屏回复精确入口）在导航协调器里保存一份仅内存的访问级快照（排序、页码、已读内容、定位意图与阅读位置），
+`‹ 会话列表` 与浏览器返回/前进回到该访问时原样恢复，从热度第 N 页进入再返回仍是热度第 N 页且不重新定位；
+直达/刷新没有来源时 `replace` 为所属回复详情的时间序第 1 页。见
+[客户端契约](../docs/backend/api/archive-api-client.md#阅读改版-07-增量会话往返恢复回复访问)与
+[07 证据](../.scratch/reading-ui-refresh/evidence/07-conversation-navigation-restoration.md)。
+
+阅读改版票据 04 改的是**怎么进入详情**，同样不改归档 HTTP 契约：宽屏卡片正文与阅读链接在独立浏览器标签打开
+`/dynamics/{id}`（`rel="noopener"`，新标签的 `window.opener` 为 `null`），原列表的 URL、滚动与卡片内联评论状态
+都不动；窄屏仍在站内进入详情顶部。正常详情不再有可见“动态详情”页头与“返回列表”，窄屏只留 `‹ 动态列表`，
+读取失败或地址无效时两端仍保留退出与重试。标签标题由 `src/app/documentTitle.ts` 按路由统一决定
+（详情与一级评论精确入口为“动态详情”，楼中楼与回复精确入口为“回复详情”，会话页为“会话列表”）；新增阅读路由
+必须在该映射里登记名称。见
+[客户端契约](../docs/backend/api/archive-api-client.md#阅读改版-04-增量桌面正文新标签与详情页头)与
+[04 证据](../.scratch/reading-ui-refresh/evidence/04-detail-tabs-and-mobile-navigation.md)。
+
+阅读改版票据 09 把 01–08 放在同一候选上组合取证：后端真实 HTTP＋临时 SQLite 的组合契约
+（排序先于分页、入口资格跨页、关系不串父级、旧时间 token/定位兼容、零上游请求账本）、
+`tests/e2e-location/integrated-reading.spec.ts`（桌面双卡→正文新标签→原列表；手机→热度后续页→
+跨页对话→恢复；通知锚点/后续页→对话→原访问恢复；直达/刷新/无来源）、`tests/e2e-manage` 的管理
+草稿/启停/删除隔离组合用例，以及三进程投递链接→对话→恢复；三进程用例在测试初始化里显式开启
+通知闸门（生产默认仍是 `off`）。四宽度候选截图与隔离 Nginx 交付结果见
+[09 证据](../.scratch/reading-ui-refresh/evidence/09-integrated-verification.md)；
+视觉人工签收、iPhone Safari 与真机、部署留给票据 10。
+
 对应规格与票据：[实施规格](../.scratch/frontend-vue-migration/spec.md) · [票据目录](../.scratch/frontend-vue-migration/issues/) ·
 [图片预览验证证据](../.scratch/frontend-vue-migration/evidence/01-native-image-preview.md) ·
 [02 归档列表证据](../.scratch/frontend-vue-migration/evidence/02-archive-scope-browsing.md) ·
@@ -132,12 +166,12 @@ pnpm playwright test --project=desktop-chromium-archive tests/e2e/replies.spec.t
 | `src/dynamics/` | 归档读取行为：scope 导航条、cursor/page 读取、卡片/详情、`CommentSection`/`CommentList`/`CommentItem` 与 `useCommentsRead`、`ReplySection`/`ReplyPager` 与 `useReplyPreview`/`useReplyPage`、窄屏 `ReplyPreview` 与 `useThreadAuthor`、折叠/状态提示与展示格式化；精确入口共享 `locate.ts`（目标确认、not-found 提示映射）与 `useLocateTarget.ts`（一次性定位滚动），两处不再各写一份 |
 | `src/app/assembly.ts` | 装配隔离：`production` / `mock` / `fault`；自检路由只在后两者注册 |
 | `src/app/reader.ts` | 读取装配：生产用真实 API Adapter；mock/fault 用受控归档读取，普通构建摇掉 |
-| `src/app/router.ts` | 六条基线路由 + 一级评论精确入口 `/dynamics/:dynamicId/comments/:rootId/locate` + 楼中楼回复精确入口 `/dynamics/:dynamicId/comments/:rootId/replies/:replyId/locate` + 404；`scrollBehavior: () => false`（位置恢复由导航协调器负责） |
+| `src/app/router.ts` | 六条基线路由 + 一级评论精确入口 `/dynamics/:dynamicId/comments/:rootId/locate` + 楼中楼回复精确入口 `/dynamics/:dynamicId/comments/:rootId/replies/:replyId/locate` + 会话页 `/dynamics/:dynamicId/comments/:rootId/replies/:replyId/conversation` + 404；`scrollBehavior: () => false`（位置恢复由导航协调器负责） |
 | `src/app/App.vue` | 应用壳：导航、主栏、唯一 `PreviewHost`、非生产装配标识 |
 | `src/theme/theme.css` | Element Plus 主题变量 + 基础布局/图片栅格/预览层样式 |
 | `src/preview/` | 票据 01/04/08 验证过的图片层：图片组与手势、`el-image` 缩略图、独立 `el-image-viewer`、归档图片组连接（动态与各根评论 owner 隔离，历史写入委托导航协调器） |
 | `src/manage/` | 管理行为：生产管理 Adapter（`main.ts` 装配，含 `listUps`/`addUp`/`updateMonitor`/`deleteMonitor`/目标增删读/`readDiscovery`/`listChecks`）、共享页头、列表访问、身份卡（启停、模式与近期 N 草稿、删除配置与重新添加）、`ManageTargets` 指定目标区、`CheckStatusPanel`/`CheckStatusDetail` 检查与归档进度、`DiscoveryStatusPanel` 发现与窗口、`discoveryState.ts` 发现契约、`checkStatusText.ts`/`discoveryText.ts`/`status.ts` 状态文案、`useStatusRead` 一次性读取、`manage.css` 共享版式、按 UID 的防重锁与访问存活校验 |
-| `src/pages/` | 六条基线路由页面（另有一级评论精确入口复用详情页，楼中楼回复精确入口按 640px 断点在详情与独立楼中楼页之间分支）；`ListPage.vue`/`DetailPage.vue`/`CommentThreadPage.vue` 已接真实读取，`ManagePage.vue`/`ManageUpPage.vue` 已接真实管理接口（含检查与发现状态），`NotFoundPage.vue` 为不存在页 |
+| `src/pages/` | 六条基线路由页面（另有一级评论精确入口复用详情页，楼中楼回复精确入口按 640px 断点在详情与独立楼中楼页之间分支，`ThreadPage.vue` 按访问标识重建独立楼中楼页，`ConversationPage.vue` 是手机「查看对话」的独立只读会话页，一次请求读完整段、入口回复居中并标“刚才查看”）；`ListPage.vue`/`DetailPage.vue`/`CommentThreadPage.vue`/`ConversationPage.vue` 已接真实读取，`ManagePage.vue`/`ManageUpPage.vue` 已接真实管理接口（含检查与发现状态），`NotFoundPage.vue` 为不存在页 |
 | `src/mock/` | 受控图片夹具、25 条模拟归档（含 4/9/12 图、长图与异常状态）与 45 条一级评论（含混合状态/长图/纯图/超量评论图片组）及 fault 读取计划，只在 mock/fault 装配加载 |
 | `public/images/unavailable/` | 应用自有的异常图片占位，随生产构建发布；不是来源业务图 |
 | `server/imageServer.mjs` | 图片夹具服务器：缩略/预览不同地址、坏图、无效地址、可重试失败、请求记录 |
@@ -147,7 +181,7 @@ pnpm playwright test --project=desktop-chromium-archive tests/e2e/replies.spec.t
 | `tests/unit` | 历史元数据、装配选择、归档 Adapter（列表、一级评论含 UP 摘要、评论图片与回复）/图片组契约、管理 Adapter（映射、错误白名单、401、取消）契约、检查/发现状态 DTO 守卫与自相矛盾响应拒绝、回复分页与目标文案、列表/详情/一级评论（含评论图片）/窄屏入口/楼中楼/回复/图片预览/管理列表、单 UP 启停与模式/目标/检查与发现状态页面行为 |
 | `tests/fixtures` / `tests/support` | 生产 DTO 夹具、可注入读取与管理接口替身、预览探针、窄屏视口桩与 jsdom 排版/滚动替身 |
 | `tests/e2e` | 骨架冒烟/预览/详情恢复/动态图片/评论图片（mock 装配）+ 列表、一级评论（含根评论 `media` 映射）、管理列表/启停/模式与目标、宽屏回复、宽屏/窄屏回复精确入口、窄屏楼中楼与图片读取（生产装配，HTTP 传输按用例替换）+ `static-delivery`（真实 Nginx 缓存/404/深链接，`E2E_TARGET=nginx` 单独跑） |
-| `tests/e2e-location` | 一级评论与楼中楼回复精确入口 + 实际归档 API（`backend/tests/live_app` 虚构上游，仅测试用的 45 条虚构根评论与 25 条虚构楼中楼夹具）+ 本次运行独占 SQLite：后续批/页目标直开定位、窄屏刷新、目标不存在提示，读取不触发上游采集 |
+| `tests/e2e-location` | 一级评论与楼中楼回复精确入口、对话投影与整段会话（一次读取全部本地成员、入口居中并标“刚才查看”、历史恢复含首尾留白） + 实际归档 API（`backend/tests/live_app` 虚构上游，仅测试用的 45 条虚构根评论与 25 条带真实父关系的虚构楼中楼夹具，含缺父与互指环）+ 本次运行独占 SQLite：后续批/页目标直开定位、窄屏刷新、目标不存在提示、普通回复页与通知定位页进入对话再返回、读取不触发上游采集 |
 | `tests/e2e-delivery` | 票据 10 三进程完整链：用例自起实际 API（`backend/tests/delivery_fixture`）＋独立 collector＋生产通知进程，共享本次运行独占 SQLite，通知发到用例内本机接收端；只打开消息里的实际链接，验证动态/后续批一级评论/后续页回复的宽窄屏定位、刷新、返回、目标不存在、路由分群与代理语义，读取不触发采集 |
 | `tests/e2e-manage` | 管理页 + 实际 API（`backend/tests/live_app` 虚构上游，含动态页/detail/空根评论/独立评论计数/近期发现页 + **仅测试用**的 `POST /api/test/collect`、`/api/test/source-failure` 采集驱动端点）+ 本次运行独占 SQLite；覆盖模式保存、目标归属校验与停用/移除目标/删配置后的归档保留、检查无变化、根评论失败的分项失败与整轮成功、发现失败保留旧窗口、读取不触发采集 |
 | `tests/e2e-production` | 生产装配六路由/404/无自检入口 + fault 装配冒烟 |

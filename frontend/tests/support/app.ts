@@ -3,25 +3,30 @@ import { defineComponent, h } from 'vue';
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router';
 import ListPage from '../../src/pages/ListPage.vue';
 import DetailPage from '../../src/pages/DetailPage.vue';
-import CommentThreadPage from '../../src/pages/CommentThreadPage.vue';
+import ThreadPage from '../../src/pages/ThreadPage.vue';
 import ReplyLocatePage from '../../src/pages/ReplyLocatePage.vue';
+import ConversationPage from '../../src/pages/ConversationPage.vue';
 import ManagePage from '../../src/pages/ManagePage.vue';
 import ManageUpPage from '../../src/pages/ManageUpPage.vue';
 import NotFoundPage from '../../src/pages/NotFoundPage.vue';
 import { createSessionPlugin, type AppSession } from '../../src/app/session';
 import type { ManagementApi } from '../../src/manage/managementApi';
 import { createManagement } from './management';
-import { createArchiveNavigation, provideArchiveNavigation } from '../../src/app/navigation';
+import { createArchiveNavigation, provideArchiveNavigation, type ArchiveNavigation } from '../../src/app/navigation';
 import type { ImagePreviewCoordinator } from '../../src/preview/useImagePreview';
 import { PreviewProbe, providePreview } from './preview';
 
 /** 页面行为测试共用的应用壳：唯一导航协调器 + 会话 + 预览探针。 */
-function createRouterHost(exposePreview: (preview: ImagePreviewCoordinator) => void) {
+function createRouterHost(
+  exposePreview: (preview: ImagePreviewCoordinator) => void,
+  exposeNavigation: (navigation: ArchiveNavigation) => void,
+) {
   return defineComponent({
     setup() {
       const navigation = createArchiveNavigation();
       provideArchiveNavigation(navigation);
       exposePreview(providePreview(navigation));
+      exposeNavigation(navigation);
       return () => h('div', [h(RouterView), h(PreviewProbe)]);
     },
   });
@@ -48,8 +53,12 @@ export function archiveRouter() {
         name: 'reply-locate', component: ReplyLocatePage, props: true,
       },
       {
+        path: '/dynamics/:dynamicId/comments/:rootId/replies/:replyId/conversation',
+        name: 'conversation', component: ConversationPage, props: true,
+      },
+      {
         path: '/dynamics/:dynamicId/comments/:rootId', name: 'thread',
-        component: CommentThreadPage, props: true,
+        component: ThreadPage, props: true,
       },
       { path: '/manage', name: 'manage', component: ManagePage },
       { path: '/manage/ups/:upId', name: 'manage-up', component: ManageUpPage, props: true },
@@ -65,11 +74,13 @@ export async function showApp(
   exposePreview: (preview: ImagePreviewCoordinator) => void = () => undefined,
   /** 管理接口由应用装配注入；未提供时使用不通过任何请求的替身。 */
   management: ManagementApi = createManagement(),
+  /** 需要按应用入口离开页面（如列表→详情）的用例通过它拿到唯一导航协调器。 */
+  exposeNavigation: (navigation: ArchiveNavigation) => void = () => undefined,
 ) {
   const router = archiveRouter();
   await router.push(path);
   await router.isReady();
-  render(createRouterHost(exposePreview), {
+  render(createRouterHost(exposePreview, exposeNavigation), {
     global: { plugins: [router, createSessionPlugin({ reader, management })] },
   });
   return router;

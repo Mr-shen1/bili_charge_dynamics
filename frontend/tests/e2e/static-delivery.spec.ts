@@ -85,9 +85,15 @@ test('正常产物深链接刷新可看图和返回；页面不存在和内容�
   await expect(counter).toHaveCount(0);
   await page.reload();
   await expect(trigger).toBeVisible();
-  await page.getByRole('button', { name: '返回列表' }).click();
-  await expect(page).toHaveURL('/');
-  await expect(page.getByRole('article')).toHaveCount(10);
+  // 宽屏直达的详情没有返回控件；窄屏保留 `‹ 动态列表` 并能回到列表。
+  if (await page.evaluate(() => matchMedia('(max-width: 640px)').matches)) {
+    await page.getByRole('button', { name: '‹ 动态列表' }).click();
+    await expect(page).toHaveURL('/');
+    await expect(page.getByRole('article')).toHaveCount(10);
+  } else {
+    await expect(page.getByRole('button', { name: '返回列表' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '‹ 动态列表' })).toHaveCount(0);
+  }
   const unknown = await page.goto('/unknown.page');
   expect(unknown?.status()).toBe(200);
   await expect(page.getByRole('heading', { name: '页面不存在' })).toBeVisible();
@@ -97,12 +103,12 @@ test('正常产物深链接刷新可看图和返回；页面不存在和内容�
   // 精确入口的“目标不存在”与“评论列表顶部”不同：明确提示并保留返回动态入口。
   const locateMissing = await page.goto('/dynamics/90071992547409934/comments/999999/locate');
   expect(locateMissing?.status()).toBe(200);
-  await expect(page.getByRole('status').filter({ hasText: '目标评论不存在或未归档' })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: '目标评论不存在或未保存' })).toBeVisible();
   await page.getByRole('button', { name: '返回动态' }).click();
   await expect(page).toHaveURL('/dynamics/90071992547409934');
   // 用 mock 归档里带 45 条评论、首个根评论有 25 条回复的动态，验证“回复不存在”而不是“根不存在”。
   const replyMissing = await page.goto(
     '/dynamics/90071992547409931/comments/90071992547401001/replies/999999/locate');
   expect(replyMissing?.status()).toBe(200);
-  await expect(page.getByRole('status').filter({ hasText: '目标回复不存在或未归档' })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: '目标回复不存在或未保存' })).toBeVisible();
 });

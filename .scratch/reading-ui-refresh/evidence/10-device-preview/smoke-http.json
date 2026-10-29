@@ -1,0 +1,202 @@
+{
+  "kind": "http-prep-smoke",
+  "at": "2026-10-29T11:29:18.862676+08:00",
+  "fail": false,
+  "checks": [
+    {
+      "status": "pass",
+      "name": "GET http://127.0.0.1:4318/",
+      "detail": "(200 text/html)"
+    },
+    {
+      "status": "pass",
+      "name": "index.html 标记（1 处 #app）",
+      "detail": ""
+    },
+    {
+      "status": "pass",
+      "name": "GET http://127.0.0.1:4318/dynamics/800300",
+      "detail": "(200 text/html)"
+    },
+    {
+      "status": "pass",
+      "name": "index.html 标记（1 处 #app）",
+      "detail": ""
+    },
+    {
+      "status": "pass",
+      "name": "GET http://127.0.0.1:4318/dynamics/800300/comments/860001/replies/960013/conversation",
+      "detail": "(200 text/html)"
+    },
+    {
+      "status": "pass",
+      "name": "index.html 标记（1 处 #app）",
+      "detail": ""
+    },
+    {
+      "status": "pass",
+      "name": "GET http://127.0.0.1:4318/ups/808",
+      "detail": "(200 text/html)"
+    },
+    {
+      "status": "pass",
+      "name": "index.html 标记（1 处 #app）",
+      "detail": ""
+    },
+    {
+      "status": "pass",
+      "name": "GET http://127.0.0.1:4318/manage",
+      "detail": "(200 text/html)"
+    },
+    {
+      "status": "pass",
+      "name": "index.html 标记（1 处 #app）",
+      "detail": ""
+    },
+    {
+      "status": "pass",
+      "name": "GET http://127.0.0.1:4318/manage/ups/808",
+      "detail": "(200 text/html)"
+    },
+    {
+      "status": "pass",
+      "name": "index.html 标记（1 处 #app）",
+      "detail": ""
+    },
+    {
+      "status": "pass",
+      "name": "GET http://127.0.0.1:4337/",
+      "detail": "(200 text/html)"
+    },
+    {
+      "status": "pass",
+      "name": "index.html 标记（1 处 #app）",
+      "detail": ""
+    },
+    {
+      "status": "pass",
+      "name": "GET http://127.0.0.1:4337/__preview-fixtures",
+      "detail": "(200 text/html)"
+    },
+    {
+      "status": "pass",
+      "name": "index.html 标记（1 处 #app）",
+      "detail": ""
+    },
+    {
+      "status": "pass",
+      "name": "GET http://127.0.0.1:4337/dynamics/800300",
+      "detail": "(200 text/html)"
+    },
+    {
+      "status": "pass",
+      "name": "index.html 标记（1 处 #app）",
+      "detail": ""
+    },
+    {
+      "status": "pass",
+      "name": "GET http://127.0.0.1:4337/manage",
+      "detail": "(200 text/html)"
+    },
+    {
+      "status": "pass",
+      "name": "index.html 标记（1 处 #app）",
+      "detail": ""
+    },
+    {
+      "status": "pass",
+      "name": "GET http://127.0.0.1:4318/assets/index-CcFXxrRo.js",
+      "detail": "(200 text/javascript)"
+    },
+    {
+      "status": "pass",
+      "name": "GET http://127.0.0.1:4337/assets/index-BXP9JqLL.js",
+      "detail": "(200 text/javascript)"
+    },
+    {
+      "status": "pass",
+      "name": "GET http://127.0.0.1:4318/api/test/source-requests（仅 live_app 有）",
+      "detail": "(200 application/json)"
+    },
+    {
+      "status": "pass",
+      "name": "GET http://127.0.0.1:4337/api/test/source-requests（仅 live_app 有）",
+      "detail": "(200 application/json)"
+    },
+    {
+      "status": "pass",
+      "name": "http://127.0.0.1:4318/api/manage/ups 与 http://127.0.0.1:4180 逐字节相同",
+      "detail": ""
+    },
+    {
+      "status": "pass",
+      "name": "http://127.0.0.1:4337/api/manage/ups 与 http://127.0.0.1:4180 逐字节相同",
+      "detail": ""
+    },
+    {
+      "status": "pass",
+      "name": "4180 返回 3 个虚构 UP（808/202/707）",
+      "detail": ""
+    },
+    {
+      "status": "pass",
+      "name": "GET http://127.0.0.1:4337/images/thumb/p1.svg（代理 4339）",
+      "detail": "(200 image/svg+xml)"
+    },
+    {
+      "status": "pass",
+      "name": "GET http://127.0.0.1:4339/__requests（图片夹具直连，仅回环）",
+      "detail": "(200 application/json)"
+    },
+    {
+      "status": "pass",
+      "name": "GET http://127.0.0.1:4337/images/nothing/none.svg（未知路径 404 由夹具给出）",
+      "detail": "(404)"
+    },
+    {
+      "status": "pass",
+      "name": "GET http://127.0.0.1:4318/images/thumb/p1.svg（A 也显式代理 4339）",
+      "detail": "(200 image/svg+xml)"
+    },
+    {
+      "status": "pass",
+      "name": "/api/manage/ups/808 monitor.mode=specified enabled=true",
+      "detail": ""
+    },
+    {
+      "status": "pass",
+      "name": "/api/manage/notifications state=off（未启动通知）",
+      "detail": ""
+    },
+    {
+      "status": "pass",
+      "name": "/api/manage/ups/808/checks、/discovery 可读",
+      "detail": ""
+    },
+    {
+      "status": "pass",
+      "name": "A 800300 根评论分页合计 45（20/20/5）",
+      "detail": ""
+    },
+    {
+      "status": "pass",
+      "name": "A 860001 楼中楼合计 25（首批 3 条时间序快照 + 续批 10/10/2）",
+      "detail": ""
+    },
+    {
+      "status": "pass",
+      "name": "A 会话 960013 → count=11（页面 10+1，同根 860001）",
+      "detail": ""
+    },
+    {
+      "status": "pass",
+      "name": "202 的 9007199254740993123 只有 12 条根评论（卡片间不串页）",
+      "detail": ""
+    },
+    {
+      "status": "pass",
+      "name": "800300 归档 media_sources 全空 → 图片只能走环境 B",
+      "detail": ""
+    }
+  ]
+}

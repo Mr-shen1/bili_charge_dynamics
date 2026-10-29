@@ -92,6 +92,9 @@ def _root_back_cursor(resource, limit, end):
 # 回复页码固定每页 10 条：与 page 模式的固定批量、前端 replyPageSize 一致。
 REPLY_PAGE_SIZE = 10
 
+# 回复排序：时间序是既有契约，热度只扩展实时 page 模式；cursor 快照没有排序维度。
+REPLY_SORTS = ("time", "hot")
+
 
 def _root_offset(resource, limit, cursor):
     matched = re.fullmatch(r"([0-9a-f]{1,8})-([0-9a-f]{16})", cursor)
@@ -114,6 +117,96 @@ def _root_back_end(resource, limit, cursor):
 def _reply_offset(page, total):
     """页码模式的切片起点：超长正整数页码必然越界，不转换成可能溢出的整数。"""
     return (int(page) - 1) * REPLY_PAGE_SIZE if len(str(page)) <= len(str(total)) else total
+
+
+def _reply_order(sort):
+    """回复排序：时间序旧到新，热度按点赞；缺失值后置，ID BINARY 收尾。
+
+    热度只换主比较键，缺失点赞仍后置（不当作 0），同赞先按发布时间降序，
+    再按 ID 字符串升序，因此同一份本地集合在两种排序下都是确定的。
+    """
+    if sort == "hot":
+        return ("json_extract(document, '$.like_count') IS NULL ASC, "
+                "json_extract(document, '$.like_count') DESC, "
+                "json_extract(document, '$.published_at') IS NULL ASC, "
+                "json_extract(document, '$.published_at') DESC, id COLLATE BINARY ASC")
+    return ("json_extract(document, '$.published_at') IS NULL ASC, "
+            "json_extract(document, '$.published_at') ASC, id COLLATE BINARY ASC")
+
+
+def _reply_parents(documents):
+    return {document["id"]: document.get("parent_id") for document in documents}
+
+
+def _reply_time_key(document):
+    """时间序比较键：与 `_reply_order("time")` 同形，供环起点按固定顺序选。"""
+    published = document.get("published_at")
+    return (published is None, published or "", document["id"])
+
+
+def _reply_starts(documents, root_id):
+    """每条回复的对话起点与上下文是否完整：只认已保存的父回复 ID。
+
+    一级评论本身是直接父级；父级缺失、未知或成环都在断点止步，不拿昵称、正文前缀、
+    @ 文本或来源总数补关系。异常环没有可确认的更早起点，因此按时间序取环内最早条目
+    作为起点：请求排序只决定本页条目顺序，不改变这段对话的起点与成员。
+    路径压缩让整楼计算接近线性，不做逐条 N+1 读取。
+    """
+    parents = _reply_parents(documents)
+    documents_by_id = {document["id"]: document for document in documents}
+    resolved = {}
+
+    def resolve(node):
+        path, seen = [], set()
+        current = node
+        while True:
+            if current in resolved:
+                start, complete = resolved[current]
+                break
+            if current in seen:
+                # 异常环：以环内时间序最早的条目作为可确认部分的起点。
+                cycle = path[path.index(current):]
+                start, complete = min(cycle, key=lambda item: _reply_time_key(documents_by_id[item])), False
+                break
+            seen.add(current)
+            path.append(current)
+            parent = parents[current]
+            if parent == root_id:
+                start, complete = current, True
+                break
+            if parent is None or parent not in parents:
+                start, complete = current, False
+                break
+            current = parent
+        for item in path:
+            resolved[item] = (start, complete)
+        return start, complete
+
+    for document in documents:
+        if document["id"] not in resolved:
+            resolve(document["id"])
+    return resolved
+
+
+def _reply_conversation_segments(documents, root_id):
+    """返回 `(逐条起点, 起点 → 该段对话的全部本地成员)`；成员沿用既有回复顺序，起点计入。"""
+    resolved = _reply_starts(documents, root_id)
+    members = {}
+    for document in documents:
+        members.setdefault(resolved[document["id"]][0], []).append(document["id"])
+    return resolved, members
+
+
+def _reply_conversations(documents, root_id):
+    """当前页条目的可空对话投影：没有可确认的第二条关系时为 None。"""
+    resolved, members = _reply_conversation_segments(documents, root_id)
+    projections = {}
+    for document in documents:
+        start, complete = resolved[document["id"]]
+        count = len(members[start])
+        projections[document["id"]] = None if count < 2 else {
+            "start_id": start, "count": count, "incomplete": not complete}
+    return projections
 
 
 def _freeze_pages(documents, limit):
@@ -1403,7 +1496,16 @@ class Store(CheckStore, DiscoveryStore):
                 connection.rollback()
                 raise
 
-    def list_replies(self, id, root_id, cursor=None, page=None):
+    def list_replies(self, id, root_id, cursor=None, page=None, sort="time"):
+        """楼中楼读取：时间序冻结 cursor 预览，或按 sort 实时读取一页。
+
+        `sort` 只属于 page 模式；cursor 预览是冻结的时间序快照，资源标识与旧 token
+        不变，也不为热度另建持久快照。
+        """
+        if sort not in REPLY_SORTS:
+            raise APIError("INVALID_INPUT")
+        if cursor is not None and sort != "time":
+            raise APIError("INVALID_INPUT")
         resource = f"replies:{id}:{root_id}:time-asc:id-binary:3-10:v1"
         with self.connection() as connection:
             if page is not None:
@@ -1424,7 +1526,7 @@ class Store(CheckStore, DiscoveryStore):
             if page is None:
                 connection.execute("BEGIN IMMEDIATE")
             try:
-                reading = self._reply_reading(connection, id, root_id)
+                reading = self._reply_reading(connection, id, root_id, sort)
                 if page is not None:
                     result = self._reply_page_document(reading, page)
                     connection.commit()
@@ -1467,16 +1569,20 @@ class Store(CheckStore, DiscoveryStore):
             finally:
                 connection.rollback()
 
-    def _reply_reading(self, connection, id, root_id):
-        """同根完整本地回复与逐根状态：时间升序、null 后置、ID BINARY，并解析 reply_to。"""
+    def _reply_reading(self, connection, id, root_id, sort="time"):
+        """同根完整本地回复与逐根状态：按 sort 排序、缺失值后置、ID BINARY，并解析 reply_to。
+
+        默认时间升序：定位、会话与 cursor 冻结预览都按时间序读，只有实时 page 模式可以要热度。
+        """
+        if sort not in REPLY_SORTS:
+            raise APIError("INVALID_INPUT")
         row = connection.execute("SELECT document FROM root_comments WHERE dynamic_id = ? AND id = ?", (id, root_id)).fetchone()
         if row is None:
             raise APIError("NOT_FOUND")
         root = json.loads(row[0])
         documents = [json.loads(stored[0]) for stored in connection.execute(
-            """SELECT document FROM replies WHERE dynamic_id = ? AND root_id = ? ORDER BY
-            json_extract(document, '$.published_at') IS NULL ASC,
-            json_extract(document, '$.published_at') ASC, id COLLATE BINARY ASC""", (id, root_id)
+            f"""SELECT document FROM replies WHERE dynamic_id = ? AND root_id = ? ORDER BY
+            {_reply_order(sort)}""", (id, root_id)
         )]
         authors = {item["id"]: item["author"] for item in [root] + documents}
         for document in documents:
@@ -1492,11 +1598,46 @@ class Store(CheckStore, DiscoveryStore):
         return root, documents, metadata
 
     def _reply_page_document(self, reading, page):
-        """按固定页码切一页：page 模式与定位读取共用同一个切片与计数口径。"""
+        """按固定页码切一页：page 模式与定位读取共用同一个切片、计数与对话投影。"""
         root, documents, metadata = reading
         offset = _reply_offset(page, len(documents))
-        return {"items": documents[offset:offset + REPLY_PAGE_SIZE], "next_cursor": None,
+        items = documents[offset:offset + REPLY_PAGE_SIZE]
+        # 投影从完整本地同根关系一次算好后映射到本页，不下发整个楼的关系全集。
+        projections = _reply_conversations(documents, root["id"])
+        for item in items:
+            item["conversation"] = projections.get(item["id"])
+        return {"items": items, "next_cursor": None,
                 "root": root, "count": len(documents), **metadata}
+
+    def read_conversation(self, id, root_id, reply_id, page=None):
+        """按动态、根评论与入口回复读取整段可确认对话；只读归档。
+
+        缺省 page 即整段：先对完整同根本地集合求关联分支，再按既有时间序一次返回全部成员，
+        不截成页码或固定条数。显式 page 只为旧调用方保留（每页 10 条），不是本轮 UI 的读取路径。
+        一级评论只作身份校验上下文，不进入会话正文；不做跨根／跨动态兜底，也不冻结 cursor 页。
+        """
+        with self.connection() as connection:
+            connection.execute("BEGIN")
+            try:
+                root, documents, _metadata = self._reply_reading(connection, id, root_id)
+                resolved, members = _reply_conversation_segments(documents, root["id"])
+                if reply_id not in resolved:
+                    # 目标属于别的楼或尚未归档：一律当作不存在，不暴露其他楼的关系。
+                    raise APIError("NOT_FOUND")
+                start, complete = resolved[reply_id]
+                ids = members[start]
+                by_id = {document["id"]: document for document in documents}
+                body = {"dynamic_id": id, "root_id": root_id, "reply_id": reply_id,
+                        "start_id": start, "incomplete": not complete, "count": len(ids),
+                        "next_cursor": None}
+                if page is None:
+                    # 整段模式：字段缺席即能力缺席，响应里根本没有 page 键。
+                    return {**body, "items": [by_id[item] for item in ids]}
+                offset = _reply_offset(page, len(ids))
+                return {**body, "page": int(page),
+                        "items": [by_id[item] for item in ids[offset:offset + REPLY_PAGE_SIZE]]}
+            finally:
+                connection.rollback()
 
     def delete_monitor(self, uid):
         with self.connection() as connection, connection:

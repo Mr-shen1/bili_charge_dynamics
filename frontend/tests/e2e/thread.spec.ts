@@ -224,19 +224,20 @@ test.describe('窄屏 UP 回复预览与独立楼中楼', () => {
     expect(requests.map(request => request.page)).toEqual([1, 2, 3]);
 
     // 返回有来源的详情：详情自己的已读内容与展开状态保持不变。
-    await page.getByRole('button', { name: '返回评论' }).click();
+    await page.getByRole('button', { name: '评论详情，返回动态详情' }).click();
     await expect(page).toHaveURL(/\/dynamics\/1001$/);
     await expect(region.getByRole('listitem')).toHaveCount(5);
     await expect(commentItem(page, '7053').getByRole('button', { name: '收起评论' })).toBeVisible();
 
-    // 历史前进回到楼中楼：重新挂载仍从第 1 页与顶部开始，不记忆上次的第 3 页。
+    // 历史前进回到楼中楼：恢复**这次访问**自己的第 3 页与位置（会话返回与历史返回同一份快照），
+    // 不重读第 1 页；直达/刷新没有快照，仍是新的第 1 页访问。
     const beforeForward = requests.length;
     await page.goForward();
     await expect(page).toHaveURL(new RegExp(`/dynamics/1001/comments/${rootId}$`));
-    await expect(threadList(page).locator('> li')).toHaveCount(10);
-    expect(requests.slice(beforeForward)).toEqual([{ page: 1, limit: 10, cursor: null }]);
+    await expect(threadList(page).locator('> li')).toHaveCount(5);
+    expect(requests.slice(beforeForward)).toEqual([]);
     await expect(page.getByRole('navigation', { name: '回复分页' })
-      .getByRole('button', { name: '1' })).toHaveAttribute('aria-current', 'page');
+      .getByRole('button', { name: '3' })).toHaveAttribute('aria-current', 'page');
     await expect.poll(() => scrollY(page)).toBe(0);
   });
 
@@ -267,7 +268,7 @@ test.describe('窄屏 UP 回复预览与独立楼中楼', () => {
     await expect(threadList(page).locator('> li')).toHaveCount(10);
 
     await page.getByRole('button', { name: '下一页' }).click();
-    await page.getByRole('button', { name: '返回评论' }).click();
+    await page.getByRole('button', { name: '评论详情，返回动态详情' }).click();
     await expect(page).toHaveURL(/\/dynamics\/1001$/);
     await expect(page.getByRole('region', { name: '评论区' })).toBeVisible();
 

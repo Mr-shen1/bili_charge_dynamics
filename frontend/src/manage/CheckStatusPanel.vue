@@ -22,13 +22,13 @@ const times = computed(() => panelCheckTimes(props.monitor, data.value));
 </script>
 
 <template>
-  <section class="manage-section" aria-label="目标检查与归档状态">
-    <h2 class="manage-section-title">目标检查与归档状态</h2>
+  <section class="manage-section" aria-label="目标检查与保存状态">
+    <h2 class="manage-section-title">目标检查与保存状态</h2>
     <p class="manage-state">最近检查：{{ times.checked }}</p>
     <p class="manage-state">最近成功：{{ times.succeeded }}</p>
     <p class="manage-muted">以上为该 UP 历史目标记录的最近时间，不代表全部目标均已成功。</p>
     <p class="manage-muted">仅读取已保存状态，不触发检查或同步；停用后的记录仍可读取。</p>
-    <p class="manage-muted">来源总数含根评论和回复；本地数是保留归档量，不是当前已加载数，也不代表全部来源评论。</p>
+    <p class="manage-muted">来源总数含根评论和回复；本地数是已保存量，不是当前已加载数，也不代表全部来源评论。</p>
     <p class="manage-muted">除初始化和失败重试外，仅按来源总数变化同步评论；增删抵消、纯评论编辑或分页移动且总数不变可能漏检，不保证实时或所有受限评论可读。</p>
     <el-button
       type="primary"

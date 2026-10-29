@@ -8,14 +8,14 @@ test('生产装配渲染六条正式路由与不存在页', async ({ page }, tes
   await expect(page.getByRole('heading', { name: '全部动态' })).toBeVisible();
 
   await page.goto('/ups/7');
-  await expect(page.getByRole('heading', { name: 'UP 7 归档' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'UP 7 动态' })).toBeVisible();
 
   await page.goto('/dynamics/abc');
   await expect(page.getByRole('heading', { name: '动态详情' })).toBeVisible();
 
   await page.goto('/dynamics/abc/comments/root-1');
   // 独立楼中楼已是真实页面（不再是骨架占位）：退回入口始终可用，读取失败只影响本区域。
-  await expect(page.getByRole('button', { name: '返回评论' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '评论详情，返回动态详情' })).toBeVisible();
   await expect(page.locator('main')).not.toContainText('阶段 3 迁移目标');
 
   // 管理两条路由已是真实页面：生产装配不带骨架占位文案。
@@ -25,7 +25,7 @@ test('生产装配渲染六条正式路由与不存在页', async ({ page }, tes
 
   await page.goto('/manage/ups/9');
   await expect(page.getByRole('heading', { name: 'UP 监控管理' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'UP 列表' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'UP 列表', exact: true })).toBeVisible();
   await expect(page.locator('main')).not.toContainText('阶段 3 迁移目标');
 
   await page.goto('/no-such-page');
@@ -36,11 +36,16 @@ test('生产装配没有自检入口、装配标识或自检路由', async ({ pa
   test.skip(testInfo.project.name !== 'production', '只在生产装配执行');
 
   await page.goto('/');
-  const nav = page.getByRole('navigation', { name: '主导航' });
-  await expect(nav.getByRole('link', { name: '归档' })).toBeVisible();
-  await expect(nav.getByRole('link', { name: '监控管理' })).toBeVisible();
-  await expect(nav.getByRole('link', { name: '图片自检' })).toHaveCount(0);
+  // 阅读页没有公共顶栏，也没有任何管理跳转；管理靠独立 /manage 地址进入。
+  await expect(page.locator('.app-header')).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: '主导航' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: '监控管理' })).toHaveCount(0);
   await expect(page.locator('.app-badge')).toHaveCount(0);
+
+  await page.goto('/manage');
+  await expect(page.getByRole('navigation', { name: '页面导航' }).getByRole('link', { name: '返回阅读' }))
+    .toBeVisible();
+  await expect(page.getByRole('link', { name: '自检第二页' })).toHaveCount(0);
 
   // 自检路由在生产装配下不存在，落到不存在页而不是可用的自检页面。
   await page.goto('/__preview-fixtures');
@@ -52,7 +57,8 @@ test('fault 装配与 mock 装配相互独立', async ({ page }, testInfo) => {
 
   await page.goto('/');
   await expect(page.locator('.app-badge')).toHaveText('fault');
-  await expect(page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '图片自检' })).toBeVisible();
+  // 装配标识与自检导航都不属于阅读页顶栏：阅读页保持无公共导航。
+  await expect(page.getByRole('navigation', { name: '主导航' })).toHaveCount(0);
 
   // fault 装配使用同一份受控归档，但列表首次读取失败一次；重试后恢复。
   await expect(page.getByRole('alert')).toHaveText('动态列表读取失败，请重试。');
@@ -61,4 +67,5 @@ test('fault 装配与 mock 装配相互独立', async ({ page }, testInfo) => {
 
   await page.goto('/__preview-fixtures');
   await expect(page.getByRole('heading', { name: '图片预览与浏览器历史验证' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: '自检导航' })).toBeVisible();
 });

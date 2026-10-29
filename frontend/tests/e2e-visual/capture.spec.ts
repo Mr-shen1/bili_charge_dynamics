@@ -77,7 +77,7 @@ test('归档阅读场景与四宽度截图', async ({ page }) => {
     // 列表：全部归档选中，长正文折叠，图片组与评论入口可见。
     await openArchive(page, '/');
     await expect(page.getByRole('article')).toHaveCount(10);
-    await expect(page.getByRole('link', { name: '全部归档' })).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByRole('link', { name: '全部动态' })).toHaveAttribute('aria-current', 'page');
     await waitForThumbnails(page);
     await capture(page, `list-${width}`);
 
@@ -88,8 +88,9 @@ test('归档阅读场景与四宽度截图', async ({ page }) => {
     await capture(page, `list-scope-${width}`);
 
     // 详情：正文全文展示（不折叠）与完整图片组。
+    // 04 起正常详情没有可见页头：标题只以视觉隐藏的 h1 存在，正文贴到页面顶部。
     await openArchive(page, `/dynamics/${mainDynamicId}`);
-    await expect(page.getByRole('heading', { name: '动态详情' })).toBeVisible();
+    await expect(page.locator('.detail-title')).toHaveCount(0);
     await expect(page.locator('.detail-card')).toBeVisible();
     await waitForThumbnails(page);
     await capture(page, `detail-${width}`);
@@ -196,7 +197,7 @@ test('管理列表与单 UP 管理截图（实际 API + 隔离 SQLite）', async
     await expect(page.getByRole('article', { name: 'UP 202' })).toBeVisible();
     // 读取检查与发现状态：读取按钮、空记录与状态面板都在同一张截图里。
     await page.getByRole('button', { name: '读取检查状态', exact: true }).click();
-    await expect(page.getByRole('region', { name: '目标检查与归档状态' })).toContainText('尚无目标检查记录');
+    await expect(page.getByRole('region', { name: '目标检查与保存状态' })).toContainText('尚无目标检查记录');
     await page.getByRole('button', { name: '读取发现状态', exact: true }).click();
     await expect(page.getByRole('region', { name: '近期发现与当前窗口' }))
       .toContainText('尚无完整成功的可信发现结果');

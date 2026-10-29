@@ -2,7 +2,8 @@
 import { expect, test, type Page } from '@playwright/test';
 import {
   closeViewer, counter, focusInsideViewer, historyLength, imageRequests, nextImage, pathsPrefixed,
-  previewState, resetImageRequests, scrollY, sortOption, viewer, viewerClose, viewerImage, viewerToolbar,
+  commentSort, previewState, resetImageRequests, scrollY, switchCommentSort, viewer, viewerClose, viewerImage,
+  viewerToolbar,
 } from './support';
 
 // mock 装配 25 条归档与 45 条一级评论的稳定业务 ID，来自 src/mock/archiveReader.ts 的生成规则。
@@ -27,9 +28,9 @@ test.describe('一级评论图片阅读', () => {
     await mixed.scrollIntoViewIfNeeded();
     await expect(mixed).toHaveCount(1);
 
-    await expect(mixed.getByText('图片待归档')).toBeVisible();
-    await expect(mixed.getByText('图片归档失败')).toBeVisible();
-    await expect(mixed.getByText('归档图片地址不可用')).toBeVisible();
+    await expect(mixed.getByText('图片待保存')).toBeVisible();
+    await expect(mixed.getByText('图片保存失败')).toBeVisible();
+    await expect(mixed.getByText('已保存图片地址不可用')).toBeVisible();
     const tiles = mixed.getByRole('button', { name: /^预览评论图片 / });
     await expect(tiles).toHaveCount(6);
     // 只有浏览器加载失败的缩略图提供局部重试。
@@ -45,15 +46,15 @@ test.describe('一级评论图片阅读', () => {
     await expect(viewer(page)).toBeVisible();
     await expect(counter(page)).toHaveText('2 / 6');
     await expect.poll(async () => viewerImage(page).getAttribute('src')).toBe('/images/unavailable/placeholder.svg');
-    await expect(page.locator('.preview-note')).toContainText('图片待归档');
+    await expect(page.locator('.preview-note')).toContainText('图片待保存');
 
     // 异常图片不阻断切换：逐项切到失败、无效、浏览器失败与可重试项。
     await nextImage(page);
     await expect(counter(page)).toHaveText('3 / 6');
-    await expect(page.locator('.preview-note')).toContainText('图片归档失败');
+    await expect(page.locator('.preview-note')).toContainText('图片保存失败');
     await nextImage(page);
     await expect(counter(page)).toHaveText('4 / 6');
-    await expect(page.locator('.preview-note')).toContainText('归档图片地址不可用');
+    await expect(page.locator('.preview-note')).toContainText('已保存图片地址不可用');
     await expect(page.getByRole('button', { name: '重试', exact: true })).toHaveCount(0);
     await nextImage(page);
     await expect(counter(page)).toHaveText('5 / 6');
@@ -101,8 +102,8 @@ test.describe('一级评论图片阅读', () => {
     await closeViewer(page);
     await expect(viewer(page)).toHaveCount(0);
 
-    // 最新排序下才出现的 12 图评论：展示前九张，末张进入完整组且索引正确。
-    await sortOption(region, '最新').click();
+    // 12 图评论在默认按时间的首批内：展示前九张，末张进入完整组且索引正确。
+    await expect(region).toHaveCount(1);
     await expect(commentItems(page)).toHaveCount(20);
     const many = commentItem(page, 5);
     const tiles = many.getByRole('button', { name: /^预览评论图片 / });
@@ -126,8 +127,7 @@ test.describe('一级评论图片阅读', () => {
     await detail.evaluate(element => element.setAttribute('data-mount-probe', 'kept'));
     await region.evaluate(element => element.setAttribute('data-mount-probe', 'kept'));
 
-    // 先切到最新排序，再把评论正文展开：预览不能把这些阅读状态重置。
-    await sortOption(region, '最新').click();
+    // 先把评论正文展开：预览不能把这些阅读状态重置。
     await expect(commentItems(page)).toHaveCount(20);
     await commentItem(page, 0).getByRole('button', { name: '展开评论' }).click();
     await expect(commentItem(page, 0).getByRole('button', { name: '收起评论' })).toBeVisible();
@@ -160,7 +160,7 @@ test.describe('一级评论图片阅读', () => {
     // 同 URL 预览不重挂载评论列表，排序、批次与正文展开都保持。
     await expect(region).toHaveAttribute('data-mount-probe', 'kept');
     await expect(detail).toHaveAttribute('data-mount-probe', 'kept');
-    await expect(region.getByRole('radio', { name: '最新' })).toBeChecked();
+    await expect(commentSort(region, 'latest')).toBeVisible();
     await expect(commentItem(page, 0).getByRole('button', { name: '收起评论' })).toBeVisible();
 
     // 后退优先关闭预览且不多退一级，前进恢复所看图片。
@@ -178,7 +178,8 @@ test.describe('一级评论图片阅读', () => {
     await expect(viewer(page)).toHaveCount(0);
 
     // 排序切换让缩略图节点真正重建：前进恢复预览后关闭，仍按稳定 ID 找回新节点。
-    await sortOption(region, '最热').click();
+    await switchCommentSort(region);
+    await expect(commentSort(region, 'hot')).toBeVisible();
     await expect(commentItems(page)).toHaveCount(20);
     await page.goForward();
     await expect(viewer(page)).toBeVisible();
@@ -191,8 +192,8 @@ test.describe('一级评论图片阅读', () => {
   test('排序后原触发缩略图消失时，关闭预览退到页面后备焦点', async ({ page }) => {
     await openDetail(page);
     const region = page.getByRole('region', { name: '评论区' });
-    // 12 图评论只在最新排序首批内：切换排序后它的缩略图会从页面消失。
-    await sortOption(region, '最新').click();
+    // 12 图评论在默认按时间的首批内：切到按热度后它的缩略图会从页面消失。
+    await expect(commentSort(region, 'latest')).toBeVisible();
     const many = commentItem(page, 5);
     const tile = many.getByRole('button', { name: '预览评论图片 3' });
     await tile.scrollIntoViewIfNeeded();
@@ -201,7 +202,8 @@ test.describe('一级评论图片阅读', () => {
 
     await page.goBack();
     await expect(viewer(page)).toHaveCount(0);
-    await sortOption(region, '最热').click();
+    await switchCommentSort(region);
+    await expect(commentSort(region, 'hot')).toBeVisible();
     await expect(commentItems(page)).toHaveCount(20);
     await expect(page.locator(`[data-image-group="${imageGroup(commentId(5))}"]`)).toHaveCount(0);
 

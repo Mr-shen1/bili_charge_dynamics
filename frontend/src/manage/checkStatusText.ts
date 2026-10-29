@@ -36,8 +36,8 @@ export const checkErrorText: Readonly<Record<CheckError, string>> = {
   SYNC_INCOMPLETE: '同步未全部完成，将在固定节拍重试。',
 };
 export const mediaErrorText: Readonly<Record<MediaSyncError, string>> = {
-  MEDIA_DOWNLOAD_FAILED: '图片下载失败；保留已有归档，将在固定节拍重试。',
-  MEDIA_UPLOAD_FAILED: '图片上传失败；保留已有归档，将在固定节拍重试。',
+  MEDIA_DOWNLOAD_FAILED: '图片下载失败；已保存内容保留，将在固定节拍重试。',
+  MEDIA_UPLOAD_FAILED: '图片上传失败；已保存内容保留，将在固定节拍重试。',
 };
 /** 评论分项错误只用数据层已核验的封闭码文案，不显示来源响应或异常原文。 */
 export const commentErrorText: Readonly<Record<CommentSyncError, string>> = commentSyncErrors;

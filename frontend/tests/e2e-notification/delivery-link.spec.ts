@@ -70,8 +70,8 @@ test('投递产物链接直接打开即定位到该条评论（第二批）', as
   expect(messageText).toContain('评论人：【');
   expect(messageText).toContain('内容：虚构一级评论 26');
 
-  // 目标确实不在首批：普通评论接口的最热首批 20 条里没有它。
-  const first = await (await page.request.get(`/api/archive/dynamics/${dynamicId}/comments?sort=hot&limit=20`)).json();
+  // 目标确实不在首批：页面默认按时间，普通评论接口的首批 20 条里没有它。
+  const first = await (await page.request.get(`/api/archive/dynamics/${dynamicId}/comments?sort=latest&limit=20`)).json();
   expect(first.items).toHaveLength(20);
   expect(first.items.some((item: { id: string }) => item.id === targetId)).toBe(false);
 

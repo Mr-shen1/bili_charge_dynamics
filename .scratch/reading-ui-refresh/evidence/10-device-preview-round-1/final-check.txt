@@ -1,0 +1,73 @@
+== 2026-10-29T13:15:34+08:00 四进程 pid/pgid/命令行 ==
+--- api pid=707470 pgid=707470
+ 707470  707470 uv run --no-sync python -m uvicorn backend.tests.live_app:create_app --factory --host 127.0.0.1 --port 4180 --app-dir /home/kevin/Projects/PI/bili_charge_dynamics --log-level info
+--- images pid=707509 pgid=707509
+ 707509  707509 node /tmp/bili-ticket10-round1-zogc/server/imageServer.mjs
+--- web-a pid=707526 pgid=707526
+ 707526  707526 node /home/kevin/.nvm/versions/node/v24.21.0/bin/pnpm --dir /home/kevin/Projects/PI/bili_charge_dynamics/frontend exec vite preview --outDir /tmp/bili-ticket10-round1-zogc/dist-a --host 0.0.0.0 --port 4318 --strictPort
+--- web-b pid=707591 pgid=707591
+ 707591  707591 node /home/kevin/.nvm/versions/node/v24.21.0/bin/pnpm --dir /home/kevin/Projects/PI/bili_charge_dynamics/frontend exec vite preview --outDir /tmp/bili-ticket10-round1-zogc/dist-b --host 0.0.0.0 --port 4337 --strictPort
+== 进程组全部成员 ==
+api: 707470 707475
+images: 707509
+web-a: 707526 707560 707573
+web-b: 707591 707611 707624
+== 监听（本轮） ==
+LISTEN 0      511               0.0.0.0:4318       0.0.0.0:*    users:(("MainThread",pid=707560,fd=22))
+LISTEN 0      511               0.0.0.0:4337       0.0.0.0:*    users:(("MainThread",pid=707611,fd=22))
+LISTEN 0      511             127.0.0.1:4339       0.0.0.0:*    users:(("MainThread",pid=707509,fd=21))
+LISTEN 0      2048            127.0.0.1:4180       0.0.0.0:*    users:(("python",pid=707475,fd=6))
+== 既有服务 ==
+LISTEN 0      511          192.168.8.20:4273       0.0.0.0:*
+LISTEN 0      2048            127.0.0.1:8000       0.0.0.0:*
+== 代理变量（应为空）与显式目标 ==
+--- api
+BILI_DATABASE_PATH=/tmp/bili-ticket10-round1-zogc/monitor.sqlite
+no_proxy=127.0.0.1,localhost,::1
+NO_PROXY=127.0.0.1,localhost,::1
+--- images
+IMAGE_SERVER_PORT=4339
+no_proxy=127.0.0.1,localhost,::1
+NO_PROXY=127.0.0.1,localhost,::1
+--- web-a
+API_SERVER=http://127.0.0.1:4180
+IMAGE_SERVER_PORT=4339
+no_proxy=127.0.0.1,localhost,::1
+NO_PROXY=127.0.0.1,localhost,::1
+--- web-b
+API_SERVER=http://127.0.0.1:4180
+IMAGE_SERVER_PORT=4339
+no_proxy=127.0.0.1,localhost,::1
+NO_PROXY=127.0.0.1,localhost,::1
+== python 进程（应只有 uv + uvicorn） ==
+ 707470 uv run --no-sync python -m uvicorn backend.tests.live_app:create_app --factory --host 127.0.0.1 --port 4180 --app-dir /home/kevin/Projects/PI/bili_charge_dynamics --log-level info
+ 707475 /home/kevin/Projects/PI/bili_charge_dynamics/.venv/bin/python -m uvicorn backend.tests.live_app:create_app --factory --host 127.0.0.1 --port 4180 --app-dir /home/kevin/Projects/PI/bili_charge_dynamics --log-level info
+== collector/notifier（应为空） ==
+ 289754 /home/kevin/.local/share/JetBrains/Toolbox/apps/pycharm/bin/fsnotifier
+== LAN 入口 curl ==
+http://192.168.8.20:4318/ → 200 text/html
+http://192.168.8.20:4337/ → 200 text/html
+http://192.168.8.20:4318/manage → 200 text/html
+http://192.168.8.20:4337/__preview-fixtures → 200 text/html
+== DB ==
+-rw-r--r-- 1 kevin kevin 483328 10月29日 13:14 /tmp/bili-ticket10-round1-zogc/monitor.sqlite
+tables: 26
+== 旧 runtime 保留（不覆盖） ==
+-rw-r--r-- 1 kevin kevin 1552384 10月29日 11:58 /tmp/bili-ticket10-iOV2nX/monitor.sqlite
+
+== 收尾复核 2026-10-29T13:19:12+08:00 ==
+http://192.168.8.20:4318/ → 200 text/html
+http://192.168.8.20:4337/ → 200 text/html
+http://192.168.8.20:4318/manage → 200 text/html
+http://192.168.8.20:4337/__preview-fixtures → 200 text/html
+http://192.168.8.20:4318/dynamics/800300/comments/860001/replies/960013/conversation → 200 text/html
+LISTEN 0      511               0.0.0.0:4318       0.0.0.0:*    users:(("MainThread",pid=707560,fd=22))
+LISTEN 0      511               0.0.0.0:4337       0.0.0.0:*    users:(("MainThread",pid=707611,fd=22))
+LISTEN 0      511             127.0.0.1:4339       0.0.0.0:*    users:(("MainThread",pid=707509,fd=21))
+LISTEN 0      2048            127.0.0.1:4180       0.0.0.0:*    users:(("python",pid=707475,fd=6))
+LISTEN 0      511          192.168.8.20:4273       0.0.0.0:*
+LISTEN 0      2048            127.0.0.1:8000       0.0.0.0:*
+api pid=707470 alive=yes ppid=2005 sid=707470
+images pid=707509 alive=yes ppid=2005 sid=707509
+web-a pid=707526 alive=yes ppid=2005 sid=707526
+web-b pid=707591 alive=yes ppid=2005 sid=707591

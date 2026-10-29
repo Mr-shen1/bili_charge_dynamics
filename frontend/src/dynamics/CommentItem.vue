@@ -78,7 +78,7 @@ function openThread(): void {
         :display-limit="imageDisplayLimit"
       />
       <p v-if="comment.pendingMediaCount" class="comment__pending" role="status">
-        评论图片待归档（{{ comment.pendingMediaCount }} 张）。
+        评论图片待保存（{{ comment.pendingMediaCount }} 张）。
       </p>
       <div class="comment__metrics">
         <time class="comment__time" :datetime="comment.publishedAt ?? undefined">
@@ -88,7 +88,7 @@ function openThread(): void {
         <span class="comment__replies">回复 {{ displayCount(comment.replyCount) }}</span>
       </div>
       <template v-if="hasReplies">
-        <p v-if="repliesUnarchived" class="comment__reply-notice" role="status">回复尚未归档。</p>
+        <p v-if="repliesUnarchived" class="comment__reply-notice" role="status">回复尚未保存。</p>
         <ReplyPreview
           v-else-if="compact"
           :up-reply="comment.upReply ?? null"
@@ -120,7 +120,7 @@ function openThread(): void {
 }
 /* 精确定位的一次性标记：定位完成后保持可见，但不再改变滚动位置。 */
 .comment--target {
-  background: var(--brand-soft, #e6f6f7);
+  background: var(--brand-soft);
   border-radius: var(--radius);
   box-shadow: inset 3px 0 0 var(--brand);
   outline: 1px solid var(--brand);
@@ -145,18 +145,19 @@ function openThread(): void {
 }
 .comment__nickname {
   color: var(--author);
-  font-size: 13px;
-  line-height: 18px;
+  font-size: var(--font-comment-author);
+  line-height: var(--line-comment-author);
   font-weight: 600;
   overflow-wrap: anywhere;
 }
 .comment__badge {
   padding: 0 6px;
   border-radius: 999px;
-  background: var(--brand-soft, #e6f6f7);
+  background: var(--brand-soft);
   color: var(--brand-strong);
-  font-size: 12px;
-  line-height: 20px;
+  /* 徽标/UP 主标识 12/20：与阅读标尺的 badge 角色同一 token。 */
+  font-size: var(--font-badge);
+  line-height: var(--line-badge);
   white-space: nowrap;
 }
 .comment__badge--up {
@@ -169,21 +170,22 @@ function openThread(): void {
 }
 .comment__body :deep(.text) {
   margin-top: 0;
-  font-size: 15px;
-  line-height: 24px;
+  font-size: var(--font-comment);
+  line-height: var(--line-comment);
 }
 .comment__pending {
   margin: 4px 0;
   color: var(--muted);
-  font-size: 13px;
-  line-height: 20px;
+  /* 状态提示属时间/计数/辅助说明层：13/20。 */
+  font-size: var(--font-meta);
+  line-height: var(--line-meta);
   overflow-wrap: anywhere;
 }
 .comment__reply-notice {
   margin: 4px 0;
   color: var(--muted);
-  font-size: 13px;
-  line-height: 20px;
+  font-size: var(--font-meta);
+  line-height: var(--line-meta);
   overflow-wrap: anywhere;
 }
 .comment__metrics {
@@ -193,8 +195,9 @@ function openThread(): void {
   gap: 16px;
   margin-top: 4px;
   color: var(--muted);
-  font-size: 13px;
-  line-height: 24px;
+  font-size: var(--font-meta);
+  line-height: var(--line-meta);
+  font-variant-numeric: tabular-nums;
 }
 .comment__time {
   overflow-wrap: anywhere;

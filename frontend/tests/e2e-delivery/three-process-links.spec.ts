@@ -198,6 +198,16 @@ test.beforeAll(async () => {
   });
   await waitFor('API 就绪', async () => (await get('/api/manage/ups')).status === 200);
 
+  // 生产默认是关闭（SQLite v23 三态闸门）：先断言默认值，再由本隔离用例显式开启自己需要的
+  // 发送。只在测试初始化里改这台临时数据库，不改生产默认、不弱化通知语义。
+  expect((await get('/api/manage/notifications')).json()).toMatchObject({ state: 'off' });
+  const enabled = await fetch(`${apiURL}/api/manage/notifications`, {
+    method: 'PUT', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ state: 'all' }),
+  });
+  expect(enabled.status).toBe(200);
+  expect(await enabled.json()).toMatchObject({ state: 'all' });
+
   for (const [targetUid, targetDynamic] of [[uid, dynamicId], [otherUid, otherDynamic]] as const) {
     expect((await post('/api/manage/ups', { uid: targetUid })).status).toBe(201);
     expect((await patch(`/api/manage/ups/${targetUid}/monitor`,
@@ -272,22 +282,25 @@ function links(): Links {
 test('实际投递的动态链接打开生产前端后可见归档正文，刷新与返回仍可用', async ({ page }) => {
   const link = links().dynamic;
   expect(link).toBe(`${baseURL}/dynamics/${dynamicId}`);
+  // 宽屏直达的详情没有返回控件（正文入口在新标签打开）；返回操作在手机语义下验证。
+  await page.setViewportSize({ width: 390, height: 800 });
   await page.goto(link);
   await expect(page.getByText('第二版正文', { exact: false }).first()).toBeVisible();
   await page.reload();
   await expect(page.getByText('第二版正文', { exact: false }).first()).toBeVisible();
-  await page.getByRole('button', { name: '返回列表' }).click();
+  await page.getByRole('button', { name: '‹ 动态列表' }).click();
   await expect(page).toHaveURL('/');
   await expect(page.getByRole('article')).toHaveCount(2);
 });
 
-test('一级评论后续批链接直开、刷新与窄屏都能定位到目标本身', async ({ page }) => {
+test('一级评论链接直开、刷新与窄屏都能定位到目标本身', async ({ page }) => {
   const link = links().rootTarget;
   expect(link).toBe(`${baseURL}/dynamics/${dynamicId}/comments/${rootTarget}/locate`);
-  // 目标确实不在首批：最热首批 20 条里没有它。
-  const first = await (await page.request.get(`/api/archive/dynamics/${dynamicId}/comments?sort=hot&limit=20`)).json();
+  // 该链接来自另一 UP 刚发表的一级评论（夹具 `fresh_other`）：按时间序它就在首批，
+  // 所以这里验证的是“锚点定位到目标本身”，跨批定位由回复链接的第 3 页与隔离定位用例覆盖。
+  const first = await (await page.request.get(`/api/archive/dynamics/${dynamicId}/comments?sort=latest&limit=20`)).json();
   expect(first.items).toHaveLength(20);
-  expect(first.items.some((item: { id: string }) => item.id === rootTarget)).toBe(false);
+  expect(first.items.filter((item: { id: string }) => item.id === rootTarget)).toHaveLength(1);
 
   await page.goto(link);
   await expect(page.locator(`[data-reading-id="comment:${rootTarget}"]`)).toHaveAttribute('data-located', 'true');
@@ -322,7 +335,7 @@ test('楼中楼后续页回复链接在宽屏内联与窄屏独立页都定位�
   await page.setViewportSize({ width: 390, height: 800 });
   await page.goto(link);
   // 窄屏走独立楼中楼页，目标仍在第 3 页并高亮。
-  await expect(page.getByRole('button', { name: '返回评论' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '评论详情，返回动态详情' })).toBeVisible();
   await expect(page.locator(`[data-reading-id="reply:${replyRoot}:${replyTarget}"]`))
     .toHaveAttribute('data-located', 'true');
   await expect(located(page)).toHaveCount(1);
@@ -331,14 +344,60 @@ test('楼中楼后续页回复链接在宽屏内联与窄屏独立页都定位�
     .toHaveAttribute('data-located', 'true');
 });
 
+test('实际投递的回复链接：定位后续页→查看对话→返回恢复原定位访问，刷新仍可读', async ({ page }) => {
+  const link = links().replyTarget;
+  await page.setViewportSize({ width: 390, height: 844 });
+  const before = await sourceRequests();
+  // 采集进程按固定节拍继续检查，`last_checked_at` 会前进；其余归档内容必须逐字不变。
+  const archive: Record<string, unknown> = await (await page.request.get(
+    `/api/archive/dynamics/${dynamicId}`)).json();
+  // 采集进程仍在按节拍检查（时间戳会前进），这里只锁读取不该改变的归档内容与计数。
+  const contentOf = (document: Record<string, unknown>) => ({
+    text: document.text, title: document.title, author: document.author,
+    local_comment_count: document.local_comment_count, local_reply_count: document.local_reply_count,
+  });
+  const contentBefore = contentOf(archive);
+
+  await page.goto(link);
+  const target = page.locator(`[data-reading-id="reply:${replyRoot}:${replyTarget}"]`);
+  await expect(target).toHaveAttribute('data-located', 'true');
+  const pager = page.getByRole('navigation', { name: '回复分页' });
+  await expect(pager.getByRole('button', { name: '3' })).toHaveAttribute('aria-current', 'page');
+  await page.evaluate(() => window.scrollTo(0, 200));
+  const saved = await page.evaluate(() => Math.round(window.scrollY));
+
+  // 目标回复自身带可确认的对话（父级互指成环的异常关系）：入口显示，打开后有限止步。
+  await target.getByRole('button', { name: '查看对话' }).click();
+  await expect(page).toHaveURL(new RegExp(`/replies/${replyTarget}/conversation$`));
+  await expect(page.getByText('部分上下文暂不可用')).toBeVisible();
+  await expect(page.getByRole('list', { name: '对话内容' }).locator('> li')).toHaveCount(2);
+
+  // 返回恢复这次通知定位访问：仍是时间序第 3 页、目标高亮与滚动位置，不重新定位。
+  await page.getByRole('button', { name: '会话列表，返回评论详情' }).click();
+  await expect(page).toHaveURL(new RegExp(`/replies/${replyTarget}/locate$`));
+  await expect(target).toHaveAttribute('data-located', 'true');
+  await expect(pager.getByRole('button', { name: '3' })).toHaveAttribute('aria-current', 'page');
+  await expect.poll(async () => Math.abs(await page.evaluate(() => Math.round(window.scrollY)) - saved) <= 2)
+    .toBe(true);
+
+  // 刷新仍是同一定位访问可读；读取不触发来源采集，归档不变。
+  await page.reload();
+  await expect(page.locator(`[data-reading-id="reply:${replyRoot}:${replyTarget}"]`))
+    .toHaveAttribute('data-located', 'true');
+  expect(await sourceRequests()).toBe(before);
+  const after: Record<string, unknown> = await (await page.request.get(
+    `/api/archive/dynamics/${dynamicId}`)).json();
+  expect(contentOf(after)).toEqual(contentBefore);
+});
+
 test('不存在的目标给出明确提示并保留返回入口，API 错误不冒充页面成功', async ({ page }) => {
   await page.goto(`${baseURL}/dynamics/${dynamicId}/comments/999999/locate`);
-  await expect(page.getByRole('status').filter({ hasText: '目标评论不存在或未归档' })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: '目标评论不存在或未保存' })).toBeVisible();
   await page.getByRole('button', { name: '返回动态' }).click();
   await expect(page).toHaveURL(new RegExp(`/dynamics/${dynamicId}$`));
 
   await page.goto(`${baseURL}/dynamics/${dynamicId}/comments/${replyRoot}/replies/999999/locate`);
-  await expect(page.getByRole('status').filter({ hasText: '目标回复不存在或未归档' })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: '目标回复不存在或未保存' })).toBeVisible();
 
   // 代理语义：API 的 404/422 保持 JSON 且不回退到应用入口（不把错误伪装成成功页面）。
   for (const path of [`/api/archive/dynamics/${dynamicId}/comments/999999/location`,

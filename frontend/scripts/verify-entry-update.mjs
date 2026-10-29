@@ -126,12 +126,16 @@ export async function rollbackAndVerify({
     page.off('response', onResponse);
   }
   assert.deepEqual(failedAssets, [], '回退后导航不得请求到 4xx 哈希资源');
-  // 旧构建有自己的入口标题：用它正向断言“确实回到了旧产物”，
-  // 而不是只断言新构建的标记消失（后者在页面根本没加载时也成立）。
-  const previousTitle = previousHTML.match(/<title>([^<]*)<\/title>/)?.[1];
-  assert(previousTitle, 'Previous entry has no title to assert');
+  // 04 起标签标题由路由决定（不再是入口 HTML 的静态标题），不能再用标题当产物身份。
+  // 这里用「release B 的构建标记消失」+「应用真的挂载」正向证明浏览器回到了旧产物，
+  // 而不是只断言新构建的标记消失（后者在页面根本没加载时也成立）；
+  // 入口 HTML 本身已在上文按字节与旧产物比较过。
+  const previousScript = entryScript(previousHTML);
+  const updatedScript = entryScript(updatedHTML);
   await page.reload();
-  await page.waitForFunction(title => document.title === title, previousTitle);
-  console.log(`PASS: 回退到旧入口；旧/新入口引用资源（共 ${refs.length} 个）仍可达，页面重新加载为旧产物“${previousTitle}”`);
+  await page.waitForFunction(() => (document.getElementById('app')?.childElementCount ?? 0) > 0
+    && document.documentElement.dataset.deliveryRevision === undefined);
+  console.log(`PASS: 回退到旧入口；旧/新入口引用资源（共 ${refs.length} 个）仍可达，`
+    + `页面重新加载旧产物 ${previousScript} 并完成挂载（不含 ${updatedScript}）`);
   return { previousHTML, updatedHTML };
 }

@@ -197,7 +197,7 @@ test.describe('窄屏楼中楼回复精确链接', () => {
     expect(requests.filter(request => request.kind === 'replies')).toEqual([]);
 
     // 无详情来源：返回替换为对应动态详情，不在历史里留下精确地址。
-    await page.getByRole('button', { name: '返回评论' }).click();
+    await page.getByRole('button', { name: '评论详情，返回动态详情' }).click();
     await expect(page).toHaveURL(new RegExp(`/dynamics/${dynamicId}$`));
     await page.goBack();
     await page.waitForTimeout(200);
@@ -208,7 +208,7 @@ test.describe('窄屏楼中楼回复精确链接', () => {
     await mockArchive(page);
     await page.goto(locatePath('9999'));
     const notice = page.getByRole('region', { name: '定位结果' });
-    await expect(notice.getByRole('status')).toContainText('不存在或未归档');
+    await expect(notice.getByRole('status')).toContainText('不存在或未保存');
     await expect(located(page)).toHaveCount(0);
     await expect(threadList(page)).toHaveCount(0);
 
@@ -244,8 +244,8 @@ test.describe('窄屏楼中楼回复精确链接', () => {
   test('定位在途时离开，迟到结果不污染详情', async ({ page }) => {
     await mockArchive(page, { replyLocationDelay: 600 });
     await page.goto(locatePath());
-    await expect(page.getByRole('button', { name: '返回评论' })).toBeVisible();
-    await page.getByRole('button', { name: '返回评论' }).click();
+    await expect(page.getByRole('button', { name: '评论详情，返回动态详情' })).toBeVisible();
+    await page.getByRole('button', { name: '评论详情，返回动态详情' }).click();
     await expect(page).toHaveURL(new RegExp(`/dynamics/${dynamicId}$`));
     await expect(page.getByRole('region', { name: '评论区' })).toBeVisible();
 
