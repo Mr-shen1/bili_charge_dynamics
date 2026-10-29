@@ -194,7 +194,8 @@ http {
     navigate: async target => {
       const routes = [
         ['/', target.getByRole('heading', { name: '全部动态' })],
-        ['/ups/123', target.getByRole('heading', { name: 'UP 123 归档' })],
+        // 01 已把应用文案统一为「动态」，回退用例的锚点跟着改，否则验证不到这一条路由。
+        ['/ups/123', target.getByRole('heading', { name: 'UP 123 动态' })],
         ['/dynamics/90071992547409934', target.locator('#preview-trigger-dynamic-90071992547409934-0')],
         ['/dynamics/90071992547409934/comments/root-1', target.getByRole('button', { name: '返回评论' })],
         // 会话页：动态 + 根评论 + 入口回复都在地址里，直达/刷新同样只靠 SPA 回退与只读接口。
