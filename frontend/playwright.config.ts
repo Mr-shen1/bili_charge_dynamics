@@ -5,9 +5,9 @@ const imagePort = 4319;
 // 列表用例需要生产装配 + HTTP 传输替身；mock/fault 装配自带归档夹具，不能替换其读取。
 const listPort = 4320;
 const preview = process.env.E2E_TARGET === 'preview';
-// 静态交付验证由 scripts/verify-static-delivery.mjs 管理 Nginx，不在这里另起服务。
+// 静态交付验证跑在已部署的 Nginx 站点上（deploy-v2/deploy.sh），不在这里另起服务。
 const nginx = process.env.E2E_TARGET === 'nginx';
-// 默认沿用交付示例的 4173；本机该端口被占用时由 verify-static-delivery.mjs 传入实际端口。
+// 默认 4173；本机该端口被占用时用 E2E_BASE_URL 指向实际站点。
 const nginxBase = process.env.E2E_NGINX_BASE || 'http://127.0.0.1:4173';
 const mockBase = `http://127.0.0.1:${port}`;
 const listBase = `http://127.0.0.1:${listPort}`;

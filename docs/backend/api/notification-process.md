@@ -31,7 +31,7 @@ exec .venv/bin/python -m backend.bili_monitor.notifier
 - 单轮领取/回写失败（如 SQLite 写锁竞争）只记录固定分类并继续下一轮，不停掉投递进程；心跳登记失败与告警扫描失败同理（`heartbeat_cycle_failed`／`alert_cycle_failed`），不连带停掉业务投递。
 - 等待配置的记录每 60 秒复检一次，每次回写都会累加 `attempts`；心跳在系统群未配置时也会这样累积。这只是“未配置”的诊断计数，**不是**投递失败次数。真实失败次数另记在 `failures`/`last_failed_at`（见 §4），告警阈值只读它们（见 §3.3），不能拿 `attempts`。心跳过期后该记录转为 `expired`，不再增长。
 - 同一数据库只允许一个投递实例（`.notifier.lock`）；第二个进程启动即以固定错误退出，崩溃后锁由内核释放，不靠租约猜活。
-- 统一托管入口（`python -m backend.bili_monitor.service`）已支持三个进程：先等 API 完成迁移并监听，再启动独立 collector，最后启动通知进程；设置 `BILI_NOTIFICATION_CONFIG` 时才有第三个进程，未设置时保持原两进程形态（不投递飞书）。任一子进程退出都会停止其余进程并以固定错误退出；TERM 按“通知 → 采集 → API”反向顺序逐个等待退出。启动顺序、迁移顺序、启停与路由修复步骤见[部署与运维指南](../../deployment/README.md#38-首次启动与迁移确认)与[选配：通知进程、OSS 与 Cookie](../../deployment/README.md#8-选配通知进程oss-与-cookie)；systemd 示例见 `deploy/bili-monitor.service` 与 `deploy/bili-monitor.env.example`。API 仍不内嵌任何通知定时器。
+- 统一托管入口（`python -m backend.bili_monitor.service`）已支持三个进程：先等 API 完成迁移并监听，再启动独立 collector，最后启动通知进程；设置 `BILI_NOTIFICATION_CONFIG` 时才有第三个进程，未设置时保持原两进程形态（不投递飞书）。任一子进程退出都会停止其余进程并以固定错误退出；TERM 按“通知 → 采集 → API”反向顺序逐个等待退出。启动顺序、迁移顺序、启停与路由修复步骤见[部署手册](../../../deploy-v2/README.md)（安装第 4/7 步、选配第 8 步）；systemd unit 与 env 模板见 `deploy-v2/assets/bili-monitor.service`、`deploy-v2/assets/bili-monitor.env.example`。API 仍不内嵌任何通知定时器。
 
 ## 1.1 发送状态（管理页三态，票据 14 起、票据 15 改造）
 

@@ -4,7 +4,7 @@
 
 ## 运行
 
-完整干净检出、nvm/pnpm frozen 构建、统一入口启停/升级、一致性备份及 Nginx 排障见[部署与运维指南（本地／云端）](../docs/deployment/README.md)。在仓库根目录准备依赖，再在专用终端前台运行 API：
+完整干净检出、nvm/pnpm frozen 构建、统一入口启停/升级、一致性备份及 Nginx 排障见[部署手册（本地与云端同一套）](../deploy-v2/README.md)。在仓库根目录准备依赖，再在专用终端前台运行 API：
 
 ```sh
 uv sync --locked
@@ -51,7 +51,7 @@ export BILI_NOTIFICATION_CONFIG=/srv/bili-monitor/credentials/notifications.json
 exec .venv/bin/python -m backend.bili_monitor.notifier
 ```
 
-通知进程与 API/collector 使用同一 SQLite，但有独立 `.notifier.lock`，同一库只能运行一个投递实例。主动限速的窗口状态在进程内存里，重启会重新计数；它降低但不消除 429，被动退避（`x-ogw-ratelimit-reset`）保留。统一托管入口 `python -m backend.bili_monitor.service` 已支持三进程：设置 `BILI_NOTIFICATION_CONFIG` 时先等 API 完成迁移并监听，再启动 collector 与通知进程；未设置时保持两进程形态（不投递）。启动顺序、启停、迁移与路由修复见[部署与运维指南](../docs/deployment/README.md#8-选配通知进程oss-与-cookie)与[三进程集成证据](../.scratch/feishu-notifications/evidence/10-integrated-delivery-readiness.md)；真实飞书群与目标环境仍未验证。配置与凭据只在服务端文件，不进入浏览器、日志或发件箱；可选签名密钥也只用于发送时组装 `timestamp`/`sign`。最小隔离演示（不访问网络、不读取真实凭据）：
+通知进程与 API/collector 使用同一 SQLite，但有独立 `.notifier.lock`，同一库只能运行一个投递实例。主动限速的窗口状态在进程内存里，重启会重新计数；它降低但不消除 429，被动退避（`x-ogw-ratelimit-reset`）保留。统一托管入口 `python -m backend.bili_monitor.service` 已支持三进程：设置 `BILI_NOTIFICATION_CONFIG` 时先等 API 完成迁移并监听，再启动 collector 与通知进程；未设置时保持两进程形态（不投递）。启动顺序、启停、迁移与路由修复见[部署手册](../deploy-v2/README.md)的「第 8 步：选配」与[三进程集成证据](../.scratch/feishu-notifications/evidence/10-integrated-delivery-readiness.md)；真实飞书群与目标环境仍未验证。配置与凭据只在服务端文件，不进入浏览器、日志或发件箱；可选签名密钥也只用于发送时组装 `timestamp`/`sign`。最小隔离演示（不访问网络、不读取真实凭据）：
 
 ```sh
 demo_dir=$(mktemp -d)
@@ -308,7 +308,7 @@ schema 顺序：v1 身份/配置、v2 targets、v3 archives/generation、v4 持�
 
 ## 测试与 E2E 装配
 
-#31 双进程专项：`uv sync --locked` 后执行 `uv run --no-sync pytest backend/tests/test_deployment_processes.py -q`。API fixture 为 `backend.tests.deployment_fixture:create_app --factory`，要求显式 `BILI_DATABASE_PATH`；独立采集入口 `uv run --no-sync python -m backend.tests.deployment_fixture --database PATH` 使用同一路径。它们仅替换外部 I/O，运行真实 API/collector/SQLite，不访问真实上游或 OSS；模拟上传返回 `https://media.example.invalid/deployment.png`。Nginx/生产构建/浏览器一并验证用 `pnpm test:delivery`（需 dev 依赖、Nginx/mime.types、Chromium，4173 空闲，API 使用临时空闲端口），浏览器仅 route 外部图片。命令与范围见[部署与运维指南](../docs/deployment/README.md)（隔离验证入口说明在只读验收节），结果见 [#31 验收记录](../.scratch/backend-integration/acceptance-31.md)；不据此宣称真实 OSS、云部署、真机或持续运行已验证。
+#31 双进程专项：`uv sync --locked` 后执行 `uv run --no-sync pytest backend/tests/test_deployment_processes.py -q`。API fixture 为 `backend.tests.deployment_fixture:create_app --factory`，要求显式 `BILI_DATABASE_PATH`；独立采集入口 `uv run --no-sync python -m backend.tests.deployment_fixture --database PATH` 使用同一路径。它们仅替换外部 I/O，运行真实 API/collector/SQLite，不访问真实上游或 OSS；模拟上传返回 `https://media.example.invalid/deployment.png`。真实 Nginx/浏览器交付验证改由 `deploy-v2/deploy.sh install` + `deploy-v2/verify.sh` 在目标机执行（旧 `pnpm test:delivery` 已随旧部署方式移除）。命令与范围见[部署手册](../deploy-v2/README.md)（验收见第 5 步），结果见 [#31 验收记录](../.scratch/backend-integration/acceptance-31.md)；不据此宣称真实 OSS、云部署、真机或持续运行已验证。
 
 ```sh
 uv run pytest backend/tests/test_discovery_source.py backend/tests/test_recent_discovery.py -q

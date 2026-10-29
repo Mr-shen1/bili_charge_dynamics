@@ -126,9 +126,6 @@ pnpm visual:diff-report --current <截图目录>
                        # 与 visual:compare 共用比较口径和条件校验，用于证据文档引用
 pnpm visual:golden -- --reason "为什么是预期变化"
                        # 仅在确认视觉变化是预期的之后更新黄金图；必须写原因并进提交
-pnpm test:nginx-parity   # 只比对 deploy/nginx*.conf 的 location/server 指令一致性，无需 nginx 二进制
-pnpm test:delivery      # 临时真实 Nginx 交付演练（生产/mock/fault 构建、缓存/404、发布切换与回退、实际 API）需
-                       # NGINX_BIN、NGINX_MIME_TYPES、uv 环境与 Chromium；4173 被占用时用 DELIVERY_PORT 换端口
 pnpm test:http          # 对已上线的局域网 mock 产物验证真实非 localhost HTTP：HTTP_ACCEPTANCE_URL=... 提供地址
 pnpm build               # 生产构建 → dist/（不含 mock 页面与夹具）
 pnpm build:mock          # 自检构建 → dist-mock/（回归与真机自检用）
@@ -177,7 +174,7 @@ pnpm playwright test --project=desktop-chromium-archive tests/e2e/replies.spec.t
 | `server/imageServer.mjs` | 图片夹具服务器：缩略/预览不同地址、坏图、无效地址、可重试失败、请求记录 |
 | `scripts/check-isolation.mjs` | 构建产物隔离检查（生产无 mock/fault/归档数据，自检构建有） |
 | `scripts/check-e2e-projects.mjs` | e2e 项目覆盖守卫：各 spec 的 `@projects` 声明与 Playwright 实测矩阵一致（含 nginx 交付矩阵） |
-| `scripts/verify-static-delivery.mjs` 等 | 交付工具：临时 Nginx 静态交付演练、生产 API + collector 验收、入口原子更新、nginx 配置一致性、LAN HTTP 历史恢复（仓库根的 `deploy/`、`backend/` 由脚本向上定位） |
+| `scripts/verify-production-deployment.mjs`、`verify-entry-update.mjs` 等 | 生产装配与入口原子更新校验；静态交付与反向代理行为现在由 `deploy-v2/deploy.sh` + `deploy-v2/verify.sh` 在目标机验证 |
 | `tests/unit` | 历史元数据、装配选择、归档 Adapter（列表、一级评论含 UP 摘要、评论图片与回复）/图片组契约、管理 Adapter（映射、错误白名单、401、取消）契约、检查/发现状态 DTO 守卫与自相矛盾响应拒绝、回复分页与目标文案、列表/详情/一级评论（含评论图片）/窄屏入口/楼中楼/回复/图片预览/管理列表、单 UP 启停与模式/目标/检查与发现状态页面行为 |
 | `tests/fixtures` / `tests/support` | 生产 DTO 夹具、可注入读取与管理接口替身、预览探针、窄屏视口桩与 jsdom 排版/滚动替身 |
 | `tests/e2e` | 骨架冒烟/预览/详情恢复/动态图片/评论图片（mock 装配）+ 列表、一级评论（含根评论 `media` 映射）、管理列表/启停/模式与目标、宽屏回复、宽屏/窄屏回复精确入口、窄屏楼中楼与图片读取（生产装配，HTTP 传输按用例替换）+ `static-delivery`（真实 Nginx 缓存/404/深链接，`E2E_TARGET=nginx` 单独跑） |
@@ -235,7 +232,7 @@ mode 与自检构建中出现。
 
 票据 16 已完成（见[交付与回退证据](../.scratch/frontend-vue-migration/evidence/16-static-delivery-rollback.md)）：
 本机无系统 Nginx，按文档在临时目录编译 Nginx 1.28.0，用 `DELIVERY_PORT=4273` 避开已占用的 4173（现有实例未受影响）。
-`pnpm test:delivery` 三个阶段全绿：mock 产物阅读/缓存/404/构建复现与回退；生产构建六路由直达/刷新、
+当时的 `pnpm test:delivery`（该脚本已随旧部署方式从仓库移除）三个阶段全绿：mock 产物阅读/缓存/404/构建复现与回退；生产构建六路由直达/刷新、
 产物内 28 个哈希资源逐个可达、受保护反代 401 只显示固定提示、原子更新与回退，且 SQLite 文件与 collector 未变。
 `check:isolation` 现在从入口 HTML 解析引用并要求 `/assets/` 全部为内容哈希文件、路由 chunk 不少于六个。
 

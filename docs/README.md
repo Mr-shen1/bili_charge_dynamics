@@ -36,8 +36,8 @@
 
 - [项目 README](../README.md)：前端、API 启动与测试入口。
 - [后端 README](../backend/README.md)：后端运行、配置及初始化说明。
-- [部署与运维指南（本地／云端）](deployment/README.md)：**唯一现行的部署运维入口**。本地与云端共用同一目录形状、systemd unit、Nginx 规则与发布／升级路径，差异集中在差异表与参数表（包管理器、Web 端口 4273／4173、swap、域名与 HTTPS）；含只读验收、一致性备份、只前进的迁移边界、排障、选配通知／OSS／Cookie，以及云端备案、证书、隧道与 BasicAuth 的指针。云端结构已只读核验，本地待管理员安装；不代替验收。
-- 旧部署指南（`static-delivery`、`aliyun-ecs`、`local-live-backend`、`local-live-frontend`）已**从仓库删除且无副本**，需要时用 `git show e58271c:docs/deployment/<旧文件名>.md` 查原文；不要将它们当作现行步骤。
+- [部署手册：本地与云端同一套](../deploy-v2/README.md)：**唯一现行的部署入口**。`deploy-v2/` 自带打包器、部署器、验收器、重置器与 systemd/Nginx 模板，不依赖 `scripts/` 或旧向导；本地与云端执行同一组命令，平台差异（pacman/apt、默认 80 站点隔离方式、Web 端口 4273/4173、`sudo` 与 root）由脚本自适配。含只读预检、七段安装、只读验收、升级与前端发布、重装与排障、选配通知／OSS／Cookie，以及使用包内 bundle、只前滚的数据库边界。
+- 旧部署方式（`docs/deployment/`、`scripts/setup-local-deployment.sh`、`scripts/prepare-local-deployment-package.sh`、`scripts/deploy-frontend.sh`、`deploy/`）已**全部从仓库删除且无副本**，需要时用 `git show 490d6a5:<路径>` 查原文；不要把它们当作现行步骤。
 
 ## 任务、计划与验收记录
 
@@ -60,7 +60,7 @@
 
 - `docs/product/`：产品需求与可行性；`docs/design/`：架构和界面设计。
 - `docs/backend/api/`：后端/客户端接口契约；`docs/backend/evidence/`：协议来源与可行性证据。
-- `docs/deployment/`：部署与运维，**只保留 [README.md](deployment/README.md) 一份**（旧指南已删除，原文见 `git show`）；一次执行的结果放对应 `.scratch/<feature>/`，专项附件放其 `evidence/`。
+- `deploy-v2/`：现行部署手册与脚本（`README.md`、`package.sh`、`deploy.sh`、`verify.sh`、`reset.sh`、`assets/`）。部署执行结果属于任务证据，放对应 `.scratch/<feature>/`，不写进手册。
 - 根目录和模块 `README.md` 保留为就近入口（前端命令与结构见 [frontend/README.md](../frontend/README.md)）；与素材或代码紧密相关的说明留在原目录。
 - `docs/agents/` 保留[工单约定](agents/issue-tracker.md)、[分诊标签](agents/triage-labels.md)、[领域文档约定](agents/domain.md)、[implement-spec 工作流覆盖](agents/implement-spec.md)与 [CodeGraph 使用约定](agents/codegraph.md)；提交或执行 spec 工作流、定位代码或派发探索任务时阅读对应约定。代理入口仍为根 [AGENTS.md](../AGENTS.md)，技能和代理配置保持工具要求的位置。
 - 新增文档按职责归位并补本页入口；移动文档时同步修复相对链接、图片和正文中的路径引用。保留已有需求和历史证据内容，不为整理目录重写验收结果。

@@ -23,8 +23,6 @@
     "visual:compare": "node scripts/compare-visual-baseline.mjs",
     "visual:diff-report": "node scripts/visual-diff-report.mjs",
     "visual:golden": "node scripts/compare-visual-baseline.mjs --update",
-    "test:delivery": "node scripts/verify-static-delivery.mjs",
-    "test:nginx-parity": "node scripts/verify-nginx-parity.mjs",
     "test:http": "node scripts/verify-http-navigation.mjs",
     "check": "pnpm typecheck && pnpm test && pnpm check:e2e-projects",
     "check:dist": "pnpm build && pnpm build:mock && pnpm check:isolation",

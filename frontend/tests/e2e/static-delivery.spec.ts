@@ -1,7 +1,7 @@
 // @projects nginx: desktop-chromium, mobile-chromium
 import { expect, test } from '@playwright/test';
 
-// 静态交付路径：Nginx 由 scripts/verify-static-delivery.mjs 管理并托管 mock 构建产物，
+// 静态交付路径：Nginx 站点由 deploy-v2/deploy.sh 安装并托管 mock 构建产物，
 // 因此只在 E2E_TARGET=nginx 下跑（config 的 testMatch/testIgnore 已限定）；其余装配与设备覆盖见其它 spec。
 
 const revalidate = 'no-cache';
