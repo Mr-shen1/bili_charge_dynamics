@@ -55,6 +55,11 @@ as_bili() {
     elif [[ "$CAN_ASK_SUDO" == 1 && "$NO_PROMPT" == 0 ]]; then $SUDO -u "$RUN_USER" -- "$@"
     else $SUDO -n -u "$RUN_USER" -- "$@"; fi
 }
+# credentials/ 是 bili 0700：既不是 root 也不是 bili 时，读/判/删都必须借 sudo
+maybe_root() {
+    if [[ $EUID -eq 0 || "$ME" == "$RUN_USER" ]]; then "$@"
+    else as_root "$@"; fi
+}
 # 普通 stat 能读就读，读不到再借 sudo（/etc/bili-monitor 是 755，stat 本身通常不需要 root）
 stat_of() {
     stat -c "$1" "${@:2}" 2>/dev/null && return 0
@@ -165,10 +170,10 @@ if [[ -z "${E[BILI_COOKIE_FILE]:-}" ]]; then
     ok "未启用（匿名访问）"
 else
     p="${E[BILI_COOKIE_FILE]}"
-    if [[ ! -e "$p" && ! -L "$p" ]]; then
+    if ! maybe_root test -e "$p" && ! maybe_root test -L "$p"; then
         bad "BILI_COOKIE_FILE 指向的文件不存在：$p"
     else
-        [[ -L "$p" ]] && bad "不允许符号链接：$p" || ok "不是符号链接"
+        maybe_root test -L "$p" && bad "不允许符号链接：$p" || ok "不是符号链接"
         d="$(dirname "$p")"
         dmeta="$(stat_of '%U %a' "$d" || true)"
         [[ "$dmeta" == "$RUN_USER 700" ]] && ok "目录属主/权限 $dmeta" \
@@ -180,9 +185,11 @@ else
             bad "文件必须是 $RUN_USER 的 0600 且 nlink=1，实际 ${fmeta:-读不到}"
             [[ $QUIET == 1 ]] || info "修复：sudo chown $RUN_USER:$RUN_USER $p && sudo chmod 600 $p"
         fi
-        if [[ -r "$p" ]]; then
-            LC_ALL=C grep -qP '[\x80-\xFF]|[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]' "$p" 2>/dev/null \
-                && bad "文件含非 ASCII 或控制字符" || ok "内容为 ASCII、无控制字符"
+        if LC_ALL=C maybe_root cat "$p" 2>/dev/null |
+            grep -qP '[\x80-\xFF]|[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]'; then
+            bad "文件含非 ASCII 或控制字符"
+        else
+            ok "内容为 ASCII、无控制字符"
         fi
     fi
 fi
@@ -193,7 +200,7 @@ if [[ -z "${E[BILI_NOTIFICATION_CONFIG]:-}" ]]; then
     ok "未启用（只有 API + collector 两个进程）"
 else
     p="${E[BILI_NOTIFICATION_CONFIG]}"
-    if [[ ! -f "$p" ]]; then
+    if ! maybe_root test -f "$p"; then
         bad "BILI_NOTIFICATION_CONFIG 指向的文件不存在：$p"
     else
         fmeta="$(stat_of '%U %a' "$p" || true)"
@@ -203,9 +210,10 @@ else
             *)   bad "权限应为 ≤0640 且属主 $RUN_USER 或 root，实际 $fmeta"
                  [[ $QUIET == 1 ]] || info "修复：sudo chown $RUN_USER:$RUN_USER $p && sudo chmod 640 $p" ;;
         esac
-        if [[ -r "$p" ]]; then
-            python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$p" 2>/dev/null \
-                && ok "JSON 可解析" || bad "JSON 解析失败：$p"
+        if maybe_root cat "$p" 2>/dev/null | python3 -c 'import json,sys; json.load(sys.stdin)' 2>/dev/null; then
+            ok "JSON 可解析"
+        else
+            bad "JSON 解析失败：$p"
         fi
     fi
 fi
@@ -247,6 +255,8 @@ if [[ "$ME" != "$RUN_USER" && "$CAN_SUDO" == 0 ]]; then
     warn "跳过（需要 sudo 才能以 $RUN_USER 身份运行加载器）"
 else
     tmp_dir="$(mktemp -d /var/tmp/bili-doctor.XXXXXX)"
+    # 目录必须可被运行用户穿过（0711：能进入、不能列目录），否则 bili 读不到里面的文件
+    chmod 0711 "$tmp_dir"
     tmp_env="$tmp_dir/env"; tmp_py="$tmp_dir/probe.py"; tmp_err="$tmp_dir/err"
     {
         printf 'BILI_DATABASE_PATH=%q\n' "$DB_PATH"
@@ -289,7 +299,10 @@ PY
     : > "$tmp_err"
     chmod 0600 "$tmp_env" "$tmp_py" "$tmp_err"
     if [[ "$ME" != "$RUN_USER" ]]; then
-        as_root chown -R "$RUN_USER:$RUN_USER" "$tmp_dir" 2>/dev/null || true
+        # 只把子进程要“读”的 env 与 probe.py 交给运行用户。
+        # err 必须留给调用者：`2>"$tmp_err"` 是调用者 shell 打开的重定向，
+        # chown 给 bili 之后调用者自己就打不开（Permission denied）。
+        as_root chown "$RUN_USER:$RUN_USER" "$tmp_env" "$tmp_py" 2>/dev/null || true
         runner=(as_bili)
     else
         runner=()
@@ -302,8 +315,8 @@ PY
                 "$APP_DIR/.venv/bin/python" -W ignore::SyntaxWarning "$tmp_py" 2>"$tmp_err"
     )"; probe_rc=$?
     # 第三方库导入的 SyntaxWarning 不是诊断结论；只在真失败时展示 stderr 尾部
-    probe_err="$(grep -vE 'SyntaxWarning|^[[:space:]]+r\.|warnings\.warn' "$tmp_err" 2>/dev/null | tail -3 || true)"
-    rm -rf "$tmp_dir"
+    probe_err="$(maybe_root cat "$tmp_err" 2>/dev/null | grep -vE 'SyntaxWarning|^[[:space:]]+r\.|warnings\.warn' | tail -3 || true)"
+    maybe_root rm -rf "$tmp_dir" 2>/dev/null || true
 fi
 while IFS= read -r line; do
     case "$line" in
