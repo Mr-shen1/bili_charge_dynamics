@@ -1,0 +1,59 @@
+# 阿里云 ECS systemd unit：单 API + 单 collector + 单通知进程（统一托管入口）
+#
+# 安装：
+#     sudo install -D -m 0644 deploy-v2/assets/bili-monitor.service \
+#         /etc/systemd/system/bili-monitor.service
+#     sudo systemctl daemon-reload
+#     sudo systemctl enable --now bili-monitor
+#
+# 运行用户与目录（首次部署时由 deploy-v2/deploy.sh 创建）：
+#     bili 用户；/srv/bili-monitor/app 为代码检出；/etc/bili-monitor/env 为环境文件。
+#
+# 关键约束（来自 deploy-v2/README.md）：
+#   * 单 API、单 collector、单通知进程；不要加 --workers、--reload 或 WEB_CONCURRENCY。
+#   * 三个进程必须使用同一个绝对 SQLite 路径和同一代码版本。
+#   * 升级必须先停服务并等待退出，再切换代码与依赖，然后启动；API 先完成迁移。
+#   * 通知进程需要 BILI_NOTIFICATION_CONFIG 指向仓库外配置；未设置时入口只托管
+#     API＋collector（不投递飞书）。同一库的第二个通知进程会被 .notifier.lock 拒绝。
+#   * 应用不加载 .env；环境由 systemd EnvironmentFile 注入（本文件由
+#     systemd 读取，不违反该约束）。凭据不得出现在命令行参数中。
+
+[Unit]
+Description=Bili charge dynamics monitor (API + collector + notifier)
+Documentation=https://github.com/Mr-shen1/bili_charge_dynamics/blob/main/deploy-v2/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bili
+Group=bili
+WorkingDirectory=/srv/bili-monitor/app
+
+EnvironmentFile=/etc/bili-monitor/env
+
+# 统一入口：先等 API 完成迁移并监听，再启动独立 collector 与通知进程（均需同一数据库）；
+# 任一子进程退出则整体退出，由 systemd 重启。停止时按通知 → 采集 → API 的顺序等待退出。
+ExecStart=/srv/bili-monitor/app/.venv/bin/python -m backend.bili_monitor.service --host 127.0.0.1 --port 8000
+
+Restart=always
+RestartSec=5s
+
+# collector 退出时会取消在途任务并等待清理；给足时间再强杀。
+KillSignal=SIGTERM
+TimeoutStopSec=60s
+
+# 只写数据库目录；保护系统与发布目录。
+#
+# 注意 ProtectHome：**不要设成 yes**。uv 把 CPython 安装到
+# /home/<user>/.local/share/uv/python/，而 .venv/bin/python 只是软链到那里；
+# 屏蔽 /home 会让 ExecStart 无法执行，systemd 报 status=203/EXEC。
+# 改用 read-only：允许执行 Python，仍禁止写家目录。
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/srv/bili-monitor
+
+[Install]
+WantedBy=multi-user.target
