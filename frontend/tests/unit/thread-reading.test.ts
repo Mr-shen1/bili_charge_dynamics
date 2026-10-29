@@ -25,12 +25,13 @@ interface ReplyRequest {
   limit: number;
   page: number | undefined;
   cursor: string | null | undefined;
+  sort: string | undefined;
 }
 
 function requestOf(input: {
-  rootId: string; limit: number; page?: number; cursor?: string | null;
+  rootId: string; limit: number; page?: number; cursor?: string | null; sort?: string;
 }): ReplyRequest {
-  return { rootId: input.rootId, limit: input.limit, page: input.page, cursor: input.cursor };
+  return { rootId: input.rootId, limit: input.limit, page: input.page, cursor: input.cursor, sort: input.sort };
 }
 
 function rootComment(overrides: Partial<Comment> = {}): Comment {
@@ -110,13 +111,14 @@ it('直达楼中楼按 page=1&limit=10 读取：展示根评论、回复与分�
   expect(screen.queryByRole('button', { name: '展开评论' })).toBeNull();
 
   expect(screen.getByText('相关回复共25条')).toBeTruthy();
-  expect(screen.getByText('按时间')).toBeTruthy();
+  // 宽屏内联楼中楼保留原时间序：不增加排序控件，但页码读取仍显式声明时间序。
+  expect(screen.queryByRole('button', { name: /^当前按/ })).toBeNull();
   const pager = screen.getByRole('navigation', { name: '回复分页' });
   expect(within(pager).getByText('共3页')).toBeTruthy();
   expect(within(pager).getByRole('button', { name: '1' }).getAttribute('aria-current')).toBe('page');
 
   // 页码模式：固定每页 10 条，不带 cursor（no-store 由 Adapter 用例覆盖）。
-  expect(seen).toEqual([{ rootId, limit: 10, page: 1, cursor: undefined }]);
+  expect(seen).toEqual([{ rootId, limit: 10, page: 1, cursor: undefined, sort: 'time' }]);
 });
 
 it('页头数量按来源数→本地 count→items 数回退，分页只按本地 count 计算', async () => {
@@ -176,7 +178,7 @@ it('每页替换当前页：25 条按 10/10/5 翻页，数据缩减后越界页�
   await fireEvent.click(screen.getByRole('button', { name: '下一页' }));
   await waitFor(() => expect(within(list).getAllByRole('listitem')[0]!.dataset.readingId)
     .toBe(`reply:${rootId}:${replies(25)[10]!.id}`));
-  expect(seen.at(-1)).toEqual({ rootId, limit: 10, page: 2, cursor: undefined });
+  expect(seen.at(-1)).toEqual({ rootId, limit: 10, page: 2, cursor: undefined, sort: 'time' });
 
   await fireEvent.click(screen.getByRole('button', { name: '下一页' }));
   await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(5));
@@ -230,7 +232,7 @@ it('分页器收起与返回按钮都退回详情，并保持详情已读内容�
   expect(await screen.findByText('相关回复共25条')).toBeTruthy();
 
   const readsBeforeBack = commentReads;
-  await fireEvent.click(screen.getByRole('button', { name: '返回评论' }));
+  await fireEvent.click(screen.getByRole('button', { name: '评论详情，返回动态详情' }));
   await waitFor(() => expect(router.currentRoute.value.name).toBe('detail'));
   const restored = await screen.findByRole('region', { name: '评论区' });
   // 详情按自己的快照恢复：40 条已读内容与位置都在，不因进出楼中楼重读。
@@ -254,11 +256,22 @@ it('分页器收起与返回按钮都退回详情，并保持详情已读内容�
   await waitFor(() => expect(router.currentRoute.value.name).toBe('detail'));
 });
 
+it('返回控件可访问名包含可见标签“评论详情”，并说明返回的是动态详情', async () => {
+  await openThread();
+  await screen.findByText('相关回复共25条');
+
+  const back = screen.getByRole('button', { name: '评论详情，返回动态详情' });
+  // 可见标签 `‹ 评论详情` 必须出现在无障碍名里（Label in Name），名里再说明返回目标。
+  expect(back.textContent).toBe('‹ 评论详情');
+  expect(back.getAttribute('aria-label')).toContain('评论详情');
+  expect(back.getAttribute('aria-label')).toContain('动态详情');
+});
+
 it('无详情来源时返回用 replace 定位对应动态详情，历史里不保留楼中楼', async () => {
   const router = await openThread();
   await screen.findByText('相关回复共25条');
 
-  await fireEvent.click(screen.getByRole('button', { name: '返回评论' }));
+  await fireEvent.click(screen.getByRole('button', { name: '评论详情，返回动态详情' }));
   await waitFor(() => expect(router.currentRoute.value.name).toBe('detail'));
   expect(router.currentRoute.value.path).toBe(`/dynamics/${dynamicId}`);
 
@@ -311,7 +324,7 @@ it('只有 CURSOR_INVALID 显示失效标记并可重新开始读取，普通错
   });
   await showApp(failed, `/dynamics/${dynamicId}/comments/${rootId}`);
   expect((await screen.findByRole('alert')).textContent).toBe('相关回复读取失败，请重试。');
-  expect(seen.at(-1)).toEqual({ rootId, limit: 10, page: 1, cursor: undefined });
+  expect(seen.at(-1)).toEqual({ rootId, limit: 10, page: 1, cursor: undefined, sort: 'time' });
   mode = 'ok';
   await fireEvent.click(screen.getByRole('button', { name: '重试' }));
   expect(await screen.findByRole('list', { name: '相关回复' })).toBeTruthy();
@@ -386,7 +399,7 @@ it('离开楼中楼后迟到的翻页结果不改写详情，重新进入仍从�
   await waitFor(() => expect(router.currentRoute.value.name).toBe('thread'));
   await fireEvent.click(await screen.findByRole('button', { name: '下一页' }));
   await waitFor(() => expect(seen.at(-1)!.page).toBe(2));
-  await fireEvent.click(screen.getByRole('button', { name: '返回评论' }));
+  await fireEvent.click(screen.getByRole('button', { name: '评论详情，返回动态详情' }));
   await waitFor(() => expect(router.currentRoute.value.name).toBe('detail'));
 
   // 迟到的成功/失败都不再影响已离开的页面或当前详情。
@@ -399,7 +412,7 @@ it('离开楼中楼后迟到的翻页结果不改写详情，重新进入仍从�
     .getByRole('button', { name: /条回复/ }));
   await waitFor(() => expect(router.currentRoute.value.name).toBe('thread'));
   await screen.findByRole('list', { name: '相关回复' });
-  expect(seen.at(-1)).toEqual({ rootId, limit: 10, page: 1, cursor: undefined });
+  expect(seen.at(-1)).toEqual({ rootId, limit: 10, page: 1, cursor: undefined, sort: 'time' });
 });
 
 /** jsdom 没有 scrollIntoView：记录被定位的元素，验证定位落在目标回复而不是页面顶部。 */
@@ -466,10 +479,10 @@ it('窄屏精确入口直达目标所在页并高亮该条：不回第一页，�
   // 定位后的普通翻页仍是原页内替换。
   await fireEvent.click(screen.getByRole('button', { name: '下一页' }));
   await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(5));
-  expect(pageReads.at(-1)).toEqual({ rootId, limit: 10, page: 3, cursor: undefined });
+  expect(pageReads.at(-1)).toEqual({ rootId, limit: 10, page: 3, cursor: undefined, sort: 'time' });
 
   // 返回仍按无详情来源的规则替换为对应动态详情。
-  await fireEvent.click(screen.getByRole('button', { name: '返回评论' }));
+  await fireEvent.click(screen.getByRole('button', { name: '评论详情，返回动态详情' }));
   await waitFor(() => expect(router.currentRoute.value.path).toBe(`/dynamics/${dynamicId}`));
 });
 

@@ -120,7 +120,7 @@ function openThread(): void {
 }
 /* 精确定位的一次性标记：定位完成后保持可见，但不再改变滚动位置。 */
 .comment--target {
-  background: var(--brand-soft, #e6f6f7);
+  background: var(--brand-soft);
   border-radius: var(--radius);
   box-shadow: inset 3px 0 0 var(--brand);
   outline: 1px solid var(--brand);
@@ -153,10 +153,11 @@ function openThread(): void {
 .comment__badge {
   padding: 0 6px;
   border-radius: 999px;
-  background: var(--brand-soft, #e6f6f7);
+  background: var(--brand-soft);
   color: var(--brand-strong);
-  font-size: 12px;
-  line-height: 20px;
+  /* 徽标/UP 主标识 12/20：与阅读标尺的 badge 角色同一 token。 */
+  font-size: var(--font-badge);
+  line-height: var(--line-badge);
   white-space: nowrap;
 }
 .comment__badge--up {
@@ -175,15 +176,16 @@ function openThread(): void {
 .comment__pending {
   margin: 4px 0;
   color: var(--muted);
-  font-size: 13px;
-  line-height: 20px;
+  /* 状态提示属时间/计数/辅助说明层：13/20。 */
+  font-size: var(--font-meta);
+  line-height: var(--line-meta);
   overflow-wrap: anywhere;
 }
 .comment__reply-notice {
   margin: 4px 0;
   color: var(--muted);
-  font-size: 13px;
-  line-height: 20px;
+  font-size: var(--font-meta);
+  line-height: var(--line-meta);
   overflow-wrap: anywhere;
 }
 .comment__metrics {

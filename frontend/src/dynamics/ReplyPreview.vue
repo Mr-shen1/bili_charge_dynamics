@@ -56,7 +56,7 @@ const bodyText = computed(() => {
   min-width: 0;
   margin-top: 6px;
   padding: 4px 10px;
-  background: var(--brand-soft, #e6f6f7);
+  background: var(--brand-soft);
   border-radius: 8px;
 }
 .reply-preview__body {
@@ -85,8 +85,8 @@ const bodyText = computed(() => {
   border-radius: 999px;
   background: #fdebf3;
   color: var(--author);
-  font-size: 12px;
-  line-height: 20px;
+  font-size: var(--font-badge);
+  line-height: var(--line-badge);
   white-space: nowrap;
 }
 .reply-preview__text {

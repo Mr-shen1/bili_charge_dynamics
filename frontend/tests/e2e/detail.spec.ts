@@ -288,7 +288,7 @@ test.describe('动态详情与阅读恢复', () => {
 
     // 楼中楼返回控件与详情返回控件同样式，卡片与评论区左右边缘对齐。
     await page.goto(`/dynamics/${mainDynamicId}/comments/${rootWithReplies}`);
-    await expect(page.getByRole('button', { name: '返回评论' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '评论详情，返回动态详情' })).toBeVisible();
     await expect(page.locator('.thread-root')).toBeVisible();
     const thread = await page.evaluate(() => {
       const back = document.querySelector<HTMLElement>('.thread-back')!;

@@ -9,6 +9,7 @@ import { onUserScroll } from '../app/readingPosition';
 import { useCompactViewport } from '../app/useCompactViewport';
 import { displayCount } from './display';
 import CommentList from './CommentList.vue';
+import SortToggle from './SortToggle.vue';
 
 const props = defineProps<{
   /**
@@ -63,11 +64,6 @@ let releaseSortCancel = (): void => undefined;
 const listKey = computed(() => `${regionId.value}:${sort.value}:${reloadKey.value}`);
 const sourceCount = computed(() => props.archive?.commentSync?.sourceCommentCount ?? props.sourceCommentCount);
 const headingLabel = computed(() => `${props.archive ? '来源' : ''}评论 ${displayCount(sourceCount.value)}`);
-// 单按钮只显示当前排序，点击切到另一种；无障碍名称同时说明当前状态与点击结果。
-const sortText = computed(() => (sort.value === 'latest' ? '按时间' : '按热度'));
-const sortLabel = computed(() => (sort.value === 'latest'
-  ? '当前按时间，点击切换为按热度'
-  : '当前按热度，点击切换为按时间'));
 
 // 精确定位的目标元素：按业务锚点查找，不依赖评论是否在首批 DOM 里。
 function targetElement(id: string): HTMLElement | null {
@@ -149,16 +145,12 @@ function restartReading(): void {
           评论 <span class="comment-count">{{ displayCount(sourceCount) }}</span>
         </span>
       </h2>
-      <el-button
+      <SortToggle
         v-if="!unarchived"
-        link
         class="comment-sort"
-        :aria-label="sortLabel"
-        @click="toggleSort"
-      >
-        <span class="comment-sort-icon" aria-hidden="true">☰</span>
-        {{ sortText }}
-      </el-button>
+        :hot="sort === 'hot'"
+        @toggle="toggleSort"
+      />
     </header>
     <p v-if="unarchived" class="comment-unarchived" role="status">
       评论尚未保存；来源计数不代表本地已有评论。
@@ -200,8 +192,8 @@ function restartReading(): void {
 }
 .comment-heading h2 {
   margin: 0;
-  font-size: 14px;
-  line-height: 22px;
+  font-size: var(--font-section);
+  line-height: var(--line-section);
   font-weight: 500;
 }
 .comment-tab {
@@ -211,8 +203,8 @@ function restartReading(): void {
   background: transparent;
   color: var(--brand-strong);
   font: inherit;
-  font-size: 14px;
-  line-height: 22px;
+  font-size: var(--font-section);
+  line-height: var(--line-section);
   font-weight: 500;
   cursor: pointer;
 }
@@ -227,30 +219,6 @@ function restartReading(): void {
 .comment-count {
   margin-left: 2px;
   color: var(--brand);
-}
-/* 单按钮：13px/20px 与计数同层级，视觉只显示文字；点击区由 44px 高度承担。 */
-.comment-sort {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 80px;
-  min-height: var(--touch);
-  padding: 0;
-  justify-content: flex-end;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 20px;
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-}
-.comment-sort:hover,
-.comment-sort:focus {
-  color: var(--brand-strong);
-}
-.comment-sort-icon {
-  font-size: 13px;
-  line-height: 20px;
 }
 .comment-unarchived {
   margin: 0;

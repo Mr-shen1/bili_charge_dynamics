@@ -1,6 +1,7 @@
 import type {
-  CommentBatch, CommentSort, Dynamic, DynamicBatch, LocateStatus, ReadResult, ReadStatus, ReplyBatch,
+  CommentBatch, CommentSort, Dynamic, DynamicBatch, LocateStatus, ReadResult, ReadStatus, ReplyBatch, ReplySort,
 } from '../data/contracts';
+import type { ReplyPageState } from '../dynamics/useReplyPage';
 
 /** 读取运行态只属于页面实例；进入访问快照的是上一次可见结果，不是进行中的请求。 */
 export interface ListReadState {
@@ -45,6 +46,12 @@ export interface ReadingPosition {
   readonly pixelY: number;
 }
 
+/** 居中所需的首尾最小留白（px）；页面把它们变成列表内边距，不新增 DOM 结构。 */
+export interface CenterPadding {
+  readonly lead: number;
+  readonly tail: number;
+}
+
 export interface ListSnapshot {
   readonly read: ListReadState;
   readonly expanded: Readonly<Record<string, boolean>>;
@@ -75,6 +82,58 @@ export interface CommentSnapshot {
   readonly expanded: Readonly<Record<string, boolean>>;
   /** 按根评论 ID 保存的回复区状态；切换排序与重新开始读取时清空。 */
   readonly replies: Readonly<Record<string, ReplySnapshot>>;
+}
+
+/**
+ * 回复访问快照里的读取结果：与 `useReplyPage` 的页码状态是同一份定义，不另列字段清单。
+ * 保存的是上一次可见结果对象；`useReplyPage` 每次都整对象替换、从不原地修改，
+ * 所以快照直接持有该引用不会被后续读取改写，也不含请求身份与进行中的回调。
+ */
+export type ReplyVisitReadState = ReplyPageState;
+
+/**
+ * 会话来源的回复访问快照：`‹ 会话列表`、浏览器返回与前进恢复的都是**那一次访问**。
+ * 保存排序、页码、已读内容、定位意图与阅读位置，因此不会只恢复坐标却先显示第 1 页。
+ * 只活在当前标签页的内存访问表：不跨重启、不跨标签页，也不扩成持久阅读历史。
+ */
+export interface ReplyVisitSnapshot {
+  /** 区域身份：动态 + 根评论；另一根、另一动态或另一次访问都不采纳这份状态。 */
+  readonly regionId: string;
+  readonly sort: ReplySort;
+  /** 定位意图：通知直达的目标仍高亮，但返回恢复不再重新执行主动定位。 */
+  readonly locating: boolean;
+  readonly position: ReadingPosition | null;
+  readonly read: ReplyVisitReadState;
+}
+
+/** 回复访问的区域身份：动态 + 根评论，不按页码或昵称识别。 */
+export function replyVisitRegion(dynamicId: string, rootId: string): string {
+  return `${dynamicId}/${rootId}`;
+}
+
+/**
+ * 会话页的访问记录：内容每次都单次整段读取，所以这里只记阅读位置；
+ * “有没有记录”就是“是否已居中过一次”——已有访问优先恢复位置，不重复居中。
+ * 与 `ReplyVisitSnapshot` 一样只活在内存访问表，不跨重启也不扩成持久阅读历史。
+ */
+export interface ConversationRead {
+  readonly position: ReadingPosition | null;
+  /**
+   * 居中时按需补的首尾留白（px）。历史恢复必须先还原它：
+   * 末条/短会话的可滚动范围由这份留白撑开，否则位置会被最大滚动夹回。
+   */
+  readonly padding: CenterPadding;
+}
+
+/**
+ * 只采纳属于本次回复访问的快照：身份不符时按新访问处理，
+ * 绝不复用另一根、另一动态或另一次访问的排序、页码、内容与位置。
+ */
+export function adoptReplyVisitSnapshot(
+  snapshot: ReplyVisitSnapshot | undefined,
+  regionId: string,
+): ReplyVisitSnapshot | null {
+  return snapshot && snapshot.regionId === regionId ? snapshot : null;
 }
 
 /**

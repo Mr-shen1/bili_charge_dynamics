@@ -4,7 +4,7 @@ import {
   appHistoryState, readEntryMarker, readPreviewMarker, type EntryMarker, type MarkerRead, type PreviewMarker,
 } from './historyState';
 import { createUuid } from './ids';
-import type { DetailSnapshot, ListSnapshot } from './snapshots';
+import type { ConversationRead, DetailSnapshot, ListSnapshot, ReplyVisitSnapshot } from './snapshots';
 
 interface PageEntry {
   readonly pageEntryId: string;
@@ -13,6 +13,10 @@ interface PageEntry {
   readonly detailTarget?: 'top' | 'comments';
   readonly listSnapshot?: ListSnapshot;
   readonly detailSnapshot?: DetailSnapshot;
+  /** 独立回复访问（楼中楼页与窄屏回复精确入口）的短期快照：会话返回与历史恢复都用它。 */
+  readonly replyVisitSnapshot?: ReplyVisitSnapshot;
+  /** 会话页访问记录：只记阅读位置，用来区分“已居中过”与“新进入”。 */
+  readonly conversationRead?: ConversationRead;
 }
 
 export interface ArchiveNavigation {
@@ -20,6 +24,10 @@ export interface ArchiveNavigation {
   readonly pageEntryId: string;
   readonly listSnapshot: ListSnapshot | undefined;
   readonly detailSnapshot: DetailSnapshot | undefined;
+  /** 本次回复访问的短期快照；新访问、另一根或另一动态的访问都没有。 */
+  readonly replyVisitSnapshot: ReplyVisitSnapshot | undefined;
+  /** 本次会话访问的记录；只有已经显示过（并居中或恢复过位置）的访问才有。 */
+  readonly conversationRead: ConversationRead | undefined;
   /** 本次访问的主动入口目标；历史恢复（有快照）不使用它。 */
   readonly detailTarget: 'top' | 'comments';
   readonly sessionId: string;
@@ -29,11 +37,22 @@ export interface ArchiveNavigation {
   readonly previewState: ComputedRef<MarkerRead<PreviewMarker>>;
   saveListSnapshot(pageEntryId: string, snapshot: ListSnapshot): void;
   saveDetailSnapshot(pageEntryId: string, snapshot: DetailSnapshot): void;
+  /** 保存本次回复访问的排序、页码、定位意图与位置；只对回复访问记录生效。 */
+  saveReplyVisitSnapshot(pageEntryId: string, snapshot: ReplyVisitSnapshot): void;
+  /** 保存本次会话访问的阅读位置；只对会话页记录生效，不保存会话内容。 */
+  saveConversationRead(pageEntryId: string, read: ConversationRead): void;
   openDetail(id: string, target?: 'top' | 'comments'): void;
   /** 从一级评论的 UP 摘要/数量入口进入独立楼中楼页。 */
   openThread(dynamicId: string, rootId: string): void;
   /** 退出楼中楼：有有效详情来源时真实后退，否则替换为对应动态详情。 */
   returnFromThread(dynamicId: string): void;
+  /** 从楼中楼条目进入这段对话的会话列表。 */
+  openConversation(dynamicId: string, rootId: string, replyId: string): void;
+  /**
+   * 退出会话列表：有有效来源时真实后退，恢复那一次回复访问的排序、页码、内容与位置；
+   * 无来源（直达／刷新）时替换为所属回复详情的时间序第 1 页，不留在不可用的会话地址上。
+   */
+  returnFromConversation(dynamicId: string, rootId: string): void;
   /** 放弃不可用的精确定位入口，替换为对应动态详情；当前访问不会留下定位记录。 */
   showDetail(dynamicId: string): void;
   returnToList(): void;
@@ -69,6 +88,19 @@ function isDetailPath(path: string): boolean {
 
 function isThreadPath(path: string): boolean {
   return /^\/dynamics\/[^/]+\/comments\/[^/]+$/.test(path);
+}
+
+function isConversationPath(path: string): boolean {
+  return /^\/dynamics\/[^/]+\/comments\/[^/]+\/replies\/[^/]+\/conversation$/.test(path);
+}
+
+/**
+ * 独立回复访问：楼中楼页与窄屏楼中楼回复精确入口是同一种回复阅读，共用一份访问快照；
+ * 宽屏精确入口走详情族，由详情快照负责。
+ */
+function isReplyVisitPath(path: string): boolean {
+  return isThreadPath(path)
+    || /^\/dynamics\/[^/]+\/comments\/[^/]+\/replies\/[^/]+\/locate$/.test(path);
 }
 
 /**
@@ -236,6 +268,37 @@ export function createArchiveNavigation(): ArchiveNavigation {
     replaceWith(router.resolve({ name: 'detail', params: { dynamicId } }).path);
   }
 
+  /**
+   * 进入会话列表：只有当前记录确实是同一次回复阅读（独立回复访问或详情族访问）时才记来源关系，
+   * 因此直达／刷新进入的会话页没有可后退的来源，也就只有这时才回到时间序第 1 页。
+   */
+  function openConversation(dynamicId: string, rootId: string, replyId: string): void {
+    const source = current.value;
+    const entry: PageEntry = {
+      pageEntryId: createUuid(),
+      path: router.resolve({ name: 'conversation', params: { dynamicId, rootId, replyId } }).path,
+      sourcePageEntryId: isReplyVisitPath(source.path) || isDetailPath(source.path) ? source.pageEntryId : null,
+    };
+    register(entry);
+    void afterPersist(source, () => router.push({ path: entry.path, state: stateFor(entry, null) }));
+  }
+
+  function returnFromConversation(dynamicId: string, rootId: string): void {
+    const entry = current.value;
+    const source = entry.sourcePageEntryId ? entries.value.get(entry.sourcePageEntryId) : undefined;
+    const threadPath = router.resolve({ name: 'thread', params: { dynamicId, rootId } }).path;
+    // 同一动态的楼中楼页或详情族访问都算有效来源：真实后退，按那次访问自己的快照恢复
+    // 排序、页码、内容与位置；恢复不重新定位，也不把定位页码当热度页码。
+    const sameReading = source !== undefined
+      && (source.path === threadPath || detailFamily(source.path) === dynamicId);
+    if (sameReading && isConversationPath(entry.path)) {
+      void afterPendingPersistence(() => router.back());
+      return;
+    }
+    // 无来源（直达／刷新）时替换为所属回复详情的时间序第 1 页，不留在不可用的会话地址上。
+    replaceWith(threadPath);
+  }
+
   function returnFromThread(dynamicId: string): void {
     const entry = current.value;
     const expected = router.resolve({ name: 'detail', params: { dynamicId } }).path;
@@ -292,18 +355,38 @@ export function createArchiveNavigation(): ArchiveNavigation {
     update(pageEntryId, { detailSnapshot: snapshot });
   }
 
+  function saveReplyVisitSnapshot(pageEntryId: string, snapshot: ReplyVisitSnapshot): void {
+    const entry = entries.value.get(pageEntryId);
+    // 只保存回复访问自己的状态：列表页、详情页与会话页各有自己的读取规则。
+    if (!entry || !isReplyVisitPath(entry.path)) return;
+    update(pageEntryId, { replyVisitSnapshot: snapshot });
+  }
+
+  function saveConversationRead(pageEntryId: string, read: ConversationRead): void {
+    const entry = entries.value.get(pageEntryId);
+    // 会话内容不缓存：只记这次访问的阅读位置，供历史前进/后退恢复。
+    if (!entry || !isConversationPath(entry.path)) return;
+    update(pageEntryId, { conversationRead: read });
+  }
+
   return {
     get pageEntryId() { return current.value.pageEntryId; },
     get listSnapshot() { return current.value.listSnapshot; },
     get detailSnapshot() { return current.value.detailSnapshot; },
+    get replyVisitSnapshot() { return current.value.replyVisitSnapshot; },
+    get conversationRead() { return current.value.conversationRead; },
     get detailTarget() { return current.value.detailTarget ?? 'top'; },
     get previewMarker() { return previewState.value.marker; },
     previewState,
     sessionId,
     saveListSnapshot,
     saveDetailSnapshot,
+    saveReplyVisitSnapshot,
+    saveConversationRead,
     openDetail,
     openThread,
+    openConversation,
+    returnFromConversation,
     returnFromThread,
     showDetail,
     returnToList,

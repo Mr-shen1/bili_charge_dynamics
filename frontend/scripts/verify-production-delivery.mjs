@@ -27,6 +27,11 @@ export async function verifyProductionDelivery(baseURL, buildDir, secret, { auth
         { path: `/ups/${uid}`, anchor: () => page.getByText('部署隔离正文', { exact: false }).first() },
         { path: `/dynamics/${dynamicId}`, anchor: () => page.getByText('部署隔离正文', { exact: false }).first() },
         { path: `/dynamics/${dynamicId}/comments/91002`, anchor: () => page.getByRole('button', { name: '返回评论' }) },
+        // 会话页身份含动态、根评论与入口回复：直达/刷新由 SPA 回退提供壳，读取仍只走只读接口。
+        {
+          path: `/dynamics/${dynamicId}/comments/91002/replies/91002/conversation`,
+          anchor: () => page.getByText('‹ 会话列表'),
+        },
         { path: '/manage', anchor: () => page.getByRole('link', { name: `管理 UP ${uid}` }) },
         { path: `/manage/ups/${uid}`, anchor: () => page.getByRole('heading', { name: '指定动态目标' }) },
       ];

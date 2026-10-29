@@ -19,6 +19,7 @@ import { createSessionReader } from './app/reader';
 import { createManagementApi } from './manage/managementApi';
 import { createSessionPlugin } from './app/session';
 import './theme/theme.css';
+import './theme/reading.css';
 
 // 位置恢复统一由应用导航协调器显式执行；浏览器异步滚动恢复会与之竞争。
 history.scrollRestoration = 'manual';

@@ -27,8 +27,8 @@
   align-items: center;
   min-height: var(--touch);
   color: var(--action);
-  font-size: 14px;
-  line-height: 22px;
+  font-size: var(--font-link);
+  line-height: var(--line-link);
   text-decoration: none;
 }
 

@@ -175,7 +175,7 @@ test.describe('精确根入口的返回与恢复（窄屏）', () => {
     await expect(page).toHaveURL(new RegExp(`/comments/${rootId}$`));
     await expect(page.getByRole('list', { name: '相关回复' }).locator('> li')).toHaveCount(10);
 
-    await page.getByRole('button', { name: '返回评论' }).click();
+    await page.getByRole('button', { name: '评论详情，返回动态详情' }).click();
     await expect(page).toHaveURL(new RegExp(`/comments/${rootId}/locate$`));
 
     // 同一次访问恢复：21 条已读批次、唯一高亮与同一位置；不再请求定位端点。

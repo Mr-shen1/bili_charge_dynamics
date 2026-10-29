@@ -288,7 +288,7 @@ watch([() => preview.state.value, expanded, () => live.state.value.page, expande
 }
 /* 精确定位的一次性标记：定位完成后保持可见，但不再改变滚动位置。 */
 .reply--target {
-  background: var(--brand-soft, #e6f6f7);
+  background: var(--brand-soft);
   border-radius: var(--radius);
   box-shadow: inset 3px 0 0 var(--brand);
   outline: 1px solid var(--brand);
@@ -316,8 +316,8 @@ watch([() => preview.state.value, expanded, () => live.state.value.page, expande
   border-radius: 999px;
   background: #fdebf3;
   color: var(--author);
-  font-size: 12px;
-  line-height: 20px;
+  font-size: var(--font-badge);
+  line-height: var(--line-badge);
   white-space: nowrap;
 }
 .reply__target {

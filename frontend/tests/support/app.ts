@@ -3,8 +3,9 @@ import { defineComponent, h } from 'vue';
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router';
 import ListPage from '../../src/pages/ListPage.vue';
 import DetailPage from '../../src/pages/DetailPage.vue';
-import CommentThreadPage from '../../src/pages/CommentThreadPage.vue';
+import ThreadPage from '../../src/pages/ThreadPage.vue';
 import ReplyLocatePage from '../../src/pages/ReplyLocatePage.vue';
+import ConversationPage from '../../src/pages/ConversationPage.vue';
 import ManagePage from '../../src/pages/ManagePage.vue';
 import ManageUpPage from '../../src/pages/ManageUpPage.vue';
 import NotFoundPage from '../../src/pages/NotFoundPage.vue';
@@ -52,8 +53,12 @@ export function archiveRouter() {
         name: 'reply-locate', component: ReplyLocatePage, props: true,
       },
       {
+        path: '/dynamics/:dynamicId/comments/:rootId/replies/:replyId/conversation',
+        name: 'conversation', component: ConversationPage, props: true,
+      },
+      {
         path: '/dynamics/:dynamicId/comments/:rootId', name: 'thread',
-        component: CommentThreadPage, props: true,
+        component: ThreadPage, props: true,
       },
       { path: '/manage', name: 'manage', component: ManagePage },
       { path: '/manage/ups/:upId', name: 'manage-up', component: ManageUpPage, props: true },

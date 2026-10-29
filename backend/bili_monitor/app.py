@@ -17,7 +17,7 @@ from .contracts import (
 )
 from .profiles import fetch_profile
 from .safety import configure_safe_logging
-from .storage import Store
+from .storage import Store, REPLY_PAGE_SIZE
 from .source import verify_author
 from .source_transport import PacedSourceTransport, SourcePacer
 from .risk import RiskGate, SourceRiskPaused, paused_response
@@ -320,12 +320,16 @@ def create_app(
         limit: Annotated[int | None, Query(ge=1, le=10)] = None,
         cursor: Annotated[str | None, Query(max_length=64)] = None,
         page: Annotated[str | None, Query(pattern=r"^[1-9][0-9]*$")] = None,
+        sort: Literal["time", "hot"] | None = None,
     ):
-        validate_query(request, ("limit", "cursor", "page"))
+        # `sort` 只属于实时 page 模式；首批与 cursor 续批是时间序冻结快照，没有排序维度。
+        validate_query(request, ("limit", "cursor", "page", "sort"))
         if page is not None:
             if cursor is not None or (limit is not None and limit != 10):
                 raise APIError("INVALID_INPUT")
-            return await run_store(store.list_replies, id, root_id, None, page)
+            return await run_store(store.list_replies, id, root_id, None, page, sort or "time")
+        if sort is not None:
+            raise APIError("INVALID_INPUT")
         expected_limit = 3 if cursor is None else 10
         if limit is not None and limit != expected_limit:
             raise APIError("INVALID_INPUT" if cursor is None else "CURSOR_INVALID")
@@ -336,6 +340,22 @@ def create_app(
         """以动态、根评论与目标回复身份定位所在页；只读本地归档，不启动采集或通知。"""
         validate_query(request)
         return await run_store(store.locate_reply, id, root_id, reply_id)
+
+    @application.get("/api/archive/dynamics/{id}/comments/{root_id}/replies/{reply_id}/conversation")
+    async def read_conversation(
+        id: UID, root_id: UID, reply_id: UID, request: Request,
+        limit: Annotated[int | None, Query(ge=1, le=10)] = None,
+        page: Annotated[str | None, Query(pattern=r"^[1-9][0-9]*$")] = None,
+    ):
+        """以动态、根评论与入口回复读取整段可确认对话；只读本地归档，不启动采集或通知。"""
+        validate_query(request, ("limit", "page"))
+        # 缺省 page 即整段读取；`limit` 只属于保留的旧显式分页入口，单独出现就是冲突参数。
+        if page is None:
+            if limit is not None:
+                raise APIError("INVALID_INPUT")
+        elif limit is not None and limit != REPLY_PAGE_SIZE:
+            raise APIError("INVALID_INPUT")
+        return await run_store(store.read_conversation, id, root_id, reply_id, page)
 
     return application
 

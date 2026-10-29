@@ -1,4 +1,4 @@
-import type { ArchiveMetadata, ArchiveWorkState, Comment, CommentBatch, CommentLocationResult, DetailResult, ReplyLocationResult, Dynamic, DynamicImage, ImageOwner, DynamicBatch, DynamicReader, ReadResult, Reply, ReplyBatch, User } from './contracts';
+import type { ArchiveMetadata, ArchiveWorkState, Comment, CommentBatch, CommentLocationResult, ConversationBatch, ConversationResult, DetailResult, ReplyLocationResult, Dynamic, DynamicImage, ImageOwner, DynamicBatch, DynamicReader, ReadResult, Reply, ReplyBatch, ReplyConversation, User } from './contracts';
 import { replyAppendSize, replyPreviewSize } from './contracts';
 import { isValidId } from './identifiers';
 import { isRecord as record } from './guards';
@@ -160,10 +160,23 @@ function parseReply(raw: unknown, dynamicId: string, rootId: string): Reply | nu
   const author = parseReplyAuthor(raw.author);
   const replyTo = raw.reply_to === null ? null : parseReplyAuthor(raw.reply_to);
   if (!author || raw.reply_to !== null && !replyTo) return null;
+  // 对话投影是可空增量：缺失或 null 都表示不提供入口，绝不按昵称或当前页补造。
+  const conversation = parseConversation(raw.conversation);
+  if (conversation === undefined) return null;
   return { id: raw.id, author, publishedAt: time(raw.published_at), text: raw.text ?? '',
     likeCount: count(raw.like_count), replyTo: replyTo?.id ? replyTo : null,
     // 直接回根评论时没有“回复某人”目标；只有回复其他楼才带父评论 ID。
-    parentId: raw.parent_id === rootId ? null : raw.parent_id };
+    parentId: raw.parent_id === rootId ? null : raw.parent_id,
+    conversation };
+}
+
+/** 对话投影：`null` 表示这条没有可读对话，`undefined` 表示结构不合法（整页拒绝）。 */
+function parseConversation(raw: unknown): ReplyConversation | null | undefined {
+  if (raw === undefined || raw === null) return null;
+  if (!record(raw) || !isValidId(raw.start_id) || typeof raw.incomplete !== 'boolean') return undefined;
+  const total = count(raw.count);
+  if (total === null) return undefined;
+  return { startId: raw.start_id, count: total, incomplete: raw.incomplete };
 }
 
 // 一级评论批次只在结构完整时接受；重复 ID 视为不可读，不静默去重。
@@ -210,6 +223,32 @@ function replyPageBatch(raw: unknown, dynamicId: string, rootId: string, limit: 
     ...(raw.local_reply_count !== undefined ? { localReplyCount: count(raw.local_reply_count) } : {}),
     ...(commentAttempt(raw.replies_last_attempt) ? { repliesLastAttempt: raw.replies_last_attempt } : {}),
     ...(raw.synced_source_reply_count !== undefined ? { syncedSourceReplyCount: count(raw.synced_source_reply_count) } : {}),
+  };
+}
+
+/**
+ * 对话页响应：身份与条目必须与请求一致，且必须是**整段**；
+ * 不允许把其他楼、旧页码或服务端截断的部分当成会话内容。
+ */
+function conversationBatch(
+  raw: unknown, dynamicId: string, rootId: string, replyId: string,
+): ConversationBatch | null {
+  if (!record(raw) || raw.dynamic_id !== dynamicId || raw.root_id !== rootId || raw.reply_id !== replyId) return null;
+  if (!isValidId(raw.start_id) || typeof raw.incomplete !== 'boolean' || raw.next_cursor !== null) return null;
+  const total = count(raw.count);
+  if (total === null || total === 0) return null;
+  // 整段模式没有页码：旧后端回包的 `page` 键必须判为失败，不能静默只显示第一页。
+  if ('page' in raw) return null;
+  if (!Array.isArray(raw.items) || raw.items.length !== total) return null;
+  const items: Reply[] = [];
+  for (const rawItem of raw.items) {
+    const parsed = parseReply(rawItem, dynamicId, rootId);
+    if (!parsed || items.some(existing => existing.id === parsed.id)) return null;
+    items.push(parsed);
+  }
+  return {
+    dynamicId, rootId, replyId, startId: raw.start_id, incomplete: raw.incomplete,
+    count: total, items, nextCursor: null,
   };
 }
 
@@ -307,13 +346,19 @@ export function createArchiveReader(transport: ArchiveTransport = (url, init) =>
         return { status: 'success', data: batch };
       } catch { return signal.aborted ? { status: 'cancelled' } : failed; }
     },
-    async readReplies({ dynamicId, rootId, limit, page, cursor, signal }): Promise<ReadResult<ReplyBatch>> {
+    async readReplies({ dynamicId, rootId, limit, page, cursor, sort, signal }): Promise<ReadResult<ReplyBatch>> {
       if (signal.aborted) return { status: 'cancelled' };
       if (!isValidId(dynamicId) || !isValidId(rootId) || !(cursor == null || typeof cursor === 'string')) return failed;
+      if (sort !== undefined && sort !== 'time' && sort !== 'hot') return failed;
       if (page !== undefined) {
         if (!Number.isSafeInteger(page) || page < 1 || limit !== replyAppendSize || cursor != null) return failed;
-      } else if (limit !== (cursor == null ? replyPreviewSize : replyAppendSize)) return failed;
+      } else {
+        // 排序只扩展实时页码模式：cursor 首批与续批是时间序冻结快照。
+        if (sort !== undefined) return failed;
+        if (limit !== (cursor == null ? replyPreviewSize : replyAppendSize)) return failed;
+      }
       const query = new URLSearchParams(page !== undefined ? { page: String(page), limit: String(limit) } : { limit: String(limit) });
+      if (page !== undefined && sort !== undefined) query.set('sort', sort);
       if (cursor != null) query.set('cursor', cursor);
       try {
         const response = await transport(`/api/archive/dynamics/${dynamicId}/comments/${rootId}/replies?${query}`, {
@@ -369,6 +414,23 @@ export function createArchiveReader(transport: ArchiveTransport = (url, init) =>
         // 页码必须是正整数，且目标确实就在这一页里：绝不把别的页或楼层第一页当作定位成功。
         if (!batch || page === null || page < 1 || !batch.items.some(item => item.id === replyId)) return failed;
         return { status: 'success', data: { ...batch, page } };
+      } catch { return signal.aborted ? { status: 'cancelled' } : failed; }
+    },
+    async readConversation({ dynamicId, rootId, replyId, signal }): Promise<ConversationResult> {
+      if (signal.aborted) return { status: 'cancelled' };
+      // 非法身份等同于“这个位置没有可读对话”，不探测归档是否存在。
+      if (!isValidId(dynamicId) || !isValidId(rootId) || !isValidId(replyId)) return { status: 'not-found' };
+      try {
+        const response = await transport(
+          `/api/archive/dynamics/${dynamicId}/comments/${rootId}/replies/${replyId}/conversation`,
+          { method: 'GET', signal, cache: 'no-store' });
+        if (signal.aborted) return { status: 'cancelled' };
+        if (response.status === 404) return { status: 'not-found' };
+        const body: unknown = await response.json();
+        if (signal.aborted) return { status: 'cancelled' };
+        if (response.status !== 200) return failed;
+        const batch = conversationBatch(body, dynamicId, rootId, replyId);
+        return batch ? { status: 'success', data: batch } : failed;
       } catch { return signal.aborted ? { status: 'cancelled' } : failed; }
     },
   };

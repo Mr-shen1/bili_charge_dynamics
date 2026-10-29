@@ -15,7 +15,7 @@ test('生产装配渲染六条正式路由与不存在页', async ({ page }, tes
 
   await page.goto('/dynamics/abc/comments/root-1');
   // 独立楼中楼已是真实页面（不再是骨架占位）：退回入口始终可用，读取失败只影响本区域。
-  await expect(page.getByRole('button', { name: '返回评论' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '评论详情，返回动态详情' })).toBeVisible();
   await expect(page.locator('main')).not.toContainText('阶段 3 迁移目标');
 
   // 管理两条路由已是真实页面：生产装配不带骨架占位文案。

@@ -58,6 +58,12 @@ export interface ArchiveMetadata {
 
 export type CommentSort = 'hot' | 'latest';
 
+/**
+ * 回复排序：时间序旧到新（既有契约），热度按点赞降序。
+ * 只用于实时页码读取；cursor 预览是时间序冻结快照，没有排序维度。
+ */
+export type ReplySort = 'time' | 'hot';
+
 export interface Comment {
   readonly id: string;
   readonly isPinned?: boolean;
@@ -81,6 +87,18 @@ export interface Reply extends Omit<Comment, 'isPinned' | 'replyCount' | 'pendin
   readonly replyTo: User | null;
   // 被回复对象的 ID；等于所属根评论时表示直接回根，不显示“回复 X”。
   readonly parentId?: string | null;
+  /**
+   * 当前条目所属对话的可空投影：起点、本地关联条数与上下文是否不完整。
+   * 只有回复 page 与定位响应带它；cursor 预览没有，缺失即不推断入口。
+   */
+  readonly conversation?: ReplyConversation | null;
+}
+
+/** 对话投影：一级评论不计入 count，起点本身计入。 */
+export interface ReplyConversation {
+  readonly startId: string;
+  readonly count: number;
+  readonly incomplete: boolean;
 }
 
 export interface ReplyBatch {
@@ -144,11 +162,29 @@ export interface ReplyLocation extends ReplyBatch {
 
 export type ReplyLocationResult = ReadResult<ReplyLocation> | { readonly status: 'not-found' };
 
+/**
+ * 一段对话的完整本地内容：身份是动态、根评论与入口回复，不以页码或昵称充当身份。
+ * `count` 是整段本地对话条数，`items` 一次给出全部成员（不截断、不分页），所以没有 `page`。
+ */
+export interface ConversationBatch {
+  readonly dynamicId: string;
+  readonly rootId: string;
+  readonly replyId: string;
+  readonly startId: string;
+  readonly incomplete: boolean;
+  readonly count: number;
+  readonly items: readonly Reply[];
+  readonly nextCursor: null;
+}
+
+/** 对话读取：不存在与暂时失败分开，不能拿整楼第一页冒充会话内容。 */
+export type ConversationResult = ReadResult<ConversationBatch> | { readonly status: 'not-found' };
+
 export interface DynamicReader {
   readonly creator: User;
   readonly discussions?: 'not-archived';
   readonly replies?: 'not-archived';
-  readReplies(input: { readonly dynamicId: string; readonly rootId: string; readonly limit: number; readonly page?: number; readonly cursor?: string | null; readonly signal: AbortSignal }): Promise<ReadResult<ReplyBatch>>;
+  readReplies(input: { readonly dynamicId: string; readonly rootId: string; readonly limit: number; readonly page?: number; readonly cursor?: string | null; readonly sort?: ReplySort; readonly signal: AbortSignal }): Promise<ReadResult<ReplyBatch>>;
   readUps(input: { readonly signal: AbortSignal }): Promise<ReadResult<readonly User[]>>;
   readList(input: { readonly scope: ArchiveScope; readonly limit: number; readonly cursor?: string | null; readonly signal: AbortSignal }): Promise<ReadResult<DynamicBatch>>;
   readDetail(input: { readonly id: string; readonly signal: AbortSignal }): Promise<DetailResult>;
@@ -157,4 +193,6 @@ export interface DynamicReader {
   locateComment(input: { readonly dynamicId: string; readonly rootId: string; readonly sort: CommentSort; readonly signal: AbortSignal }): Promise<CommentLocationResult>;
   // 以动态、根评论与目标回复身份定位：只读归档，返回目标所在页。
   locateReply(input: { readonly dynamicId: string; readonly rootId: string; readonly replyId: string; readonly signal: AbortSignal }): Promise<ReplyLocationResult>;
+  // 以动态、根评论与入口回复身份读取整段可确认对话：只读归档，一次返回全部本地成员。
+  readConversation(input: { readonly dynamicId: string; readonly rootId: string; readonly replyId: string; readonly signal: AbortSignal }): Promise<ConversationResult>;
 }

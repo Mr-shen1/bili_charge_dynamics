@@ -49,7 +49,17 @@ ROOT_FIXTURE = {"dynamic": None, "size": 45, "fresh": ()}
 # 楼中楼回复定位夹具：默认关闭，只有显式启用后才给指定根评论下发 25 条虚构回复。
 # `fresh` 里的 1 基序号表示“刚发表”：发表时间取当前时间之后 60 秒（晚于通知起点），
 # 作者取该动态所属 UP，因此按真实路由同时进 UP 群和全员群。
-REPLY_FIXTURE = {"dynamic": None, "root": None, "size": 25, "fresh": ()}
+# `parents` 是 1 基序号 → 父回复 ID 的关系夹具（缺省直接回根）；对话读者的投影与只读
+# conversation 子资源都读这条真实关系链，`"990000"` 故意指向未保存的父回复。
+REPLY_PARENTS = {
+    3: "960002", 4: "960002",
+    7: "990000", 8: "960007",
+    13: "960002", 14: "960002", 15: "960002", 16: "960002",
+    17: "960002", 18: "960002", 19: "960002", 20: "960002",
+    # 异常关系：两条回复互相成为父级，读取必须止步而不是无界遍历。
+    21: "960022", 22: "960021",
+}
+REPLY_FIXTURE = {"dynamic": None, "root": None, "size": 25, "fresh": (), "parents": dict(REPLY_PARENTS)}
 # 一级评论夹具里第一个根评论的来源回复数（rcount）：与 REPLY_FIXTURE 的条数一致。
 ROOT_REPLY_COUNT = REPLY_FIXTURE["size"]
 # 本进程累计的上游请求：用于断言归档读取不触发采集。
@@ -87,12 +97,15 @@ def reply_items(dynamic, root):
     template = json.loads((Path(__file__).parent / "fixtures/replies.json").read_text())
     reply = template["data"]["replies"][0]
     fresh = set(REPLY_FIXTURE["fresh"])
+    parents = REPLY_FIXTURE["parents"]
     owner = CARDS.get(DYNAMICS.get(dynamic, ""), {})
     items = []
     for index in range(REPLY_FIXTURE["size"]):
         item = copy.deepcopy(reply)
+        # 父回复默认就是所属根评论；夹具给出的父 ID 一律按该回复自己的序号表达。
+        parent = parents.get(index + 1, root)
         item.update(rpid_str=str(960000 + index + 1), oid=int("99" + dynamic), type=17,
-                    root_str=root, root=0, parent_str=root, parent=0,
+                    root_str=root, root=0, parent_str=parent, parent=0,
                     ctime=1791513600 + index, like=index,
                     content={"message": f"虚构回复 {index + 1}\n第二行：换行与 emoji 🙂"})
         item["member"] = {"mid": "909002", "uname": "虚构回复者", "avatar": None}
@@ -326,11 +339,19 @@ def create_app():
 
     @app.post("/api/test/replies", include_in_schema=False)
     async def enable_replies(payload: dict):
-        """仅测试夹具：为指定动态的某个根评论启用 25 条虚构楼中楼；不写数据库。"""
+        """仅测试夹具：为指定动态的某个根评论启用 25 条虚构楼中楼；不写数据库。
+
+        `parents` 可覆盖 1 基序号 → 父回复 ID 的关系夹具（缺省沿用模块级默认链）。
+        """
         REPLY_FIXTURE["dynamic"] = payload.get("dynamic")
         REPLY_FIXTURE["root"] = payload.get("root")
         REPLY_FIXTURE["fresh"] = tuple(payload.get("fresh") or ())
-        return dict(REPLY_FIXTURE)
+        parents = payload.get("parents")
+        REPLY_FIXTURE["parents"] = (
+            {int(key): str(value) for key, value in parents.items()} if parents is not None
+            else dict(REPLY_PARENTS))
+        return {**{key: value for key, value in REPLY_FIXTURE.items() if key != "parents"},
+                "parents": {str(key): value for key, value in REPLY_FIXTURE["parents"].items()}}
 
     @app.get("/api/test/source-requests", include_in_schema=False)
     async def read_source_requests():

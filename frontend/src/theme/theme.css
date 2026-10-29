@@ -8,6 +8,8 @@
   --muted: #65727a;
   --action: #287f8f;
   --brand: #12a3ae;
+  /* 品牌浅底：选中、定位与徽标的背景色；组件只引用 token，不各写十六进制。 */
+  --brand-soft: #e6f6f7;
   /* 操作文字与链接统一取操作色；青色保留给选中态与焦点框。 */
   --brand-strong: var(--action);
   --author: #e05a94;

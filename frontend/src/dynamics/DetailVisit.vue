@@ -103,15 +103,6 @@ const showBack = computed(() => compact.value || recoverable.value);
   margin: 0 auto;
   padding: 0 0 40px;
 }
-/* 普通阅读返回链接：14/22、常规字重，点击区仍不小于 44px。 */
-.detail-back {
-  min-height: var(--touch);
-  padding: 0 4px;
-  color: var(--action);
-  font-size: var(--font-link);
-  font-weight: 400;
-  line-height: var(--line-link);
-}
 .detail-notice {
   padding: 12px 0;
   margin: 0;

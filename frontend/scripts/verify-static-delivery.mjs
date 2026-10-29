@@ -197,6 +197,9 @@ http {
         ['/ups/123', target.getByRole('heading', { name: 'UP 123 归档' })],
         ['/dynamics/90071992547409934', target.locator('#preview-trigger-dynamic-90071992547409934-0')],
         ['/dynamics/90071992547409934/comments/root-1', target.getByRole('button', { name: '返回评论' })],
+        // 会话页：动态 + 根评论 + 入口回复都在地址里，直达/刷新同样只靠 SPA 回退与只读接口。
+        ['/dynamics/90071992547409931/comments/90071992547401001/replies/90071992547401103/conversation',
+          target.getByText('‹ 会话列表')],
         // mock 构建不启动真实 API，两条管理路由只到页头与读取错误，不假设有数据。
         ['/manage', target.getByRole('heading', { name: 'UP 监控管理' })],
         ['/manage/ups/202', target.getByRole('heading', { name: 'UP 监控管理' })],

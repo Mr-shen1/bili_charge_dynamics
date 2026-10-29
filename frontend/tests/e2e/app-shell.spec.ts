@@ -18,7 +18,7 @@ test.describe('应用骨架', () => {
 
     await page.goto('/dynamics/abc/comments/root-1');
     // 独立楼中楼已是真实页面：未知动态/根评论按普通可重试读取错误处理，不伪造内容。
-    await expect(page.getByRole('button', { name: '返回评论' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '评论详情，返回动态详情' })).toBeVisible();
     await expect(page.getByRole('alert')).toContainText('相关回复读取失败，请重试。');
 
     // 管理两条路由已是真实页面：层级标题一致，不再有阶段 3 骨架占位文案。
