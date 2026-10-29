@@ -1,0 +1,698 @@
+{
+  "ticket": "14",
+  "scope": "Vue 新版视觉受控截图（未签收；签收范围与反馈单独登记）",
+  "artifacts": {
+    "build": [
+      {
+        "file": "CommentThreadPage-CWvGJ9B4.css",
+        "bytes": 3013,
+        "sha256": "6049c1351b0f539712850b6a53bb1be743b8c511273ff5c4ce9a094901f59f4f"
+      },
+      {
+        "file": "CommentThreadPage-DblgfB9b.js",
+        "bytes": 7604,
+        "sha256": "2c2af34528b764a18ec1b8234b23e0be2b7e9467a51ab6d4fa119a1d620d6475"
+      },
+      {
+        "file": "ConversationPage-CWNcRY-O.js",
+        "bytes": 3616,
+        "sha256": "fcbe2ff51d3587311958cb5854c4c0bcf0d132d8a38b37b8a9954c4ca2279996"
+      },
+      {
+        "file": "ConversationPage-D4wfoG70.css",
+        "bytes": 1928,
+        "sha256": "836e74cda71b9985747eb2bafa658611e5ee137ec6bc712f160991bb408a9892"
+      },
+      {
+        "file": "DetailPage-D6qA99IK.js",
+        "bytes": 618,
+        "sha256": "d425a53fb42c0028552e59a8e76808352f7473aca5e64d1682423806c100ece5"
+      },
+      {
+        "file": "DetailVisit-Dp0QPKgP.css",
+        "bytes": 553,
+        "sha256": "6caf7b1ba85a47f4ef5491323076a518a25e40ae410c29ce9fc1c1c3b69e376e"
+      },
+      {
+        "file": "DetailVisit-KBrBV7KE.js",
+        "bytes": 3085,
+        "sha256": "6b4ba74123ea8ebd39f8f32d00351a2137f10decf28fd7e481d11c6892726f95"
+      },
+      {
+        "file": "DynamicContent-CWTIThE-.js",
+        "bytes": 31030,
+        "sha256": "74a7de1bfa2828c5badd964ef540f411a1c752d9c8b3fb87f6cf2212020b6c36"
+      },
+      {
+        "file": "DynamicContent-CoqwIkuV.css",
+        "bytes": 8518,
+        "sha256": "33c82ba649dc477b397a19b2b6cf1e31bc74a002675dab43dd49949b5fe47f6a"
+      },
+      {
+        "file": "ListPage-C-6DlNzC.css",
+        "bytes": 2999,
+        "sha256": "800b2cf5d8c67281601ac98f150973d1408ed4c626af3bd6f45a3931ac0032c2"
+      },
+      {
+        "file": "ListPage-DfigBj3Z.js",
+        "bytes": 9991,
+        "sha256": "46480a99a25e19d2337b33d9e8041d7c2fa6015fee47afb00db5d8d0e41d62b4"
+      },
+      {
+        "file": "ManagePage-C0CtJWMv.js",
+        "bytes": 6492,
+        "sha256": "2db6280f844c87420bf354dc851538cd121b914e6e6058fe8778e50c79f032da"
+      },
+      {
+        "file": "ManagePage-M6h1d9ZV.css",
+        "bytes": 1980,
+        "sha256": "4faf5e6ba9a8b47766ea1a54a62b10788a277a0652659a7190816ca7d77287a5"
+      },
+      {
+        "file": "ManageShell-Bh_Ux4Uy.js",
+        "bytes": 53333,
+        "sha256": "ddc6870d85336dc17a8bce68058f99ef2fc56c0bb19189f056e9d7abf5f4881c"
+      },
+      {
+        "file": "ManageShell-CwAoPtB-.css",
+        "bytes": 3649,
+        "sha256": "1c0f0f4151c821145bd6ebb0d4fcc808028503592d87f24c88f6e55464f5a3f1"
+      },
+      {
+        "file": "ManageUpPage-BDDnU3Nh.js",
+        "bytes": 40609,
+        "sha256": "b7b5a05694c265982b85dc8fdf6aef13f033e6f337623f9e54aeac130c858065"
+      },
+      {
+        "file": "ManageUpPage-wdGBmny8.css",
+        "bytes": 2186,
+        "sha256": "a2f7cc5dd7232710f0cbac7efc09a84872b447931d6b59068bf211ff9229b3e9"
+      },
+      {
+        "file": "NotFoundPage-Dg6jNkSl.js",
+        "bytes": 516,
+        "sha256": "65f11d86a845dca7df3f836bef5b01a47508e12fe3e6220929ccf5b0ddb78521"
+      },
+      {
+        "file": "ReplyLocatePage-DdH8vUZi.js",
+        "bytes": 886,
+        "sha256": "3a00e8481b6f506891373956289ddab98e6e288d78caeb9b01b7dd0a5c3c0998"
+      },
+      {
+        "file": "ReplyPager-Cp46YSxo.js",
+        "bytes": 5570,
+        "sha256": "045b1772f02994b3ca17b436cf2e4af13b0df888ad6a1c46f782f77fa8cdfec1"
+      },
+      {
+        "file": "ReplyPager-DtHLqI76.css",
+        "bytes": 1003,
+        "sha256": "64b86b136e6175bc0e48f5b631205060cf057522887a45d0beca7deed16558bc"
+      },
+      {
+        "file": "ThreadPage-RQ-_6yCn.js",
+        "bytes": 533,
+        "sha256": "7890b4f3b8d1fcaab75da3ae372135d181db893d8f690a959aab01edaeafe6b8"
+      },
+      {
+        "file": "UserAvatar-Ch9T44Zj.js",
+        "bytes": 826,
+        "sha256": "be5b727c0a8f8bceeb5d2c32cdbf14a2502f94792fe6cbab2a2e3c246c3046b5"
+      },
+      {
+        "file": "UserAvatar-Dje3KGZD.css",
+        "bytes": 85,
+        "sha256": "3dffeea0e88ec1ba5a904f32a5542b275b8440c8cd64dc3b37cdba062514508d"
+      },
+      {
+        "file": "_plugin-vue_export-helper-DlAUqK2U.js",
+        "bytes": 91,
+        "sha256": "cb85b0f263dbe24e857338301c0627076592e9f1f1a5662929f86d2c126444aa"
+      },
+      {
+        "file": "display-Cvhq1Yp_.js",
+        "bytes": 472,
+        "sha256": "11776ccf5b73a001dbfdbe402d74745fb89cb96541fd6983a90c7ff0a87d0bbb"
+      },
+      {
+        "file": "index-BRsL8Gg_.js",
+        "bytes": 443,
+        "sha256": "1ee8d77543b1094005be118d087044d4bef52100e72da30811a80c6c5a9a11a1"
+      },
+      {
+        "file": "index-BSUaiOYX.css",
+        "bytes": 71225,
+        "sha256": "c49501e71540d66c98937b8fce195d6bd0803cc3988d7a377088fe49c2466acc"
+      },
+      {
+        "file": "index-C6mSyOHQ.js",
+        "bytes": 236773,
+        "sha256": "cc4bba2f7ae4fbb61ef1f82de0082ee2a9f7b9f8d769f279ce8830d61e4034eb"
+      },
+      {
+        "file": "useLocateTarget-BB4c5Y0F.js",
+        "bytes": 2319,
+        "sha256": "4e0104a471bcd47bab1f846d0684faca8c556a242a6abdb4aca62983b7ecb82c"
+      }
+    ],
+    "sourceCommit": "b72d55501127642a1987a5d491d1735cdb575171",
+    "sourceStatus": []
+  },
+  "sourceNote": "截图产生于本次运行的工作树；sourceCommit 为当时的 HEAD，sourceStatus 列出未提交改动。本目录的用途、签收范围与结论以引用它的证据文档为准（票据 14 为 evidence/14-visual-baseline-preparation.md）。",
+  "environment": {
+    "browser": "Chromium 145.0.7632.6",
+    "playwrightVersion": "1.58.2",
+    "node": "v24.21.0",
+    "deviceScaleFactor": 1,
+    "zoom": "100%（浏览器默认缩放，未注入 zoom/CSS transform）",
+    "viewportHeights": 900,
+    "widths": [
+      360,
+      390,
+      768,
+      1280
+    ],
+    "timezoneId": "Asia/Shanghai",
+    "locale": "zh-CN",
+    "reducedMotion": "no-preference",
+    "fontFamily": "system-ui, -apple-system, Noto Sans SC, sans-serif（见 src/theme/theme.css）",
+    "resolvedFont": "NotoSansCJK-Regular.ttc: \"Noto Sans CJK KR\" \"Regular\"",
+    "screenshot": "Playwright page.screenshot，视口截图（非整页），animations=disabled，caret=hide"
+  },
+  "content": {
+    "archive": "page.route 提供固定 DTO 与固定 SVG 图片，经生产 Adapter 映射；不访问真实来源或图片服务器",
+    "manage": "backend/tests/live_app 虚构上游 + 本次运行独占 SQLite；状态面板来自实际只读接口",
+    "errorStates": "HTTP 替身返回 404/503/401，页面按自身错误文案呈现"
+  },
+  "screenshots": [
+    {
+      "name": "list-360",
+      "width": 360,
+      "url": "http://127.0.0.1:4325/",
+      "scrollY": 0,
+      "bytes": 51913,
+      "sha256": "09bce9aab2ef0ea7c8d5a78a8f117bbfe628054c372965c3f89be8b99b1e4728"
+    },
+    {
+      "name": "list-scope-360",
+      "width": 360,
+      "url": "http://127.0.0.1:4325/ups/1002",
+      "scrollY": 0,
+      "bytes": 42630,
+      "sha256": "0c2c71a61db4a177dc157a2f5b063cbd6427e62a6c777fcf680b798c1004936a"
+    },
+    {
+      "name": "detail-360",
+      "width": 360,
+      "url": "http://127.0.0.1:4325/dynamics/90071992547410000",
+      "scrollY": 0,
+      "bytes": 66514,
+      "sha256": "ac306cbc9ab71825cc20f9a5e8bd6f108fe5befe67d5ee3998a84914babfef7a"
+    },
+    {
+      "name": "comments-360",
+      "width": 360,
+      "url": "http://127.0.0.1:4325/dynamics/90071992547410000",
+      "scrollY": 920,
+      "bytes": 40421,
+      "sha256": "a4c1b4c793b1f6ab4a8191ac2e8d858400abb4c4498e6e565b1c2c7f85e02aee"
+    },
+    {
+      "name": "preview-360",
+      "width": 360,
+      "url": "http://127.0.0.1:4325/dynamics/90071992547410000",
+      "scrollY": 0,
+      "bytes": 49388,
+      "sha256": "7c52ce06e3077750c892e57513c39cea5f94ee3d3e36c8cbf370282d46c29d27"
+    },
+    {
+      "name": "thread-360",
+      "width": 360,
+      "url": "http://127.0.0.1:4325/dynamics/90071992547410000/comments/90071992547402001",
+      "scrollY": 0,
+      "bytes": 77610,
+      "sha256": "df20a3db036a6572f5fbf53b8f5442c04812f7bcacf3fe6f99f7e68d6fef17d9"
+    },
+    {
+      "name": "list-390",
+      "width": 390,
+      "url": "http://127.0.0.1:4325/",
+      "scrollY": 0,
+      "bytes": 52610,
+      "sha256": "33136276a378dfa6d01fb63ab7b191c8f1dc2a2e6a41be60b0e50aef10a0b97e"
+    },
+    {
+      "name": "list-scope-390",
+      "width": 390,
+      "url": "http://127.0.0.1:4325/ups/1002",
+      "scrollY": 0,
+      "bytes": 44096,
+      "sha256": "e140d945efca5eeeab11520b5d4e1e042acbe85cf1f12566a9a8ecc5f44d7444"
+    },
+    {
+      "name": "detail-390",
+      "width": 390,
+      "url": "http://127.0.0.1:4325/dynamics/90071992547410000",
+      "scrollY": 0,
+      "bytes": 66727,
+      "sha256": "85368a18ddc6c3718508c0b34c5ee38efb25e8e120fc4a4cf335e2cc5ec0c9ec"
+    },
+    {
+      "name": "comments-390",
+      "width": 390,
+      "url": "http://127.0.0.1:4325/dynamics/90071992547410000",
+      "scrollY": 950,
+      "bytes": 40673,
+      "sha256": "92841be239dbcae8de75a41ab8ec47ade9c58fe1999e5efbba5f8654d9d61723"
+    },
+    {
+      "name": "preview-390",
+      "width": 390,
+      "url": "http://127.0.0.1:4325/dynamics/90071992547410000",
+      "scrollY": 0,
+      "bytes": 48098,
+      "sha256": "eed3ece243bf6b4e38991f36e2265d4a6ecfb4d977fc32099a6e5a4b58b569b5"
+    },
+    {
+      "name": "thread-390",
+      "width": 390,
+      "url": "http://127.0.0.1:4325/dynamics/90071992547410000/comments/90071992547402001",
+      "scrollY": 0,
+      "bytes": 45011,
+      "sha256": "e5a2f0e9aa1ddbd0fbaf475ebad8879e72a2f6b0b1b22a46117692209d35b3ed"
+    },
+    {
+      "name": "preview-error-390",
+      "width": 390,
+      "url": "http://127.0.0.1:4325/dynamics/90071992547410003",
+      "scrollY": 0,
+      "bytes": 37950,
+      "sha256": "c8d494b01330ea923f24b1ecd8babb615415c9942bde0e9ab3aa37680097989d"
+    },
+    {
+      "name": "list-768",
+      "width": 768,
+      "url": "http://127.0.0.1:4325/",
+      "scrollY": 0,
+      "bytes": 69240,
+      "sha256": "3018448396b81bb287cddcbcc8b436441419e2445c50ef11af35817776db0673"
+    },
+    {
+      "name": "list-scope-768",
+      "width": 768,
+      "url": "http://127.0.0.1:4325/ups/1002",
+      "scrollY": 0,
+      "bytes": 49802,
+      "sha256": "46327863b8fad20613319a8cd464c2e45d3693a5181c292030da25512ca99ed8"
+    },
+    {
+      "name": "detail-768",
+      "width": 768,
+      "url": "http://127.0.0.1:4325/dynamics/90071992547410000",
+      "scrollY": 0,
+      "bytes": 74474,
+      "sha256": "50ad0e3553dce2d4e23a54ffe04873e1b33155e35df2b648a4a4ce918a95ffd3"
+    },
+    {
+      "name": "comments-768",
+      "width": 768,
+      "url": "http://127.0.0.1:4325/dynamics/90071992547410000",
+      "scrollY": 996,
+      "bytes": 54631,
+      "sha256": "54493b446dad02cea49d55050cb8b48c9ea700dd07b9e982a3b306e7c7e53e23"
+    },
+    {
+      "name": "preview-768",
+      "width": 768,
+      "url": "http://127.0.0.1:4325/dynamics/90071992547410000",
+      "scrollY": 0,
+      "bytes": 60222,
+      "sha256": "86940cce6ff389af781e151220a59fd6d863478bba00ae251d4d36023e8f97f2"
+    },
+    {
+      "name": "replies-768",
+      "width": 768,
+      "url": "http://127.0.0.1:4325/dynamics/90071992547410000",
+      "scrollY": 2019,
+      "bytes": 91304,
+      "sha256": "aa54edc0a0a613c0186ea36d6e8dae924d0f8bda974763a7426e39587281d49c"
+    },
+    {
+      "name": "list-1280",
+      "width": 1280,
+      "url": "http://127.0.0.1:4325/",
+      "scrollY": 0,
+      "bytes": 73015,
+      "sha256": "0489e26d52ea336534c8c5185c02d023f0d19bfae5199dae00e132cdfd647b05"
+    },
+    {
+      "name": "list-scope-1280",
+      "width": 1280,
+      "url": "http://127.0.0.1:4325/ups/1002",
+      "scrollY": 0,
+      "bytes": 52439,
+      "sha256": "ac3540fa544842a20cda07dec9e1c55c40f39c464e615ef10498da0d993cb374"
+    },
+    {
+      "name": "detail-1280",
+      "width": 1280,
+      "url": "http://127.0.0.1:4325/dynamics/90071992547410000",
+      "scrollY": 0,
+      "bytes": 78594,
+      "sha256": "e80390744cd0db45a170af7048a3036f365e86a324819178bbd1a45e959e1266"
+    },
+    {
+      "name": "comments-1280",
+      "width": 1280,
+      "url": "http://127.0.0.1:4325/dynamics/90071992547410000",
+      "scrollY": 996,
+      "bytes": 57462,
+      "sha256": "bd864c513f5faf52693c6e9d2ad23aa823ce2810716319f046f6bafdd8568cbc"
+    },
+    {
+      "name": "preview-1280",
+      "width": 1280,
+      "url": "http://127.0.0.1:4325/dynamics/90071992547410000",
+      "scrollY": 0,
+      "bytes": 45069,
+      "sha256": "7242258b73229b02159eaf67fa667d658225b86e909799260143ead0a12dcdb4"
+    },
+    {
+      "name": "replies-1280",
+      "width": 1280,
+      "url": "http://127.0.0.1:4325/dynamics/90071992547410000",
+      "scrollY": 2019,
+      "bytes": 95296,
+      "sha256": "894dd7d48f1606413c3dfb0a58cfeef95aa176790a20d5ca44bde9b813d8cadc"
+    },
+    {
+      "name": "preview-error-1280",
+      "width": 1280,
+      "url": "http://127.0.0.1:4325/dynamics/90071992547410003",
+      "scrollY": 0,
+      "bytes": 47284,
+      "sha256": "c65be68513615dd2da27e5233831f76bb27d970ee68854f6040dd7a0dc5efbf5"
+    },
+    {
+      "name": "list-empty-390",
+      "width": 390,
+      "url": "http://127.0.0.1:4325/",
+      "scrollY": 0,
+      "bytes": 14902,
+      "sha256": "afe94e42d5ce569489fc2df3e93610613c3a517a4da8d490f55d0fc438966aeb"
+    },
+    {
+      "name": "list-empty-1280",
+      "width": 1280,
+      "url": "http://127.0.0.1:4325/",
+      "scrollY": 0,
+      "bytes": 19303,
+      "sha256": "a08342f7ffe0f07ca9ec8b2eecd5687a9451f81be12f5b39a9e109ee531b28fb"
+    },
+    {
+      "name": "list-error-390",
+      "width": 390,
+      "url": "http://127.0.0.1:4325/",
+      "scrollY": 0,
+      "bytes": 17923,
+      "sha256": "bd3442bdd5b5ce940dc47dfe6c2386db2c8e60c85da3faf719c8e6d3d283b2ee"
+    },
+    {
+      "name": "list-error-1280",
+      "width": 1280,
+      "url": "http://127.0.0.1:4325/",
+      "scrollY": 0,
+      "bytes": 22604,
+      "sha256": "b11a8c2ee59fa49db8e497e24d3f097ab52329c5fdd41d962a75b7b2e9fdf480"
+    },
+    {
+      "name": "up-unknown-390",
+      "width": 390,
+      "url": "http://127.0.0.1:4325/ups/999",
+      "scrollY": 0,
+      "bytes": 12847,
+      "sha256": "c29647b0a7179c199ca5219c9d623c49c057db48aab25a928532cf1d8895f39a"
+    },
+    {
+      "name": "up-unknown-1280",
+      "width": 1280,
+      "url": "http://127.0.0.1:4325/ups/999",
+      "scrollY": 0,
+      "bytes": 17132,
+      "sha256": "1bdca5a972513f6823e688c012bbf2225570a50ee7d0e08b482fe71601deb679"
+    },
+    {
+      "name": "up-strip-error-390",
+      "width": 390,
+      "url": "http://127.0.0.1:4325/",
+      "scrollY": 0,
+      "bytes": 51158,
+      "sha256": "944a82687d461623a8b42a2da36318f0694aad4cd6ae98ed1feeee1f2b02c36a"
+    },
+    {
+      "name": "up-strip-error-1280",
+      "width": 1280,
+      "url": "http://127.0.0.1:4325/",
+      "scrollY": 0,
+      "bytes": 63863,
+      "sha256": "96d1894116b82b27beba399edf970998820770bd60801d54aa14bbda6c91e9e1"
+    },
+    {
+      "name": "detail-not-found-390",
+      "width": 390,
+      "url": "http://127.0.0.1:4325/dynamics/123456",
+      "scrollY": 0,
+      "bytes": 7225,
+      "sha256": "02c8d8054f2de6c8d93a07feee9dd79f460d88d9e06980813b892acc5639531a"
+    },
+    {
+      "name": "detail-not-found-1280",
+      "width": 1280,
+      "url": "http://127.0.0.1:4325/dynamics/123456",
+      "scrollY": 0,
+      "bytes": 9710,
+      "sha256": "4778141987978da5267f8b8c74ba4161018a559898685992e7252ed619ff0bb2"
+    },
+    {
+      "name": "detail-error-390",
+      "width": 390,
+      "url": "http://127.0.0.1:4325/dynamics/90071992547410000",
+      "scrollY": 0,
+      "bytes": 9501,
+      "sha256": "aba7de618b1cb3031b4c26a1eb4f892ee1ea22d48edc4385c4a94b9255ffd65d"
+    },
+    {
+      "name": "detail-error-1280",
+      "width": 1280,
+      "url": "http://127.0.0.1:4325/dynamics/90071992547410000",
+      "scrollY": 0,
+      "bytes": 12050,
+      "sha256": "503d4151c5a6393c204294c5e6492f0a6f5020856dc466d7bbd70903a1710598"
+    },
+    {
+      "name": "comments-empty-390",
+      "width": 390,
+      "url": "http://127.0.0.1:4325/dynamics/90071992547410001",
+      "scrollY": 0,
+      "bytes": 24485,
+      "sha256": "fbc503aa2d42c8fea050c5b6e6d04f7cc538d11578220fab9897b6d9d8b914ab"
+    },
+    {
+      "name": "comments-empty-1280",
+      "width": 1280,
+      "url": "http://127.0.0.1:4325/dynamics/90071992547410001",
+      "scrollY": 0,
+      "bytes": 28381,
+      "sha256": "40830964c0e943168b78a84f249b7216fc37f044bd91168bfb62ea68112f0623"
+    },
+    {
+      "name": "comments-pending-390",
+      "width": 390,
+      "url": "http://127.0.0.1:4325/dynamics/90071992547410009",
+      "scrollY": 0,
+      "bytes": 27568,
+      "sha256": "7ed84c918289f132b8d31f483c87a57e1963a610a5c61ec4575ede8777ae98e6"
+    },
+    {
+      "name": "comments-pending-1280",
+      "width": 1280,
+      "url": "http://127.0.0.1:4325/dynamics/90071992547410009",
+      "scrollY": 0,
+      "bytes": 29340,
+      "sha256": "d31463892392f07e16d28304647bff5182cf5a24d6c03a62334eb7a1fe9bc251"
+    },
+    {
+      "name": "comments-error-390",
+      "width": 390,
+      "url": "http://127.0.0.1:4325/dynamics/90071992547410000",
+      "scrollY": 286,
+      "bytes": 51281,
+      "sha256": "7eda9b33b7df793cca65319650a4dd6e138f5cd3f00b52b0b36044050d679793"
+    },
+    {
+      "name": "comments-error-1280",
+      "width": 1280,
+      "url": "http://127.0.0.1:4325/dynamics/90071992547410000",
+      "scrollY": 336,
+      "bytes": 30464,
+      "sha256": "3c9395e1f6ad0cfd2bc8a747a7a3aaeb23a75346541524242ee144b7e813e7bd"
+    },
+    {
+      "name": "replies-empty-390",
+      "width": 390,
+      "url": "http://127.0.0.1:4325/dynamics/90071992547410000/comments/90071992547402002",
+      "scrollY": 0,
+      "bytes": 16761,
+      "sha256": "e7801e6ffb8cfb53b62fc01dab3eda068267e235ccd5372cf909412adbc272bf"
+    },
+    {
+      "name": "replies-error-390",
+      "width": 390,
+      "url": "http://127.0.0.1:4325/dynamics/90071992547410000/comments/90071992547402001",
+      "scrollY": 0,
+      "bytes": 10895,
+      "sha256": "3d3f5dac6a8576ea9f9bc0a921394d592d4594fc120fffde02fb342ce87d2e3a"
+    },
+    {
+      "name": "manage-360",
+      "width": 360,
+      "url": "http://127.0.0.1:4325/manage",
+      "scrollY": 0,
+      "bytes": 58587,
+      "sha256": "78e244fe0c7390fc6b4b06e9c363d1168e771bbc46da214f3d459122a6a94f24"
+    },
+    {
+      "name": "up-360",
+      "width": 360,
+      "url": "http://127.0.0.1:4325/manage/ups/202",
+      "scrollY": 0,
+      "bytes": 61842,
+      "sha256": "1a0769dedf2fd80c4d2c641c3b7be39ac838a8d44f4ea77bf9f195a12e7d8128"
+    },
+    {
+      "name": "manage-390",
+      "width": 390,
+      "url": "http://127.0.0.1:4325/manage",
+      "scrollY": 0,
+      "bytes": 58994,
+      "sha256": "cde426a2b9237cb46a6ae7f931179586e329b4a7d41bb33e5777459a5de542ca"
+    },
+    {
+      "name": "up-390",
+      "width": 390,
+      "url": "http://127.0.0.1:4325/manage/ups/202",
+      "scrollY": 0,
+      "bytes": 62469,
+      "sha256": "6f64177d9dfb31b6c3fcf5c8b3084ff53b24c64470818f167daab56d44b3f00d"
+    },
+    {
+      "name": "up-specified-390",
+      "width": 390,
+      "url": "http://127.0.0.1:4325/manage/ups/707",
+      "scrollY": 0,
+      "bytes": 59334,
+      "sha256": "7e4cddbd2367c8ad70b8e17d968be1697ece5d774635834842073fc85b6ab1ee"
+    },
+    {
+      "name": "manage-768",
+      "width": 768,
+      "url": "http://127.0.0.1:4325/manage",
+      "scrollY": 0,
+      "bytes": 62050,
+      "sha256": "93ec8c3a313ad988f4b6ae1f3988a52972b03ad52583dfcb4ecb0d2d16e3fc1c"
+    },
+    {
+      "name": "up-768",
+      "width": 768,
+      "url": "http://127.0.0.1:4325/manage/ups/202",
+      "scrollY": 0,
+      "bytes": 100214,
+      "sha256": "3dd73122c67776c9a682a93bc3fadcf80a078b90a4e39312a90764d48fd0ea51"
+    },
+    {
+      "name": "manage-1280",
+      "width": 1280,
+      "url": "http://127.0.0.1:4325/manage",
+      "scrollY": 0,
+      "bytes": 65239,
+      "sha256": "d1289abde5c42c8bd0343587810d5301fafd9721db2fd7da3d007234f3330db7"
+    },
+    {
+      "name": "up-1280",
+      "width": 1280,
+      "url": "http://127.0.0.1:4325/manage/ups/202",
+      "scrollY": 0,
+      "bytes": 105030,
+      "sha256": "d47bafc8484a5a0474e76df523a4b0264c4abeb5ea5d9eac94baf492e1184442"
+    },
+    {
+      "name": "up-specified-1280",
+      "width": 1280,
+      "url": "http://127.0.0.1:4325/manage/ups/707",
+      "scrollY": 0,
+      "bytes": 88313,
+      "sha256": "638d77f417d78dc404346a780213003355c8771a3ea47cd132282aff5e53283a"
+    },
+    {
+      "name": "manage-empty-390",
+      "width": 390,
+      "url": "http://127.0.0.1:4325/manage",
+      "scrollY": 0,
+      "bytes": 45388,
+      "sha256": "fdc34c98c40e9201ef1fc0e7e95d5ea4468e2f0d27b9e5d5d8ea7880defc81b0"
+    },
+    {
+      "name": "manage-empty-1280",
+      "width": 1280,
+      "url": "http://127.0.0.1:4325/manage",
+      "scrollY": 0,
+      "bytes": 50548,
+      "sha256": "9cb0b0250e861492b6a711ec84f008dc926afbc1bf06a28067b5489c60f764ba"
+    },
+    {
+      "name": "manage-error-390",
+      "width": 390,
+      "url": "http://127.0.0.1:4325/manage",
+      "scrollY": 0,
+      "bytes": 37260,
+      "sha256": "44760fe5d8e14d41c67e5c7e6b1e3ff53fae6f5a8b9d25cb0fd405b66a82c9d3"
+    },
+    {
+      "name": "manage-error-1280",
+      "width": 1280,
+      "url": "http://127.0.0.1:4325/manage",
+      "scrollY": 0,
+      "bytes": 41660,
+      "sha256": "1f5a07b85aaed1aeb9bf4dd723b2f4fd4bc6b3b405f0d1bf347818aa79d0cdba"
+    },
+    {
+      "name": "manage-unauthorized-1280",
+      "width": 1280,
+      "url": "http://127.0.0.1:4325/manage",
+      "scrollY": 0,
+      "bytes": 44824,
+      "sha256": "4482eaa746332a58abb8a71168dc053a21f99dc7eac6f260f7fd111c4541969d"
+    },
+    {
+      "name": "up-not-found-390",
+      "width": 390,
+      "url": "http://127.0.0.1:4325/manage/ups/404404",
+      "scrollY": 0,
+      "bytes": 14933,
+      "sha256": "bd17c3a1ca2513c805a150890a8d694c51f80326c959857c321c65b8da374590"
+    },
+    {
+      "name": "up-not-found-1280",
+      "width": 1280,
+      "url": "http://127.0.0.1:4325/manage/ups/404404",
+      "scrollY": 0,
+      "bytes": 18282,
+      "sha256": "ed11ae03f62b31fee19cb2b438a4ae0d45cc0ac912380ed45e50041786be0a9f"
+    }
+  ],
+  "directory": "/tmp/reading-ui-refresh-worktrees/09/.scratch/reading-ui-refresh/evidence/09-screens",
+  "caveats": [
+    "截图不代表用户视觉签收；未签收前不建立黄金图或差异回归基准。",
+    "Chrome/iPhone 真机兼容性由票据 15 验证，本目录只覆盖 Linux Chromium。",
+    "图片内容为固定 SVG 夹具，不是来源业务图；字体回退按本机实际渲染记录。"
+  ]
+}

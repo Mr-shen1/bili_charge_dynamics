@@ -1,0 +1,123 @@
+{
+  "candidate": "344235a",
+  "kind": "round-1-candidate-screens-not-accepted",
+  "note": "待签收候选截图：视口截图，1280/390 两宽度；不是视觉签收，未更新黄金图。",
+  "screenshots": [
+    {
+      "name": "344235a-1280-list.png",
+      "path": "/home/kevin/Projects/PI/bili_charge_dynamics/.scratch/reading-ui-refresh/evidence/10-device-preview-round-1/screens/344235a-1280-list.png",
+      "width": 1280,
+      "height": 900,
+      "url": "http://127.0.0.1:4318/",
+      "candidate": "344235a",
+      "viewportScreenshot": true,
+      "sha256": "24d6b27d56119858fe2ce43dbe3c0f27b7ad891cbe2220d70ba29aa236b597dd",
+      "bytes": 48208,
+      "responseStatus": 200
+    },
+    {
+      "name": "344235a-1280-manage.png",
+      "path": "/home/kevin/Projects/PI/bili_charge_dynamics/.scratch/reading-ui-refresh/evidence/10-device-preview-round-1/screens/344235a-1280-manage.png",
+      "width": 1280,
+      "height": 900,
+      "url": "http://127.0.0.1:4318/manage",
+      "candidate": "344235a",
+      "viewportScreenshot": true,
+      "sha256": "729e741ed3c1ab6f644604880ee7cfb7d0ff2cbf5bb75efe5b60938b6a9dc290",
+      "bytes": 63085,
+      "responseStatus": 200
+    },
+    {
+      "name": "344235a-1280-manage-202.png",
+      "path": "/home/kevin/Projects/PI/bili_charge_dynamics/.scratch/reading-ui-refresh/evidence/10-device-preview-round-1/screens/344235a-1280-manage-202.png",
+      "width": 1280,
+      "height": 900,
+      "url": "http://127.0.0.1:4318/manage/ups/202",
+      "candidate": "344235a",
+      "viewportScreenshot": true,
+      "sha256": "cfe5053af5f43c607dad48374746192a9fca3829a0f0919c5981eb0b2c970bac",
+      "bytes": 90060,
+      "responseStatus": 200
+    },
+    {
+      "name": "344235a-390-list.png",
+      "path": "/home/kevin/Projects/PI/bili_charge_dynamics/.scratch/reading-ui-refresh/evidence/10-device-preview-round-1/screens/344235a-390-list.png",
+      "width": 390,
+      "height": 844,
+      "url": "http://127.0.0.1:4318/",
+      "candidate": "344235a",
+      "viewportScreenshot": true,
+      "sha256": "6b93a1c2740df2d50bf81ee4b34c2c221c1d3f480e65e3887e83b94fbbe37489",
+      "bytes": 43025,
+      "responseStatus": 200
+    },
+    {
+      "name": "344235a-390-manage.png",
+      "path": "/home/kevin/Projects/PI/bili_charge_dynamics/.scratch/reading-ui-refresh/evidence/10-device-preview-round-1/screens/344235a-390-manage.png",
+      "width": 390,
+      "height": 844,
+      "url": "http://127.0.0.1:4318/manage",
+      "candidate": "344235a",
+      "viewportScreenshot": true,
+      "sha256": "9a8ebc534a2ab2dffe675ba071070351945ceb3c28a5d13469e6602ad59a421d",
+      "bytes": 56391,
+      "responseStatus": 200
+    },
+    {
+      "name": "344235a-390-manage-202.png",
+      "path": "/home/kevin/Projects/PI/bili_charge_dynamics/.scratch/reading-ui-refresh/evidence/10-device-preview-round-1/screens/344235a-390-manage-202.png",
+      "width": 390,
+      "height": 844,
+      "url": "http://127.0.0.1:4318/manage/ups/202",
+      "candidate": "344235a",
+      "viewportScreenshot": true,
+      "sha256": "f2224b942bcd57ca2b03e3871f07780b468bf12ff3bab4a9b887f38a655988f5",
+      "bytes": 58834,
+      "responseStatus": 200
+    },
+    {
+      "name": "344235a-390-conversation-960013.png",
+      "path": "/home/kevin/Projects/PI/bili_charge_dynamics/.scratch/reading-ui-refresh/evidence/10-device-preview-round-1/screens/344235a-390-conversation-960013.png",
+      "width": 390,
+      "height": 844,
+      "url": "http://127.0.0.1:4318/dynamics/800300/comments/860001/replies/960013/conversation",
+      "candidate": "344235a",
+      "viewportScreenshot": true,
+      "sha256": "e821f3a4143a4efd28f1740f17ec215eed7e0f92140cb397b4ce3fdebfe24cde",
+      "bytes": 71800,
+      "responseStatus": 200,
+      "itemCount": 11,
+      "markerCount": 1,
+      "entryCount": 1,
+      "entryId": "reply:860001:960013",
+      "centerOffset": 0.5,
+      "conversationRequests": [
+        "",
+        ""
+      ],
+      "conversationRequestsRaw": [
+        "",
+        ""
+      ],
+      "documentNavigations": [
+        {
+          "resourceType": "document",
+          "path": "/dynamics/800300/comments/860001/replies/960013/conversation",
+          "search": ""
+        }
+      ],
+      "apiReads": [
+        {
+          "resourceType": "fetch",
+          "path": "/api/archive/dynamics/800300/comments/860001/replies/960013/conversation",
+          "search": ""
+        }
+      ],
+      "conversationRequestsNote": "conversationRequests 是采集脚本旧版统计口径：只按 URL 以 /conversation 结尾匹配，未区分资源类型，因此把 1 次整页文档导航（document）与 1 次只读 API 读取（fetch）都记了进来，两项 search 均为空。截图阶段只有一次 page.goto + 等待渲染/定位，没有 reload、没有重新导航、没有额外探活；smoke-browser.json 只统计 /api/ 的 fetch，所以是 1 次。13:21 用一次性只读探针（同一 URL、不截图、不改库）复核：document 1 + fetch 1，未见第 2 次读取或导航。"
+    }
+  ],
+  "notes": [
+    "会话截图条目的 conversationRequests 段为旧采集口径（document + fetch 混合）；拆分见 documentNavigations / apiReads。",
+    "capture-screens.mjs 之后已改为按 /api/ 前缀区分 document 与 apiReads；本文件保持截图当时的原始数组并加注，未重跑截图。"
+  ]
+}

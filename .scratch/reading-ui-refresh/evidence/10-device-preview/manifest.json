@@ -1,0 +1,300 @@
+{
+  "ticket": "10-visual-and-real-device-acceptance",
+  "kind": "isolated-lan-preview-preparation",
+  "not_an_acceptance_result": true,
+  "generated_at": "2026-10-29T11:28:23+08:00",
+  "scope": {
+    "product_code_modified": false,
+    "golden_images_updated": false,
+    "committed": false,
+    "branch_created": false,
+    "merged_to_main": false,
+    "deployed": false,
+    "human_record_or_ticket_edited": false,
+    "collector_started": false,
+    "notifier_started": false,
+    "real_upstream_feishu_or_oss_contacted": false,
+    "existing_8000_or_4273_touched": false,
+    "big_test_suite_rerun": false,
+    "dist_rebuilt": false,
+    "ignored_runtime_byproduct": "backend/tests/__pycache__/*.pyc（.gitignore:11 忽略，启动 live_app 的字节码缓存，非源码改动）"
+  },
+  "candidate": {
+    "branch": "spec/reading-ui-refresh",
+    "head": "7c2410a447b84099c6257c8e8b2ebdb7e5479aea",
+    "fixed_candidate": "88b692facc0c0e39ea527fbe87895c4544be5291",
+    "product_diff_vs_candidate": "（空）",
+    "product_diff_exit_code": 0,
+    "working_tree": [
+      "M .scratch/reading-ui-refresh/issues/10-visual-and-real-device-acceptance.md",
+      "?? .scratch/reading-ui-refresh/evidence/10-device-preview/",
+      "?? .scratch/reading-ui-refresh/evidence/10-visual-and-device-acceptance.md"
+    ],
+    "preexisting_doc_changes_not_touched": [
+      ".scratch/reading-ui-refresh/issues/10-visual-and-real-device-acceptance.md（主线程人工记录，本准备未编辑）",
+      ".scratch/reading-ui-refresh/evidence/10-visual-and-device-acceptance.md（主线程人工记录，本准备未编辑）"
+    ],
+    "node": "v24.21.0",
+    "pnpm": "10.34.6"
+  },
+  "runtime": {
+    "dir": "/tmp/bili-ticket10-iOV2nX",
+    "database": "/tmp/bili-ticket10-iOV2nX/monitor.sqlite",
+    "database_bytes": 651264,
+    "logs": "/tmp/bili-ticket10-iOV2nX/logs/",
+    "pidfiles": "/tmp/bili-ticket10-iOV2nX/run/",
+    "cleanup": "停机脚本只按 pidfile 精确回收本次 4 个进程组；不删 DB，可用 rm -rf 单独清理"
+  },
+  "frozen_artifacts": {
+    "env_a": {
+      "copied_to": "/tmp/bili-ticket10-iOV2nX/dist-a",
+      "source": "frontend/dist",
+      "source_mtime": "2026-10-29 11:17:37.722885139 +0800",
+      "index_sha256": "e578cdca2abb7ecec9e928f16b90e1590821017fed0e4119cb320ff1245ccc99",
+      "files": 34
+    },
+    "env_b": {
+      "copied_to": "/tmp/bili-ticket10-iOV2nX/dist-b",
+      "source": "frontend/dist-mock",
+      "source_mtime": "2026-10-29 11:17:47.411851446 +0800",
+      "index_sha256": "8e3676cdbd93fdfef385cae51602a065458372d3fa03584e3b3a158094505f16",
+      "files": 39
+    },
+    "image_server": {
+      "copied_to": "/tmp/bili-ticket10-iOV2nX/server/imageServer.mjs",
+      "source": "frontend/server/imageServer.mjs",
+      "sha256": "eb12c161c93de5d5a0196ac2a5411f5831a0314d2582f978d92c8b685af99eba"
+    },
+    "note": "两个 preview 都用绝对 --outDir 指向 /tmp 副本；此后重建 frontend/dist 不会影响这两套验收环境",
+    "verification": {
+      "diff_dist_a": "diff -r frontend/dist /tmp/bili-ticket10-iOV2nX/dist-a → 完全一致",
+      "diff_dist_b": "diff -r frontend/dist-mock /tmp/bili-ticket10-iOV2nX/dist-b → 完全一致",
+      "repo_dist_unchanged": "frontend/dist/index.html 与 frontend/dist-mock/index.html 的 mtime 仍为 2026-10-29 11:17，SHA-256 未变"
+    }
+  },
+  "environments": {
+    "A": {
+      "purpose": "生产候选 dist + live_app 真实 API 路径（虚构上游）",
+      "web": "http://192.168.8.20:4318/",
+      "api_via_proxy": "http://192.168.8.20:4318/api/… → http://127.0.0.1:4180",
+      "assembly": "正式装配（无 mock/fault 自检路由）",
+      "has_archive_images": false
+    },
+    "B": {
+      "purpose": "dist-mock 自检装配 + 受控图片夹具（唯一可看归档成功/异常图片的环境）",
+      "web": "http://192.168.8.20:4337/",
+      "fixtures_route": "http://192.168.8.20:4337/__preview-fixtures",
+      "api_via_proxy": "http://192.168.8.20:4337/api/… → http://127.0.0.1:4180",
+      "images_via_proxy": "http://192.168.8.20:4337/images/… → http://127.0.0.1:4339",
+      "assembly": "mock 装配；数据非真实 API 路径，不得与 A 的 API 结论混记"
+    }
+  },
+  "processes": {
+    "api": {
+      "pid": 626555,
+      "pgid": 626555,
+      "cmd": "uv run --no-sync python -m uvicorn backend.tests.live_app:create_app --factory --host 127.0.0.1 --port 4180 --app-dir /home/kevin/Projects/PI/bili_charge_dynamics --log-level info",
+      "group_pids": [
+        626555,
+        626560
+      ],
+      "proxy_env": {
+        "HTTP_PROXY": null,
+        "HTTPS_PROXY": null,
+        "ALL_PROXY": null,
+        "http_proxy": null,
+        "https_proxy": null,
+        "all_proxy": null,
+        "NO_PROXY": "127.0.0.1,localhost,::1",
+        "no_proxy": "127.0.0.1,localhost,::1"
+      },
+      "app_env": {
+        "BILI_DATABASE_PATH": "/tmp/bili-ticket10-iOV2nX/monitor.sqlite"
+      }
+    },
+    "images": {
+      "pid": 626574,
+      "pgid": 626574,
+      "cmd": "node /tmp/bili-ticket10-iOV2nX/server/imageServer.mjs",
+      "group_pids": [
+        626574
+      ],
+      "proxy_env": {
+        "HTTP_PROXY": null,
+        "HTTPS_PROXY": null,
+        "ALL_PROXY": null,
+        "http_proxy": null,
+        "https_proxy": null,
+        "all_proxy": null,
+        "NO_PROXY": "127.0.0.1,localhost,::1",
+        "no_proxy": "127.0.0.1,localhost,::1"
+      },
+      "app_env": {
+        "IMAGE_SERVER_PORT": "4339"
+      }
+    },
+    "web-a": {
+      "pid": 626587,
+      "pgid": 626587,
+      "cmd": "node /home/kevin/.nvm/versions/node/v24.21.0/bin/pnpm --dir /home/kevin/Projects/PI/bili_charge_dynamics/frontend exec vite preview --outDir /tmp/bili-ticket10-iOV2nX/dist-a --host 0.0.0.0 --port 4318 --strictPort",
+      "group_pids": [
+        626587,
+        626604,
+        626619
+      ],
+      "proxy_env": {
+        "HTTP_PROXY": null,
+        "HTTPS_PROXY": null,
+        "ALL_PROXY": null,
+        "http_proxy": null,
+        "https_proxy": null,
+        "all_proxy": null,
+        "NO_PROXY": "127.0.0.1,localhost,::1",
+        "no_proxy": "127.0.0.1,localhost,::1"
+      },
+      "app_env": {
+        "API_SERVER": "http://127.0.0.1:4180",
+        "IMAGE_SERVER_PORT": "4339"
+      }
+    },
+    "web-b": {
+      "pid": 626634,
+      "pgid": 626634,
+      "cmd": "node /home/kevin/.nvm/versions/node/v24.21.0/bin/pnpm --dir /home/kevin/Projects/PI/bili_charge_dynamics/frontend exec vite preview --outDir /tmp/bili-ticket10-iOV2nX/dist-b --host 0.0.0.0 --port 4337 --strictPort",
+      "group_pids": [
+        626634,
+        626651,
+        626666
+      ],
+      "proxy_env": {
+        "HTTP_PROXY": null,
+        "HTTPS_PROXY": null,
+        "ALL_PROXY": null,
+        "http_proxy": null,
+        "https_proxy": null,
+        "all_proxy": null,
+        "NO_PROXY": "127.0.0.1,localhost,::1",
+        "no_proxy": "127.0.0.1,localhost,::1"
+      },
+      "app_env": {
+        "API_SERVER": "http://127.0.0.1:4180",
+        "IMAGE_SERVER_PORT": "4339"
+      }
+    }
+  },
+  "listeners": [
+    {
+      "port": 4318,
+      "local": "0.0.0.0:4318",
+      "process": "(\"MainThread\",pid=626604,fd=22"
+    },
+    {
+      "port": 4180,
+      "local": "127.0.0.1:4180",
+      "process": "(\"python\",pid=626560,fd=6"
+    },
+    {
+      "port": 4337,
+      "local": "0.0.0.0:4337",
+      "process": "(\"MainThread\",pid=626651,fd=22"
+    },
+    {
+      "port": 4339,
+      "local": "127.0.0.1:4339",
+      "process": "(\"MainThread\",pid=626574,fd=21"
+    }
+  ],
+  "existing_services_untouched": [
+    {
+      "port": 8000,
+      "local": "127.0.0.1:8000",
+      "process": null
+    },
+    {
+      "port": 4273,
+      "local": "192.168.8.20:4273",
+      "process": null
+    }
+  ],
+  "proxy_target_evidence": {
+    "env_on_vite_processes": {
+      "A": [
+        626587,
+        626604,
+        626619
+      ],
+      "B": [
+        626634,
+        626651,
+        626666
+      ]
+    },
+    "vite_config_source": "frontend/vite.config.ts:5-14（/api → API_SERVER，默认 http://127.0.0.1:8000；/images → IMAGE_SERVER_PORT，默认 4319）",
+    "checks": [
+      "两个 preview 进程环境里 API_SERVER=http://127.0.0.1:4180、IMAGE_SERVER_PORT=4339（见 processes.*.app_env）",
+      "4318/api/manage/ups 与 4337/api/manage/ups 与 4180 直连逐字节相同",
+      "4318/api/test/source-requests 与 4337/api/test/source-requests 均 200 —— 该路由只在 live_app 注册，若代理落到 8000 会 404"
+    ],
+    "target_is_4180_not_8000": true
+  },
+  "seed": {
+    "script": ".scratch/reading-ui-refresh/evidence/10-device-preview/seed-fixtures.sh",
+    "log": ".scratch/reading-ui-refresh/evidence/10-device-preview/seed.log",
+    "ups": [
+      "808 虚构楼阁",
+      "202 虚构晨光",
+      "707 虚构晚风"
+    ],
+    "monitor": "mode=specified, recent_n=10, enabled=true（仅本隔离库）",
+    "dynamics": {
+      "800300": "45 条根评论 + 860001 楼 25 条回复（会话入口 960013）",
+      "9007199254740993123": "12 条根评论（验证卡片间不串页）",
+      "900707": "45 条根评论 + 860030 楼 25 条回复"
+    },
+    "initial_sync": "三个 UP 均 processed=1 succeeded=1 failed=0",
+    "admin_panels": "已用 /api/test/collect 生成一次 check 与一次 discover 记录（仍是 MockTransport）",
+    "notification_state": "off（默认关闭；未启动通知进程，未投递任何消息）",
+    "source_requests": "total=37 reply=23 count=1（本进程累计虚构上游请求，采集与归档读取无关）"
+  },
+  "prep_smoke": {
+    "kind": "准备冒烟，不是人工/真机验收",
+    "http": {
+      "script": ".scratch/reading-ui-refresh/evidence/10-device-preview/smoke-check.sh",
+      "result": ".scratch/reading-ui-refresh/evidence/10-device-preview/smoke-http.json",
+      "raw_run_products": "/tmp/bili-ticket10-iOV2nX/logs/smoke.json",
+      "fail": false,
+      "checks": 39,
+      "at": "2026-10-29T11:29:18.862676+08:00",
+      "pass": 39
+    },
+    "browser": {
+      "script": ".scratch/reading-ui-refresh/evidence/10-device-preview/browser-smoke.mjs",
+      "result": ".scratch/reading-ui-refresh/evidence/10-device-preview/smoke-browser.json",
+      "raw_run_products": "/tmp/bili-ticket10-iOV2nX/logs/browser-smoke.json",
+      "engine": "headless Chromium（@playwright/test 1.58.2，视口 1280×900）",
+      "pages": [
+        "A home 200",
+        "A deep-dynamic 200",
+        "A deep-conversation 200",
+        "A manage-list 200",
+        "A manage-up 200",
+        "B mock-home 200",
+        "B mock-fixtures 200"
+      ]
+    }
+  },
+  "limits": [
+    "环境 A 的归档没有图片（live_app 上游不含图片、媒体交付地址只放行 https），图片/异常态只能看环境 B",
+    "环境 B 是 mock 自检装配：数据不是真实 API 路径，不能把 B 的阅读结论写成 A 的 API 结论",
+    "未启动 collector/notifier，未连真实 B 站、飞书、OSS；通知投递与真实客户端场景未验证",
+    "无 TLS：手机走 http，非安全上下文（App 自身有随机 ID 兜底），真机 UA/视口/键盘遮挡仍需用户采集",
+    "既有 8000/4273 未触碰、未作为本票入口",
+    "本轮未拍截图、未更新黄金图；桌面自动化与本准备冒烟都不能替代人工签收"
+  ],
+  "lifecycle": {
+    "start": "RUNTIME=/tmp/bili-ticket10-iOV2nX bash .scratch/reading-ui-refresh/evidence/10-device-preview/start-previews.sh（先做端口预检与产物指纹校验）",
+    "seed": "bash .scratch/reading-ui-refresh/evidence/10-device-preview/seed-fixtures.sh（幂等性：重复添加会 409、归档会重复写入，重来请换新 mktemp 目录）",
+    "stop": "RUNTIME=/tmp/bili-ticket10-iOV2nX bash .scratch/reading-ui-refresh/evidence/10-device-preview/stop-previews.sh（只 TERM 本轮 pidfile 进程组，不扫端口、不删 DB）",
+    "restart": "先 stop，再 start（DB 保留；如需干净数据另建 mktemp 目录并重跑 seed）"
+  }
+}

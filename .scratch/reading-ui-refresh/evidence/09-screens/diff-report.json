@@ -1,0 +1,586 @@
+{
+  "baselineVersion": 1,
+  "signedOffCandidate": "89d0b49e213861badcecfe667de4f9330f134d22",
+  "metric": {
+    "metric": "AE",
+    "fuzz": "1%",
+    "maxDiffRatio": 0.0002
+  },
+  "candidate": {
+    "sourceCommit": "b72d55501127642a1987a5d491d1735cdb575171",
+    "sourceStatus": []
+  },
+  "imagesTotal": 63,
+  "identicalBytes": 0,
+  "imagesWithDiffPixels": 63,
+  "maxRatioNoFuzz": 0.17853154,
+  "images": [
+    {
+      "name": "comments-1280.png",
+      "width": 1280,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 42275.1,
+      "diffWeightNoFuzz": 42352,
+      "ratioNoFuzz": 0.03676389
+    },
+    {
+      "name": "comments-360.png",
+      "width": 360,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 24347.2,
+      "diffWeightNoFuzz": 24377.8,
+      "ratioNoFuzz": 0.07524012
+    },
+    {
+      "name": "comments-390.png",
+      "width": 390,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 25932.4,
+      "diffWeightNoFuzz": 25966.1,
+      "ratioNoFuzz": 0.07397749
+    },
+    {
+      "name": "comments-768.png",
+      "width": 768,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 42275.1,
+      "diffWeightNoFuzz": 42352,
+      "ratioNoFuzz": 0.06127315
+    },
+    {
+      "name": "comments-empty-1280.png",
+      "width": 1280,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 91974,
+      "diffWeightNoFuzz": 92000.6,
+      "ratioNoFuzz": 0.07986163
+    },
+    {
+      "name": "comments-empty-390.png",
+      "width": 390,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 53041.4,
+      "diffWeightNoFuzz": 53067.7,
+      "ratioNoFuzz": 0.15119003
+    },
+    {
+      "name": "comments-error-1280.png",
+      "width": 1280,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 52212.6,
+      "diffWeightNoFuzz": 52276.9,
+      "ratioNoFuzz": 0.04537925
+    },
+    {
+      "name": "comments-error-390.png",
+      "width": 390,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 36772,
+      "diffWeightNoFuzz": 36808.8,
+      "ratioNoFuzz": 0.10486838
+    },
+    {
+      "name": "comments-pending-1280.png",
+      "width": 1280,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 15461.5,
+      "diffWeightNoFuzz": 15468.1,
+      "ratioNoFuzz": 0.01342717
+    },
+    {
+      "name": "comments-pending-390.png",
+      "width": 390,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 11458.5,
+      "diffWeightNoFuzz": 11465.3,
+      "ratioNoFuzz": 0.03266467
+    },
+    {
+      "name": "detail-1280.png",
+      "width": 1280,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 124167,
+      "diffWeightNoFuzz": 124400,
+      "ratioNoFuzz": 0.10798611
+    },
+    {
+      "name": "detail-360.png",
+      "width": 360,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 43174.6,
+      "diffWeightNoFuzz": 43211.8,
+      "ratioNoFuzz": 0.13336975
+    },
+    {
+      "name": "detail-390.png",
+      "width": 390,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 44820.9,
+      "diffWeightNoFuzz": 44872.6,
+      "ratioNoFuzz": 0.12784217
+    },
+    {
+      "name": "detail-768.png",
+      "width": 768,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 123168,
+      "diffWeightNoFuzz": 123401,
+      "ratioNoFuzz": 0.17853154
+    },
+    {
+      "name": "detail-error-1280.png",
+      "width": 1280,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 5285.01,
+      "diffWeightNoFuzz": 5286.47,
+      "ratioNoFuzz": 0.00458895
+    },
+    {
+      "name": "detail-error-390.png",
+      "width": 390,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 3217.79,
+      "diffWeightNoFuzz": 3219.21,
+      "ratioNoFuzz": 0.00917154
+    },
+    {
+      "name": "detail-not-found-1280.png",
+      "width": 1280,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 5004.38,
+      "diffWeightNoFuzz": 5005.65,
+      "ratioNoFuzz": 0.00434518
+    },
+    {
+      "name": "detail-not-found-390.png",
+      "width": 390,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 2959.2,
+      "diffWeightNoFuzz": 2960.41,
+      "ratioNoFuzz": 0.00843422
+    },
+    {
+      "name": "list-1280.png",
+      "width": 1280,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 41997.9,
+      "diffWeightNoFuzz": 42076.6,
+      "ratioNoFuzz": 0.03652483
+    },
+    {
+      "name": "list-360.png",
+      "width": 360,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 22722.8,
+      "diffWeightNoFuzz": 22774.9,
+      "ratioNoFuzz": 0.0702929
+    },
+    {
+      "name": "list-390.png",
+      "width": 390,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 23735.1,
+      "diffWeightNoFuzz": 23788.6,
+      "ratioNoFuzz": 0.06777379
+    },
+    {
+      "name": "list-768.png",
+      "width": 768,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 40640.2,
+      "diffWeightNoFuzz": 40712.7,
+      "ratioNoFuzz": 0.05890148
+    },
+    {
+      "name": "list-empty-1280.png",
+      "width": 1280,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 9250.13,
+      "diffWeightNoFuzz": 9296.47,
+      "ratioNoFuzz": 0.00806985
+    },
+    {
+      "name": "list-empty-390.png",
+      "width": 390,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 4300.92,
+      "diffWeightNoFuzz": 4338.48,
+      "ratioNoFuzz": 0.01236034
+    },
+    {
+      "name": "list-error-1280.png",
+      "width": 1280,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 9916.89,
+      "diffWeightNoFuzz": 9964.03,
+      "ratioNoFuzz": 0.00864933
+    },
+    {
+      "name": "list-error-390.png",
+      "width": 390,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 4975.27,
+      "diffWeightNoFuzz": 5013.63,
+      "ratioNoFuzz": 0.01428385
+    },
+    {
+      "name": "list-scope-1280.png",
+      "width": 1280,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 35964.2,
+      "diffWeightNoFuzz": 36028.9,
+      "ratioNoFuzz": 0.03127509
+    },
+    {
+      "name": "list-scope-360.png",
+      "width": 360,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 15363.3,
+      "diffWeightNoFuzz": 15387.7,
+      "ratioNoFuzz": 0.0474929
+    },
+    {
+      "name": "list-scope-390.png",
+      "width": 390,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 19562.2,
+      "diffWeightNoFuzz": 19601.4,
+      "ratioNoFuzz": 0.05584444
+    },
+    {
+      "name": "list-scope-768.png",
+      "width": 768,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 34627.6,
+      "diffWeightNoFuzz": 34692.3,
+      "ratioNoFuzz": 0.05019141
+    },
+    {
+      "name": "manage-1280.png",
+      "width": 1280,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 24536.7,
+      "diffWeightNoFuzz": 24601.2,
+      "ratioNoFuzz": 0.02135521
+    },
+    {
+      "name": "manage-360.png",
+      "width": 360,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 22704.6,
+      "diffWeightNoFuzz": 22765.3,
+      "ratioNoFuzz": 0.07026327
+    },
+    {
+      "name": "manage-390.png",
+      "width": 390,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 22831.3,
+      "diffWeightNoFuzz": 22890,
+      "ratioNoFuzz": 0.06521368
+    },
+    {
+      "name": "manage-768.png",
+      "width": 768,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 23083.1,
+      "diffWeightNoFuzz": 23147.6,
+      "ratioNoFuzz": 0.033489
+    },
+    {
+      "name": "manage-empty-1280.png",
+      "width": 1280,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 17917.1,
+      "diffWeightNoFuzz": 18011.2,
+      "ratioNoFuzz": 0.01563472
+    },
+    {
+      "name": "manage-empty-390.png",
+      "width": 390,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 18307.7,
+      "diffWeightNoFuzz": 18388.4,
+      "ratioNoFuzz": 0.0523886
+    },
+    {
+      "name": "manage-error-1280.png",
+      "width": 1280,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 14206.9,
+      "diffWeightNoFuzz": 14271.3,
+      "ratioNoFuzz": 0.01238828
+    },
+    {
+      "name": "manage-error-390.png",
+      "width": 390,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 10641.2,
+      "diffWeightNoFuzz": 10704.4,
+      "ratioNoFuzz": 0.03049687
+    },
+    {
+      "name": "manage-unauthorized-1280.png",
+      "width": 1280,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 14723.6,
+      "diffWeightNoFuzz": 14788.5,
+      "ratioNoFuzz": 0.01283724
+    },
+    {
+      "name": "preview-1280.png",
+      "width": 1280,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 7254.95,
+      "diffWeightNoFuzz": 7843.25,
+      "ratioNoFuzz": 0.00680838
+    },
+    {
+      "name": "preview-360.png",
+      "width": 360,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 17300.9,
+      "diffWeightNoFuzz": 17639.1,
+      "ratioNoFuzz": 0.05444167
+    },
+    {
+      "name": "preview-390.png",
+      "width": 390,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 17494,
+      "diffWeightNoFuzz": 17878.9,
+      "ratioNoFuzz": 0.05093704
+    },
+    {
+      "name": "preview-768.png",
+      "width": 768,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 19369.2,
+      "diffWeightNoFuzz": 20116.3,
+      "ratioNoFuzz": 0.02910344
+    },
+    {
+      "name": "preview-error-1280.png",
+      "width": 1280,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 46710.6,
+      "diffWeightNoFuzz": 48266.7,
+      "ratioNoFuzz": 0.04189818
+    },
+    {
+      "name": "preview-error-390.png",
+      "width": 390,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 23679.9,
+      "diffWeightNoFuzz": 24258.4,
+      "ratioNoFuzz": 0.06911225
+    },
+    {
+      "name": "replies-1280.png",
+      "width": 1280,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 19160.6,
+      "diffWeightNoFuzz": 19181.1,
+      "ratioNoFuzz": 0.01665026
+    },
+    {
+      "name": "replies-768.png",
+      "width": 768,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 19160.2,
+      "diffWeightNoFuzz": 19180.8,
+      "ratioNoFuzz": 0.02775
+    },
+    {
+      "name": "replies-empty-390.png",
+      "width": 390,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 6802.87,
+      "diffWeightNoFuzz": 6807.65,
+      "ratioNoFuzz": 0.01939501
+    },
+    {
+      "name": "replies-error-390.png",
+      "width": 390,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 2816.69,
+      "diffWeightNoFuzz": 2818.26,
+      "ratioNoFuzz": 0.00802923
+    },
+    {
+      "name": "thread-360.png",
+      "width": 360,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 21382.5,
+      "diffWeightNoFuzz": 21409.9,
+      "ratioNoFuzz": 0.06607994
+    },
+    {
+      "name": "thread-390.png",
+      "width": 390,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 29679.1,
+      "diffWeightNoFuzz": 29709.4,
+      "ratioNoFuzz": 0.08464217
+    },
+    {
+      "name": "up-1280.png",
+      "width": 1280,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 34879.6,
+      "diffWeightNoFuzz": 34905.4,
+      "ratioNoFuzz": 0.03029983
+    },
+    {
+      "name": "up-360.png",
+      "width": 360,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 24828,
+      "diffWeightNoFuzz": 24847.6,
+      "ratioNoFuzz": 0.07669012
+    },
+    {
+      "name": "up-390.png",
+      "width": 390,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 27075.8,
+      "diffWeightNoFuzz": 27095.6,
+      "ratioNoFuzz": 0.07719544
+    },
+    {
+      "name": "up-768.png",
+      "width": 768,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 33425.8,
+      "diffWeightNoFuzz": 33451.5,
+      "ratioNoFuzz": 0.04839627
+    },
+    {
+      "name": "up-not-found-1280.png",
+      "width": 1280,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 11751.6,
+      "diffWeightNoFuzz": 11753.1,
+      "ratioNoFuzz": 0.01020234
+    },
+    {
+      "name": "up-not-found-390.png",
+      "width": 390,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 8177.58,
+      "diffWeightNoFuzz": 8178.89,
+      "ratioNoFuzz": 0.02330168
+    },
+    {
+      "name": "up-specified-1280.png",
+      "width": 1280,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 34088.3,
+      "diffWeightNoFuzz": 34110.2,
+      "ratioNoFuzz": 0.02960955
+    },
+    {
+      "name": "up-specified-390.png",
+      "width": 390,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 35442.6,
+      "diffWeightNoFuzz": 35462.8,
+      "ratioNoFuzz": 0.10103362
+    },
+    {
+      "name": "up-strip-error-1280.png",
+      "width": 1280,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 38321.4,
+      "diffWeightNoFuzz": 38405.6,
+      "ratioNoFuzz": 0.03333819
+    },
+    {
+      "name": "up-strip-error-390.png",
+      "width": 390,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 25813.2,
+      "diffWeightNoFuzz": 25874.6,
+      "ratioNoFuzz": 0.07371681
+    },
+    {
+      "name": "up-unknown-1280.png",
+      "width": 1280,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 8900.38,
+      "diffWeightNoFuzz": 8904.55,
+      "ratioNoFuzz": 0.00772964
+    },
+    {
+      "name": "up-unknown-390.png",
+      "width": 390,
+      "height": 900,
+      "identicalBytes": false,
+      "diffPixelsFuzz": 4005.6,
+      "diffWeightNoFuzz": 4007.9,
+      "ratioNoFuzz": 0.01141852
+    }
+  ]
+}

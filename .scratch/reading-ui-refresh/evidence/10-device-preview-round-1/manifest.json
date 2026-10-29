@@ -1,0 +1,404 @@
+{
+  "ticket": "10-visual-and-real-device-acceptance",
+  "round": "round-1（12 头像/管理对齐 + 13 完整会话/入口居中 + 首轮审查整改的组合候选）",
+  "kind": "isolated-lan-preview-preparation",
+  "not_an_acceptance_result": true,
+  "generated_at": "2026-10-29T13:16:00+08:00",
+  "scope": {
+    "product_code_modified": false,
+    "golden_images_updated": false,
+    "visual_baseline_or_capture_or_golden_run": false,
+    "committed": false,
+    "branch_created": false,
+    "merged_to_main": false,
+    "deployed": false,
+    "human_record_or_ticket_edited": false,
+    "collector_started": false,
+    "notifier_started": false,
+    "real_upstream_feishu_or_oss_contacted": false,
+    "existing_8000_or_4273_touched": false,
+    "big_test_suite_rerun": false,
+    "dist_rebuilt": false,
+    "old_runtime_or_evidence_overwritten": false,
+    "ignored_runtime_byproduct": "backend/tests/__pycache__/*.pyc（.gitignore:11 忽略，启动 live_app 的字节码缓存，非源码改动；git status 不可见）"
+  },
+  "candidate": {
+    "sourceCommit": "344235a88b418dc07b644aef578487d0693e65d9",
+    "sourceBranch": "spec/reading-ui-refresh",
+    "frontendTree": "79f45fd947bbe46b7ed8d63f4f4a45dabcb9160e",
+    "backendTree": "b33aa187c2055a901cd568908679ff448c71f37e",
+    "buildReady": {
+      "path": "/tmp/reading-ui-refresh-round1-final-merge/build-ready.json",
+      "sourceCommit": "344235a88b418dc07b644aef578487d0693e65d9",
+      "builtAt": "2026-10-29T05:09:25.618Z",
+      "gates": {
+        "check": "pass(351)",
+        "checkDist": "pass"
+      },
+      "distIndexSHA256": "1a558c6ca9eb0cece45161b3d4773875eb4b92b75ca42348af95bd64f52c9e54",
+      "distMockIndexSHA256": "b336d12eb9df969189b4dcee6540ea2494f5df4ee5f1afeede1011bbdad7bee8",
+      "note": "只有 build-ready.json status=ready 且产品树匹配后才复制产物；本记录未自行构建。"
+    },
+    "headAtPreparation": "16dc3b64075a504c853c78a1a3a8b9a945d5e54c",
+    "headAdvanceNote": "HEAD 在候选之后前进到 16dc3b6：主线程只改证据措辞的文档提交；frontend/backend 树与 344235a 逐行相同（product-tree.txt 两段 diff 为空）。manifest 仍固定 sourceCommit=344235a；重启守卫按产品树+冻结产物哈希，不要求 HEAD 等于该提交。",
+    "productDiffVsSourceCommit": "（空：git diff 344235a -- frontend backend 无输出）",
+    "productTreeListing": {
+      "file": "product-tree.txt",
+      "sha256": "5c5baa8df54e6e351ff4b741b19eda04e3bba3593d3daf0c0afa03b4a76313b1",
+      "lines": 870
+    },
+    "sourceStatus": {
+      "raw": [
+        "?? .scratch/reading-ui-refresh/evidence/10-device-preview-round-1/",
+        "?? frontend/playwright.tmp-final.config.ts"
+      ],
+      "note": "工作树并非整树干净：准备时本目录未提交 + merger 的未跟踪临时 e2e 配置（playwright.tmp-final.config.ts，不参与构建、不在冻结 dist 内、不在 sourceCommit 产品树里；准备后已被 merger 清理）。受跟踪的 frontend/backend 文件与 344235a 无差异。",
+      "file": "source-status.txt",
+      "observedLater": "2026-10-29T13:19+08:00 复核：?? frontend/playwright.tmp-final.config.ts 已被 merger 清理，当前 git status 仅剩本准备目录未跟踪；受跟踪的 frontend/backend 仍与 344235a 无差异。source-status.txt 同时保留准备时的原始快照与这条后续观察。"
+    },
+    "tools": {
+      "node": "v24.21.0",
+      "pnpm": "10.34.6",
+      "uv": "0.12.23",
+      "playwright": "1.58.2（自带 Chromium）"
+    }
+  },
+  "frozen_artifacts": {
+    "source": {
+      "envA": "frontend/dist（merger 在 344235a 上跑 check:dist 的产物，mtime 2026-10-29 13:09:05）",
+      "envB": "frontend/dist-mock（同上，mtime 2026-10-29 13:09:16）",
+      "imageServer": "frontend/server/imageServer.mjs"
+    },
+    "copiedTo": {
+      "envA": "/tmp/bili-ticket10-round1-zogc/dist-a",
+      "envB": "/tmp/bili-ticket10-round1-zogc/dist-b",
+      "imageServer": "/tmp/bili-ticket10-round1-zogc/server/imageServer.mjs"
+    },
+    "indexSHA256": {
+      "envA": "1a558c6ca9eb0cece45161b3d4773875eb4b92b75ca42348af95bd64f52c9e54",
+      "envB": "b336d12eb9df969189b4dcee6540ea2494f5df4ee5f1afeede1011bbdad7bee8",
+      "imageServer": "eb12c161c93de5d5a0196ac2a5411f5831a0314d2582f978d92c8b685af99eba"
+    },
+    "fileCounts": {
+      "envA": 34,
+      "envB": 39,
+      "imageServer": 1,
+      "total": 74
+    },
+    "manifestFile": {
+      "path": "/tmp/bili-ticket10-round1-zogc/artifacts.sha256",
+      "copyInEvidence": "artifacts.sha256",
+      "sha256": "460514e5f03d26db073708fcce5c4268e140827460d414549c1e5b7e6dbe159a",
+      "lines": 74,
+      "note": "dist-a/dist-b/server 每个文件的 sha256；启动脚本用 sha256sum -c 逐文件校验，不符即拒绝启动。"
+    },
+    "verification": {
+      "diffA": "diff -r frontend/dist /tmp/bili-ticket10-round1-zogc/dist-a → 完全一致",
+      "diffB": "diff -r frontend/dist-mock /tmp/bili-ticket10-round1-zogc/dist-b → 完全一致",
+      "note": "复制发生在 build-ready.json ready 之后；之后仓库 dist 若再重建不影响这两套冻结副本。"
+    }
+  },
+  "runtime": {
+    "dir": "/tmp/bili-ticket10-round1-zogc",
+    "createdWith": "mktemp -d /tmp/bili-ticket10-round1-XXXX",
+    "database": "/tmp/bili-ticket10-round1-zogc/monitor.sqlite",
+    "databaseBytes": 483328,
+    "databaseTables": 26,
+    "logs": "/tmp/bili-ticket10-round1-zogc/logs/",
+    "pidfiles": "/tmp/bili-ticket10-round1-zogc/run/（<name>.pid 与 <name>.pgid）",
+    "cleanup": "停机脚本只按 pidfile 精确回收本次 4 个进程组；不删 DB，可用 rm -rf 单独清理"
+  },
+  "environments": {
+    "A": {
+      "purpose": "正式 dist + live_app 真实 API 路径（虚构上游）",
+      "web": "http://192.168.8.20:4318/",
+      "apiViaProxy": "http://192.168.8.20:4318/api/… → http://127.0.0.1:4180",
+      "assembly": "正式装配（无 mock/fault 自检路由）",
+      "hasArchiveImages": false
+    },
+    "B": {
+      "purpose": "dist-mock 自检装配 + 受控图片夹具（唯一可看归档成功/异常图片的环境）",
+      "web": "http://192.168.8.20:4337/",
+      "fixturesRoute": "http://192.168.8.20:4337/__preview-fixtures",
+      "apiViaProxy": "http://192.168.8.20:4337/api/… → http://127.0.0.1:4180",
+      "imagesViaProxy": "http://192.168.8.20:4337/images/… → http://127.0.0.1:4339",
+      "assembly": "mock 装配；B 的阅读/图片结论不得记成 A 的真实 API 结论"
+    }
+  },
+  "processes": {
+    "api": {
+      "pid": 707470,
+      "pgid": 707470,
+      "sid": 707470,
+      "groupPids": [
+        707470,
+        707475
+      ],
+      "cmd": "uv run --no-sync python -m uvicorn backend.tests.live_app:create_app --factory --host 127.0.0.1 --port 4180 --app-dir /home/kevin/Projects/PI/bili_charge_dynamics --log-level info",
+      "listener": "127.0.0.1:4180（uvicorn python pid 707475）",
+      "appEnv": {
+        "BILI_DATABASE_PATH": "/tmp/bili-ticket10-round1-zogc/monitor.sqlite"
+      }
+    },
+    "images": {
+      "pid": 707509,
+      "pgid": 707509,
+      "sid": 707509,
+      "groupPids": [
+        707509
+      ],
+      "cmd": "node /tmp/bili-ticket10-round1-zogc/server/imageServer.mjs",
+      "listener": "127.0.0.1:4339",
+      "appEnv": {
+        "IMAGE_SERVER_PORT": "4339"
+      }
+    },
+    "web-a": {
+      "pid": 707526,
+      "pgid": 707526,
+      "sid": 707526,
+      "groupPids": [
+        707526,
+        707560,
+        707573
+      ],
+      "cmd": "node /home/kevin/.nvm/versions/node/v24.21.0/bin/pnpm --dir /home/kevin/Projects/PI/bili_charge_dynamics/frontend exec vite preview --outDir /tmp/bili-ticket10-round1-zogc/dist-a --host 0.0.0.0 --port 4318 --strictPort",
+      "listener": "0.0.0.0:4318（vite pid 707560）",
+      "appEnv": {
+        "API_SERVER": "http://127.0.0.1:4180",
+        "IMAGE_SERVER_PORT": "4339"
+      }
+    },
+    "web-b": {
+      "pid": 707591,
+      "pgid": 707591,
+      "sid": 707591,
+      "groupPids": [
+        707591,
+        707611,
+        707624
+      ],
+      "cmd": "node /home/kevin/.nvm/versions/node/v24.21.0/bin/pnpm --dir /home/kevin/Projects/PI/bili_charge_dynamics/frontend exec vite preview --outDir /tmp/bili-ticket10-round1-zogc/dist-b --host 0.0.0.0 --port 4337 --strictPort",
+      "listener": "0.0.0.0:4337（vite pid 707611）",
+      "appEnv": {
+        "API_SERVER": "http://127.0.0.1:4180",
+        "IMAGE_SERVER_PORT": "4339"
+      }
+    },
+    "sharedEnv": {
+      "proxies": "四个进程的 HTTP_PROXY/HTTPS_PROXY/ALL_PROXY/FTP_PROXY（大小写）均为空；只设 NO_PROXY=no_proxy=127.0.0.1,localhost,::1",
+      "detach": "每个进程 setsid 新会话组长（sid=pgid=pid），PPID 重挂到 systemd --user（pid 2005），不随启动它的 shell 退出",
+      "pythonProcesses": "只有 uv（707470）与 uvicorn（707475）两个 python 相关进程；无 collector、无 notifier",
+      "unrelatedHostProcess": "ps 里唯一的 notifier 命中是 PyCharm 的 fsnotifier（pid 289754，非本项目）"
+    }
+  },
+  "listeners": [
+    {
+      "port": 4318,
+      "local": "0.0.0.0:4318",
+      "process": "vite pid 707560"
+    },
+    {
+      "port": 4337,
+      "local": "0.0.0.0:4337",
+      "process": "vite pid 707611"
+    },
+    {
+      "port": 4180,
+      "local": "127.0.0.1:4180",
+      "process": "uvicorn pid 707475"
+    },
+    {
+      "port": 4339,
+      "local": "127.0.0.1:4339",
+      "process": "imageServer pid 707509"
+    }
+  ],
+  "existingServicesUntouched": [
+    {
+      "port": 8000,
+      "local": "127.0.0.1:8000",
+      "touched": false
+    },
+    {
+      "port": 4273,
+      "local": "192.168.8.20:4273",
+      "touched": false
+    }
+  ],
+  "proxyTargetEvidence": {
+    "config": "frontend/vite.config.ts:5-14（/api → API_SERVER，默认 http://127.0.0.1:8000；/images → IMAGE_SERVER_PORT，默认 4319）",
+    "checks": [
+      "web-a/web-b 进程环境显式 API_SERVER=http://127.0.0.1:4180、IMAGE_SERVER_PORT=4339",
+      "4318/api/manage/ups 与 4337/api/manage/ups 与 4180 直连逐字节相同",
+      "4318 与 4337 的 /api/test/source-requests 均 200——该路由只在 live_app 注册，代理落到 8000 会 404",
+      "浏览器冒烟里每个页面再探一次 /api/test/source-requests，全部 200"
+    ],
+    "targetIs4180Not8000": true,
+    "databaseIdentity": "4180 返回 3 个虚构 UP（808/202/707），全部来自本轮新 monitor.sqlite（26 张表）"
+  },
+  "seed": {
+    "script": "seed-fixtures.sh（与原目录 seed-fixtures.sh 相同，未改产品代码）",
+    "log": "seed.log",
+    "ups": [
+      "808 虚构楼阁",
+      "202 虚构晨光",
+      "707 虚构晚风"
+    ],
+    "monitor": "mode=specified, recent_n=10, enabled=true（仅本隔离库）",
+    "dynamics": {
+      "800300": "45 条根评论 + 860001 楼 25 条回复（整段会话入口 960013，count=11）",
+      "9007199254740993123": "12 条根评论（验证卡片间不串页）",
+      "900707": "45 条根评论 + 860030 楼 25 条回复"
+    },
+    "initialSync": "三个 UP 均 processed=1 succeeded=1 failed=0",
+    "adminPanels": "check/discover 各一次（MockTransport，无真实请求）",
+    "notificationState": "off（唯一命中 notifier 的是 PyCharm fsnotifier，与本轮无关）",
+    "sourceRequests": "total=37 reply=23 count=1（本进程累计虚构上游请求；读取归档不触发采集）"
+  },
+  "prepSmoke": {
+    "kind": "准备冒烟，不是人工/真机验收，也不代表视觉通过",
+    "http": {
+      "script": "smoke-check.sh",
+      "result": "smoke-http.json",
+      "sha256": "858a114864735ae9fed4441d7e5f518ef42b44c937487964cbd7b0d6402f6fbb",
+      "at": "2026-10-29T13:14:06.297504+08:00",
+      "checks": 44,
+      "pass": 44,
+      "fail": false
+    },
+    "browser": {
+      "script": "browser-smoke.mjs",
+      "result": "smoke-browser.json",
+      "sha256": "712ff6eff22714c98f67553bf1893a4f52c585683c1c3b04180753fdebd2e63d",
+      "at": "2026-10-29T05:14:51.643Z",
+      "engine": "headless Chromium（@playwright/test 1.58.2）",
+      "assertions": 42,
+      "pass": 42,
+      "fail": false,
+      "conversation390": {
+        "url": "http://127.0.0.1:4318/dynamics/800300/comments/860001/replies/960013/conversation",
+        "apiReads": 1,
+        "apiReadsWithQuery": 0,
+        "items": 11,
+        "countText": "共 11 条 ×1",
+        "paginationControls": 0,
+        "nextPageButtons": 0,
+        "markerTextCount": 1,
+        "entryReadingId": "reply:860001:960013",
+        "entryCenterOffsetPx": 0.5,
+        "scrollY": 141
+      },
+      "envAImages": "A 的 /images 请求 0 次；img 全部回落 /default-avatar.svg（naturalWidth>0）；requestfailed 只有 https://example.invalid/*（虚构主机）",
+      "envBImages": "B 首页 /images/thumb/*.svg 4 张均 200 且 naturalWidth>0"
+    }
+  },
+  "candidateScreens": {
+    "kind": "本轮待签收候选截图（视口截图，非整页；不是视觉签收）",
+    "dir": "screens/",
+    "index": {
+      "file": "screens/index.json",
+      "sha256": "a2f7710dcd2975f806431395f2d88d81c17407d749c5d7ce427fe63d2217d91d"
+    },
+    "candidate": "344235a",
+    "widths": [
+      1280,
+      390
+    ],
+    "files": [
+      {
+        "name": "344235a-1280-list.png",
+        "url": "http://127.0.0.1:4318/",
+        "sha256": "24d6b27d56119858fe2ce43dbe3c0f27b7ad891cbe2220d70ba29aa236b597dd"
+      },
+      {
+        "name": "344235a-1280-manage.png",
+        "url": "http://127.0.0.1:4318/manage",
+        "sha256": "729e741ed3c1ab6f644604880ee7cfb7d0ff2cbf5bb75efe5b60938b6a9dc290"
+      },
+      {
+        "name": "344235a-1280-manage-202.png",
+        "url": "http://127.0.0.1:4318/manage/ups/202",
+        "sha256": "cfe5053af5f43c607dad48374746192a9fca3829a0f0919c5981eb0b2c970bac"
+      },
+      {
+        "name": "344235a-390-list.png",
+        "url": "http://127.0.0.1:4318/",
+        "sha256": "6b93a1c2740df2d50bf81ee4b34c2c221c1d3f480e65e3887e83b94fbbe37489"
+      },
+      {
+        "name": "344235a-390-manage.png",
+        "url": "http://127.0.0.1:4318/manage",
+        "sha256": "9a8ebc534a2ab2dffe675ba071070351945ceb3c28a5d13469e6602ad59a421d"
+      },
+      {
+        "name": "344235a-390-manage-202.png",
+        "url": "http://127.0.0.1:4318/manage/ups/202",
+        "sha256": "f2224b942bcd57ca2b03e3871f07780b468bf12ff3bab4a9b887f38a655988f5"
+      },
+      {
+        "name": "344235a-390-conversation-960013.png",
+        "url": "http://127.0.0.1:4318/dynamics/800300/comments/860001/replies/960013/conversation",
+        "sha256": "e821f3a4143a4efd28f1740f17ec215eed7e0f92140cb397b4ce3fdebfe24cde",
+        "entryCenterOffsetPx": 0.5
+      }
+    ],
+    "notRun": [
+      "pnpm visual:baseline",
+      "tests/e2e-visual/capture.spec.ts",
+      "pnpm visual:golden",
+      "黄金图比较/更新"
+    ],
+    "conversationRequestsNote": "screens/index.json 的会话条目原有 conversationRequests=[\"\",\"\"] 是旧采集口径（只按 URL 以 /conversation 结尾匹配，未区分资源类型）：1 次整页文档导航 + 1 次只读 API 读取，截图阶段没有 reload/重新导航/额外探活；smoke-browser.json 只统计 /api/ fetch 所以是 1 次。现已在该条目拆分 documentNavigations/apiReads 并加注；capture-screens.mjs 也已改为按 /api/ 前缀区分，未重跑截图，未改产品。"
+  },
+  "oldPreviewRetirement": {
+    "runtime": "/tmp/bili-ticket10-iOV2nX（保留，未删除、未覆盖）",
+    "database": "monitor.sqlite 1552384 bytes，mtime 2026-10-29 11:58",
+    "processes": "本轮开始前 4318/4337/4180/4339 均无监听；旧 pidfile 目录为空，旧 4 个 PID（626555/626574/626587/626634）都不存在",
+    "exitObservation": "旧 api.log 尾部为 INFO: Waiting for application shutdown / Application shutdown complete / Finished server process [626560]，时间约 12:48:53；pidfile 已被移除。与 stop-previews.sh 的 TERM 回收表现一致，但当时没有保留停止输出，触发者与原因未记录 → 按“原因未确认”如实登记。",
+    "oldEvidence": ".scratch/reading-ui-refresh/evidence/10-device-preview/ 未改（git status 只列本新目录）",
+    "leftoverRuntime": "/tmp/bili-ticket10-round1-jU4G（2026-10-29 12:48 创建的上一轮尝试：只有 dist-a/dist-b/server，logs/run 为空，未启动；其 index.html 哈希 5878619…/eed8e8c… 与本轮候选不同）——未使用、未删除"
+  },
+  "restartVerificationContract": {
+    "rule": "重启校验以「冻结产物哈希 + frontend/backend 产品树」为准，不要求当前 HEAD 等于 344235a（之后主线程还会提交证据/状态文档，产品树不变）。",
+    "startGuards": [
+      "4 个目标端口必须空闲",
+      "RUNTIME/artifacts.sha256 逐文件 sha256sum -c",
+      "dist-a/dist-b index.html 指纹等于本轮记录值",
+      "sourceCommit 存在且其 frontend/backend 树等于记录值",
+      "git diff 344235a -- frontend backend 为空（受跟踪文件无差异）",
+      "未跟踪文件只记录不拒绝（如 merger 的 playwright.tmp-final.config.ts），因为冻结产物另行校验"
+    ]
+  },
+  "limits": [
+    "环境 A 的归档没有图片（live_app 上游不含图片、媒体交付地址只放行 https），图片/异常态只能看环境 B",
+    "环境 B 是 mock 自检装配：数据不是真实 API 路径，不能把 B 的阅读结论写成 A 的 API 结论",
+    "未启动 collector/notifier，未连真实 B 站、飞书、OSS；通知投递与真实客户端场景未验证（通知默认 off）",
+    "无 TLS：手机走 http（非安全上下文，App 自带随机 ID 兜底），真机 UA、视口、方向、输入法缩放与键盘遮挡仍需用户采集",
+    "既有 8000/4273 未触碰、未作为本票入口",
+    "本轮未拍黄金图、未跑 visual:baseline/capture/golden；7 张截图只是待签收候选，不替代人工签收",
+    "工作树不是整树干净：本目录未提交 + merger 的未跟踪临时 e2e 配置；受跟踪产品树与 344235a 相同",
+    "准备冒烟绿色只说明环境搭对了，不等于人工/真机/视觉验收通过，也不代表主线程台账"
+  ],
+  "lifecycle": {
+    "start": "RUNTIME=/tmp/bili-ticket10-round1-zogc bash .scratch/reading-ui-refresh/evidence/10-device-preview-round-1/start-previews.sh（先做端口预检、冻结产物逐文件校验与产品树校验）",
+    "seed": "bash .scratch/reading-ui-refresh/evidence/10-device-preview-round-1/seed-fixtures.sh（非幂等：重复添加 409、归档会重复写入；重来请换新 mktemp 目录）",
+    "stop": "RUNTIME=/tmp/bili-ticket10-round1-zogc bash .scratch/reading-ui-refresh/evidence/10-device-preview-round-1/stop-previews.sh（只 TERM 本轮 pidfile 进程组；PID 复用或命令行不符即拒绝、跳过）",
+    "restart": "先 stop 再 start（DB 与样例保留；如需干净数据另建 mktemp 目录并重跑 seed）"
+  },
+  "finalCheck": {
+    "at": "2026-10-29T13:15:34+08:00（首次）＋ 13:20+08:00（收尾复核，追加在同一文件）",
+    "file": "final-check.txt",
+    "sha256": "98a4e0b2a5dd501f4caa3d336073beda571b60c061d28356f22e6085d2dee173",
+    "listeners": "4318/4337/4180/4339 在首次与收尾两次核对时都在监听（4180/4339 仅回环）",
+    "lanCurl": [
+      "http://192.168.8.20:4318/ → 200 text/html",
+      "http://192.168.8.20:4337/ → 200 text/html",
+      "http://192.168.8.20:4318/manage → 200 text/html",
+      "http://192.168.8.20:4337/__preview-fixtures → 200 text/html",
+      "http://192.168.8.20:4318/dynamics/800300/comments/860001/replies/960013/conversation → 200 text/html（收尾复核）"
+    ],
+    "existing8000And4273": "仍在监听，未请求、未重启、未改动",
+    "processesAlive": "四个父 PID 707470/707509/707526/707591 均存活，ppid=2005（systemd --user），sid==pgid==pid"
+  }
+}
