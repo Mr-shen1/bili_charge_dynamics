@@ -10,6 +10,10 @@
 #     reset.sh --dry-run     # 只打印
 #     reset.sh               # 要求输入 DELETE，然后提权执行
 #     reset.sh --all         # 连 /srv/dynamics-viewer 与 bili 账号一起删
+#     reset.sh --no-keep-credentials   # 连 credentials/ 与 env 一起删（默认会先另存）
+#
+# 默认行为：删之前把 credentials/ 与 /etc/bili-monitor/env 复制到
+# /var/lib/bili-deploy/keep/，并打印恢复命令；--all 时不另存。
 
 set -euo pipefail
 
@@ -23,7 +27,17 @@ for arg in "$@"; do
         --all) ALL=1 ;;
         --keep-credentials) KEEP_CREDS=1 ;;
         --no-keep-credentials) KEEP_CREDS=0 ;;
-        *) echo "未知参数：$arg（可用 --dry-run、--all）" >&2; exit 2 ;;
+        -h|--help) sed -n '/^# 用法：/,/^$/p' "$0"; exit 0 ;;
+        *)
+            cat >&2 <<'EOS'
+未知参数。可用参数：
+  --dry-run                 只打印将执行的动作，不写盘
+  --all                     连 /srv/dynamics-viewer、bili 账号、/home/bili 一起删
+  --keep-credentials        （默认行为）先把 credentials/ 与 env 另存到 /var/lib/bili-deploy/keep/
+  --no-keep-credentials     不另存，凭据与 env 一起删
+  -h, --help                显示用法
+EOS
+            exit 2 ;;
     esac
 done
 
