@@ -108,6 +108,8 @@ curl --fail-with-body -X POST http://127.0.0.1:8000/api/sync/initial \
 
 评论 HTTP 只读 SQLite；父动态不存在返回 `404 NOT_FOUND`。默认 `sort=hot`、`limit=20`，limit 范围 1–20。非法排序、批量、未知／重复 query 返回 `422 INVALID_INPUT`。
 
+阅读改版 02 只调整客户端行为：普通新访问显式传 `sort=latest`，切换后显式传另一种排序，根评论定位同样显式带当前排序。**服务端省略 `sort` 仍是 `hot`**，既有无参调用方与省略 sort 的续读游标保持可用；混用另一排序的 cursor 仍按资源标识返回 `422 CURSOR_INVALID`（回归见 `backend/tests/test_root_comments.py` 的 `test_omitted_sort_stays_hot_for_clients_that_do_not_send_it`）。
+
 完整本地根集合先排序后分页：hot/latest 都先按 `is_pinned=true` 优先，再对同级评论按 hot 的点赞降序、发布时间降序、ID BINARY 字符串升序，或 latest 的发布时间降序、ID BINARY 升序排列。置顶计入每批大小且不重复；旧缺标记等同未置顶。逐字段 null 后置，不把 ID 转数字，不声称实现 B站热度算法。
 
 首批在同一短事务冻结全部根评论**内容、顺序及批量**，后续批保存到 SQLite；插入、更新只影响新首批。cursor 绑定根资源、动态、排序、limit 和该次快照；重读／数据库重开返回原批及同一 next_cursor。结束返回 null，不产生下一批。普通网络／`503 STORAGE_UNAVAILABLE` 失败不推进 cursor，原 cursor 重试同批。
@@ -166,15 +168,16 @@ Archive 新增：
 
 - `page` 为不带前导零的正整数字符串，匹配 `^[1-9][0-9]*$`，不是仅允许 1–9。与 `cursor` 查询参数互斥；`limit` 可省略，提供时必须为 10。未知/重复 query、非法 page、混用 cursor、错误批量返回 `422 INVALID_INPUT`。通用 `limit` 校验限制 1–10，超域或非整数也为 INVALID_INPUT。
 - 父动态/根关系不存在返回 `404 NOT_FOUND`。page 越过实际末页不是 404/422：返回空 `items` 及实际本地总数，超长合法页码也安全返回空页，不发生偏移转换溢出。
-- 每次在同一短只读事务读取当前根、回复和逐根状态，不创建或使用持久 cursor 页。先按时间升序、null 后置、ID BINARY 升序排列，再取当页最多 10 条。
+- 每次在同一短只读事务读取当前根、回复和逐根状态，不创建或使用持久 cursor 页。先按时间升序、null 后置、ID BINARY 升序排列，再取当页最多 10 条。阅读改版 05 为本模式增加可选 `sort=time|hot`：省略时仍是本节的时间序，热度口径与参数边界见[下文增量](#阅读改版-05-增量回复页码的时间热度排序)。
 - 返回 `items`、`next_cursor:null`、`count`、`root` 及既有 `source_reply_count/local_reply_count/replies_last_attempt/synced_source_reply_count`。`count` 与 `local_reply_count` 都表示该根完整本地归档回复量；来源数量独立，可能更多、为零或未知。`root` 每页都有，不仅首页有。
+- 每条 `items` 另带可空 `conversation` 投影（阅读改版 06 增量，见下文）；它只是当前条目的入口资格，不改变本节的排序、页码与计数语义。
 - 每次翻页读当前归档，跨页不构成冻结快照，新增/变化可影响下一次响应。前端发送 `cache:'no-store'`，以本地 count 算总页数；越界时再读有效末页。普通失败只影响当前操作，不改归档、不触发上游采集。
 
 ### HTTP、排序与 cursor
 
 以下仅描述继续保留的 cursor 冻结模式，不是当前正常 UI 的累计展开方式。父动态或根不在本地对应关系中为 `404 NOT_FOUND`。首批固定最多 3、续批固定最多 10；`limit` 可省略，分别等价于 3／10，显式值只允许对应批量。首批非法批量、未知／重复 query 返回 `422 INVALID_INPUT`；续批改变批量为 `422 CURSOR_INVALID`（超出 Query 允许域的值仍 INVALID_INPUT）。兼容调用方可累计读到 3/13/23/25，结束为 next_cursor=null；当前正常展开/独立页使用 page，不再以此累计量作为 UI 验收条件。
 
-完整同根集合先按时间升序、时间 null 后置、ID BINARY 字符串升序排序，不转数字或使用语言环境比较。首批短事务冻结全部内容／目标／计数／顺序；更新和插入只对新首批可见，旧 cursor 不重不漏。持久 cursor 绑定回复资源、动态、根、时间正序、固定 3→10 批量和该次读取上下文；重读原批与数据库重开返回相同内容及 next_cursor。
+完整同根集合先按时间升序、时间 null 后置、ID BINARY 字符串升序排序，不转数字或使用语言环境比较。cursor 预览没有排序维度：本模式的任何请求带 `sort` 都返回 `422 INVALID_INPUT`，热度只扩展上面的实时 page 模式，资源标识与旧 token 不变。首批短事务冻结全部内容／目标／计数／顺序；更新和插入只对新首批可见，旧 cursor 不重不漏。持久 cursor 绑定回复资源、动态、根、时间正序、固定 3→10 批量和该次读取上下文；重读原批与数据库重开返回相同内容及 next_cursor。
 
 回复快照**不设 TTL**，不沿用动态列表 15 分钟；普通传输／503 STORAGE_UNAVAILABLE 失败保留原 cursor 可重试。格式无效、伪造、跨根／动态／资源、读取上下文因数据库恢复而缺失返回 `422 CURSOR_INVALID`，使用既有固定提示“评论读取标记无效，请重新开始读取”。须显式无 cursor 开始新快照并替换旧分页视图，不静默拼接另一范围。无回收／容量承诺，持久快照有增长风险。
 
@@ -276,6 +279,58 @@ v9 为媒体尝试表增加根 owner 标识（旧动态图尝试保持空根标�
 - 归档读取的既有约束继续适用：ID 一律字符串、错误只返回固定脱敏码、代理鉴权不变。
 
 浏览器入口为 `/dynamics/{dynamicId}/comments/{rootId}/replies/{replyId}/locate`（前端专用路由，见[客户端契约](archive-api-client.md#飞书通知-03-增量楼中楼回复精确入口)）。自动化证据见 [03 证据](../../../.scratch/feishu-notifications/evidence/03-reply-deep-link.md)。
+
+## 阅读改版 06 增量：回复对话投影与只读 conversation 子资源
+
+本节由阅读改版票据 06 定稿、票据 13 按人工反馈改为整段读取，供 05（回复排序）与 07（会话导航恢复）引用同一契约。它只读取本地已保存的父回复关系，不新增持久会话表、不迁移、不触发采集或通知；`cursor` 冻结模式的响应与资源标识不变。
+
+### 对话投影（page 与定位响应）
+
+- `GET .../replies?page=N&limit=10` 与 `GET .../replies/{reply_id}/location` 的每条 `items` 增加可空字段 `conversation`：`{start_id, count, incomplete}`。`start_id` 是这条发言所属对话的起点（对话起点，不是一级评论）；`count` 是该段对话的本地关联条数（起点计入、一级评论不计入）；`incomplete=true` 表示起点之上还有无法确认的父级上下文。没有可确认的第二条关系时为 `null`。
+- 关系只取已保存的 `parent_id`：等于所属根评论 ID 表示直接回根（该条即起点）；父级不在本根本地集合内（缺失、跨根、跨动态、未知）在断点止步并把该条当作可确认段的起点、标记 `incomplete`；`parent_id` 成环时遍历在环内终止，同样标记 `incomplete`，不会无界遍历或伪造入口。昵称、正文与 @ 文本不参与判定。
+- 投影从该根完整本地集合一次计算后映射到当前页，不逐条发起请求，也不返回整楼关系全集；`count` 与当前页、当前排序无关，跨回复分页仍成立。入口资格由调用方按“`conversation` 非空且条目 ID 不等于 `start_id`”判断，不由来源回复总数推断。
+- `cursor` 预览（`limit=3` 首批及续批）不携带该字段：字段不出现即表示没有投影，调用方不得以当前页过滤或用户名推断补造。
+- 既有参数与语义不变：`page` 仍是正整数字符串、`limit` 省略或 10、越界页返回成功空页；定位端点仍不接受查询参数。
+
+### `GET /api/archive/dynamics/{id}/comments/{root_id}/replies/{reply_id}/conversation`
+
+- 查询参数：省略 `page` 即**整段读取**（本轮唯一读取方式）；`page`（正整数字符串）是保留给旧调用方的显式分页兼容入口，提供时 `limit` 可选且必须为 10。只给 `limit`、未知／重复参数、非法页码、错误批量均 `422 INVALID_INPUT`。
+- 响应：`{dynamic_id, root_id, reply_id, start_id, incomplete, count, items, next_cursor:null}`。`items` 是该段对话按既有时间序（发表时间升序、`null` 后置、ID BINARY 升序）的**全部本地成员**，与 `page` 模式回复条目同源（同一切片与 `reply_to` 解析，但不带 `conversation` 投影）；`count` 是该段完整本地对话量，与 `items` 条数相等。整段响应**没有 `page` 键**：字段缺席即“整段模式”，调用方不得按缺省值猜成第 1 页。根评论只作身份校验上下文，不在响应里重复下发。
+- 身份与错误：父动态、根评论或入口回复不存在、根不属于该动态、目标属于别的根／别的动态一律 `404 NOT_FOUND`（不暴露其他楼的回复）。存储暂时不可用沿用既有 `503 STORAGE_UNAVAILABLE`，其他内部失败为 `500 INTERNAL_ERROR`；缺失祖先不是错误，而是 `incomplete=true` 的 200 部分结果。
+- 旧显式分页兼容：`?page=N&limit=10` 仍按每页 10 条切片并回显 `page`，与整段读取同一成员顺序；页码越过末页返回空 `items` 与实际 `count`。该路径只为冻结的旧预览产物保留，本轮 UI 不使用它，也不因它重新引入会话分页控件。
+- 不冻结快照：每次读取当前归档，不创建 `reply_pages` 行，不承诺跨请求事务快照。
+- 只读：不写归档、不写阅读 cursor、不访问上游、不启动采集或通知。
+- 成本：一次同根本地读取加根／状态查询，查询次数不随楼规模增长；响应规模随整段成员数线性增长（不截成固定条数，也不携带整楼关系全集），10k 条夹具的实测耗时与响应字节只作观察记录。见[06 证据](../../../.scratch/reading-ui-refresh/evidence/06-conversation-reading.md)与[13 证据](../../../.scratch/reading-ui-refresh/evidence/13-complete-conversation-and-entry-focus.md)，不据此虚构性能门槛，也不新增索引。
+
+浏览器入口为 `/dynamics/{dynamicId}/comments/{rootId}/replies/{replyId}/conversation`（客户端契约见[archive-api-client.md](archive-api-client.md#阅读改版-06-增量对话投影与手机会话页)）。会话始终是时间序：本端点不接受 `sort`（含 `sort=time`），也不因 `page` 模式曾按热度读取而改变成员与顺序。
+
+## 阅读改版 05 增量：回复页码的时间/热度排序
+
+本节由阅读改版票据 05 定稿并实现，只在既有实时 `page` 模式上增加排序；`cursor` 冻结模式、定位与会话端点的参数与语义完全不变，不新增持久 cursor、不迁移、不建索引、不触发采集或通知。
+
+### 参数
+
+- `GET .../replies?page=N&limit=10&sort=time|hot`：`sort` 可选，取值 `time`（省略时的默认）或 `hot`。`time` 与省略等价，行为与本节之前一致。
+- `sort` 只在 `page` 模式有效。首批（`limit=3`）与 `cursor` 续批是时间序冻结快照，任何 `sort`（含 `sort=time`）都返回 `422 INVALID_INPUT`，不会被静默忽略。
+- 非法或未知排序值、未知／重复参数、`page` 混用 `cursor`、page 模式批量不等于 10 仍是 `422 INVALID_INPUT`；`page` 越界仍是成功空页加实际 `count`，两种排序一致。
+
+### 排序口径
+
+对**完整本地同根集合**排序后再切页，每页最多 10 条；不是只重排当前页，也不使用来源回复总数推算页数。
+
+| 排序 | 主比较键 | 缺失值 | 次级顺序 |
+| --- | --- | --- | --- |
+| `time` | `published_at` 升序（旧到新） | 时间缺失整组后置 | `id` BINARY 字符串升序 |
+| `hot` | `like_count` 降序（高到低） | 点赞缺失整组后置，不当作 0 | 发布时间降序（缺失后置），再 `id` BINARY 字符串升序 |
+
+两种排序都不把 ID 转成数字、不用语言环境比较，也不声称实现 B 站热度算法。响应字段与时间序相同：`items`、`next_cursor:null`、`count`、`root`、`source_reply_count/local_reply_count/replies_last_attempt/synced_source_reply_count`，以及每条的可空 `conversation` 投影；`count` 与投影的 `count` 都与当前排序无关。
+
+### 兼容与只读边界
+
+- 回复 cursor 资源标识仍只表达时间正序（`replies:<动态>:<根>:time-asc:id-binary:3-10:v1`），不新增热度资源、不生成热度快照行；旧有效 token 继续返回原时间序批次，热度读取后仍有效。
+- 热度页码读取是纯 SELECT：不写 `reply_pages`、不改归档与根评论、不访问上游。实测见[05 证据](../../../.scratch/reading-ui-refresh/evidence/05-mobile-reply-sort.md)。
+- `GET .../replies/{reply_id}/location` 参数不变（不接受 `sort`）且始终返回目标在**时间序**中的页码与页内容；通知主动直达只能使用该时间序页，不能把它当作热度页。
+- 会话子资源固定时间序，不受热度读取影响。
 
 ## 安全及证据
 
