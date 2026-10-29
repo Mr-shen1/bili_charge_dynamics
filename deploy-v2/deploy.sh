@@ -93,6 +93,13 @@ fi
 
 if [[ $EUID -eq 0 ]]; then SUDO=""; else SUDO="sudo"; fi
 
+# 操作员 shell 里的代理要透传给 bili 身份的子进程：env -i 会清空环境，
+# 不清代理变量，git/uv 在墙内会静默卡死在 github.com / PyPI 上。
+PROXY_ENV=()
+for _n in HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY http_proxy https_proxy all_proxy no_proxy; do
+    [[ -n "${!_n:-}" ]] && PROXY_ENV+=("$_n=${!_n}")
+done
+
 # 以目标账号执行（先切到一个该账号可访问的目录，避开 operator 家目录 0700）
 as_bili() {
     local su
@@ -100,7 +107,7 @@ as_bili() {
     ( cd /var/tmp && "${su[@]}" \
         env -i "HOME=/home/$RUN_USER" "USER=$RUN_USER" "LOGNAME=$RUN_USER" \
             PATH=/usr/local/bin:/usr/bin:/bin "LANG=C.UTF-8" "TMPDIR=/var/tmp" \
-            "$@" )
+            "${PROXY_ENV[@]}" "$@" )
 }
 
 # 读 Nginx 生效配置；拿不到 sudo 时返回空（只读预检不应因提权失败而中断）
@@ -577,6 +584,7 @@ cmd_upgrade() {
     step "升级"
     [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || die "必须用 --sha 指定 40 位完整提交（不要用 main）"
     [[ -d "$APP_DIR/.git" ]] || die "$APP_DIR 不是 git 检出；首次安装请用 deploy.sh install"
+    [[ -n "$PKG" ]] && resolve_pkg   # 先验包，别等服务停了才发现包不对
 
     run $SUDO systemctl stop "$SERVICE"
     local i
@@ -589,7 +597,24 @@ cmd_upgrade() {
         ok "数据库一致性备份：$bk"
     fi
 
-    as_bili git -C "$APP_DIR" fetch --quiet origin
+    # 代码来源优先离线包内的 bundle：与 install 同源，且完全不依赖网络
+    local fetched=0
+    if [[ -n "${BUNDLE:-}" && -f "$BUNDLE" ]]; then
+        info "从安装包内 bundle 取代码（不依赖网络）"
+        if as_bili git -C "$APP_DIR" fetch --quiet --no-tags "$BUNDLE" refs/heads/main; then
+            fetched=1
+        else
+            warn "从 bundle 取代码失败，回退到 origin"
+        fi
+    fi
+    if [[ "$fetched" == 0 ]]; then
+        info "从 origin 取代码（需要网络/代理）"
+        as_bili env GIT_TERMINAL_PROMPT=0 git -C "$APP_DIR" \
+            -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 fetch --quiet origin \
+            || die "git fetch origin 失败（网络或代理不通）。带 --package 可走离线 bundle，或修好网络后重试"
+    fi
+    as_bili git -C "$APP_DIR" cat-file -e "$TARGET_SHA^{commit}" 2>/dev/null \
+        || die "本地没有提交 $TARGET_SHA：用含该提交的安装包（--package），或先 git fetch origin"
     as_bili git -C "$APP_DIR" checkout --quiet "$TARGET_SHA"
     ok "代码已切到 $TARGET_SHA"
 
@@ -599,7 +624,6 @@ cmd_upgrade() {
 
     # 前端与代码同批：从当前安装包取 dist（若提供了包），否则提示单独发布
     if [[ -n "$PKG" ]]; then
-        resolve_pkg
         stage_frontend
     else
         warn "未提供 --package：本次未更新前端。需要时重新打包后带 --package 重跑 upgrade"

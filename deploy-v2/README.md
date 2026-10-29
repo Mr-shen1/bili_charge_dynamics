@@ -223,6 +223,8 @@ bash deploy-v2/deploy.sh upgrade --sha <40位完整SHA> --package <新包目录>
 → uv sync --locked --no-dev → 发布前端 → 启动 → 等 API 就绪 → verify.sh
 ```
 
+升级时**代码优先从 `--package` 里带的 bundle 取**（与安装同源，不需要网络）；只有没给包、或包内没有该提交时才回退 `git fetch origin`，并且带 20 秒低速中断，网络不通会明确报错而不是卡住。操作员 shell 里的 `HTTP(S)_PROXY`/`NO_PROXY` 会透传给 `bili` 身份的子进程（`git`、`uv` 都要出网）。
+
 规则（重要）：
 
 - **只认 40 位完整 SHA**，不要用 `main`，否则说不清装的是哪一版。
