@@ -14,6 +14,8 @@
 #     deploy.sh upgrade  --sha <40位SHA>   # 升级到指定提交（只前滚）
 #     deploy.sh env                        # 打印 env 模板（含默认路径）
 #     deploy.sh env --write                # 写入 /etc/bili-monitor/env（备份旧的），需 restart
+#     deploy.sh start                      # 配置已就绪，只做体检 + 启动 + 验收（不重跑安装/升级）
+#     deploy.sh lan [地址]                 # 把 Nginx 从回环改成局域网监听（装的时候忘了 --lan 时用）
 #
 # 可选参数：
 #     --package DIR   离线包目录（默认取 /var/tmp/bili-deploy-pkg 下最新的）
@@ -65,7 +67,7 @@ TARGET_SHA=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --check|install|upgrade|env) ACTION="$1"; shift ;;
+        --check|install|upgrade|env|start|lan) ACTION="$1"; shift ;;
         --write) WRITE_ENV=1; shift ;;
         --package) PKG="${2:?--package 需要目录}"; shift 2 ;;
         --port)    PORT="${2:?--port 需要数字}"; shift 2 ;;
@@ -77,6 +79,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 [[ -n "$ACTION" ]] || { sed -n '2,30p' "$0"; exit 2; }
+if [[ "$ACTION" == lan && -n "${1:-}" ]]; then LAN_ADDR="$1"; shift; fi
 
 # ── 平台探测 ────────────────────────────────────────────────────────────────
 if command -v pacman >/dev/null 2>&1; then
@@ -695,8 +698,78 @@ cmd_env() {
     echo "重启后验收：  bash deploy-v2/verify.sh"
 }
 
+cmd_start() {
+    step "启动（只体检 + 启动 + 验收，不重跑安装/升级）"
+    [[ -f "$ENV_FILE" && -f "$UNIT_FILE" ]] || die "还没安装（缺 env 或 unit）：用 deploy.sh install"
+    [[ -z "$SUDO" ]] || $SUDO -v
+    if [[ -x "$HERE/doctor.sh" ]] && ! bash "$HERE/doctor.sh" --quiet --ignore-service; then
+        die "环境/凭据检查未通过，服务未启动。按上面的 ✗ 修好后再跑 deploy.sh start"
+    fi
+    run $SUDO systemctl enable --now "$SERVICE"
+    if ! wait_api; then
+        $SUDO journalctl -u "$SERVICE" -n 30 --no-pager || true
+        die "API 60 秒内未就绪；看上面的日志"
+    fi
+    ok "API 已就绪"
+    bash "$HERE/verify.sh" --port "$PORT"
+}
+
+cmd_lan() {
+    local bind="${LAN_ADDR:-}"
+    if [[ -z "$bind" ]]; then
+        bind="$(ip -4 -o route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p')"
+    fi
+    [[ -n "$bind" ]] || die "探测不到局域网 IPv4，请显式指定：deploy.sh lan 192.168.x.y"
+    step "把 Nginx 改成监听 $bind:$PORT"
+    [[ -f "$NGINX_CONF" ]] || die "还没安装（缺 $NGINX_CONF）"
+    [[ -z "$SUDO" ]] || $SUDO -v
+
+    local n backup
+    n="$(grep -cE '^[[:space:]]*listen[[:space:]]' "$NGINX_CONF")"
+    [[ "$n" == 1 ]] || die "$NGINX_CONF 里 listen 行数为 $n（预期 1），拒绝盲改"
+    backup="$STATE_DIR/backups/bili.conf.$(date -u +%Y%m%dT%H%M%SZ)"
+    run $SUDO install -d -m 0755 "$STATE_DIR/backups"
+    run $SUDO cp -a "$NGINX_CONF" "$backup"
+    ok "旧配置已备份：$backup"
+
+    run $SUDO sed -i -E "s|^([[:space:]]*listen[[:space:]]+)[^;]+:${PORT};|\1${bind}:${PORT};|" "$NGINX_CONF"
+    if ! grep -qF "listen $bind:$PORT;" "$NGINX_CONF"; then
+        run $SUDO cp -a "$backup" "$NGINX_CONF"; die "改写 listen 失败，已回滚"
+    fi
+    ok "$NGINX_CONF → listen $bind:$PORT"
+
+    if ! $SUDO nginx -t >/dev/null; then
+        run $SUDO cp -a "$backup" "$NGINX_CONF"; die "nginx -t 失败，已回滚"
+    fi
+    run $SUDO systemctl reload nginx
+    ok "nginx 已 reload"
+    ss -lnt | grep -E ":${PORT}\b" | sed 's/^/  /'
+
+    local ufw_status cidr net
+    if command -v ufw >/dev/null 2>&1; then
+        ufw_status="$(as_sudo_ufw || true)"
+        if printf '%s' "$ufw_status" | grep -q '^Status: active'; then
+            if printf '%s' "$ufw_status" | grep -q "$PORT"; then
+                info "ufw 已有 $PORT 规则"
+            else
+                cidr="$(ip -4 -o addr show scope global | awk -v ip="$bind" 'index($4, ip "/") == 1 {print $4; exit}')"
+                net="${cidr%.*}.0/${cidr#*/}"
+                warn "ufw active 且没有 $PORT 规则，局域网仍连不上。需要时执行："
+                warn "    $SUDO ufw allow from $net to any port $PORT proto tcp"
+            fi
+        fi
+    fi
+    bash "$HERE/verify.sh" --port "$PORT"
+}
+
+as_sudo_ufw() {
+    if [[ -z "$SUDO" ]]; then ufw status 2>/dev/null; else $SUDO -n ufw status 2>/dev/null; fi
+}
+
 case "$ACTION" in
     --check) cmd_check ;;
+    lan) cmd_lan ;;
+    start) cmd_start ;;
     install) cmd_install ;;
     upgrade) cmd_upgrade ;;
     env) cmd_env ;;

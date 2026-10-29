@@ -7,7 +7,7 @@
 | 文件 | 干什么 |
 |---|---|
 | `package.sh` | 打安装包（开发机跑；前端构建 + git bundle + 校验和） |
-| `deploy.sh` | 唯一入口：`--check` 预检 / `install` 安装 / `upgrade` 升级 / `env` 渲染环境文件 |
+| `deploy.sh` | 唯一入口：`--check` 预检 / `install` 安装 / `upgrade` 升级 / `start` 只启动并验收 / `lan` 切局域网监听 / `env` 渲染环境文件 |
 | `verify.sh` | 只读验收，装完自动跑，也可以随时单独跑（内含 env/凭据体检） |
 | `doctor.sh` | 部署体检：env、cookie、通知 JSON、OSS 六项，并以运行用户身份试跑真实加载器；服务起不来时先跑它。root / 有 sudo 的账号 / `bili` 自己都能跑，详见[体检一节](#体检doctorsh服务起不来时先跑它) |
 | `reset.sh` | 把本项目删干净，回到可以重新安装的状态 |
@@ -249,7 +249,7 @@ bash deploy-v2/verify.sh                 # 确认重启后仍全绿
 | 飞书通知 | 把 `notifications.json` 放到 `/srv/bili-monitor/credentials/`（属主 bili，≤0640），然后取消注释 `BILI_NOTIFICATION_CONFIG=/srv/bili-monitor/credentials/notifications.json`，重启 |
 | 登录 Cookie | 把 `cookie.txt` 放到 `/srv/bili-monitor/credentials/`（0600），取消注释 `BILI_COOKIE_FILE=/srv/bili-monitor/credentials/cookie.txt`，重启 |
 | 图片存 OSS | 取消注释 `BILI_OSS_*` 七项并全部填真实值（少一项或留空都会启动失败）；填完先跑 `scripts/check-oss-env.sh` 预检 |
-| 局域网访问 | 装的时候加 `--lan`。已装好的改 `/etc/nginx/conf.d/bili.conf` 那一行 `listen`，再 `sudo nginx -t && sudo systemctl reload nginx` |
+| 局域网访问 | 装的时候加 `--lan`；已经装好忘了加的：`bash deploy-v2/deploy.sh lan`（自动探测本机局域网地址；也可 `deploy.sh lan 192.168.x.y`）。它会备份旧配置、只改 `listen` 一行、`nginx -t` 不过自动回滚、reload 后跑验收，并在 ufw 拦着时给出放行命令 |
 
 > 选配项**要么整行注释掉，要么填完整**。写成 `BILI_COOKIE_FILE=` 这种空值会让服务起不来（空串既不是“未设置”，又算配置不完整）。
 
