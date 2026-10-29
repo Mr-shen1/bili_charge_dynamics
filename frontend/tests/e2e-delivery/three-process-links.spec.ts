@@ -272,11 +272,13 @@ function links(): Links {
 test('实际投递的动态链接打开生产前端后可见归档正文，刷新与返回仍可用', async ({ page }) => {
   const link = links().dynamic;
   expect(link).toBe(`${baseURL}/dynamics/${dynamicId}`);
+  // 宽屏直达的详情没有返回控件（正文入口在新标签打开）；返回操作在手机语义下验证。
+  await page.setViewportSize({ width: 390, height: 800 });
   await page.goto(link);
   await expect(page.getByText('第二版正文', { exact: false }).first()).toBeVisible();
   await page.reload();
   await expect(page.getByText('第二版正文', { exact: false }).first()).toBeVisible();
-  await page.getByRole('button', { name: '返回列表' }).click();
+  await page.getByRole('button', { name: '‹ 动态列表' }).click();
   await expect(page).toHaveURL('/');
   await expect(page.getByRole('article')).toHaveCount(2);
 });
@@ -333,12 +335,12 @@ test('楼中楼后续页回复链接在宽屏内联与窄屏独立页都定位�
 
 test('不存在的目标给出明确提示并保留返回入口，API 错误不冒充页面成功', async ({ page }) => {
   await page.goto(`${baseURL}/dynamics/${dynamicId}/comments/999999/locate`);
-  await expect(page.getByRole('status').filter({ hasText: '目标评论不存在或未归档' })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: '目标评论不存在或未保存' })).toBeVisible();
   await page.getByRole('button', { name: '返回动态' }).click();
   await expect(page).toHaveURL(new RegExp(`/dynamics/${dynamicId}$`));
 
   await page.goto(`${baseURL}/dynamics/${dynamicId}/comments/${replyRoot}/replies/999999/locate`);
-  await expect(page.getByRole('status').filter({ hasText: '目标回复不存在或未归档' })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: '目标回复不存在或未保存' })).toBeVisible();
 
   // 代理语义：API 的 404/422 保持 JSON 且不回退到应用入口（不把错误伪装成成功页面）。
   for (const path of [`/api/archive/dynamics/${dynamicId}/comments/999999/location`,

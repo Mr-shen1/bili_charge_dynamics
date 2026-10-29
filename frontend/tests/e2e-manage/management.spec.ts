@@ -145,13 +145,13 @@ test('指定模式目标校验、停用/移除/删除配置后归档与阅读入
 
   // 移除目标：只解除关联，归档仍可读。
   await card.getByRole('button', { name: '移除目标 900707', exact: true }).click();
-  await expect(card).toContainText('目标已移除；已有归档保留。');
+  await expect(card).toContainText('目标已移除；已保存的动态保留。');
   await expect(card).toContainText('尚未添加指定目标。');
   expect((await archivedText()).text).toBe('虚构正文 900707');
 
   // 删除配置：身份和归档都保留，可按基线重新添加。
   await card.getByRole('button', { name: '删除监控配置', exact: true }).click();
-  await expect(card).toContainText('监控配置已删除；身份和已有归档保留。');
+  await expect(card).toContainText('监控配置已删除；身份和已保存的动态保留。');
   await expect(card).toContainText('配置已删除');
   expect((await archivedText()).text).toBe('虚构正文 900707');
   const retained = await page.request.get('/api/archive/dynamics?scope=up&uid=707&limit=10');
@@ -165,6 +165,8 @@ test('指定模式目标校验、停用/移除/删除配置后归档与阅读入
   await expect(page.getByText('虚构正文 900707', { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByText('虚构正文 900707', { exact: true })).toBeVisible();
+  // 宽屏正文入口在独立标签页打开，站内进入按窄屏语义验证（键盘路径同样走站内）。
+  await page.setViewportSize({ width: 390, height: 800 });
   await page.getByRole('link', { name: '阅读全文 900707' }).focus();
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/\/dynamics\/900707$/);
@@ -206,7 +208,7 @@ test('检查、发现与窗口状态按真实记录读取，读取本身不触�
   await card.getByRole('button', { name: '启用监控', exact: true }).click();
   await expect(card).toContainText('监控：已启用');
 
-  const checksPanel = page.getByRole('region', { name: '目标检查与归档状态' });
+  const checksPanel = page.getByRole('region', { name: '目标检查与保存状态' });
   const discoveryPanel = page.getByRole('region', { name: '近期发现与当前窗口' });
   // 打到状态接口的请求只由按钮触发：页面打开不自动读取，也不轮询。
   await expect(checksPanel.getByText('尚未读取检查状态。')).toBeVisible();
@@ -228,8 +230,8 @@ test('检查、发现与窗口状态按真实记录读取，读取本身不触�
   // 真实 Collector 节拍：发现发布窗口，窗口成员尚未检查。
   expect((await collect('discover')).accepted).toEqual([true]);
   await discoveryPanel.getByRole('button', { name: '读取发现状态' }).click();
-  await expect(discoveryPanel.getByText('本轮发现成功；不代表归档成功。')).toBeVisible();
-  await expect(discoveryPanel.getByText('发现窗口已就绪；内容归档请另读检查状态。')).toBeVisible();
+  await expect(discoveryPanel.getByText('本轮发现成功；不代表内容已保存。')).toBeVisible();
+  await expect(discoveryPanel.getByText('发现窗口已就绪；内容保存状态请另读检查状态。')).toBeVisible();
   await expect(discoveryPanel.getByText('读取时已保存模式：近期 N 条；N：1；监控：已启用。')).toBeVisible();
   await expect(discoveryPanel.getByRole('list', { name: '当前启用近期目标' }))
     .toContainText('9007199254740993123');
@@ -265,8 +267,8 @@ test('检查、发现与窗口状态按真实记录读取，读取本身不触�
   await checksPanel.getByRole('button', { name: '重新读取检查状态' }).click();
   await expect(checksPanel.getByText('正文已保存；动态图已保存；评论待处理；回复待处理；评论图待处理。'))
     .toBeVisible();
-  await expect(checksPanel.getByText('根评论：根评论归档失败；保留已有归档，将在固定节拍重试。')).toBeVisible();
-  await expect(checksPanel.getByText('评论整轮：根评论归档失败；保留已有归档，将在固定节拍重试。')).toBeVisible();
+  await expect(checksPanel.getByText('根评论：根评论保存失败；已保存的动态保留，将在固定节拍重试。')).toBeVisible();
+  await expect(checksPanel.getByText('评论整轮：根评论保存失败；已保存的动态保留，将在固定节拍重试。')).toBeVisible();
   await expect(checksPanel.getByText('评论同步：失败，待重试')).toBeVisible();
   await expect(checksPanel.getByText('同步：同步未全部完成，将在固定节拍重试。')).toBeVisible();
   await expect(checksPanel.getByText('实际整轮成功：尚未成功')).toBeVisible();
@@ -291,7 +293,7 @@ test('检查、发现与窗口状态按真实记录读取，读取本身不触�
   await expect(discoveryPanel.getByText('发现未完成；保留已有可信结果与已发布窗口。')).toBeVisible();
   await expect(discoveryPanel.getByText('可在下一固定节拍重试；页面重读不会启动发现。')).toBeVisible();
   await expect(discoveryPanel.getByText('发现错误：来源暂不可用；保留已有可信结果。')).toBeVisible();
-  await expect(discoveryPanel.getByText('本轮发现成功；不代表归档成功。')).toHaveCount(0);
+  await expect(discoveryPanel.getByText('本轮发现成功；不代表内容已保存。')).toHaveCount(0);
   await expect(discoveryPanel.getByRole('list', { name: '当前启用近期目标' }))
     .toContainText('9007199254740993123');
   await expect(discoveryPanel.getByRole('list', { name: '最近可信发现目标' }))

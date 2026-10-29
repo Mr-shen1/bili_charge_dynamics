@@ -25,7 +25,7 @@ defineProps<{ listLink?: boolean }>();
 <style scoped>
 .manage-shell {
   width: 100%;
-  max-width: 724px;
+  max-width: var(--column-max);
   min-width: 0;
   margin: 0 auto;
   padding: 0 0 40px;

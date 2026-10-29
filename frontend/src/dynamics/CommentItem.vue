@@ -78,7 +78,7 @@ function openThread(): void {
         :display-limit="imageDisplayLimit"
       />
       <p v-if="comment.pendingMediaCount" class="comment__pending" role="status">
-        评论图片待归档（{{ comment.pendingMediaCount }} 张）。
+        评论图片待保存（{{ comment.pendingMediaCount }} 张）。
       </p>
       <div class="comment__metrics">
         <time class="comment__time" :datetime="comment.publishedAt ?? undefined">
@@ -88,7 +88,7 @@ function openThread(): void {
         <span class="comment__replies">回复 {{ displayCount(comment.replyCount) }}</span>
       </div>
       <template v-if="hasReplies">
-        <p v-if="repliesUnarchived" class="comment__reply-notice" role="status">回复尚未归档。</p>
+        <p v-if="repliesUnarchived" class="comment__reply-notice" role="status">回复尚未保存。</p>
         <ReplyPreview
           v-else-if="compact"
           :up-reply="comment.upReply ?? null"
@@ -145,8 +145,8 @@ function openThread(): void {
 }
 .comment__nickname {
   color: var(--author);
-  font-size: 13px;
-  line-height: 18px;
+  font-size: var(--font-comment-author);
+  line-height: var(--line-comment-author);
   font-weight: 600;
   overflow-wrap: anywhere;
 }
@@ -169,8 +169,8 @@ function openThread(): void {
 }
 .comment__body :deep(.text) {
   margin-top: 0;
-  font-size: 15px;
-  line-height: 24px;
+  font-size: var(--font-comment);
+  line-height: var(--line-comment);
 }
 .comment__pending {
   margin: 4px 0;
@@ -193,8 +193,9 @@ function openThread(): void {
   gap: 16px;
   margin-top: 4px;
   color: var(--muted);
-  font-size: 13px;
-  line-height: 24px;
+  font-size: var(--font-meta);
+  line-height: var(--line-meta);
+  font-variant-numeric: tabular-nums;
 }
 .comment__time {
   overflow-wrap: anywhere;

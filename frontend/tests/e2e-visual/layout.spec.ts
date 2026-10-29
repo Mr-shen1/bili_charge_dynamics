@@ -7,11 +7,11 @@ import {
 } from './support';
 
 const touchSelectors = [
-  '.app-brand', '.app-nav a', '.up-option', '.comment-entry', '.fold-toggle', '.image-grid__trigger',
+  '.up-option', '.comment-entry', '.fold-toggle', '.image-grid__trigger',
 ];
 
 const manageSelectors = [
-  '.app-brand', '.app-nav a', '.manage-crumbs a', '.manage-submit', '.manage-up-link', '.manage-toggle',
+  '.manage-crumbs a', '.manage-submit', '.manage-up-link', '.manage-toggle',
   '.manage-read', '.manage-save', '.el-radio', '.el-input__wrapper', '.el-button',
 ];
 
@@ -93,8 +93,9 @@ test('四宽度阅读布局、触控与焦点', async ({ page }) => {
     const collapsed = firstCard.locator('.text');
     expect(await collapsed.getAttribute('class')).toContain('collapsed');
     const collapsedBox = await collapsed.boundingBox();
-    expect(collapsedBox!.height, `${width}px 列表 6 行折叠高度`).toBeGreaterThan(140);
-    expect(collapsedBox!.height, `${width}px 列表 6 行折叠高度`).toBeLessThan(160);
+    // 新标尺正文 16/28：六行折叠高度为 6×28＝168px（票据 01 按实际行高重新验证）。
+    expect(collapsedBox!.height, `${width}px 列表 6 行折叠高度`).toBeGreaterThan(160);
+    expect(collapsedBox!.height, `${width}px 列表 6 行折叠高度`).toBeLessThan(176);
     await firstCard.getByRole('button', { name: '展开正文' }).click();
     expect(await collapsed.getAttribute('class')).not.toContain('collapsed');
     expect((await collapsed.boundingBox())!.height, `${width}px 展开后应显示全文`).toBeGreaterThan(collapsedBox!.height);
@@ -137,17 +138,18 @@ test('四宽度阅读布局、触控与焦点', async ({ page }) => {
     await expect(firstComment.getByRole('button', { name: '展开评论' })).toBeVisible();
     await expect(page.getByRole('list', { name: '一级评论' }).getByRole('listitem').nth(1)
       .locator('.comment__body > .fold-toggle')).toHaveCount(0);
-    await expectTouchTargets(page, ['.comment-tab', '.comment-sort .el-radio-button', '.fold-toggle'],
+    // 02 起排序是单个切换按钮（显示当前排序），点击区与视觉高度都由 44px 的按钮盒承担。
+    await expectTouchTargets(page, ['.comment-tab', '.comment-sort', '.fold-toggle'],
       `${width}px 评论排序与折叠`);
-    expect(await tabTo(page, '.comment-sort input'), `${width}px 评论排序应可用键盘到达`).toBe(true);
-    const radioFocus = await page.evaluate(() => {
-      const inner = document.querySelector<HTMLElement>('.comment-sort input + .el-radio-button__inner');
-      if (!inner) return null;
-      const style = getComputedStyle(inner);
+    expect(await tabTo(page, '.comment-sort'), `${width}px 评论排序应可用键盘到达`).toBe(true);
+    const sortFocus = await page.evaluate(() => {
+      const button = document.querySelector<HTMLElement>('.comment-sort');
+      if (!button) return null;
+      const style = getComputedStyle(button);
       return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth, boxShadow: style.boxShadow };
     });
-    expect(radioFocus, `${width}px 评论排序应存在可见分段按钮`).not.toBeNull();
-    expect(hasVisibleFocus(radioFocus!), `${width}px 评论排序焦点应可见：${JSON.stringify(radioFocus)}`).toBe(true);
+    expect(sortFocus, `${width}px 评论排序应存在单按钮控件`).not.toBeNull();
+    expect(hasVisibleFocus(sortFocus!), `${width}px 评论排序焦点应可见：${JSON.stringify(sortFocus)}`).toBe(true);
 
     // 窄屏独立楼中楼：根评论全文直出，回复按 10 条/页。
     await page.goto(`/dynamics/${mainDynamicId}/comments/${rootWithReplies}`);

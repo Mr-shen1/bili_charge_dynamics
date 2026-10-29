@@ -68,7 +68,7 @@ const localCount = computed(() => state.value.data?.localReplyCount
 const pages = computed(() => replyPageCount(
   state.value.data?.count ?? state.value.data?.localReplyCount ?? null, items.value.length));
 const currentPage = computed(() => Math.min(state.value.page, pages.value));
-// 只有来源与本地都有确定数量时才说明差额；缺字段不编造“已归档 x/y”。
+// 只有来源与本地都有确定数量时才说明差额；缺字段不编造“已保存 x/y”。
 const unreturned = computed(() => {
   const source = state.value.data?.sourceReplyCount;
   const local = state.value.data?.localReplyCount;
@@ -121,7 +121,7 @@ function rootText(comment: Comment): string {
       <el-button type="primary" link class="thread-action" @click="restart">重新开始读取</el-button>
     </section>
     <section v-if="locateMissing" class="thread-status" aria-label="定位结果">
-      <p role="status">目标回复不存在或未归档，无法定位到这条回复。</p>
+      <p role="status">目标回复不存在或未保存，无法定位到这条回复。</p>
       <el-button type="primary" link class="thread-action" @click="navigation.showDetail(dynamicId)">
         返回动态
       </el-button>
@@ -153,7 +153,7 @@ function rootText(comment: Comment): string {
         <span class="thread-order">按时间</span>
       </header>
       <p v-if="unreturned > 0" class="thread-status" role="status">
-        已归档 {{ localCount }}/{{ total }}，上游另有 {{ unreturned }} 条回复未返回。
+        已保存 {{ localCount }}/{{ total }}，上游另有 {{ unreturned }} 条回复未返回。
       </p>
       <ul v-if="items.length > 0" class="thread-list" aria-label="相关回复">
         <li
@@ -203,15 +203,19 @@ function rootText(comment: Comment): string {
 <style scoped>
 .thread-visit {
   width: 100%;
-  max-width: 724px;
+  max-width: var(--column-max);
   min-width: 0;
   margin: 0 auto;
   padding: 0 0 40px;
 }
+/* 回复详情的返回控件：与普通阅读返回链接同为 14/22、常规字重、44px 点击区。 */
 .thread-back {
   min-height: var(--touch);
   padding: 0 4px;
-  color: var(--brand-strong);
+  color: var(--action);
+  font-size: var(--font-link);
+  font-weight: 400;
+  line-height: var(--line-link);
 }
 .thread-root {
   min-width: 0;
@@ -232,8 +236,8 @@ function rootText(comment: Comment): string {
 }
 .thread-nickname {
   color: var(--author);
-  font-size: 13px;
-  line-height: 18px;
+  font-size: var(--font-comment-author);
+  line-height: var(--line-comment-author);
   font-weight: 600;
   overflow-wrap: anywhere;
 }
@@ -253,8 +257,8 @@ function rootText(comment: Comment): string {
 .thread-root__text,
 .thread-reply__text {
   margin: 6px 0;
-  font-size: 15px;
-  line-height: 24px;
+  font-size: var(--font-comment);
+  line-height: var(--line-comment);
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
@@ -267,8 +271,9 @@ function rootText(comment: Comment): string {
   align-items: center;
   gap: 12px;
   color: var(--muted);
-  font-size: 13px;
-  line-height: 22px;
+  font-size: var(--font-meta);
+  line-height: var(--line-meta);
+  font-variant-numeric: tabular-nums;
 }
 .thread-time {
   overflow-wrap: anywhere;
@@ -283,19 +288,21 @@ function rootText(comment: Comment): string {
 }
 .thread-heading h1 {
   margin: 0;
-  font-size: 17px;
-  line-height: 24px;
+  font-size: var(--font-section);
+  line-height: var(--line-section);
+  font-weight: 500;
 }
 .thread-order {
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--font-meta);
+  line-height: var(--line-meta);
 }
 .thread-status {
   padding: 8px 4px;
   margin: 0;
   color: var(--muted);
-  font-size: 13px;
-  line-height: 22px;
+  font-size: var(--font-meta);
+  line-height: var(--line-meta);
   overflow-wrap: anywhere;
 }
 .thread-list {
@@ -320,9 +327,12 @@ function rootText(comment: Comment): string {
   outline-offset: 2px;
 }
 .thread-reply__text {
-  font-size: 15px;
+  font-size: var(--font-comment);
+  line-height: var(--line-comment);
 }
 .thread-action {
   min-height: var(--touch);
+  font-size: var(--font-link);
+  line-height: var(--line-link);
 }
 </style>

@@ -124,7 +124,7 @@ test('实际 API 目标不存在时明确提示并可返回对应动态', async 
   const before = await sourceRequests(page);
   await page.goto(`/dynamics/${dynamicId}/comments/${rootId}/replies/999999/locate`);
   await expect(page.getByRole('region', { name: '定位结果' }).getByRole('status'))
-    .toContainText('不存在或未归档');
+    .toContainText('不存在或未保存');
   await expect(located(page)).toHaveCount(0);
 
   await page.getByRole('region', { name: '定位结果' }).getByRole('button', { name: '返回动态' }).click();

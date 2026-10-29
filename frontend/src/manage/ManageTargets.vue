@@ -86,7 +86,7 @@ async function add(): Promise<void> {
   }
 }
 
-/** 移除只解除关联：已归档内容不随管理操作删除。 */
+/** 移除只解除关联：已保存内容不随管理操作删除。 */
 async function remove(targetId: string): Promise<void> {
   if (busy.value || state.value !== 'ready') return;
   notice.value = null;
@@ -97,7 +97,7 @@ async function remove(targetId: string): Promise<void> {
   if (!result) return;
   if (result.status === 'success') {
     targets.value = targets.value.filter(target => target.id !== targetId);
-    notice.value = { error: false, text: '目标已移除；已有归档保留。', action: 'remove' };
+    notice.value = { error: false, text: '目标已移除；已保存的动态保留。', action: 'remove' };
   } else if (result.status === 'error') {
     notice.value = { error: true, text: result.message, action: 'remove' };
   }
@@ -128,7 +128,7 @@ onUnmounted(() => {
 <template>
   <section class="manage-section" aria-label="指定动态目标">
     <h2 class="manage-section-title">指定动态目标</h2>
-    <p class="manage-muted">仅在已保存的指定模式下监控关联集合。添加前由服务端验证作者；移除仅停止监控，不删除归档。</p>
+    <p class="manage-muted">仅在已保存的指定模式下监控关联集合。添加前由服务端验证作者；移除仅停止监控，不删除已保存的动态。</p>
     <p v-if="state === 'loading'" class="manage-notice manage-target-notice" role="status">正在读取指定目标…</p>
     <div v-else-if="state === 'error'" class="manage-notice manage-target-notice">
       <el-alert :title="error" type="error" :closable="false" show-icon />

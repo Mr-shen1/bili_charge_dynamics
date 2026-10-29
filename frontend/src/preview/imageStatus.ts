@@ -2,9 +2,9 @@ import type { ImageStatus } from './types';
 
 // 状态文案只在连接层维护一份，缩略图与预览共用，避免两处漂移。
 export function statusMessage(status: ImageStatus): string {
-  if (status === 'pending') return '图片待归档';
-  if (status === 'failed') return '图片归档失败';
-  if (status === 'invalid') return '归档图片地址不可用';
+  if (status === 'pending') return '图片待保存';
+  if (status === 'failed') return '图片保存失败';
+  if (status === 'invalid') return '已保存图片地址不可用';
   return '图片加载失败';
 }
 

@@ -114,7 +114,110 @@ test.describe('归档列表读取', () => {
       });
       expect(metrics.scrollWidth, `${width}px 页面不应横向溢出`).toBeLessThanOrEqual(metrics.clientWidth);
       expect(metrics.stripScroll, `${width}px UP 条应在容器内横滚`).toBeGreaterThan(metrics.stripClient);
-      await expect(page.getByRole('link', { name: '全部归档' })).toHaveAttribute('aria-current', 'page');
+      await expect(page.getByRole('link', { name: '全部动态' })).toHaveAttribute('aria-current', 'page');
+    }
+  });
+
+  test('UP 选择条：头像在上昵称在下、同宽换行、无滚动条与可见项留白', async ({ page }) => {
+    // 长昵称放在最后：默认滚动位置看不到它，用它验证“屏幕外长昵称不撑高整排”。
+    const longName = '很长很长的UP昵称需要完整换行显示而不能省略也不能裁字';
+    const ups = [
+      { id: '123', nickname: '短名', avatar_url: null },
+      // 14 个短昵称 + 1 个长昵称：即使 1280px 主栏（724px）也放不下，长昵称确实在屏幕外。
+      ...Array.from({ length: 14 }, (_value, index) => ({ id: `8${index}`, nickname: `作者${index + 1}`, avatar_url: null })),
+      { id: '456', nickname: longName, avatar_url: null },
+    ];
+    await mockApi(page, url => url.pathname === '/api/archive/ups'
+      ? { body: { ups } }
+      : paged([dynamic(1), dynamic(2)], url));
+
+    for (const width of [360, 390, 768, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/');
+      await expect(page.getByRole('link', { name: '全部动态', exact: true })).toBeVisible();
+      await expect(page.getByRole('article')).toHaveCount(2);
+
+      const metrics = await page.evaluate(() => {
+        const strip = document.querySelector<HTMLElement>('.up-strip')!;
+        const options = [...strip.querySelectorAll<HTMLElement>('.up-option')];
+        const card = document.querySelector<HTMLElement>('.dynamic-card')!;
+        const stripBox = strip.getBoundingClientRect();
+        // 只统计当下真正在容器里可见的选项：屏幕外的长昵称不应参与这一排的高度。
+        const visible = options.filter(option => {
+          const box = option.getBoundingClientRect();
+          return box.right > stripBox.left + 1 && box.left < stripBox.right - 1;
+        });
+        const style = (node: Element) => getComputedStyle(node);
+        const first = options[0]!;
+        const firstLabel = first.querySelector<HTMLElement>('.up-option__nickname')!;
+        const lastLabel = options.at(-1)!.querySelector<HTMLElement>('.up-option__nickname')!;
+        return {
+          pageScrollWidth: document.documentElement.scrollWidth,
+          pageClientWidth: document.documentElement.clientWidth,
+          stripScrollWidth: strip.scrollWidth,
+          stripClientWidth: strip.clientWidth,
+          // 滚动条占用的高度为 0 才算“隐藏滚动条”。
+          stripScrollbar: strip.offsetHeight - strip.clientHeight,
+          stripHeight: Math.round(strip.getBoundingClientRect().height),
+          scrollbarWidth: style(strip).scrollbarWidth,
+          iconSize: Math.round(first.querySelector<HTMLElement>('.up-option__all')!.getBoundingClientRect().width),
+          avatarHeight: Math.round(options[1]!.querySelector<HTMLElement>('img')!.getBoundingClientRect().height),
+          labelWidth: Math.round(firstLabel.getBoundingClientRect().width),
+          labelFontSize: style(firstLabel).fontSize,
+          labelLineHeight: style(firstLabel).lineHeight,
+          labelOverflow: style(firstLabel).textOverflow,
+          visibleBottomToCard: Math.round(card.getBoundingClientRect().top
+            - Math.max(...visible.map(option => option.getBoundingClientRect().bottom))),
+          // 屏幕外长昵称的真实高度与它当前被裁出的高度。
+          longNameScroll: lastLabel.scrollHeight,
+          longNameHeight: Math.round(lastLabel.getBoundingClientRect().height),
+        };
+      });
+
+      expect(metrics.pageScrollWidth, `${width}px 页面不应横向溢出`).toBeLessThanOrEqual(metrics.pageClientWidth);
+      expect(metrics.stripScrollWidth, `${width}px UP 条应在容器内横滚`).toBeGreaterThan(metrics.stripClientWidth);
+      expect(metrics.scrollbarWidth, `${width}px UP 条应隐藏横向滚动条`).toBe('none');
+      expect(metrics.stripScrollbar, `${width}px UP 条不应出现滚动条高度`).toBeLessThanOrEqual(0);
+      // 上图下字：图标与头像 48px，文字容器与图片同宽、12px/18px 且完整换行不省略。
+      expect(metrics.iconSize, `${width}px 全部动态图标宽度`).toBe(48);
+      expect(metrics.avatarHeight, `${width}px UP 头像高度`).toBe(48);
+      expect(metrics.labelWidth, `${width}px 昵称容器应与图标同宽`).toBe(metrics.iconSize);
+      expect(metrics.labelFontSize, `${width}px 昵称字号`).toBe('12px');
+      expect(metrics.labelLineHeight, `${width}px 昵称行高`).toBe('18px');
+      expect(metrics.labelOverflow, `${width}px 昵称不应省略`).not.toBe('ellipsis');
+      // 可见昵称底部到第一张卡片约 12px，屏幕外长昵称不预留整排空白。
+      expect(metrics.visibleBottomToCard, `${width}px 可见昵称至首卡留白`).toBeGreaterThanOrEqual(10);
+      expect(metrics.visibleBottomToCard, `${width}px 可见昵称至首卡留白`).toBeLessThanOrEqual(14);
+      expect(metrics.longNameHeight, `${width}px 屏幕外长昵称不应撑高整排`).toBeLessThan(metrics.longNameScroll);
+
+      // 滑到长昵称时能读全：整条昵称可见，不是裁字换取紧凑。
+      await page.locator('.up-strip').evaluate(node => { node.scrollLeft = node.scrollWidth; });
+      // 可见性测量由滚动事件后的下一帧完成，直接读会读到上一帧的裁剪高度：轮询到稳定再断言。
+      interface EndMetrics { stripHeight: number; labelHeight: number; labelScroll: number }
+      let end: EndMetrics | null = null;
+      await expect.poll(async () => {
+        end = await page.evaluate(() => {
+          const strip = document.querySelector<HTMLElement>('.up-strip')!;
+          const label = strip.querySelectorAll<HTMLElement>('.up-option__nickname');
+          const last = label[label.length - 1]!;
+          return {
+            stripHeight: Math.round(strip.getBoundingClientRect().height),
+            labelHeight: Math.round(last.getBoundingClientRect().height),
+            labelScroll: last.scrollHeight,
+          };
+        });
+        return end.labelHeight >= end.labelScroll - 1;
+      }, { message: `${width}px 滑到长昵称后应完整展示` }).toBe(true);
+      expect(end!.stripHeight, `${width}px 长昵称可见时这一排应变高`).toBeGreaterThan(metrics.stripHeight);
+
+      // 键盘同样可达：聚焦长昵称选项时浏览器把它滚进视口，选项可被激活。
+      const longOption = page.getByRole('link', { name: longName, exact: true });
+      await longOption.focus();
+      await expect(longOption).toBeFocused();
+      expect(await page.evaluate(() =>
+        Math.round(document.querySelector<HTMLElement>('.up-strip')!.getBoundingClientRect().height)),
+      `${width}px 键盘聚焦长昵称时这一排仍应完整展示`)
+        .toBeGreaterThan(metrics.stripHeight);
     }
   });
 
@@ -236,6 +339,8 @@ test.describe('归档列表读取', () => {
   });
 
   test('卡片与键盘进入详情，普通读取不触发采集或上传', async ({ page }) => {
+    // 宽屏正文入口在独立标签页打开（由详情入口用例取证），站内进入按窄屏语义验证。
+    await page.setViewportSize({ width: 390, height: 800 });
     const items = [dynamic(1, { text: '可点击归档' })];
     const requests = await mockApi(page, serveDynamics({ all: items }));
     const network: { method: string; path: string }[] = [];
@@ -298,9 +403,9 @@ test.describe('归档图片读取', () => {
     await expect(card).toHaveCount(1);
     const tiles = card.getByRole('button', { name: /^预览动态图片 / });
     await expect(tiles).toHaveCount(5);
-    await expect(card.getByText('图片待归档')).toBeVisible();
-    await expect(card.getByText('图片归档失败')).toBeVisible();
-    await expect(card.getByText('归档图片地址不可用')).toBeVisible();
+    await expect(card.getByText('图片待保存')).toBeVisible();
+    await expect(card.getByText('图片保存失败')).toBeVisible();
+    await expect(card.getByText('已保存图片地址不可用')).toBeVisible();
 
     // 共用地址：缩略图与预览都使用公开地址；点击第三张只请求该地址。
     await expect.poll(async () => imageRequests.filter(url => url === shared[0]).length).toBeGreaterThan(0);

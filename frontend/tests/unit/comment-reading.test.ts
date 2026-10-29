@@ -5,12 +5,14 @@ import { comment, commentArchive, comments, commentDynamic, targetCheck } from '
 import { createReader, deferred } from '../support/reader';
 import { showApp } from '../support/app';
 import { installFakeLayout, type FakeLayout } from '../support/layout';
+import { installCompactViewport, removeCompactViewport } from '../support/viewport';
 
 let layout: FakeLayout;
 beforeEach(() => { layout = installFakeLayout(); });
 afterEach(() => {
   cleanup();
   layout.restore();
+  removeCompactViewport();
 });
 
 function requests() {
@@ -219,6 +221,7 @@ function listWithDetail(): Partial<DynamicReader> {
 }
 
 it('历史返回恢复排序、已读批次与 cursor，继续追加不重读首批', async () => {
+  installCompactViewport(true);
   const seen: { sort: CommentSort; cursor: string | null | undefined }[] = [];
   const reader = createReader({
     ...listWithDetail(),
@@ -248,7 +251,7 @@ it('历史返回恢复排序、已读批次与 cursor，继续追加不重读首
   await waitFor(() => expect(within(region).getAllByRole('listitem')).toHaveLength(12));
 
   layout.setScrollY(500);
-  await fireEvent.click(screen.getByRole('button', { name: '返回列表' }));
+  await fireEvent.click(screen.getByRole('button', { name: '‹ 动态列表' }));
   await waitFor(() => expect(router.currentRoute.value.name).toBe('list'));
 
   const requestsBeforeRestore = seen.length;
@@ -266,7 +269,9 @@ it('历史返回恢复排序、已读批次与 cursor，继续追加不重读首
   expect(seen.at(-1)).toEqual({ sort: 'hot', cursor: 'h12' });
 });
 
-it('评论入口进入同页详情并重建讨论状态，不沿用旧阅读位置', async () => {
+it('窄屏评论入口进入同页详情并重建讨论状态，不沿用旧阅读位置', async () => {
+  // 宽屏卡片评论改为列表内展开（由 list-card-comments 覆盖），站内进入详情只剩窄屏入口。
+  installCompactViewport(true);
   const reader = createReader({
     ...listWithDetail(),
     readComments: async () => ({ status: 'success', data: { items: comments(20), nextCursor: null } }),
@@ -279,7 +284,7 @@ it('评论入口进入同页详情并重建讨论状态，不沿用旧阅读位�
   await waitFor(() => expect(router.currentRoute.value.name).toBe('detail'));
   await screen.findByRole('region', { name: '评论区' });
   layout.setScrollY(700);
-  await fireEvent.click(screen.getByRole('button', { name: '返回列表' }));
+  await fireEvent.click(screen.getByRole('button', { name: '‹ 动态列表' }));
   await waitFor(() => expect(router.currentRoute.value.name).toBe('list'));
 
   await fireEvent.click(screen.getByRole('button', { name: '来源评论 45' }));
@@ -293,6 +298,7 @@ it('评论入口进入同页详情并重建讨论状态，不沿用旧阅读位�
 });
 
 it('同一动态的多次访问各自保留排序与批次，互不覆盖', async () => {
+  installCompactViewport(true);
   const seen: { sort: CommentSort; cursor: string | null | undefined }[] = [];
   const reader = createReader({
     ...listWithDetail(),
@@ -360,18 +366,18 @@ it('成功空与未完成同步区分：确认同步后才显示暂无评论', a
   await showApp(emptyDouble('success', 'success'), '/dynamics/1001');
   const region = await screen.findByRole('region', { name: '评论区' });
   await waitFor(() => expect(within(region).getByText('暂无评论')).toBeTruthy());
-  expect(region.textContent).not.toContain('评论尚未归档');
+  expect(region.textContent).not.toContain('评论尚未保存');
 
   cleanup();
   await showApp(emptyDouble('pending'), '/dynamics/1001');
   const pending = await screen.findByRole('region', { name: '评论区' });
-  await waitFor(() => expect(within(pending).getByText('评论尚未归档；来源计数不代表本地已有评论。')).toBeTruthy());
+  await waitFor(() => expect(within(pending).getByText('评论尚未保存；来源计数不代表本地已有评论。')).toBeTruthy());
   expect(within(pending).queryByText('暂无评论')).toBeNull();
 
   cleanup();
   await showApp(emptyDouble('success', 'failed'), '/dynamics/1001');
   const failedSync = await screen.findByRole('region', { name: '评论区' });
-  await waitFor(() => expect(within(failedSync).getByText('评论尚未归档；来源计数不代表本地已有评论。')).toBeTruthy());
+  await waitFor(() => expect(within(failedSync).getByText('评论尚未保存；来源计数不代表本地已有评论。')).toBeTruthy());
 });
 
 it('读取失败可在评论区重试，取消不被当作失败', async () => {
@@ -491,7 +497,7 @@ it('一级评论按作者 ID 标注 UP、安全渲染文本，计数与时间缺
   expect(like.querySelector('button, a')).toBeNull();
   // 纯图评论不写“暂无评论内容”，只提示待归档数量。
   expect(list[3]!.textContent).not.toContain('暂无评论内容');
-  expect(list[3]!.textContent).toContain('评论图片待归档（2 张）');
+  expect(list[3]!.textContent).toContain('评论图片待保存（2 张）');
 
   expect(document.body.textContent).not.toContain('归档状态');
   expect(document.body.textContent).not.toContain('读取评论同步状态');
@@ -531,6 +537,7 @@ it('跨批重复的评论按 ID 去重，不重复展示', async () => {
 });
 
 it('离开未完成的追加读取再返回，从原 cursor 继续且不遗留永久加载态', async () => {
+  installCompactViewport(true);
   const seen: (string | null | undefined)[] = [];
   const pending = deferred<ReadResult<CommentBatch>>();
   const all = comments(40);
@@ -552,7 +559,7 @@ it('离开未完成的追加读取再返回，从原 cursor 继续且不遗留�
   const region = await screen.findByRole('region', { name: '评论区' });
   await waitFor(() => expect(within(region).getAllByRole('listitem')).toHaveLength(20));
   await fireEvent.click(within(region).getByRole('button', { name: '加载更多评论' }));
-  await fireEvent.click(screen.getByRole('button', { name: '返回列表' }));
+  await fireEvent.click(screen.getByRole('button', { name: '‹ 动态列表' }));
   await waitFor(() => expect(router.currentRoute.value.name).toBe('list'));
 
   await router.go(1);
@@ -579,9 +586,10 @@ it('读取器声明不具备讨论能力时显示未归档且不发评论请求'
   });
   await showApp(reader, '/dynamics/1001');
   const region = await screen.findByRole('region', { name: '评论区' });
-  expect(within(region).getByText('评论尚未归档；来源计数不代表本地已有评论。')).toBeTruthy();
-  // 未归档不显示排序控件，也不读取评论。
+  // 01 的文案改名与 02 的单按钮排序同时成立：文案说“尚未保存”，且不出现排序控件。
+  expect(within(region).getByText('评论尚未保存；来源计数不代表本地已有评论。')).toBeTruthy();
   expect(within(region).queryByRole('button', { name: /^当前按/ })).toBeNull();
+  expect(within(region).queryByRole('radio')).toBeNull();
   expect(within(region).queryAllByRole('listitem')).toHaveLength(0);
   expect(calls).toBe(0);
 });
@@ -679,7 +687,7 @@ it('定位目标不存在时明确提示并可返回动态，不请求普通分�
 
   const router = await showApp(reader, '/dynamics/1001/comments/9999/locate');
   const region = await screen.findByRole('region', { name: '评论区' });
-  await waitFor(() => expect(within(region).getByRole('status').textContent).toContain('不存在或未归档'));
+  await waitFor(() => expect(within(region).getByRole('status').textContent).toContain('不存在或未保存'));
   expect(within(region).queryAllByRole('listitem')).toHaveLength(0);
   expect(reads).toEqual([]);
 

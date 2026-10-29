@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import type { Dynamic, ImageOwner } from '../data/contracts';
 import { displayCount, displayTime } from './display';
 import DynamicImages from '../preview/DynamicImages.vue';
@@ -15,6 +15,10 @@ const props = withDefaults(defineProps<{
   imageDisplayLimit?: number;
 }>(), { commentEntry: true });
 const emit = defineEmits<{ comments: [] }>();
+const commentButton = ref<HTMLButtonElement | null>(null);
+
+/** 列表收起内联评论后把焦点交还这个入口，键盘与读屏用户不会掉回页首。 */
+defineExpose({ focusCommentEntry: () => commentButton.value?.focus() });
 
 const archive = computed(() => props.dynamic.archive);
 const owner = computed<ImageOwner>(() => ({ type: 'dynamic', id: props.dynamic.id }));
@@ -49,6 +53,7 @@ const commentLabel = computed(() =>
     />
     <button
       v-if="commentEntry"
+      ref="commentButton"
       class="comment-entry"
       type="button"
       :aria-label="commentLabel"
@@ -87,17 +92,18 @@ const commentLabel = computed(() =>
   display: block;
   min-width: 0;
   color: var(--author);
-  font-size: 18px;
-  line-height: 22px;
+  font-size: var(--font-author);
+  line-height: var(--line-author);
   font-weight: 600;
   overflow-wrap: anywhere;
 }
 .time {
   display: block;
-  margin-top: 6px;
+  margin-top: 4px;
   color: var(--muted);
-  font-size: 13px;
-  line-height: 18px;
+  font-size: var(--font-meta);
+  line-height: var(--line-meta);
+  font-variant-numeric: tabular-nums;
 }
 .dynamic-body {
   margin-left: 68px;
@@ -105,16 +111,16 @@ const commentLabel = computed(() =>
 }
 .dynamic-title {
   margin: 8px 0;
-  font-size: 17px;
-  line-height: 25px;
+  font-size: var(--font-author);
+  line-height: var(--line-author);
   font-weight: 600;
   overflow-wrap: anywhere;
 }
 .text {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  line-height: 25px;
-  font-size: 16px;
+  line-height: var(--line-body);
+  font-size: var(--font-body);
   font-weight: 400;
   margin: 8px 0;
   min-width: 0;
@@ -132,9 +138,10 @@ const commentLabel = computed(() =>
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--muted);
+  color: var(--action);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--font-meta);
+  line-height: var(--line-meta);
   cursor: pointer;
 }
 .comment-entry:hover {
@@ -147,9 +154,6 @@ const commentLabel = computed(() =>
 @media (max-width: 480px) {
   .identity {
     gap: 12px;
-  }
-  .nickname {
-    font-size: 16px;
   }
   .dynamic-body {
     margin-left: 60px;

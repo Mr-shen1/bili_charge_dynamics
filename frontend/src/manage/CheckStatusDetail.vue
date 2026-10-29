@@ -48,7 +48,7 @@ const parts = computed(() => props.check.parts);
 
 <template>
   <div class="manage-check-detail">
-    <p class="manage-state">{{ check.active ? '已纳入检查' : '已停止或移出；保留已有归档与未完成工作。' }}</p>
+    <p class="manage-state">{{ check.active ? '已纳入检查' : '已停止或移出；已保存的动态与未完成工作保留。' }}</p>
     <p class="manage-state" :class="{ 'manage-state-error': check.checkStatus === 'failed' }">
       {{ checkStatusText[check.checkStatus] }}
     </p>
@@ -80,7 +80,7 @@ const parts = computed(() => props.check.parts);
     <p class="manage-state">回复最近成功：{{ at(check.repliesLastSucceededAt) }}</p>
     <p class="manage-state">评论整轮最近成功：{{ at(check.commentsLastSucceededAt) }}</p>
     <p class="manage-muted">历史分项成功时间不代表当前观察已完成；未知时间不补造。</p>
-    <p class="manage-muted">媒体错误来自实际已尝试的归档；无错误记录不代表图片已完成。</p>
+    <p class="manage-muted">媒体错误来自实际已尝试的保存；无错误记录不代表图片已完成。</p>
     <p v-for="error in mediaErrors" :key="error" class="manage-state-error" role="status">
       动态图：{{ mediaErrorText[error] }}
     </p>

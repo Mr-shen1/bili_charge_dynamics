@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import { computed } from 'vue';
+import { useRoute } from 'vue-router';
 import { createImagePreviewCoordinator, provideImagePreview } from '../preview/useImagePreview';
 import PreviewHost from '../preview/PreviewHost.vue';
-import { assembly, previewFixturesEnabled } from './assembly';
+import { assembly } from './assembly';
+import { useDocumentTitle } from './documentTitle';
 import { createArchiveNavigation, provideArchiveNavigation } from './navigation';
 
 // 会话实例在应用根部创建并高于路由页面存活；导航协调器先装配，
@@ -10,22 +13,23 @@ const navigation = createArchiveNavigation();
 provideArchiveNavigation(navigation);
 const coordinator = createImagePreviewCoordinator(navigation);
 provideImagePreview(coordinator);
+
+// 标签标题按路由身份统一设置：新标签、直达与刷新都得到同一标题，页面不再各自维护。
+const route = useRoute();
+useDocumentTitle(computed(() => route.name));
 </script>
 
 <template>
+  <!--
+    阅读页不再有公共品牌与主导航：正文直接占用整屏宽度，管理由独立 `/manage` 地址进入，
+    管理页自带「返回阅读」导航（`ManageShell`）。去掉入口不是鉴权措施，见正式设计 §3.1。
+    自检入口只在 mock/fault 装配的自检页内部提供，生产构建不存在。
+  -->
   <div class="app-shell">
-    <header class="app-header">
-      <RouterLink class="app-brand" to="/">充电动态归档</RouterLink>
-      <nav class="app-nav" aria-label="主导航">
-        <RouterLink to="/">归档</RouterLink>
-        <RouterLink to="/manage">监控管理</RouterLink>
-        <RouterLink v-if="previewFixturesEnabled" :to="{ name: 'preview-fixtures' }">图片自检</RouterLink>
-      </nav>
-      <span v-if="assembly.kind !== 'production'" class="app-badge">{{ assembly.kind }}</span>
-    </header>
     <main class="app-main" data-preview-fallback-focus tabindex="-1">
       <RouterView />
     </main>
   </div>
+  <span v-if="assembly.kind !== 'production'" class="app-badge">{{ assembly.kind }}</span>
   <PreviewHost />
 </template>

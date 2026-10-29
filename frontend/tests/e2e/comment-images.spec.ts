@@ -28,9 +28,9 @@ test.describe('一级评论图片阅读', () => {
     await mixed.scrollIntoViewIfNeeded();
     await expect(mixed).toHaveCount(1);
 
-    await expect(mixed.getByText('图片待归档')).toBeVisible();
-    await expect(mixed.getByText('图片归档失败')).toBeVisible();
-    await expect(mixed.getByText('归档图片地址不可用')).toBeVisible();
+    await expect(mixed.getByText('图片待保存')).toBeVisible();
+    await expect(mixed.getByText('图片保存失败')).toBeVisible();
+    await expect(mixed.getByText('已保存图片地址不可用')).toBeVisible();
     const tiles = mixed.getByRole('button', { name: /^预览评论图片 / });
     await expect(tiles).toHaveCount(6);
     // 只有浏览器加载失败的缩略图提供局部重试。
@@ -46,15 +46,15 @@ test.describe('一级评论图片阅读', () => {
     await expect(viewer(page)).toBeVisible();
     await expect(counter(page)).toHaveText('2 / 6');
     await expect.poll(async () => viewerImage(page).getAttribute('src')).toBe('/images/unavailable/placeholder.svg');
-    await expect(page.locator('.preview-note')).toContainText('图片待归档');
+    await expect(page.locator('.preview-note')).toContainText('图片待保存');
 
     // 异常图片不阻断切换：逐项切到失败、无效、浏览器失败与可重试项。
     await nextImage(page);
     await expect(counter(page)).toHaveText('3 / 6');
-    await expect(page.locator('.preview-note')).toContainText('图片归档失败');
+    await expect(page.locator('.preview-note')).toContainText('图片保存失败');
     await nextImage(page);
     await expect(counter(page)).toHaveText('4 / 6');
-    await expect(page.locator('.preview-note')).toContainText('归档图片地址不可用');
+    await expect(page.locator('.preview-note')).toContainText('已保存图片地址不可用');
     await expect(page.getByRole('button', { name: '重试', exact: true })).toHaveCount(0);
     await nextImage(page);
     await expect(counter(page)).toHaveText('5 / 6');

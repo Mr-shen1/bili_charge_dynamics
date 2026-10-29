@@ -48,6 +48,11 @@ export interface ReadingPosition {
 export interface ListSnapshot {
   readonly read: ListReadState;
   readonly expanded: Readonly<Record<string, boolean>>;
+  /**
+   * 卡片内联评论区的状态，按卡片动态 ID 保存；键存在即表示该卡片当前展开。
+   * 旧快照没有这个字段时按“没有任何卡片展开”恢复，不伪造已读状态。
+   */
+  readonly comments?: Readonly<Record<string, CommentSnapshot>>;
   readonly position: ReadingPosition | null;
 }
 
@@ -92,4 +97,36 @@ export function adoptCommentSnapshot(
   if (!snapshot) return emptyCommentSnapshot();
   if (snapshot.regionId !== undefined && snapshot.regionId !== regionId) return emptyCommentSnapshot();
   return snapshot;
+}
+
+/**
+ * 列表卡片内联评论的区域身份：同一页面每张卡片一个区域，和详情区（`detail:`）互不冒充。
+ * 身份由业务动态 ID 组成，不依赖 DOM id，也没有唯一的全局评论排序。
+ */
+export function listCommentRegionId(dynamicId: string): string {
+  return `list:${dynamicId}`;
+}
+
+/**
+ * 从列表访问快照取某张卡片的评论状态：只有标着该卡片区域的状态才算恢复。
+ * 旧快照没有卡片评论字段、或存着别的区域状态时返回 `undefined`，按未展开处理。
+ */
+export function listCommentSnapshot(
+  snapshot: ListSnapshot | undefined,
+  dynamicId: string,
+): CommentSnapshot | undefined {
+  return listCommentSnapshots(snapshot)[dynamicId];
+}
+
+/**
+ * 列表访问快照里属于卡片区域的全部评论状态，按动态 ID 索引。
+ * 旧快照没有该字段时是空表；标着别的区域的状态被丢弃，不让详情区或别的卡片冒充。
+ */
+export function listCommentSnapshots(
+  snapshot: ListSnapshot | undefined,
+): Readonly<Record<string, CommentSnapshot>> {
+  const regions = snapshot?.comments;
+  if (!regions) return {};
+  return Object.fromEntries(Object.entries(regions)
+    .filter(([dynamicId, region]) => region.regionId === listCommentRegionId(dynamicId)));
 }

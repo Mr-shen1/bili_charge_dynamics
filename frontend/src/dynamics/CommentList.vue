@@ -120,13 +120,13 @@ watch(() => state.value.status, status => {
     <el-button type="primary" link class="comment-action" @click="emit('restart')">重新开始读取</el-button>
   </section>
   <section v-if="state.status === 'not-found'" class="comment-status" aria-label="定位结果">
-    <p role="status">目标评论不存在或未归档，无法定位到这条评论。</p>
+    <p role="status">目标评论不存在或未保存，无法定位到这条评论。</p>
     <el-button type="primary" link class="comment-action" @click="navigation.showDetail(dynamicId)">
       返回动态
     </el-button>
   </section>
   <p v-if="state.reason === 'not-archived'" class="comment-status" role="status">
-    评论尚未归档；来源计数不代表本地已有评论。
+    评论尚未保存；来源计数不代表本地已有评论。
   </p>
   <ReadNotice
     v-if="!state.data && state.reason !== 'invalid-cursor' && state.reason !== 'not-archived'"
@@ -135,7 +135,7 @@ watch(() => state.value.status, status => {
     @retry="load()"
   />
   <p v-if="state.data && state.data.items.length === 0" class="comment-status" role="status">
-    {{ emptyUnarchived ? '评论尚未归档；来源计数不代表本地已有评论。' : '暂无评论' }}
+    {{ emptyUnarchived ? '评论尚未保存；来源计数不代表本地已有评论。' : '暂无评论' }}
   </p>
   <section v-if="state.data && (state.data.earlierCount ?? 0) > 0" class="comment-earlier" aria-label="更早评论">
     <p class="comment-earlier-count" role="status">以上还有 {{ state.data.earlierCount }} 条更早评论</p>

@@ -8,7 +8,7 @@ const props = defineProps<{ upId?: string }>();
 const navigation = useArchiveNavigation();
 const scope = computed<ArchiveScope>(() =>
   props.upId === undefined ? { kind: 'all' } : { kind: 'up', upId: props.upId });
-const heading = computed(() => props.upId === undefined ? '全部动态' : `UP ${props.upId} 归档`);
+const heading = computed(() => props.upId === undefined ? '全部动态' : `UP ${props.upId} 动态`);
 </script>
 
 <template>
@@ -22,7 +22,7 @@ const heading = computed(() => props.upId === undefined ? '全部动态' : `UP $
 <style scoped>
 .list-shell {
   width: 100%;
-  max-width: 724px;
+  max-width: var(--column-max);
   min-width: 0;
   margin: 0 auto;
   padding: 0 0 40px;

@@ -204,7 +204,7 @@ test.describe('一级评论精确链接', () => {
     const requests = await mockArchive(page);
     await page.goto(locatePath('9999'));
     const region = page.getByRole('region', { name: '评论区' });
-    await expect(region.getByRole('status').filter({ hasText: '不存在或未归档' })).toBeVisible();
+    await expect(region.getByRole('status').filter({ hasText: '不存在或未保存' })).toBeVisible();
     await expect(region.getByRole('listitem')).toHaveCount(0);
     await expect(located(page)).toHaveCount(0);
     expect(requests.every(request => request.kind === 'location')).toBe(true);

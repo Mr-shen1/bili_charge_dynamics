@@ -1,6 +1,6 @@
 // @projects desktop-chromium-archive, mobile-chromium-archive
 import { expect, test, type Page } from '@playwright/test';
-import { closeViewer, commentSort, counter, switchCommentSort, viewer } from './support';
+import { closeViewer, commentSort, counter, isCompact, switchCommentSort, viewer } from './support';
 
 // 一级评论跑生产装配 + HTTP 传输替身：仍经过真实 Adapter 的 DTO 映射与页面读取，
 // 请求次数、排序与 cursor 可直接观察。折叠、锚点、布局变化必须真实浏览器。
@@ -121,17 +121,26 @@ async function scrollY(page: Page): Promise<number> {
   return page.evaluate(() => Math.round(window.scrollY));
 }
 
+/**
+ * 打开一级评论：宽屏在列表卡片内展开（列表与 URL 都不跳走），
+ * 窄屏保持既有站内入口进入详情评论区。之后仍按同一可访问名称定位区域。
+ */
+async function openComments(page: Page): Promise<void> {
+  await page.getByRole('button', { name: '来源评论 45' }).click();
+  if (await isCompact(page)) await expect(page).toHaveURL(/\/dynamics\/1001$/);
+  else await expect(page).toHaveURL(/\/$/);
+}
+
 test.describe('一级评论阅读与排序', () => {
   test('评论入口定位评论区，45 条按 20/20/5 追加，结束后不再请求', async ({ page }) => {
     const requests = await mockApi(page);
     await page.goto('/');
     await expect(page.getByRole('article')).toHaveCount(1);
 
-    await page.getByRole('button', { name: '来源评论 45' }).click();
-    await expect(page).toHaveURL(/\/dynamics\/1001$/);
+    await openComments(page);
     const region = page.getByRole('region', { name: '评论区' });
     await expect(region.getByRole('listitem')).toHaveCount(20);
-    // 评论入口优先于详情顶部：评论区对齐视口顶部。
+    // 评论入口优先于正文顶部：评论区对齐视口顶部。
     await expect.poll(() => region.evaluate(element => Math.round(element.getBoundingClientRect().top))).toBe(0);
     expect(await scrollY(page)).toBeGreaterThan(100);
     // 新访问默认按时间，控件显示当前排序。
@@ -196,10 +205,14 @@ test.describe('一级评论阅读与排序', () => {
   });
 
   test('历史返回恢复排序、批次与评论锚点，视口变化后仍保持偏移', async ({ page }) => {
-    await page.setViewportSize({ width: 1280, height: 800 });
+    // 宽屏正文入口在独立标签页打开，站内往返只剩窄屏入口：
+    // 先用窄屏评论入口建立这次详情访问，再换成宽屏做锚点与视口变化的断言。
+    await page.setViewportSize({ width: 390, height: 800 });
     const requests = await mockApi(page);
     await page.goto('/');
     await page.getByRole('button', { name: '来源评论 45' }).click();
+    await expect(page).toHaveURL(/\/dynamics\/1001$/);
+    await page.setViewportSize({ width: 1280, height: 800 });
     const region = page.getByRole('region', { name: '评论区' });
     await expect(region.getByRole('listitem')).toHaveCount(20);
     await region.getByRole('button', { name: '加载更多评论' }).click();
@@ -236,6 +249,8 @@ test.describe('一级评论阅读与排序', () => {
   });
 
   test('主动入口优先于旧评论位置', async ({ page }) => {
+    // 同上：只有窄屏评论入口会新建详情访问。
+    test.skip(!(await isCompact(page)), '宽屏卡片评论在列表内展开，不新建详情访问');
     await mockApi(page);
     await page.goto('/');
     await page.getByRole('button', { name: '来源评论 45' }).click();
@@ -313,7 +328,7 @@ test.describe('一级评论阅读与排序', () => {
       .toHaveAttribute('data-image-group', 'comment-7004');
     const tiles = item.getByRole('button', { name: /^预览评论图片 / });
     await expect(tiles).toHaveCount(5);
-    await expect(item.getByText('评论图片待归档')).toHaveCount(0);
+    await expect(item.getByText('评论图片待保存')).toHaveCount(0);
 
     const readsBeforePreview = requests.length;
     await tiles.nth(2).scrollIntoViewIfNeeded();
@@ -345,8 +360,8 @@ test.describe('一级评论阅读与排序', () => {
     const region = page.getByRole('region', { name: '评论区' });
     await expect(region.getByRole('listitem')).toHaveCount(20);
 
-    // 区域身份来自读取上下文，不是 DOM id；单按钮替代原双选项分组。
-    await expect(region).toHaveAttribute('data-comment-region', 'detail:1001');
+    // 区域身份来自读取上下文，不是 DOM id；1280px 下卡片评论在列表内展开。
+    await expect(region).toHaveAttribute('data-comment-region', 'list:1001');
     await expect(region.getByRole('radiogroup')).toHaveCount(0);
     const sort = commentSort(region, 'latest');
     await expect(sort).toHaveText(/☰\s*按时间/);
@@ -360,9 +375,10 @@ test.describe('一级评论阅读与排序', () => {
     expect(metrics.width).toBeGreaterThanOrEqual(44);
 
     // “评论 N” 14px，比动态正文（16px）小一级。
+    // 详情区的“评论 N”是定位按钮；列表内联区已经由卡片入口展开，标题只显示计数文字。
     const heading = await region.getByRole('heading', { level: 2 }).evaluate(node => ({
       fontSize: parseFloat(getComputedStyle(node).fontSize),
-      buttonFontSize: parseFloat(getComputedStyle(node.querySelector('button')!).fontSize),
+      buttonFontSize: parseFloat(getComputedStyle(node.querySelector('.comment-tab')!).fontSize),
     }));
     const bodyFontSize = await page.getByRole('article').locator('.dynamic-body .text')
       .evaluate(node => parseFloat(getComputedStyle(node).fontSize));

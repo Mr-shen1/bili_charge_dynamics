@@ -1,6 +1,9 @@
 import { expect, it } from 'vitest';
 import type { Comment } from '../../src/data/contracts';
-import { adoptCommentSnapshot, emptyCommentSnapshot } from '../../src/app/snapshots';
+import type { ListSnapshot } from '../../src/app/snapshots';
+import {
+  adoptCommentSnapshot, emptyCommentSnapshot, listCommentRegionId, listCommentSnapshot,
+} from '../../src/app/snapshots';
 
 // 设计 §4：一级评论没有可恢复状态时默认按时间；快照存在时恢复原排序。
 // 区域身份是读取与交互状态的键，不是 DOM id，也不存在唯一全局排序。
@@ -45,4 +48,32 @@ it('调用方给新区域的未标记快照可以采纳：详情入口不需要�
   const seed = { ...emptyCommentSnapshot('latest'),
     read: { status: 'success' as const, data: { items: [comment('seed')], nextCursor: null } } };
   expect(adoptCommentSnapshot(seed, 'detail:1001')).toBe(seed);
+});
+
+function listSnapshot(comments?: Record<string, ReturnType<typeof readSnapshot>>): ListSnapshot {
+  return {
+    read: { data: null, status: 'success' },
+    expanded: {},
+    position: null,
+    ...(comments ? { comments } : {}),
+  };
+}
+
+// 列表卡片内联评论是列表访问的快照内容：展开、排序、批次与回复页码都按卡片独立保存。
+it('列表快照按卡片取回所属区域的评论状态，不借用别的卡片或详情区状态', () => {
+  const own = readSnapshot(listCommentRegionId('1001'), 'hot');
+  const snapshot = listSnapshot({ 1001: own, 1002: readSnapshot(listCommentRegionId('1002'), 'latest') });
+
+  expect(listCommentSnapshot(snapshot, '1001')).toBe(own);
+  expect(listCommentSnapshot(snapshot, '1002')?.sort).toBe('latest');
+  expect(listCommentSnapshot(snapshot, '1003')).toBeUndefined();
+
+  // 存着详情区状态的卡片快照不属于列表区域，不能冒充成卡片评论。
+  const foreign = listSnapshot({ 1001: readSnapshot('detail:1001', 'hot') });
+  expect(listCommentSnapshot(foreign, '1001')).toBeUndefined();
+});
+
+it('旧列表快照没有卡片评论字段时按未展开处理，不伪造已读状态', () => {
+  expect(listCommentSnapshot(listSnapshot(), '1001')).toBeUndefined();
+  expect(listCommentSnapshot(undefined, '1001')).toBeUndefined();
 });

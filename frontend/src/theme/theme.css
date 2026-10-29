@@ -2,14 +2,56 @@
 :root {
   --page-bg: #eefafa;
   --card-bg: #ffffff;
+  /* 正式设计 §6：正文 #30383d、辅助文字 #65727a、操作色 #287f8f。 */
+  --ink: #30383d;
+  --text: #30383d;
+  --muted: #65727a;
+  --action: #287f8f;
   --brand: #12a3ae;
-  --brand-strong: #0b7f88;
+  /* 操作文字与链接统一取操作色；青色保留给选中态与焦点框。 */
+  --brand-strong: var(--action);
   --author: #e05a94;
-  --text: #2f3238;
-  --muted: #6b7280;
   --line: #d8eceb;
   --radius: 12px;
   --touch: 44px;
+
+  /*
+   * 阅读排版标尺（正式设计 §6）：字号与行高成对声明，组件只引用 token，不各写一套数值。
+   * 02 的评论区字号、08 的管理区块字号都从这里取值，本票不另建控件库。
+   */
+  --font-title-page: 20px;
+  --line-title-page: 28px;
+  --font-author: 16px;
+  --line-author: 24px;
+  --font-body: 16px;
+  --line-body: 28px;
+  --font-comment: 15px;
+  --line-comment: 26px;
+  --font-comment-author: 14px;
+  --line-comment-author: 22px;
+  --font-link: 14px;
+  --line-link: 22px;
+  --font-section: 14px;
+  --line-section: 22px;
+  --font-meta: 13px;
+  --line-meta: 20px;
+  --font-up-nickname: 12px;
+  --line-up-nickname: 18px;
+  --font-badge: 12px;
+  --line-badge: 20px;
+  --font-manage-section: 16px;
+  --line-manage-section: 24px;
+  --font-manage-text: 14px;
+  --line-manage-text: 22px;
+  --font-manage-action: 13px;
+  --line-manage-action: 20px;
+
+  /* 布局标尺：阅读与管理的单列主栏约 724px，卡片内距与间距按宽窄屏切换。 */
+  --column-max: 724px;
+  --card-padding: 24px;
+  --card-gap: 16px;
+  /* 主栏左右留白：桌面由居中的 max-width 承担，窄屏才留边。 */
+  --gutter: 0px;
 
   --el-color-primary: #12a3ae;
   --el-color-primary-light-3: #59bfc6;
@@ -26,9 +68,21 @@
    * 覆盖成 16px 能避开 iOS Safari 聚焦放大（票据 15 F-15-02），但会改动用户签收过的截图；
    * 票据 17 按 R1 裁决以视觉一致为先，该放大作为已知限制记录（evidence/17-release-readiness.md §7）。
    * manage.spec.ts 的断言锁的就是库默认值 14px：任何覆盖（含把 base 改成 16px）都会失败。
+   * 本轮窄屏 16px 是 08 的票内目标，因此 01 只交 token，不动这一行。
    */
   --el-text-color-primary: var(--text);
 }
+
+@media (max-width: 640px) {
+  :root {
+    --font-title-page: 18px;
+    --line-title-page: 26px;
+    --card-padding: 16px;
+    --card-gap: 12px;
+    --gutter: 12px;
+  }
+}
+
 
 * {
   box-sizing: border-box;
@@ -49,64 +103,29 @@ body {
   min-height: 100vh;
 }
 
-.app-header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 8px 16px;
-  background: var(--card-bg);
-  border-bottom: 1px solid var(--line);
+/* 阅读页没有公共顶栏：主栏直接居中，主栏宽度与卡片边距由 token 决定。 */
+.app-main {
+  flex: 1;
+  width: 100%;
+  max-width: var(--column-max);
+  min-width: 0;
+  margin: 0 auto;
+  padding: 16px var(--gutter) 40px;
+  outline: none;
 }
 
-/* 站点标题本身也是返回首页的链接，与导航项共用触控高度。 */
-.app-brand,
-.app-nav a {
-  display: inline-flex;
-  align-items: center;
-  min-height: var(--touch);
-}
-
-.app-brand {
-  font-weight: 700;
-  color: var(--brand-strong);
-  text-decoration: none;
-}
-
-.app-nav {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.app-nav a {
-  padding: 0 12px;
-  border-radius: var(--radius);
-  color: var(--brand-strong);
-  text-decoration: none;
-}
-
-.app-nav a.router-link-active {
-  background: var(--el-color-primary-light-9);
-  font-weight: 600;
-}
-
+/* 非生产装配标识：只是调试标记，不是品牌、导航或管理入口。 */
 .app-badge {
-  margin-left: auto;
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 1;
   padding: 2px 8px;
   border-radius: 999px;
   background: var(--el-color-primary-light-8);
   color: var(--brand-strong);
   font-size: 12px;
-}
-
-.app-main {
-  flex: 1;
-  width: 100%;
-  max-width: 900px;
-  min-width: 0;
-  margin: 0 auto;
-  padding: 16px;
-  outline: none;
+  pointer-events: none;
 }
 
 .visually-hidden {
@@ -123,14 +142,19 @@ body {
 
 .page__note {
   color: var(--muted);
-  line-height: 1.7;
+  font-size: var(--font-link);
+  line-height: var(--line-link);
 }
 
+/* 普通阅读链接：14/22、常规字重，点击区仍不小于 44px。 */
 .page__link {
   display: inline-flex;
   align-items: center;
   min-height: var(--touch);
-  color: var(--brand-strong);
+  color: var(--action);
+  font-size: var(--font-link);
+  font-weight: 400;
+  line-height: var(--line-link);
 }
 
 .page code {
@@ -297,10 +321,6 @@ body {
 
   .image-grid--single {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .app-main {
-    padding: 12px;
   }
 
   /*

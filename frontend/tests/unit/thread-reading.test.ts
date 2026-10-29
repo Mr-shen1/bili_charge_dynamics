@@ -142,12 +142,12 @@ it('页头数量按来源数→本地 count→items 数回退，分页只按本�
   await showApp(withSource, `/dynamics/${dynamicId}/comments/${rootId}`);
   // 页头用来源总数，分页用本地数，未被上游返回的差额单独说明。
   expect(await screen.findByText('相关回复共25条')).toBeTruthy();
-  expect(screen.getByText('已归档 8/25，上游另有 17 条回复未返回。')).toBeTruthy();
+  expect(screen.getByText('已保存 8/25，上游另有 17 条回复未返回。')).toBeTruthy();
   // 分页只按本地 count（12 条）算 2 页，不被来源 25 条或归档摘要 8 条带偏。
   expect(within(screen.getByRole('navigation', { name: '回复分页' })).getByText('共2页')).toBeTruthy();
 
   cleanup();
-  // 只有来源数、没有本地归档摘要时不编造“已归档 x/y”的差额提示。
+  // 只有来源数、没有本地归档摘要时不编造“已保存 x/y”的差额提示。
   const withoutLocal = threadReader({
     readReplies: async () => ({
       status: 'success',
@@ -479,7 +479,7 @@ it('窄屏精确入口：目标不存在可返回动态，临时失败可局部�
   const missing = threadReader({ locateReply: async () => ({ status: 'not-found' }) });
   const router = await showApp(missing, locatePath('9999'));
   const notice = () => screen.getByRole('region', { name: '定位结果' });
-  await waitFor(() => expect(within(notice()).getByRole('status').textContent).toContain('不存在或未归档'));
+  await waitFor(() => expect(within(notice()).getByRole('status').textContent).toContain('不存在或未保存'));
   expect(screen.queryAllByRole('listitem')).toHaveLength(0);
   await fireEvent.click(within(notice()).getByRole('button', { name: '返回动态' }));
   await waitFor(() => expect(router.currentRoute.value.path).toBe(`/dynamics/${dynamicId}`));

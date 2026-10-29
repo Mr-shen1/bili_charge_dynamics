@@ -31,6 +31,12 @@ const props = defineProps<{
   locateReplyId?: string | null;
   /** 本次访问是否仍待执行主动入口定位；历史恢复（已有快照）为 false，按位置还原。 */
   locateOnEntry?: boolean;
+  /**
+   * 标题只显示计数、不再带“定位评论区”按钮：列表卡片内联区已经由卡片评论入口
+   * 展开并定位，同一个卡片里再放一个同名按钮只会让读屏用户分不清。
+   * 布尔 prop 缺省是 false，因此这里用“静态标题”而不是“是否带按钮”命名。
+   */
+  staticHeading?: boolean;
 }>();
 const emit = defineEmits<{ 'update:snapshot': [CommentSnapshot] }>();
 const { reader } = useSession();
@@ -136,9 +142,12 @@ function restartReading(): void {
   <section ref="root" class="comment-section" :data-comment-region="regionId" aria-label="评论区">
     <header class="comment-heading">
       <h2>
-        <el-button link class="comment-tab" :aria-label="headingLabel" @click="locate">
+        <el-button v-if="!staticHeading" link class="comment-tab" :aria-label="headingLabel" @click="locate">
           评论 <span class="comment-count">{{ displayCount(sourceCount) }}</span>
         </el-button>
+        <span v-else class="comment-tab comment-tab--static">
+          评论 <span class="comment-count">{{ displayCount(sourceCount) }}</span>
+        </span>
       </h2>
       <el-button
         v-if="!unarchived"
@@ -152,7 +161,7 @@ function restartReading(): void {
       </el-button>
     </header>
     <p v-if="unarchived" class="comment-unarchived" role="status">
-      评论尚未归档；来源计数不代表本地已有评论。
+      评论尚未保存；来源计数不代表本地已有评论。
     </p>
     <CommentList
       v-else
@@ -206,6 +215,10 @@ function restartReading(): void {
   line-height: 22px;
   font-weight: 500;
   cursor: pointer;
+}
+.comment-tab--static {
+  display: inline-block;
+  cursor: default;
 }
 .comment-tab:focus-visible {
   outline: 2px solid var(--brand);

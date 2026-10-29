@@ -48,7 +48,7 @@ const enabledText = computed(() => (data.value?.enabled ? '已启用' : '已停�
       <p v-if="data.incomplete" class="manage-state">发现未完成；保留已有可信结果与已发布窗口。</p>
       <p v-if="data.retryable" class="manage-state">可在下一固定节拍重试；页面重读不会启动发现。</p>
       <p v-if="data.active && !data.incomplete" class="manage-state">
-        发现窗口已就绪；内容归档请另读检查状态。
+        发现窗口已就绪；内容保存状态请另读检查状态。
       </p>
       <section v-if="data.attempt" class="manage-subsection" aria-label="本轮发现尝试">
         <h3 class="manage-section-title">本轮累计候选（不代表已发布）</h3>
@@ -83,8 +83,8 @@ const enabledText = computed(() => (data.value?.enabled ? '已启用' : '已停�
       </section>
       <section class="manage-subsection" aria-label="当前近期窗口">
         <h3 class="manage-section-title">当前启用近期目标（已发布窗口）</h3>
-        <p class="manage-muted">与历史可信发现结果分开；入选不代表归档完成。</p>
-        <p v-if="data.currentIds.length === 0" class="manage-state">当前无启用的近期目标；不表示历史归档已删除。</p>
+        <p class="manage-muted">与历史可信发现结果分开；入选不代表保存完成。</p>
+        <p v-if="data.currentIds.length === 0" class="manage-state">当前无启用的近期目标；不表示已保存的动态被删除。</p>
         <ul class="manage-targets" aria-label="当前启用近期目标">
           <li v-for="id in data.currentIds" :key="id">{{ id }}</li>
         </ul>

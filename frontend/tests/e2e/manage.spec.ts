@@ -263,7 +263,7 @@ test.describe('UP 监控管理', () => {
     const card = upCard(page, '789');
     await expect(card).toContainText('未知用户');
     await expect(card).toContainText('监控：无配置');
-    await expect(card).toContainText('已有归档保留');
+    await expect(card).toContainText('已保存的动态保留');
     await expect(card.getByRole('button', { name: '重新添加监控', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: /^(停止|启用)监控$/ })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '删除监控配置', exact: true })).toHaveCount(0);
@@ -322,7 +322,7 @@ test.describe('UP 监控管理', () => {
       await expect(page.getByRole('list', { name: 'UP 列表' })).toBeVisible();
       const list = await page.evaluate(() => {
         const heights = [...document.querySelectorAll<HTMLElement>(
-          '.app-nav a, .manage-crumbs a, .notify-switch-toggle, .manage-up-link, .manage-submit',
+          '.manage-crumbs a, .notify-switch-toggle, .manage-up-link, .manage-submit',
         )].map(node => Math.round(node.getBoundingClientRect().height));
         const cards = [...document.querySelectorAll<HTMLElement>('.manage-up-link')];
         return {
@@ -414,13 +414,13 @@ test.describe('UP 监控管理', () => {
 
       // 检查与发现状态：读取按钮、折叠头与展开后的详情同样不横溢且可点按。
       await page.getByRole('button', { name: '读取检查状态' }).click();
-      const checksRegion = page.getByRole('region', { name: '目标检查与归档状态' });
+      const checksRegion = page.getByRole('region', { name: '目标检查与保存状态' });
       await expect(checksRegion.getByRole('button', { name: /动态 900/ })).toBeVisible();
       await checksRegion.getByRole('button', { name: /动态 900/ }).click();
       await expect(checksRegion.getByText('检查无变化；不代表同步完成。')).toBeVisible();
       await page.getByRole('button', { name: '读取发现状态' }).click();
       await expect(page.getByRole('region', { name: '近期发现与当前窗口' })
-        .getByText('本轮发现成功；不代表归档成功。')).toBeVisible();
+        .getByText('本轮发现成功；不代表内容已保存。')).toBeVisible();
       const status = await page.evaluate(() => {
         const heights = [...document.querySelectorAll<HTMLElement>(
           '.manage-read, .el-collapse-item__header',
@@ -545,7 +545,7 @@ test.describe('监控模式与指定目标', () => {
     await expect(card.getByRole('list', { name: '指定动态目标列表' })).toContainText('901');
 
     await card.getByRole('button', { name: '移除目标 900', exact: true }).click();
-    await expect(card.getByRole('alert').filter({ hasText: '目标已移除；已有归档保留。' })).toBeVisible();
+    await expect(card.getByRole('alert').filter({ hasText: '目标已移除；已保存的动态保留。' })).toBeVisible();
     await expect(card.getByRole('list', { name: '指定动态目标列表' })).not.toContainText('900');
 
     // 切回近期模式：默认不显示目标草稿，也不沿用目标区的反馈。
@@ -609,7 +609,7 @@ test.describe('检查与发现状态', () => {
     // 打开单 UP 页只读身份与配置：检查/发现面板不自动请求，也不轮询。
     expect(calls.map(call => `${call.method} ${call.path}`)).toEqual(['GET /api/manage/ups']);
 
-    const checksPanel = page.getByRole('region', { name: '目标检查与归档状态' });
+    const checksPanel = page.getByRole('region', { name: '目标检查与保存状态' });
     const readChecks = checksPanel.getByRole('button', { name: '读取检查状态' });
     await readChecks.focus();
     await expect(readChecks).toBeFocused();
@@ -637,11 +637,11 @@ test.describe('检查与发现状态', () => {
     await expect(header).toHaveAttribute('aria-expanded', 'true');
     await expect(detail).toBeVisible();
     await expect(checksPanel.getByText('同步：同步未全部完成，将在固定节拍重试。')).toBeVisible();
-    await expect(checksPanel.getByText('动态图：图片上传失败；保留已有归档，将在固定节拍重试。')).toBeVisible();
+    await expect(checksPanel.getByText('动态图：图片上传失败；已保存内容保留，将在固定节拍重试。')).toBeVisible();
 
     const discoveryPanel = page.getByRole('region', { name: '近期发现与当前窗口' });
     await discoveryPanel.getByRole('button', { name: '读取发现状态' }).click();
-    await expect(discoveryPanel.getByText('本轮发现成功；不代表归档成功。')).toBeVisible();
+    await expect(discoveryPanel.getByText('本轮发现成功；不代表内容已保存。')).toBeVisible();
     await expect(discoveryPanel.getByText('读取时已保存模式：近期 N 条；N：2；监控：已启用。')).toBeVisible();
     await expect(discoveryPanel.getByRole('list', { name: '当前启用近期目标' })).toContainText('900707');
     // 远程读取不写入未提交草稿，也不产生额外写请求。

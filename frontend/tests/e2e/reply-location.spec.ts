@@ -275,7 +275,7 @@ test.describe('宽屏楼中楼回复精确链接', () => {
     const api = await mockArchive(page);
     await page.goto(locatePath('9999'));
     const replyRegion = rootItem(page).getByRole('region', { name: '回复区' });
-    await expect(replyRegion.getByRole('status').filter({ hasText: '不存在或未归档' })).toBeVisible();
+    await expect(replyRegion.getByRole('status').filter({ hasText: '不存在或未保存' })).toBeVisible();
     // 所属根评论仍作为上下文存在，但没有高亮、没有回复列表。
     await expect(rootItem(page)).toBeVisible();
     await expect(replyList(page)).toHaveCount(0);

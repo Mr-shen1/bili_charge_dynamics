@@ -204,9 +204,9 @@ function remove(): Promise<void> {
     <footer class="manage-section manage-footer">
       <template v-if="up.monitor">
         <el-button class="manage-delete" :disabled="busy" @click="remove()">{{ deleteLabel }}</el-button>
-        <span class="manage-muted">仅删除配置，保留身份和已有归档。</span>
+        <span class="manage-muted">仅删除配置，保留身份和已保存的动态。</span>
       </template>
-      <p v-else class="manage-muted">监控配置已删除；身份和已有归档保留。</p>
+      <p v-else class="manage-muted">监控配置已删除；身份和已保存的动态保留。</p>
     </footer>
   </article>
 </template>

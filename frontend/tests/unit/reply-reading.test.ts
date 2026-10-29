@@ -3,9 +3,11 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { DynamicReader, ReplyBatch } from '../../src/data/contracts';
 import { comment, commentDynamic } from '../fixtures/comments';
 import { reply, replies } from '../fixtures/replies';
+import type { ArchiveNavigation } from '../../src/app/navigation';
 import { createReader, deferred } from '../support/reader';
 import { showApp } from '../support/app';
 import { installFakeLayout, type FakeLayout } from '../support/layout';
+import { removeCompactViewport } from '../support/viewport';
 
 let layout: FakeLayout;
 beforeEach(() => { layout = installFakeLayout(); });
@@ -13,6 +15,7 @@ afterEach(() => {
   cleanup();
   layout.restore();
   vi.restoreAllMocks();
+  removeCompactViewport();
 });
 
 interface ReplyRequest {
@@ -199,6 +202,7 @@ it('收起取消在途请求、定位根评论开头并保存第 1 页，再次�
 });
 
 it('详情历史恢复展开状态与页码，并实时重读保存页而不是复用冻结结果', async () => {
+  let navigation: ArchiveNavigation | null = null;
   const seen: ReplyRequest[] = [];
   let generation = 1;
   const reader = createReader({
@@ -221,9 +225,10 @@ it('详情历史恢复展开状态与页码，并实时重读保存页而不是�
     },
   });
 
-  const router = await showApp(reader, '/');
+  const router = await showApp(reader, '/', undefined, undefined, value => { navigation = value; });
   await screen.findByText('详情正文');
-  await fireEvent.click(screen.getByRole('link', { name: '阅读全文 1001' }));
+  // 宽屏正文入口另开标签，站内往返按应用自己的导航入口复现同一次详情访问。
+  navigation!.openDetail('1001');
   await waitFor(() => expect(router.currentRoute.value.name).toBe('detail'));
   const region = await screen.findByRole('region', { name: '评论区' });
   await waitFor(() => expect(replyList(1)).toHaveLength(1));
@@ -234,7 +239,8 @@ it('详情历史恢复展开状态与页码，并实时重读保存页而不是�
   expect(within(replyList(1)[0]!).getAllByRole('listitem')[0]!.textContent).toContain('第1次读取');
 
   // 离开详情再按历史返回：展开状态与页码进入访问快照。
-  await fireEvent.click(screen.getByRole('button', { name: '返回列表' }));
+  // 宽屏正常详情没有返回按钮，用户按浏览器后退。
+  router.back();
   await waitFor(() => expect(router.currentRoute.value.name).toBe('list'));
   const beforeRestore = seen.length;
   generation = 2;
@@ -492,6 +498,7 @@ it('切换排序重置回复展开状态，旧回复区的迟到页码结果不�
 });
 
 it('离开详情取消在途页码请求，重新进入的新访问不显示旧展开状态', async () => {
+  let navigation: ArchiveNavigation | null = null;
   const scrolled = recordScrollIntoView();
   const pending = deferred<Awaited<ReturnType<DynamicReader['readReplies']>>>();
   let pendingSignal: AbortSignal | undefined;
@@ -510,9 +517,9 @@ it('离开详情取消在途页码请求，重新进入的新访问不显示旧�
     },
   });
 
-  const router = await showApp(reader, '/');
+  const router = await showApp(reader, '/', undefined, undefined, value => { navigation = value; });
   await screen.findByText('详情正文');
-  await fireEvent.click(screen.getByRole('link', { name: '阅读全文 1001' }));
+  navigation!.openDetail('1001');
   await waitFor(() => expect(router.currentRoute.value.name).toBe('detail'));
   const region = await screen.findByRole('region', { name: '评论区' });
   await waitFor(() => expect(replyList(1)).toHaveLength(1));
@@ -521,12 +528,13 @@ it('离开详情取消在途页码请求，重新进入的新访问不显示旧�
   await fireEvent.click(within(region).getByRole('button', { name: '下一页' }));
   await waitFor(() => expect(pendingSignal).toBeTruthy());
 
-  await fireEvent.click(screen.getByRole('button', { name: '返回列表' }));
+  router.back();
   await waitFor(() => expect(router.currentRoute.value.name).toBe('list'));
   expect(pendingSignal?.aborted).toBe(true);
 
   // 主动再次进入是新的访问：回复区重新预览，不继承上次的展开与页码。
-  await fireEvent.click(screen.getByRole('link', { name: '阅读全文 1001' }));
+  // 宽屏正文入口另开标签，这里走应用自己的导航入口复现同一详情访问。
+  navigation!.openDetail('1001');
   await waitFor(() => expect(router.currentRoute.value.name).toBe('detail'));
   const reopened = await screen.findByRole('region', { name: '评论区' });
   await waitFor(() => expect(replyList(1)).toHaveLength(1));
@@ -549,7 +557,7 @@ it('读取器声明不提供回复时整块提示未归档且不发请求，来�
   });
   await showApp(unarchived, '/dynamics/1001');
   await screen.findByRole('region', { name: '评论区' });
-  expect(within(commentItem(1)).getByText('回复尚未归档。')).toBeTruthy();
+  expect(within(commentItem(1)).getByText('回复尚未保存。')).toBeTruthy();
   expect(seen).toHaveLength(0);
   expect(within(commentItem(1)).queryByRole('list', { name: '回复列表' })).toBeNull();
 
@@ -569,9 +577,9 @@ it('读取器声明不提供回复时整块提示未归档且不发请求，来�
 
 it('本地零条不被解释成来源没有回复，失败/未完成/未确认各自区分', async () => {
   const cases: [string, string][] = [
-    ['pending', '回复尚未完成归档。'],
-    ['failed', '回复最近归档失败。'],
-    ['unconfirmed', '回复归档尚未确认完成。'],
+    ['pending', '回复尚未完成保存。'],
+    ['failed', '回复最近保存失败。'],
+    ['unconfirmed', '回复保存尚未确认完成。'],
     [undefined as never, '暂无回复'],
   ];
   for (const [attempt, expected] of cases) {
@@ -707,7 +715,7 @@ it('宽屏精确入口：目标不存在时明确提示并可返回动态，不�
   const region = await screen.findByRole('region', { name: '评论区' });
   const replyRegion = () => within(commentItem(1)).getByRole('region', { name: '回复区' });
   await waitFor(() => expect(within(replyRegion()).getByRole('status').textContent)
-    .toContain('不存在或未归档'));
+    .toContain('不存在或未保存'));
   // 所属根评论仍在（上下文），但没有回复列表、没有高亮，也没有读页码模式。
   expect(within(region).getByRole('listitem')).toBeTruthy();
   expect(within(replyRegion()).queryByRole('list', { name: '回复列表' })).toBeNull();

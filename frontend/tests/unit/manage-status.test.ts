@@ -20,7 +20,7 @@ async function openPanels(overrides: Parameters<typeof createManagement>[0]) {
     listUps: async () => readyUp(),
     ...overrides,
   }));
-  return within(await screen.findByRole('region', { name: '目标检查与归档状态' }));
+  return within(await screen.findByRole('region', { name: '目标检查与保存状态' }));
 }
 
 async function discoveryPanel() {
@@ -82,9 +82,9 @@ describe('单 UP 页的检查状态与归档进度', () => {
     expect(card.getByText('来源计数与评论整轮成功计数不一致；当前观察仍待评论同步确认。')).toBeTruthy();
     expect(card.getByText('评论同步：部分完成')).toBeTruthy();
     // 分项错误各归其位，并给出固定文案而不是原始错误。
-    expect(card.getByText('动态图：图片上传失败；保留已有归档，将在固定节拍重试。')).toBeTruthy();
-    expect(card.getByText('根评论：根评论归档失败；保留已有归档，将在固定节拍重试。')).toBeTruthy();
-    expect(card.getByText('评论整轮：根评论归档失败；保留已有归档，将在固定节拍重试。')).toBeTruthy();
+    expect(card.getByText('动态图：图片上传失败；已保存内容保留，将在固定节拍重试。')).toBeTruthy();
+    expect(card.getByText('根评论：根评论保存失败；已保存的动态保留，将在固定节拍重试。')).toBeTruthy();
+    expect(card.getByText('评论整轮：根评论保存失败；已保存的动态保留，将在固定节拍重试。')).toBeTruthy();
     expect(card.getByText('同步：同步未全部完成，将在固定节拍重试。')).toBeTruthy();
     // 时间各自含义：面板头与行内都是刚读到的记录，整轮成功仍不冒充。
     expect(card.getAllByText('最近检查：2026-03-01 10:00:00')).toHaveLength(2);
@@ -118,7 +118,7 @@ describe('单 UP 页的检查状态与归档进度', () => {
       } })] }),
       listChecks,
     }));
-    const card = within(await screen.findByRole('region', { name: '目标检查与归档状态' }));
+    const card = within(await screen.findByRole('region', { name: '目标检查与保存状态' }));
     // 未读取前只能引用身份读取带回的配置值，并说明它不代表全部成功。
     expect(card.getByText('最近检查：2026-03-01 09:00:00')).toBeTruthy();
     expect(card.getByText('最近成功：尚未成功')).toBeTruthy();
@@ -172,7 +172,7 @@ describe('单 UP 页的检查状态与归档进度', () => {
       listUps: async () => readyUp(),
       listChecks,
     }));
-    const first = within(await screen.findByRole('region', { name: '目标检查与归档状态' }));
+    const first = within(await screen.findByRole('region', { name: '目标检查与保存状态' }));
     await fireEvent.click(first.getByRole('button', { name: '读取检查状态' }));
     await settle();
     await router.push('/manage');
@@ -182,7 +182,7 @@ describe('单 UP 页的检查状态与归档进度', () => {
 
     pending.resolve(checksResult([targetCheck()]));
     await settle();
-    const current = within(await screen.findByRole('region', { name: '目标检查与归档状态' }));
+    const current = within(await screen.findByRole('region', { name: '目标检查与保存状态' }));
     expect(current.getByText('尚未读取检查状态。')).toBeTruthy();
     expect(current.queryByText('检查无变化；不代表同步完成。')).toBeNull();
   });
@@ -197,9 +197,9 @@ describe('单 UP 页的近期发现与窗口状态', () => {
     expect(panel.getByText('尚未读取发现状态。')).toBeTruthy();
 
     await fireEvent.click(panel.getByRole('button', { name: '读取发现状态' }));
-    await waitFor(() => expect(panel.getByText('本轮发现成功；不代表归档成功。')).toBeTruthy());
+    await waitFor(() => expect(panel.getByText('本轮发现成功；不代表内容已保存。')).toBeTruthy());
     expect(panel.getByText('读取时已保存模式：近期 N 条；N：2；监控：已启用。')).toBeTruthy();
-    expect(panel.getByText('发现窗口已就绪；内容归档请另读检查状态。')).toBeTruthy();
+    expect(panel.getByText('发现窗口已就绪；内容保存状态请另读检查状态。')).toBeTruthy();
     expect(panel.getByText('本轮 N：2；开始：2026-03-01 10:00:00')).toBeTruthy();
     expect(panel.getByText('本轮完成：2026-03-01 10:00:10')).toBeTruthy();
     expect(panel.getByRole('list', { name: '本轮累计候选' }).textContent).toContain('1001');
@@ -207,7 +207,7 @@ describe('单 UP 页的近期发现与窗口状态', () => {
     expect(panel.getByText('该轮达到 N 后停止扫描；不保证历史已耗尽。')).toBeTruthy();
     expect(panel.getByRole('list', { name: '最近可信发现目标' }).textContent).toContain('1002');
     expect(panel.getByRole('list', { name: '当前启用近期目标' }).textContent).toContain('1002');
-    expect(panel.getByText('与历史可信发现结果分开；入选不代表归档完成。')).toBeTruthy();
+    expect(panel.getByText('与历史可信发现结果分开；入选不代表保存完成。')).toBeTruthy();
   });
 
   it('发现失败保留旧窗口并标记可重试，不冒充本轮成功', async () => {
@@ -226,8 +226,8 @@ describe('单 UP 页的近期发现与窗口状态', () => {
     expect(panel.getByText('发现未完成；保留已有可信结果与已发布窗口。')).toBeTruthy();
     expect(panel.getByText('可在下一固定节拍重试；页面重读不会启动发现。')).toBeTruthy();
     expect(panel.getByText('发现错误：来源暂不可用；保留已有可信结果。')).toBeTruthy();
-    expect(panel.queryByText('本轮发现成功；不代表归档成功。')).toBeNull();
-    expect(panel.queryByText('发现窗口已就绪；内容归档请另读检查状态。')).toBeNull();
+    expect(panel.queryByText('本轮发现成功；不代表内容已保存。')).toBeNull();
+    expect(panel.queryByText('发现窗口已就绪；内容保存状态请另读检查状态。')).toBeNull();
     // 旧可信窗口仍展示，且不随失败清空。
     expect(panel.getByRole('list', { name: '当前启用近期目标' }).textContent).toContain('1002');
   });
@@ -297,7 +297,7 @@ describe('状态读取与草稿、配置变化相互隔离', () => {
     await waitFor(() => expect(upCard.getByText('保存成功。')).toBeTruthy());
 
     // 模式已改变：面板随已保存配置重建，旧状态不再冒充当前配置，必须重新读取。
-    const checksAfter = within(await screen.findByRole('region', { name: '目标检查与归档状态' }));
+    const checksAfter = within(await screen.findByRole('region', { name: '目标检查与保存状态' }));
     await waitFor(() => expect(checksAfter.getByText('尚未读取检查状态。')).toBeTruthy());
     expect(checksAfter.queryByText('检查无变化；不代表同步完成。')).toBeNull();
     expect((await discoveryPanel()).getByText('尚未读取发现状态。')).toBeTruthy();

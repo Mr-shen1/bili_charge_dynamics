@@ -208,7 +208,7 @@ test.describe('窄屏楼中楼回复精确链接', () => {
     await mockArchive(page);
     await page.goto(locatePath('9999'));
     const notice = page.getByRole('region', { name: '定位结果' });
-    await expect(notice.getByRole('status')).toContainText('不存在或未归档');
+    await expect(notice.getByRole('status')).toContainText('不存在或未保存');
     await expect(located(page)).toHaveCount(0);
     await expect(threadList(page)).toHaveCount(0);
 
