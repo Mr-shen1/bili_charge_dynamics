@@ -50,11 +50,11 @@ def test_initial_archives_existing_roots_independently_of_restricted_body(tmp_pa
             "is_pinned": False, "up_reply": None,
             "media_sources": [{"url": "https://example.invalid/comment.png", "width": 640, "height": 480}],
             "work": {"media": "pending"}, "media_last_attempt": "pending",
-            "media_version": "comments:7", "observed_version": "comments:7",
+            "media_version": "comment:900719925474099312346", "observed_version": "comment:900719925474099312346",
             "synced_media_version": None, "previous_media": [],
             "media": [{"id": media_id, "owner": {"type": "comment", "id": "900719925474099312346"},
                        "position": 0, "source_url": "https://example.invalid/comment.png", "width": 640, "height": 480,
-                       "version": "comments:7", "status": "pending", "public_url": None, "error": None}],
+                       "version": "comment:900719925474099312346", "status": "pending", "public_url": None, "error": None}],
         }
         assert state["pages"] == [1, 2, 2]  # 短页也明确读至空页，不由总数猜结束。
         started_at = datetime.now(timezone.utc).replace(microsecond=0)

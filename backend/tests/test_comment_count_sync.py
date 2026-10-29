@@ -511,7 +511,7 @@ def test_comment_checkpoint_advances_while_comment_media_remains_independently_p
             assert state["work"] == "complete"
             with archive_client(path) as api:
                 root = api.get(ARCHIVE + "/comments").json()["items"][0]
-                assert root["observed_version"] == root["media_version"] == "comments:8"
+                assert root["observed_version"] == root["media_version"] == f"comment:{root['id']}"
                 assert root["media"][0]["public_url"] is None
                 assert root["work"]["media"] == "pending"
             source.calls.clear()

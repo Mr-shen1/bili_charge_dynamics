@@ -232,7 +232,7 @@ RootComment 新增 `media`、`previous_media`、`observed_version`、`media_vers
 
 ### 实际处理版本与失败保留
 
-评论来源没有可信的编辑时间。评论媒体版本使用本次根同步开始处理的来源动态总数，编码为 `comments:<非负整数>`；未知为 null，不能用本地根数、当前时间或动态正文编辑时间补值。`observed_version` 在可信新计数观察时独立保存，即使根页随后失败；`media_version` 在实际取得该根的 pictures 或确认无图时更新，整个组成功才推进其实际 `synced_media_version`。旧组可被显式重试完成，但版本落后时不能清除新工作；initial 跳过落后于可信观察的媒体组。
+评论来源没有可信的编辑时间，且评论不支持编辑：根评论媒体版本只跟评论身份走，编码为 `comment:<根评论 rpid>`；未知为 null，不能用本地根数、当前时间或动态正文编辑时间补值。评论总数变化不再改变根组媒体版本，因此未被重读的根组不会因计数增长而永久失配。`observed_version` 在首次观察时保存；`media_version` 在实际取得该根的 pictures 或确认无图时更新，整个组成功才推进其实际 `synced_media_version`。版本仍用于异步下载的 fencing：URL 变化会重建媒体项并换新关联 ID，迟到的旧完成不能覆盖新关联。v28 迁移把既有的 `comments:<来源总数>` 一次性改写为 `comment:<rpid>`，并重算各组的 `work.media`。
 
 计数未知不阻断实际可读图片的独立上传完成；此时媒体可成功但 checkpoint 版本仍为 null，不代表计数观察成功或有精确编辑版本。明确空组的媒体 success 是来源已确认无图，不要求无意义的网络上传；新观察后的 `media_last_attempt` 可保留旧组实际结果，应结合 `work.media` 判断新工作。
 

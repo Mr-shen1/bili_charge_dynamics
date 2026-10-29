@@ -397,7 +397,7 @@ def test_stale_root_metadata_version_rescans_roots_once_and_heals_absent_picture
                     root = json.loads(payload)
                     root["work"]["media"] = "pending"
                     root["media"] = root["media_sources"] = []
-                    root["media_version"] = "comments:1"
+                    root["media_version"] = f"comment:{row_id}"
                     root["synced_media_version"] = None
                     database.execute("UPDATE root_comments SET document = ? WHERE id = ?",
                                      (json.dumps(root), row_id))

@@ -36,13 +36,14 @@ def _merge_comment(previous, observed):
     return document
 
 
-def _comment_media_version(count):
-    # 来源计数只标识实际根同步版本，不用于检测图片/评论编辑。
-    return f"comments:{count}" if count is not None else None
+def _comment_media_version(root_id):
+    # 评论不可编辑：图片集合随评论身份固定，版本只跟根评论 rpid 走，
+    # 不再随评论区总数变化，避免未被重读的根组版本永久失配。
+    return f"comment:{root_id}" if root_id else None
 
 
-def _observe_root_media(document, count):
-    observed = _comment_media_version(count)
+def _observe_root_media(document):
+    observed = _comment_media_version(document.get("id"))
     if observed is not None or "observed_version" not in document:
         document["observed_version"] = observed
     document.setdefault("work", {}).setdefault("media", "pending")
@@ -50,9 +51,9 @@ def _observe_root_media(document, count):
         document["work"]["media"] = "pending"
 
 
-def _reconcile_root_media(document, sources, count, observed_count):
-    _observe_root_media(document, observed_count)
-    version = _comment_media_version(count)
+def _reconcile_root_media(document, sources):
+    _observe_root_media(document)
+    version = _comment_media_version(document.get("id"))
     if sources is not None:
         reconcile_media(document, sources, version, owner_type="comment")
     elif not document.get("media"):
@@ -244,7 +245,7 @@ class Store(CheckStore, DiscoveryStore):
             connection.execute("BEGIN IMMEDIATE")
             try:
                 version = connection.execute("PRAGMA user_version").fetchone()[0]
-                if version > 27:
+                if version > 28:
                     raise RuntimeError("Unsupported database schema version")
                 if version == 0:
                     connection.execute("""CREATE TABLE identities (
@@ -338,8 +339,7 @@ class Store(CheckStore, DiscoveryStore):
                             "SELECT document FROM archives WHERE id = ?", (row["dynamic_id"],)
                         ).fetchone()[0])
                         sources = document.get("media_sources") or None
-                        _reconcile_root_media(document, sources, archive.get("synced_root_comment_count"),
-                                              archive.get("source_comment_count"))
+                        _reconcile_root_media(document, sources)
                         connection.execute("UPDATE root_comments SET document = ? WHERE dynamic_id = ? AND id = ?",
                                            (json.dumps(document, ensure_ascii=False), row["dynamic_id"], row["id"]))
                 if version < 10:
@@ -415,7 +415,34 @@ class Store(CheckStore, DiscoveryStore):
                 if version < 27:
                     # 08 跨进程发送许可、单路重型与目标互斥租约；短事务，网络不占写事务。
                     dispatch.migrate(connection)
-                connection.execute("PRAGMA user_version = 27")
+                if version < 28:
+                    # 评论不可编辑：根评论图片版本从 comments:<来源总数> 改为 comment:<rpid>。
+                    # 旧格式随评论区总数变化，热帖会让未被重读的根组版本永久失配、work.media 卡 pending。
+                    rows = connection.execute(
+                        "SELECT dynamic_id, id, document FROM root_comments").fetchall()
+                    for dynamic_id, root_id, document_json in rows:
+                        document = json.loads(document_json)
+                        version = _comment_media_version(root_id)
+                        changed = False
+                        for key in ("media_version", "observed_version"):
+                            if document.get(key) != version:
+                                document[key] = version
+                                changed = True
+                        # 从未成功同步过的组保持 None：synced_media_version 只标识已成功的版本。
+                        if isinstance(document.get("synced_media_version"), str) \
+                                and document["synced_media_version"] != version:
+                            document["synced_media_version"] = version
+                            changed = True
+                        for item in document.get("media") or []:
+                            if item.get("version") != version:
+                                item["version"] = version
+                                changed = True
+                        if changed:
+                            refresh_media_progress(document)
+                            connection.execute(
+                                "UPDATE root_comments SET document = ? WHERE dynamic_id = ? AND id = ?",
+                                (json.dumps(document, ensure_ascii=False), dynamic_id, root_id))
+                connection.execute("PRAGMA user_version = 28")
                 connection.commit()
             except BaseException:
                 connection.rollback()
@@ -758,10 +785,10 @@ class Store(CheckStore, DiscoveryStore):
                     # 与动态观察原子提交，防止旧上传在两次提交间误清新工作。
                     # 未变观察的根已由观察/来源协调保持 observed != media ⇒ pending，不重复写回。
                     for root in connection.execute("""SELECT id, document FROM root_comments WHERE dynamic_id = ?
-                        AND json_extract(document, '$.observed_version') IS NOT ?""",
-                        (id, _comment_media_version(count))).fetchall():
+                        AND json_extract(document, '$.observed_version') IS NOT ('comment:' || id)""",
+                        (id,)).fetchall():
                         root_document = json.loads(root["document"])
-                        _observe_root_media(root_document, count)
+                        _observe_root_media(root_document)
                         self._write_media_owner(connection, id, root["id"], root_document)
                 if "media_sources" in updates:
                     reconcile_media(document, updates["media_sources"], updates.get("observed_version"))
@@ -1083,7 +1110,7 @@ class Store(CheckStore, DiscoveryStore):
                     sources = document["media_sources"]
                     if previous is not None:
                         document = _merge_comment(json.loads(previous[0]), document)
-                    _reconcile_root_media(document, sources, observed_count, archive.get("source_comment_count"))
+                    _reconcile_root_media(document, sources)
                     self._prune_media_attempts(connection, id, document["media"], document["id"])
                     if document["media_sources"] is None:
                         document["media_sources"] = []

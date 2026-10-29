@@ -42,16 +42,6 @@ def is_archive_delivery_url(url):
                 or host == "bilibili.com" or host.endswith(".bilibili.com"))
 
 
-def _comment_version_count(version):
-    """根评论媒体版本形如 comments:<来源评论总数>；无法解析时返回 -1（视为不领先）。"""
-    if not isinstance(version, str) or not version.startswith("comments:"):
-        return -1
-    try:
-        return int(version.split(":", 1)[1])
-    except ValueError:
-        return -1
-
-
 def refresh_media_progress(document, *, empty_confirmed=True):
     """按单图结果聚合；迁移中没有成功正文的空来源不能确认媒体成功空。"""
     items = document["media"]

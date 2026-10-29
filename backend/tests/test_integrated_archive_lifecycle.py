@@ -218,7 +218,9 @@ def test_count_change_media_retry_and_new_observation_keep_independent_checkpoin
             current, archive = snapshot(path)
             assert current["work"] == "complete" and current["synced_comment_count"] == 72
             assert current["media_errors"] == current["comment_media_errors"] == []
-            assert current["comment_media_last_succeeded_at"] == current["comments_last_succeeded_at"] == "2030-01-01T00:01:45+00:00"
+            # 评论不可编辑：计数变化不重传根图，图片成功时间保持首次上传；根分页时间独立推进。
+            assert current["comment_media_last_succeeded_at"] == "2030-01-01T00:01:30+00:00"
+            assert current["comments_last_succeeded_at"] == "2030-01-01T00:01:45+00:00"
             assert current["text_last_succeeded_at"] == baseline["text_last_succeeded_at"]
             assert archive["comment_sync"] == current
             with archive_client(path) as api:

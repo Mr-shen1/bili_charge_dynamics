@@ -164,8 +164,8 @@ def test_new_observation_during_old_upload_survives_reinclusion_and_old_completi
                 await Collector(Store(path), client, ImageDownloader(media_client), uploader).execute_pending()
                 current = checks(path)[RECENT_ID]
                 assert current["work"] == "complete" and current["synced_comment_count"] == 8
-                # 新评论计数有自己的媒体版本，根图重新确认；动态图不重复上传。
-                assert len(uploader.keys) == 4
+                # 评论不可编辑：新评论计数不改变根图版本，根图不重复上传；动态图也不重复上传。
+                assert len(uploader.keys) == 3
                 assert sum("/comments/" not in key for key in uploader.keys) == 2
             finally:
                 release.set()
@@ -279,7 +279,7 @@ def test_v12_migration_failure_rolls_back_and_retries_without_losing_pending(tmp
         database.execute("DROP TABLE target_selections")
     assert checks(path) == before
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 27
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 28
 
 
 @pytest.mark.parametrize("mode", ["specified", "recent"])

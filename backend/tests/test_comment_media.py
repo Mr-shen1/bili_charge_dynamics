@@ -107,7 +107,8 @@ def test_pending_pure_image_comments_recover_independently_after_reopen(tmp_path
             assert client.post(RETRY, params=params).status_code == 422
 
 
-def test_new_count_observation_survives_old_media_completion_when_root_page_fails(tmp_path):
+def test_count_change_keeps_root_media_version_when_root_page_fails(tmp_path):
+    """评论总数变化只推进计数观察；根组图片版本随评论身份固定，不因计数变化失配。"""
     state = comment_state()
     with media_client(tmp_path / "observe.sqlite", state, source_handler=source_handler(state)) as client:
         prepare(client)
@@ -116,15 +117,14 @@ def test_new_count_observation_survives_old_media_completion_when_root_page_fail
         state.update(dynamic_count=8, fail_page=1)
         client.post(SYNC, json={"uid": UID})
         pending = roots_by_id(client)["123"]
-        assert pending["observed_version"] == "comments:8"
-        assert pending["media_version"] == "comments:7"
-        assert pending["work"]["media"] == "pending"
+        assert pending["observed_version"] == pending["media_version"] == "comment:123"
+        assert pending["work"]["media"] == baseline["work"]["media"]
         assert pending["media"] == baseline["media"]
     with media_client(tmp_path / "observe.sqlite", state, FakeOSS()) as client:
-        assert client.post(RETRY).json()["succeeded"] == 2
+        assert client.post(RETRY).json()["succeeded"] == 2  # 未配置上传器时留下的两张图。
         saved = roots_by_id(client)["123"]
-        assert saved["synced_media_version"] == "comments:7"
-        assert saved["work"]["media"] == "pending"
+        assert saved["synced_media_version"] == "comment:123"
+        assert saved["work"]["media"] == "success"
         archive = client.get(ARCHIVE).json()
         assert archive["synced_root_comment_count"] == 7
         assert archive["source_comment_count"] == 8
@@ -190,44 +190,35 @@ def test_single_image_failure_retains_other_images_text_and_checkpoints(tmp_path
         assert archive["comment_sync"]["parts"]["comment_media"] == "pending"
 
 
-def test_actual_root_sync_versions_replace_same_url_and_retain_success_but_missing_pictures_do_not(tmp_path):
+def test_same_version_reuses_success_missing_pictures_kept_and_empty_array_clears(tmp_path):
+    """同版本复用已成功项；缺 pictures 不擦除；空数组清空并确认成功。"""
     state = comment_state()
-    failing = False
-
-    class VersionOSS(FakeOSS):
-        async def upload(self, key, content, content_type):
-            if failing:
-                raise RuntimeError("FICTIONAL_SECRET")
-            return await super().upload(key, content, content_type)
-
-    with media_client(tmp_path / "versions.sqlite", state, VersionOSS(), source_handler=source_handler(state)) as client:
+    with media_client(tmp_path / "versions.sqlite", state, FakeOSS(), source_handler=source_handler(state)) as client:
         prepare(client)
         client.post(SYNC, json={"uid": UID})
         baseline = roots_by_id(client)["123"]
+        # 评论总数变化不改变根组图片版本：复用同一组 item，不产生 previous_media。
         state["dynamic_count"] = 8
-        failing = True
         client.post(SYNC, json={"uid": UID})
         newer = roots_by_id(client)["123"]
-        assert newer["media_version"] == newer["observed_version"] == "comments:8"
-        assert newer["synced_media_version"] == "comments:7"
-        assert newer["previous_media"] == baseline["media"]
-        assert newer["media_last_attempt"] == "failed"
-        assert {item["id"] for item in newer["media"]}.isdisjoint(item["id"] for item in baseline["media"])
+        assert newer["media_version"] == newer["observed_version"] == "comment:123"
+        assert [item["id"] for item in newer["media"]] == [item["id"] for item in baseline["media"]]
+        assert newer["previous_media"] == []
+        # 缺 pictures：保留已知组，不擦除也不冒充空组。
         for root in state["roots"]:
             root["content"].pop("pictures")
         client.post(SYNC, json={"uid": UID})
-        saved = roots_by_id(client)["123"]
-        assert saved["media_sources"] == newer["media_sources"]
-        assert saved["media"] == newer["media"]
-        assert saved["previous_media"] == newer["previous_media"]
+        kept = roots_by_id(client)["123"]
+        assert kept["media_sources"] == newer["media_sources"]
+        assert kept["media"] == newer["media"]
+        # 空数组：确认清空，work.media 成功。
         for root in state["roots"]:
             root["content"]["pictures"] = []
         client.post(SYNC, json={"uid": UID})
         empty = roots_by_id(client)["123"]
         assert empty["media"] == empty["media_sources"] == []
-        assert empty["previous_media"] == baseline["media"]
         assert empty["work"]["media"] == empty["media_last_attempt"] == "success"
-        assert empty["synced_media_version"] == "comments:8"
+        assert empty["synced_media_version"] == "comment:123"
 
 
 @pytest.mark.parametrize("boundary", ["download", "upload"])
@@ -300,7 +291,7 @@ def test_late_media_completion_cannot_overwrite_new_version_or_new_attempt(tmp_p
         assert len(keys) == len(set(keys))  # 被取代的 PUT 不覆盖已发布对象。
         if new_version:
             assert newer["123"]["text"] == "新版本根评论"
-            assert newer["123"]["synced_media_version"] == (None if new_fails else "comments:8")
+            assert newer["123"]["synced_media_version"] == (None if new_fails else "comment:123")
 
 
 def test_slow_initial_comment_upload_keeps_text_complete_and_owners_isolated(tmp_path):
@@ -443,15 +434,15 @@ def test_v8_root_sources_migrate_to_pending_without_changing_frozen_pages_or_arc
     with media_client(path, {}, FakeOSS()) as client:
         pending = roots_by_id(client)["123"]
         assert {key: pending[key] for key in legacy} == legacy
-        assert pending["media_version"] == "comments:7"
-        assert pending["observed_version"] == f"comments:{observed_count}"
+        assert pending["media_version"] == "comment:123"
+        assert pending["observed_version"] == "comment:123"
         assert all(item["status"] == "pending" and item["public_url"] is None for item in pending["media"])
         expected_archive = {**archive, **NULL_COMMENT_STATUS, "comment_sync": None}
         assert client.get(ARCHIVE).json() == expected_archive
         assert client.post(RETRY).json() == {"processed": 2, "succeeded": 2, "failed": 0}
         completed = roots_by_id(client)["123"]
-        assert completed["work"]["media"] == ("success" if observed_count == 7 else "pending")
-        assert completed["synced_media_version"] == "comments:7"
+        assert completed["work"]["media"] == "success"
+        assert completed["synced_media_version"] == "comment:123"
         assert client.get(COMMENTS, params={"limit": 1, "cursor": token}).json() == frozen
         assert client.get(ARCHIVE).json() == expected_archive
     with media_client(path, {}) as client:
@@ -481,7 +472,8 @@ def test_absent_pictures_confirm_empty_media_only_when_no_image_was_ever_observe
         assert archive["comment_sync"]["parts"]["comment_media"] == "success"
 
 
-def test_unknown_count_and_absent_pictures_are_not_confirmed_empty_media(tmp_path):
+def test_unknown_count_does_not_affect_root_media_version(tmp_path):
+    """未知来源计数不影响根组图片版本；从未观察到图片时仍确认空组。"""
     state = comment_state()
     state["unknown_count"] = True
     state["roots"][1]["content"].pop("pictures")
@@ -489,8 +481,7 @@ def test_unknown_count_and_absent_pictures_are_not_confirmed_empty_media(tmp_pat
         prepare(client)
         client.post(SYNC, json={"uid": UID})
         saved = roots_by_id(client)
-        assert saved["123"]["observed_version"] is None
-        assert saved["123"]["media_version"] is None
+        assert saved["123"]["observed_version"] == saved["123"]["media_version"] == "comment:123"
         assert saved["123"]["work"]["media"] == "success"
         assert saved["124"]["media"] == []
         assert saved["124"]["work"]["media"] == saved["124"]["media_last_attempt"] == "success"
@@ -543,8 +534,8 @@ def test_stale_empty_comment_media_settles_instead_of_blocking_completion(tmp_pa
     with sqlite3.connect(path) as database:
         document = json.loads(database.execute(
             "SELECT document FROM root_comments WHERE dynamic_id = '123' AND id = ?", (root_id,)).fetchone()[0])
-        document["observed_version"] = "comments:9"
-        document["media_version"] = "comments:10"
+        document["observed_version"] = "comment:settle-observed"
+        document["media_version"] = "comment:settle-stale"
         document["work"]["media"] = "pending"
         database.execute(
             "UPDATE root_comments SET document = ? WHERE dynamic_id = '123' AND id = ?",
@@ -558,4 +549,4 @@ def test_stale_empty_comment_media_settles_instead_of_blocking_completion(tmp_pa
             "SELECT document FROM root_comments WHERE dynamic_id = '123' AND id = ?", (root_id,)).fetchone()[0])
     assert settled["work"]["media"] == "success"
     assert settled["media_last_attempt"] == "success"
-    assert settled["observed_version"] == settled["media_version"] == "comments:9"
+    assert settled["observed_version"] == settled["media_version"] == "comment:settle-observed"
