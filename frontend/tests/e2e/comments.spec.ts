@@ -1,6 +1,6 @@
 // @projects desktop-chromium-archive, mobile-chromium-archive
 import { expect, test, type Page } from '@playwright/test';
-import { closeViewer, counter, sortOption, viewer } from './support';
+import { closeViewer, commentSort, counter, switchCommentSort, viewer } from './support';
 
 // 一级评论跑生产装配 + HTTP 传输替身：仍经过真实 Adapter 的 DTO 映射与页面读取，
 // 请求次数、排序与 cursor 可直接观察。折叠、锚点、布局变化必须真实浏览器。
@@ -134,17 +134,19 @@ test.describe('一级评论阅读与排序', () => {
     // 评论入口优先于详情顶部：评论区对齐视口顶部。
     await expect.poll(() => region.evaluate(element => Math.round(element.getBoundingClientRect().top))).toBe(0);
     expect(await scrollY(page)).toBeGreaterThan(100);
-    await expect(region.getByRole('radio', { name: '最新' })).toBeVisible();
+    // 新访问默认按时间，控件显示当前排序。
+    await expect(commentSort(region, 'latest')).toBeVisible();
 
     await region.getByRole('button', { name: '加载更多评论' }).click();
     await expect(region.getByRole('listitem')).toHaveCount(40);
     await region.getByRole('button', { name: '加载更多评论' }).click();
     await expect(region.getByRole('listitem')).toHaveCount(45);
 
+    // 普通新访问也显式传排序：不靠服务端省略 sort 的 hot 兼容默认。
     expect(requests).toEqual([
-      { sort: 'hot', cursor: null },
-      { sort: 'hot', cursor: 'hot:20' },
-      { sort: 'hot', cursor: 'hot:40' },
+      { sort: 'latest', cursor: null },
+      { sort: 'latest', cursor: 'latest:20' },
+      { sort: 'latest', cursor: 'latest:40' },
     ]);
     await expect(region.getByRole('button', { name: '加载更多评论' })).toHaveCount(0);
     await expect(region.getByText(/加载完毕|已读完/)).toHaveCount(0);
@@ -177,19 +179,20 @@ test.describe('一级评论阅读与排序', () => {
     await page.evaluate(() => window.scrollTo(0, 1200));
     const before = await scrollY(page);
     expect(before).toBeGreaterThan(0);
-    await sortOption(region, '最新').click();
-    await expect(region.getByRole('radio', { name: '最新' })).toBeChecked();
+    await switchCommentSort(region);
+    await expect(commentSort(region, 'hot')).toBeVisible();
     await expect.poll(() => region.evaluate(element => Math.round(element.getBoundingClientRect().top))).toBe(0);
 
-    const latestFirst = region.getByRole('listitem').first();
-    await expect(latestFirst.getByRole('button', { name: '展开评论' })).toBeVisible();
-    await expect(latestFirst.getByRole('button', { name: '收起评论' })).toHaveCount(0);
+    const hotFirst = region.getByRole('listitem').first();
+    // 来源明确置顶在两种排序下都优先；切换排序重置正文展开状态。
+    await expect(hotFirst.getByRole('button', { name: '展开评论' })).toBeVisible();
+    await expect(hotFirst.getByRole('button', { name: '收起评论' })).toHaveCount(0);
     await expect(region.getByRole('listitem')).toHaveCount(20);
     // 上方动态不被重建。
     expect(await detailHandle?.evaluate(element => element.isConnected)).toBe(true);
 
     // 切换后的首批不带旧排序 cursor，也不重复旧批次。
-    expect(requests.slice(-1)).toEqual([{ sort: 'latest', cursor: null }]);
+    expect(requests.slice(-1)).toEqual([{ sort: 'hot', cursor: null }]);
   });
 
   test('历史返回恢复排序、批次与评论锚点，视口变化后仍保持偏移', async ({ page }) => {
@@ -201,8 +204,8 @@ test.describe('一级评论阅读与排序', () => {
     await expect(region.getByRole('listitem')).toHaveCount(20);
     await region.getByRole('button', { name: '加载更多评论' }).click();
     await expect(region.getByRole('listitem')).toHaveCount(40);
-    await sortOption(region, '最新').click();
-    await expect(region.getByRole('radio', { name: '最新' })).toBeChecked();
+    await switchCommentSort(region);
+    await expect(commentSort(region, 'hot')).toBeVisible();
     await region.getByRole('button', { name: '加载更多评论' }).click();
     await expect(region.getByRole('listitem')).toHaveCount(40);
 
@@ -221,7 +224,7 @@ test.describe('一级评论阅读与排序', () => {
     await page.goForward();
     const restored = page.getByRole('region', { name: '评论区' });
     await expect(restored.getByRole('listitem')).toHaveCount(40);
-    await expect(restored.getByRole('radio', { name: '最新' })).toBeChecked();
+    await expect(commentSort(restored, 'hot')).toBeVisible();
     await expect.poll(() => page.locator(`[data-reading-id="${id}"]`)
       .evaluate(element => Math.round(element.getBoundingClientRect().top))).toBe(offset);
     // 恢复已读批次不重复请求。
@@ -229,7 +232,7 @@ test.describe('一级评论阅读与排序', () => {
 
     await restored.getByRole('button', { name: '加载更多评论' }).click();
     await expect(restored.getByRole('listitem')).toHaveCount(45);
-    expect(requests.at(-1)).toEqual({ sort: 'latest', cursor: 'latest:40' });
+    expect(requests.at(-1)).toEqual({ sort: 'hot', cursor: 'hot:40' });
   });
 
   test('主动入口优先于旧评论位置', async ({ page }) => {
@@ -242,33 +245,34 @@ test.describe('一级评论阅读与排序', () => {
     await page.goBack();
     await expect(page.getByRole('article')).toHaveCount(1);
 
-    // 再次点击评论入口是新的访问：重新读最热首批并定位评论区顶部。
+    // 再次点击评论入口是新的访问：重新读按时间首批并定位评论区顶部。
     await page.getByRole('button', { name: '来源评论 45' }).click();
     const fresh = page.getByRole('region', { name: '评论区' });
     await expect(fresh.getByRole('listitem')).toHaveCount(20);
-    await expect(fresh.getByRole('radio', { name: '最热' })).toBeChecked();
+    await expect(commentSort(fresh, 'latest')).toBeVisible();
     await expect.poll(() => fresh.evaluate(element => Math.round(element.getBoundingClientRect().top))).toBe(0);
   });
 
   test('切换排序时迟到的旧结果不覆盖新选择', async ({ page }) => {
     const requests = await mockApi(page, {
-      delay: request => request.sort === 'hot' ? 600 : 50,
+      // 首批（按时间）慢、切换后的按热度快：旧排序的迟到结果不能覆盖新选择。
+      delay: request => request.sort === 'latest' ? 600 : 50,
     });
     await page.goto('/');
     await page.getByRole('button', { name: '来源评论 45' }).click();
     const region = page.getByRole('region', { name: '评论区' });
-    await expect(region.getByText('最热评论加载中…')).toBeVisible();
-    await sortOption(region, '最新').click();
+    await expect(region.getByText('最新评论加载中…')).toBeVisible();
+    await switchCommentSort(region);
     await expect(region.getByRole('listitem')).toHaveCount(20);
-    await expect(region.getByRole('radio', { name: '最新' })).toBeChecked();
-    const firstLatest = await region.getByRole('listitem').first().textContent();
+    await expect(commentSort(region, 'hot')).toBeVisible();
+    const firstHot = await region.getByRole('listitem').first().textContent();
 
-    // 等旧的最热响应真正到达，页面仍保持最新排序的首批与加载完成状态。
+    // 等旧的按时间响应真正到达，页面仍保持按热度排序的首批与加载完成状态。
     await page.waitForTimeout(800);
-    expect(await region.getByRole('listitem').first().textContent()).toBe(firstLatest);
-    await expect(region.getByRole('radio', { name: '最新' })).toBeChecked();
+    expect(await region.getByRole('listitem').first().textContent()).toBe(firstHot);
+    await expect(commentSort(region, 'hot')).toBeVisible();
     await expect(region.getByRole('alert')).toHaveCount(0);
-    expect(requests.map(request => request.sort ?? request.cursor?.split(':')[0])).toEqual(['hot', 'latest']);
+    expect(requests.map(request => request.sort ?? request.cursor?.split(':')[0])).toEqual(['latest', 'hot']);
   });
 
   test('根评论 media 经真实 DTO 映射为评论图片组，预览不重读评论也不请求来源业务图', async ({ page }) => {
@@ -329,8 +333,46 @@ test.describe('一级评论阅读与排序', () => {
     await closeViewer(page);
     await expect(viewer(page)).toHaveCount(0);
     // 关闭预览不重置当前排序与已加载批次。
-    await expect(page.getByRole('region', { name: '评论区' }).getByRole('radio', { name: '最热' })).toBeChecked();
+    await expect(commentSort(page.getByRole('region', { name: '评论区' }), 'latest')).toBeVisible();
     await expect(page.locator('[data-reading-id="comment:7004"]')).toHaveCount(1);
+  });
+
+  test('排序是显示当前排序的单按钮：13px、44px 点击区，评论标题 14px 小于动态正文', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await mockApi(page);
+    await page.goto('/');
+    await page.getByRole('button', { name: '来源评论 45' }).click();
+    const region = page.getByRole('region', { name: '评论区' });
+    await expect(region.getByRole('listitem')).toHaveCount(20);
+
+    // 区域身份来自读取上下文，不是 DOM id；单按钮替代原双选项分组。
+    await expect(region).toHaveAttribute('data-comment-region', 'detail:1001');
+    await expect(region.getByRole('radiogroup')).toHaveCount(0);
+    const sort = commentSort(region, 'latest');
+    await expect(sort).toHaveText(/☰\s*按时间/);
+
+    const metrics = await sort.evaluate(node => {
+      const box = node.getBoundingClientRect();
+      return { fontSize: parseFloat(getComputedStyle(node).fontSize), height: box.height, width: box.width };
+    });
+    expect(metrics.fontSize).toBe(13);
+    expect(metrics.height).toBeGreaterThanOrEqual(44);
+    expect(metrics.width).toBeGreaterThanOrEqual(44);
+
+    // “评论 N” 14px，比动态正文（16px）小一级。
+    const heading = await region.getByRole('heading', { level: 2 }).evaluate(node => ({
+      fontSize: parseFloat(getComputedStyle(node).fontSize),
+      buttonFontSize: parseFloat(getComputedStyle(node.querySelector('button')!).fontSize),
+    }));
+    const bodyFontSize = await page.getByRole('article').locator('.dynamic-body .text')
+      .evaluate(node => parseFloat(getComputedStyle(node).fontSize));
+    expect(heading.fontSize).toBe(14);
+    expect(heading.buttonFontSize).toBe(14);
+    expect(heading.fontSize).toBeLessThan(bodyFontSize);
+
+    // 只显示当前排序：切换后文字与可访问名一起变成“按热度”。
+    await sort.click();
+    await expect(commentSort(region, 'hot')).toHaveText(/☰\s*按热度/);
   });
 
   test('评论区在 360/390/768/1280 宽度下无页面横溢', async ({ page }) => {

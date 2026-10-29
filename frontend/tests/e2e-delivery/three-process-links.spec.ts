@@ -284,8 +284,8 @@ test('实际投递的动态链接打开生产前端后可见归档正文，刷�
 test('一级评论后续批链接直开、刷新与窄屏都能定位到目标本身', async ({ page }) => {
   const link = links().rootTarget;
   expect(link).toBe(`${baseURL}/dynamics/${dynamicId}/comments/${rootTarget}/locate`);
-  // 目标确实不在首批：最热首批 20 条里没有它。
-  const first = await (await page.request.get(`/api/archive/dynamics/${dynamicId}/comments?sort=hot&limit=20`)).json();
+  // 目标确实不在首批：页面默认按时间，首批 20 条里没有它。
+  const first = await (await page.request.get(`/api/archive/dynamics/${dynamicId}/comments?sort=latest&limit=20`)).json();
   expect(first.items).toHaveLength(20);
   expect(first.items.some((item: { id: string }) => item.id === rootTarget)).toBe(false);
 

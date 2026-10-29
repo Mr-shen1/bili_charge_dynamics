@@ -149,8 +149,8 @@ it('打开、切图与关闭评论图片预览不重置排序与已加载评论�
   const region = await screen.findByRole('region', { name: '评论区' });
   await waitFor(() => expect(within(region).getAllByRole('listitem')).toHaveLength(2));
   // 预览不能把用户选过的排序与已加载批次重置回默认。
-  await fireEvent.click(within(region).getByRole('radio', { name: '最新' }));
-  await waitFor(() => expect((within(region).getByRole('radio', { name: '最新' }) as HTMLInputElement).checked).toBe(true));
+  await fireEvent.click(within(region).getByRole('button', { name: '当前按时间，点击切换为按热度' }));
+  await waitFor(() => expect(within(region).getByRole('button', { name: '当前按热度，点击切换为按时间' })).toBeTruthy());
   const readsBeforePreview = reads;
   const push = vi.spyOn(router, 'push');
   const replace = vi.spyOn(router, 'replace');
@@ -172,7 +172,7 @@ it('打开、切图与关闭评论图片预览不重置排序与已加载评论�
   router.go(-1);
   await waitFor(() => expect(screen.getByTestId('preview-session').textContent).toBe('closed'));
   const after = screen.getByRole('region', { name: '评论区' });
-  expect((within(after).getByRole('radio', { name: '最新' }) as HTMLInputElement).checked).toBe(true);
+  expect(within(after).getByRole('button', { name: '当前按热度，点击切换为按时间' })).toBeTruthy();
   expect(within(after).getAllByRole('listitem')).toHaveLength(2);
   // 关闭预览不重读评论，仍停留在当前访问。
   expect(reads).toBe(readsBeforePreview);

@@ -58,6 +58,12 @@ export interface DetailSnapshot {
 }
 
 export interface CommentSnapshot {
+  /**
+   * 区域身份：这份状态属于哪个一级评论区域。读取与交互状态按它隔离，
+   * 多个区域（详情、列表卡片、后续多访问）共用一个快照容器时不能互相冒充。
+   * 未标记表示调用方给新区域的首份状态，本身还不属于任何区域。
+   */
+  readonly regionId?: string;
   readonly sort: CommentSort;
   readonly read: CommentReadState;
   /** 一级评论正文展开状态；切换排序与重新开始读取时清空。 */
@@ -66,7 +72,24 @@ export interface CommentSnapshot {
   readonly replies: Readonly<Record<string, ReplySnapshot>>;
 }
 
-/** 无会话新访问默认最热，与后端默认排序一致。 */
-export function emptyCommentSnapshot(sort: CommentSort = 'hot'): CommentSnapshot {
+/**
+ * 无可恢复状态的新访问默认按时间（设计 §4）。
+ * 服务端省略 sort 时的 hot 默认保持不变，前端始终显式传排序。
+ */
+export function emptyCommentSnapshot(sort: CommentSort = 'latest'): CommentSnapshot {
   return { sort, read: { status: 'loading', data: null }, expanded: {}, replies: {} };
+}
+
+/**
+ * 只采纳属于本区域的状态：未标记的快照是调用方给新区域的初值，可以采纳；
+ * 标记了别的区域时退回本区域的默认状态，绝不复用别的区域的排序、批次与展开状态。
+ * 区域身份由调用方显式给出，不读 DOM id，也不依赖唯一全局排序。
+ */
+export function adoptCommentSnapshot(
+  snapshot: CommentSnapshot | undefined,
+  regionId: string,
+): CommentSnapshot {
+  if (!snapshot) return emptyCommentSnapshot();
+  if (snapshot.regionId !== undefined && snapshot.regionId !== regionId) return emptyCommentSnapshot();
+  return snapshot;
 }

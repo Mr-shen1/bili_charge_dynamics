@@ -160,12 +160,12 @@ test.describe('精确根入口的返回与恢复（窄屏）', () => {
     await expect(region.getByRole('listitem')).toHaveCount(20);
     await expect(locatedItem(page)).toHaveAttribute('data-located', 'true');
     await expect.poll(() => viewportTop(page, `comment:${rootId}`)).toBeLessThan(24);
-    expect(requests).toEqual([{ kind: 'comment-location', detail: `${rootId}:hot` }]);
+    expect(requests).toEqual([{ kind: 'comment-location', detail: `${rootId}:latest` }]);
 
     // 定位后继续阅读：追加最后一批，并把视口移到批次中段。
     await region.getByRole('button', { name: '加载更多评论' }).click();
     await expect(region.getByRole('listitem')).toHaveCount(21);
-    expect(requests.at(-1)).toEqual({ kind: 'comments', detail: 'loc:44:hot' });
+    expect(requests.at(-1)).toEqual({ kind: 'comments', detail: 'loc:44:latest' });
     await page.evaluate(() => window.scrollTo(0, 320));
     const before = await scrollY(page);
     expect(before).toBe(320);

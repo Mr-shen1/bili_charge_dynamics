@@ -456,7 +456,7 @@ it('切换排序重置回复展开状态，旧回复区的迟到页码结果不�
     readUps: async () => ({ status: 'success', data: [] }),
     readList: async () => ({ status: 'success', data: { items: [commentDynamic()], nextCursor: null } }),
     readDetail: async () => ({ status: 'success', data: commentDynamic() }),
-    readComments: async input => (input.sort === 'hot'
+    readComments: async input => (input.sort === 'latest'
       ? { status: 'success', data: { items: [comment(1, { replyCount: 25 })], nextCursor: null } }
       : { status: 'success', data: { items: [], nextCursor: null } }),
     readReplies: async input => {
@@ -475,15 +475,16 @@ it('切换排序重置回复展开状态，旧回复区的迟到页码结果不�
   await fireEvent.click(within(region).getByRole('button', { name: '下一页' }));
   await waitFor(() => expect(seen.at(-1)!.page).toBe(2));
 
-  await fireEvent.click(within(region).getByRole('radio', { name: '最新' }));
+  // 单按钮：当前按时间，点击切到按热度（该排序下没有可读评论）。
+  await fireEvent.click(within(region).getByRole('button', { name: '当前按时间，点击切换为按热度' }));
   await waitFor(() => expect(within(region).getByText('暂无评论')).toBeTruthy());
   pending.resolve({ status: 'success', data: pageBatch(25, 2) });
   await waitFor(() => expect(seen.at(-1)!.page).toBe(2));
   expect(within(region).queryByRole('list', { name: '回复列表' })).toBeNull();
   expect(within(region).getByText('暂无评论')).toBeTruthy();
 
-  // 切回最热：回复区重新从预览开始，不沿用旧展开状态。
-  await fireEvent.click(within(region).getByRole('radio', { name: '最热' }));
+  // 切回按时间：回复区重新从预览开始，不沿用旧展开状态。
+  await fireEvent.click(within(region).getByRole('button', { name: '当前按热度，点击切换为按时间' }));
   await waitFor(() => expect(replyList(1)).toHaveLength(1));
   await waitFor(() => expect(within(replyList(1)[0]!).getAllByRole('listitem')).toHaveLength(3));
   expect(within(region).getByRole('button', { name: '展开回复' })).toBeTruthy();

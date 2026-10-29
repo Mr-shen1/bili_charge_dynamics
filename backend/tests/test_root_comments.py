@@ -191,6 +191,31 @@ def test_complete_sort_then_20_20_5_frozen_pages_survive_updates_and_reopen(tmp_
         assert client.get(COMMENTS, params={"sort": sort}).json()["items"][0]["text"] == "新评论 45"
 
 
+def test_omitted_sort_stays_hot_for_clients_that_do_not_send_it(tmp_path):
+    """客户端默认改成按时间后，服务端省略 sort 的 hot 兼容默认必须保留。"""
+    path = tmp_path / "default-sort.sqlite"
+    state = {"roots": forty_five_roots()}
+    with archive_client(path, source_handler(state)) as client:
+        prepare(client)
+        client.post("/api/sync/initial", json={"uid": UID})
+        def ids(batch):
+            return [item["id"] for item in batch["items"]]
+
+        omitted = client.get(COMMENTS).json()
+        hot = client.get(COMMENTS, params={"sort": "hot"}).json()
+        latest = client.get(COMMENTS, params={"sort": "latest"}).json()
+        # 首批条目与显式 hot 一致，不跟随客户端新的按时间默认。
+        assert ids(omitted) == ids(hot)
+        assert ids(omitted) != ids(latest)
+        # 省略 sort 拿到的续读游标按 hot 资源继续可用；混用 latest 仍按资源标识拒绝。
+        assert client.get(COMMENTS, params={"cursor": omitted["next_cursor"]}).status_code == 200
+        assert client.get(COMMENTS, params={"cursor": omitted["next_cursor"], "sort": "latest"}).status_code == 422
+        # 定位端点同理：省略 sort 仍按 hot 给出位置窗口。
+        target = omitted["items"][0]["id"]
+        assert (ids(client.get(COMMENTS + f"/{target}/location").json())
+                == ids(client.get(COMMENTS + f"/{target}/location", params={"sort": "hot"}).json()))
+
+
 @pytest.mark.parametrize("case", ["business", "http", "missing_replies", "bad_count", "bad_total", "wrong_oid", "nested", "nonadvancing", "empty_denied"])
 def test_source_errors_are_not_successful_empty_or_destructive(tmp_path, caplog, case):
     state = {}

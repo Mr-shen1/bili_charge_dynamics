@@ -11,7 +11,7 @@ import { reportReadError } from '../app/readError';
  */
 export function useCommentsRead(
   reader: DynamicReader,
-  input: { dynamicId: string; sort: CommentSort; anchorId?: string | null },
+  input: { regionId: string; dynamicId: string; sort: CommentSort; anchorId?: string | null },
   initial?: CommentReadState,
 ) {
   const state = shallowRef<CommentReadState>(initial ?? { data: null, status: 'loading' });
@@ -69,7 +69,8 @@ export function useCommentsRead(
       }
     } catch (error) {
       if (active && request === controller && !controller.signal.aborted) {
-        reportReadError('一级评论', error);
+        // 区域身份写进开发期诊断：同一页面多个评论区域并行读取时能分辨归属。
+        reportReadError(`一级评论（${input.regionId}）`, error);
         state.value = { data: previous, status: 'error' };
       }
     } finally {
@@ -117,7 +118,7 @@ export function useCommentsRead(
       };
     } catch (error) {
       if (active && previousRequest === controller && !controller.signal.aborted) {
-        reportReadError('更早评论', error);
+        reportReadError(`更早评论（${input.regionId}）`, error);
         earlierError.value = true;
       }
     } finally {

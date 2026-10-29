@@ -8,7 +8,7 @@ const baseURL = 'http://127.0.0.1:4325';
 const uid = '808';
 const dynamicId = '800300';
 const total = 45;
-// 45 条虚构根评论按点赞递减归档：最热顺序为 860001…860045，目标落在第二批。
+// 45 条虚构根评论点赞与时间同向递减：按热度/按时间顺序都是 860001…860045，目标落在第二批。
 const targetId = String(860000 + 25);
 const commentsPath = `/api/archive/dynamics/${dynamicId}/comments`;
 
@@ -53,8 +53,8 @@ async function viewportTop(page: Page, rootId: string): Promise<number> {
 test('实际 API 定位读取：后续批目标可直开定位，且读取不触发采集或归档写入', async ({ page }) => {
   const archive = await archiveDocument(page);
   expect(archive.local_comment_count).toBe(total);
-  // 目标确实不在首批：首批最热只到第 20 条。
-  const first = await (await page.request.get(`${commentsPath}?sort=hot&limit=20`)).json();
+  // 目标确实不在首批：页面默认按时间，首批只到第 20 条。
+  const first = await (await page.request.get(`${commentsPath}?sort=latest&limit=20`)).json();
   expect(first.items).toHaveLength(20);
   expect(first.items.some((item: { id: string }) => item.id === targetId)).toBe(false);
 
@@ -68,7 +68,7 @@ test('实际 API 定位读取：后续批目标可直开定位，且读取不触
   await expect.poll(() => viewportTop(page, targetId)).toBeLessThan(24);
 
   // 页面渲染的顺序与实际 API 的定位响应一致（同一契约，不是重新拼出来的入口）。
-  const location = await (await page.request.get(`${commentsPath}/${targetId}/location?sort=hot`)).json();
+  const location = await (await page.request.get(`${commentsPath}/${targetId}/location?sort=latest`)).json();
   const rendered = await region.getByRole('listitem').evaluateAll(items =>
     items.map(item => item.getAttribute('data-reading-id')));
   expect(rendered).toEqual(location.items.map((item: { id: string }) => `comment:${item.id}`));

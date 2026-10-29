@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref, shallowRef } from 'vue';
-import { ElButton, ElRadioButton, ElRadioGroup } from 'element-plus';
+import { ElButton } from 'element-plus';
 import type { ArchiveMetadata, CommentSort } from '../data/contracts';
 import type { CommentSnapshot } from '../app/snapshots';
-import { emptyCommentSnapshot } from '../app/snapshots';
+import { adoptCommentSnapshot, emptyCommentSnapshot } from '../app/snapshots';
 import { useSession } from '../app/session';
 import { onUserScroll } from '../app/readingPosition';
 import { useCompactViewport } from '../app/useCompactViewport';
@@ -11,6 +11,12 @@ import { displayCount } from './display';
 import CommentList from './CommentList.vue';
 
 const props = defineProps<{
+  /**
+   * 区域身份：读取与交互状态按它隔离，供同一页面挂载多个一级评论区域。
+   * 不传时按详情入口生成，现有详情入口不需要额外参数即可直接使用；
+   * 身份是显式上下文，不读写 DOM id，也不存在唯一的全局排序。
+   */
+  regionId?: string;
   dynamicId: string;
   authorId: string;
   sourceCommentCount: number | null;
@@ -33,9 +39,12 @@ const compact = useCompactViewport();
 // 读取器声明不具备讨论能力时整块显示未归档，不发评论请求。
 const unarchived = computed(() => reader.discussions === 'not-archived');
 
-const sort = ref<CommentSort>(props.snapshot.sort);
+const regionId = computed(() => props.regionId ?? `detail:${props.dynamicId}`);
+// 只采纳本区域的快照：别的区域的排序、批次与展开状态不能冒充成本区域的阅读状态。
+const initial = adoptCommentSnapshot(props.snapshot, regionId.value);
+const sort = ref<CommentSort>(initial.sort);
 const reloadKey = ref(0);
-const currentSnapshot = shallowRef<CommentSnapshot>(props.snapshot);
+const currentSnapshot = shallowRef<CommentSnapshot>(initial);
 const root = ref<HTMLElement | null>(null);
 // 主动入口/切换排序的定位意图只消费一次：失败/取消后不反复抢用户滚动。
 // 回复精确入口先定位到目标回复，根评论不再单独抢占滚动。
@@ -44,9 +53,15 @@ let entryPending = (props.locateOnEntry ?? true)
   && (props.target === 'comments' || locateRootOnly.value);
 let sortPending = false;
 let releaseSortCancel = (): void => undefined;
-const listKey = computed(() => `${sort.value}:${reloadKey.value}`);
+// 区域身份进入重挂载键：同一页面复用组件实例时，区域变化不会沿用别的区域的列表状态。
+const listKey = computed(() => `${regionId.value}:${sort.value}:${reloadKey.value}`);
 const sourceCount = computed(() => props.archive?.commentSync?.sourceCommentCount ?? props.sourceCommentCount);
 const headingLabel = computed(() => `${props.archive ? '来源' : ''}评论 ${displayCount(sourceCount.value)}`);
+// 单按钮只显示当前排序，点击切到另一种；无障碍名称同时说明当前状态与点击结果。
+const sortText = computed(() => (sort.value === 'latest' ? '按时间' : '按热度'));
+const sortLabel = computed(() => (sort.value === 'latest'
+  ? '当前按时间，点击切换为按热度'
+  : '当前按热度，点击切换为按时间'));
 
 // 精确定位的目标元素：按业务锚点查找，不依赖评论是否在首批 DOM 里。
 function targetElement(id: string): HTMLElement | null {
@@ -86,26 +101,30 @@ function armSortLocate(): void {
 onUnmounted(() => { releaseSortCancel(); });
 
 function publish(next: CommentSnapshot): void {
-  currentSnapshot.value = next;
-  emit('update:snapshot', next);
+  // 转发时补上区域身份：快照永远知道自己属于哪个区域，容器按它区分多区域状态。
+  const tagged = next.regionId === regionId.value ? next : { ...next, regionId: regionId.value };
+  currentSnapshot.value = tagged;
+  emit('update:snapshot', tagged);
 }
 
-const sortModel = computed<CommentSort>({
-  get: () => sort.value,
-  set: next => {
-    if (next === sort.value) return;
-    // 切换排序：定位评论区，重置目标排序首批、文字与回复展开状态（列表整体重挂载）。
-    sort.value = next;
-    reloadKey.value += 1;
-    // 精确入口切换排序后仍以同一目标为首批锚点，不退回普通首批。
-    entryPending = locateRootOnly.value;
-    publish(emptyCommentSnapshot(next));
-    locate();
-    armSortLocate();
-    // 旧批次卸载后页面高度会收缩，滚动位置可能被浏览器夹紧；本帧内再定位一次。
-    void nextTick(() => { if (sort.value === next && sortPending) locate(); });
-  },
-});
+// 切换排序：定位评论区，重置目标排序首批、文字与回复展开状态（列表整体重挂载）。
+function switchSort(next: CommentSort): void {
+  if (next === sort.value) return;
+  sort.value = next;
+  reloadKey.value += 1;
+  // 精确入口切换排序后仍以同一目标为首批锚点，不退回普通首批。
+  entryPending = locateRootOnly.value;
+  publish(emptyCommentSnapshot(next));
+  locate();
+  armSortLocate();
+  // 旧批次卸载后页面高度会收缩，滚动位置可能被浏览器夹紧；本帧内再定位一次。
+  void nextTick(() => { if (sort.value === next && sortPending) locate(); });
+}
+
+// 单按钮只切换一次：显示的是当前排序，点击后换成另一种。
+function toggleSort(): void {
+  switchSort(sort.value === 'latest' ? 'hot' : 'latest');
+}
 
 function restartReading(): void {
   reloadKey.value += 1;
@@ -114,17 +133,23 @@ function restartReading(): void {
 </script>
 
 <template>
-  <section ref="root" class="comment-section" aria-label="评论区">
+  <section ref="root" class="comment-section" :data-comment-region="regionId" aria-label="评论区">
     <header class="comment-heading">
       <h2>
         <el-button link class="comment-tab" :aria-label="headingLabel" @click="locate">
           评论 <span class="comment-count">{{ displayCount(sourceCount) }}</span>
         </el-button>
       </h2>
-      <el-radio-group v-if="!unarchived" v-model="sortModel" class="comment-sort" aria-label="评论排序">
-        <el-radio-button value="hot">最热</el-radio-button>
-        <el-radio-button value="latest">最新</el-radio-button>
-      </el-radio-group>
+      <el-button
+        v-if="!unarchived"
+        link
+        class="comment-sort"
+        :aria-label="sortLabel"
+        @click="toggleSort"
+      >
+        <span class="comment-sort-icon" aria-hidden="true">☰</span>
+        {{ sortText }}
+      </el-button>
     </header>
     <p v-if="unarchived" class="comment-unarchived" role="status">
       评论尚未归档；来源计数不代表本地已有评论。
@@ -132,6 +157,7 @@ function restartReading(): void {
     <CommentList
       v-else
       :key="listKey"
+      :region-id="regionId"
       :dynamic-id="dynamicId"
       :author-id="authorId"
       :sort="sort"
@@ -165,8 +191,9 @@ function restartReading(): void {
 }
 .comment-heading h2 {
   margin: 0;
-  font-size: 17px;
-  line-height: 24px;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
 }
 .comment-tab {
   min-height: var(--touch);
@@ -175,8 +202,9 @@ function restartReading(): void {
   background: transparent;
   color: var(--brand-strong);
   font: inherit;
-  font-size: 17px;
-  font-weight: 600;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
   cursor: pointer;
 }
 .comment-tab:focus-visible {
@@ -187,22 +215,29 @@ function restartReading(): void {
   margin-left: 2px;
   color: var(--brand);
 }
+/* 单按钮：13px/20px 与计数同层级，视觉只显示文字；点击区由 44px 高度承担。 */
 .comment-sort {
   flex: 0 0 auto;
-}
-/* 视觉高度收小到 32px：点击区由 44px 的 label 承担，文字用 13px。 */
-.comment-sort :deep(.el-radio-button) {
   display: inline-flex;
   align-items: center;
+  gap: 4px;
+  min-width: 80px;
   min-height: var(--touch);
-}
-.comment-sort :deep(.el-radio-button__inner) {
-  display: inline-flex;
-  align-items: center;
-  height: 32px;
-  min-height: 32px;
-  padding: 0 12px;
+  padding: 0;
+  justify-content: flex-end;
+  color: var(--muted);
   font-size: 13px;
+  line-height: 20px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+.comment-sort:hover,
+.comment-sort:focus {
+  color: var(--brand-strong);
+}
+.comment-sort-icon {
+  font-size: 13px;
+  line-height: 20px;
 }
 .comment-unarchived {
   margin: 0;

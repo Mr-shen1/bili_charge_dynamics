@@ -12,6 +12,8 @@ import CommentItem from './CommentItem.vue';
 import ReadNotice from './ReadNotice.vue';
 
 const props = defineProps<{
+  /** 区域身份：读取与交互状态按它隔离，同一页面可以挂载多个评论区域。 */
+  regionId: string;
   dynamicId: string;
   authorId: string;
   sort: CommentSort;
@@ -29,7 +31,9 @@ const emit = defineEmits<{ update: [CommentSnapshot]; settled: []; restart: [] }
 const { reader } = useSession();
 const navigation = useArchiveNavigation();
 const { state, load, loadEarlier, earlierPending, earlierError } = useCommentsRead(
-  reader, { dynamicId: props.dynamicId, sort: props.sort, anchorId: props.anchorId }, props.initial.read);
+  reader,
+  { regionId: props.regionId, dynamicId: props.dynamicId, sort: props.sort, anchorId: props.anchorId },
+  props.initial.read);
 const expanded = ref<Record<string, boolean>>({ ...props.initial.expanded });
 // 只标记确实读到的目标：目标不在已读批次里绝不冒充定位成功。
 // 回复精确入口只高亮目标回复，所属根评论只作上下文，不抢高亮。
@@ -100,6 +104,7 @@ async function loadEarlierComments(): Promise<void> {
 
 watch([state, expanded, replies], () => {
   emit('update', {
+    regionId: props.regionId,
     sort: props.sort, read: state.value, expanded: { ...expanded.value }, replies: { ...replies.value },
   });
 }, { immediate: true, flush: 'sync' });
