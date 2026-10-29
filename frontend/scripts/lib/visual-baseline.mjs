@@ -57,6 +57,17 @@ export function diffPixels(golden, current, fuzzValue = fuzz) {
   return Number.isFinite(value) ? value : 0;
 }
 
+/**
+ * 写出与黄金图的差异图（红＝超出容差的像素）：失败报告需要它来解释“差在哪”，
+ * 因此预期差异时必须真的产出文件，而不是在报告路径上抛错。
+ * `compare` 发现差异时退出码为 1，但输出文件已经写好，所以这里允许非零退出；
+ * 工具本身不可用仍然报错（不把环境问题伪装成无差异）。
+ */
+export function writeDiffImage(golden, current, output) {
+  run(['compare', '-highlight-color', 'red', '-lowlight-color', 'white', golden, current, output],
+    { allowFailure: true });
+}
+
 export async function sha256File(path) {
   return createHash('sha256').update(await readFile(path)).digest('hex');
 }
