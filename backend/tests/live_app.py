@@ -45,7 +45,8 @@ CARDS = {
 # 一级评论定位夹具：默认关闭，只有显式启用后才给该动态下发 45 条虚构根评论。
 # `fresh` 里的 1 基序号表示“刚发表”：发表时间取当前时间之后 60 秒（晚于通知起点），
 # 作者取该动态所属 UP，因此按真实路由同时进 UP 群和全员群。
-ROOT_FIXTURE = {"dynamic": None, "size": 45, "fresh": ()}
+# 按动态登记：组合票需要同一隔离数据库里两条归档各自带评论（各自排序、互不串页）。
+ROOT_FIXTURES: dict[str, dict] = {}
 # 楼中楼回复定位夹具：默认关闭，只有显式启用后才给指定根评论下发 25 条虚构回复。
 # `fresh` 里的 1 基序号表示“刚发表”：发表时间取当前时间之后 60 秒（晚于通知起点），
 # 作者取该动态所属 UP，因此按真实路由同时进 UP 群和全员群。
@@ -59,27 +60,30 @@ REPLY_PARENTS = {
     # 异常关系：两条回复互相成为父级，读取必须止步而不是无界遍历。
     21: "960022", 22: "960021",
 }
-REPLY_FIXTURE = {"dynamic": None, "root": None, "size": 25, "fresh": (), "parents": dict(REPLY_PARENTS)}
-# 一级评论夹具里第一个根评论的来源回复数（rcount）：与 REPLY_FIXTURE 的条数一致。
-ROOT_REPLY_COUNT = REPLY_FIXTURE["size"]
+# 同样按 (动态, 根评论) 登记：不同楼各自成段，不共享关系。
+REPLY_FIXTURES: dict[tuple[str, str], dict] = {}
+# 一级评论夹具里第一个根评论的来源回复数（rcount）：该楼启用回复夹具时取它的条数。
+ROOT_REPLY_COUNT = 25
 # 本进程累计的上游请求：用于断言归档读取不触发采集。
 SOURCE_REQUESTS = {"total": 0, "reply": 0, "count": 0}
 
 
 def root_comments(dynamic):
-    """45 条虚构一级评论：点赞递减，因此最热顺序即 860001…860045。"""
+    """该动态启用的虚构一级评论：点赞递减，因此最热顺序即 860001…8600NN。"""
+    fixture = ROOT_FIXTURES.get(dynamic, {"size": 0, "fresh": ()})
     template = json.loads((Path(__file__).parent / "fixtures/root-comments.json").read_text())
     root = template["data"]["replies"][0]
-    fresh = set(ROOT_FIXTURE["fresh"])
+    fresh = set(fixture["fresh"])
     owner = CARDS.get(DYNAMICS.get(dynamic, ""), {})
     comments = []
-    for index in range(ROOT_FIXTURE["size"]):
+    for index in range(fixture["size"]):
         item = copy.deepcopy(root)
         ctime = int(time.time()) + 60 if index + 1 in fresh else 1791513496 - index
         item.update(rpid=860000 + index + 1, rpid_str=str(860000 + index + 1),
-                    like=ROOT_FIXTURE["size"] - index,
-                    # 第一个根评论带来源回复数，用于驱动楼中楼整楼同步。
-                    rcount=ROOT_REPLY_COUNT if index == 0 else 0,
+                    like=fixture["size"] - index,
+                    # 为该楼启用回复夹具时带来源回复数（驱动楼中楼整楼同步）；默认只有第一个根评论。
+                    rcount=(REPLY_FIXTURES.get((dynamic, str(860000 + index + 1))) or {}).get(
+                        "size", ROOT_REPLY_COUNT if index == 0 else 0),
                     ctime=ctime, root=0, root_str="0", parent=0, parent_str="0")
         if index + 1 in fresh and owner:
             item["member"] = {"mid": owner["mid"], "uname": owner["name"], "avatar": None}
@@ -93,14 +97,15 @@ def root_comments(dynamic):
 
 
 def reply_items(dynamic, root):
-    """25 条虚构楼中楼回复：时间递增，第 1/2/3 页分别 10/10/5 条。"""
+    """该楼启用的虚构回复：时间递增，按 20 条/来源页下发。"""
+    fixture = REPLY_FIXTURES.get((dynamic, root), {"size": 0, "fresh": (), "parents": {}})
     template = json.loads((Path(__file__).parent / "fixtures/replies.json").read_text())
     reply = template["data"]["replies"][0]
-    fresh = set(REPLY_FIXTURE["fresh"])
-    parents = REPLY_FIXTURE["parents"]
+    fresh = set(fixture["fresh"])
+    parents = fixture["parents"]
     owner = CARDS.get(DYNAMICS.get(dynamic, ""), {})
     items = []
-    for index in range(REPLY_FIXTURE["size"]):
+    for index in range(fixture["size"]):
         item = copy.deepcopy(reply)
         # 父回复默认就是所属根评论；夹具给出的父 ID 一律按该回复自己的序号表达。
         parent = parents.get(index + 1, root)
@@ -121,7 +126,7 @@ def reply_page(dynamic, root, page):
     """楼中楼页：ps 固定 20，页码与资源身份按请求回显；未启用的楼返回确认空页。"""
     template = json.loads((Path(__file__).parent / "fixtures/replies.json").read_text())
     payload = template["data"]
-    enabled = REPLY_FIXTURE["dynamic"] == dynamic and REPLY_FIXTURE["root"] == root
+    enabled = (dynamic, root) in REPLY_FIXTURES
     items = reply_items(dynamic, root) if enabled else []
     start = (page - 1) * 20
     spliced = items[start:start + 20]
@@ -202,9 +207,9 @@ def detail_payload(id, uid):
             "mid": uid, "name": card["name"], "face": card["face"], "pub_ts": 1791513496,
         }},
     }}}
-    if ROOT_FIXTURE["dynamic"] == id:
+    if id in ROOT_FIXTURES:
         payload["data"]["item"]["modules"]["module_stat"] = {
-            "comment": {"count": ROOT_FIXTURE["size"]},
+            "comment": {"count": ROOT_FIXTURES[id]["size"]},
         }
     return payload
 
@@ -245,8 +250,9 @@ def dynamic_source(request):
         }})
     if url.host == "api.bilibili.com" and url.path == "/x/v2/reply/count":
         SOURCE_REQUESTS["count"] += 1
-        enabled = ROOT_FIXTURE["dynamic"] == url.params.get("oid", "")[2:]
-        return httpx.Response(200, json={"code": 0, "data": {"count": ROOT_FIXTURE["size"] if enabled else 0}})
+        dynamic = url.params.get("oid", "")[2:]
+        return httpx.Response(200, json={"code": 0, "data": {
+            "count": (ROOT_FIXTURES.get(dynamic) or {}).get("size", 0)}})
     if url.host == "api.bilibili.com" and url.path == "/x/v2/reply/reply":
         # 楼中楼请求：只有显式启用（POST /api/test/replies）的楼才给虚构回复。
         SOURCE_REQUESTS["reply"] += 1
@@ -261,10 +267,11 @@ def dynamic_source(request):
         if SOURCE_FAILURE["reply"]:
             raise httpx.ConnectError("FICTIONAL_REPLY_FAILURE", request=request)
         page = int(url.params.get("pn", "1"))
-        enabled = (ROOT_FIXTURE["dynamic"] and not url.params.get("root")
-                   and url.params.get("oid") in (ROOT_FIXTURE["dynamic"], "99" + ROOT_FIXTURE["dynamic"]))
+        oid = url.params.get("oid", "")
+        dynamic = oid[2:] if oid.startswith("99") else oid
+        enabled = not url.params.get("root") and dynamic in ROOT_FIXTURES
         if enabled:
-            return httpx.Response(200, json=comment_page(ROOT_FIXTURE["dynamic"], page))
+            return httpx.Response(200, json=comment_page(dynamic, page))
         return httpx.Response(200, json={"code": 0, "data": {
             "page": {"num": page, "size": 20, "count": 0, "acount": 0},
             "replies": [], "upper": {"top": None}, "hots": [],
@@ -296,10 +303,12 @@ def create_app():
     @app.post("/api/test/root-comments", include_in_schema=False)
     async def enable_root_comments(payload: dict):
         """仅测试夹具：为指定动态启用 45 条虚构一级评论；不写数据库，归档仍走 /api/sync/initial。"""
-        ROOT_FIXTURE["dynamic"] = payload.get("dynamic")
-        ROOT_FIXTURE["fresh"] = tuple(payload.get("fresh") or ())
-        return {"dynamic": ROOT_FIXTURE["dynamic"], "size": ROOT_FIXTURE["size"],
-                "fresh": list(ROOT_FIXTURE["fresh"])}
+        dynamic = payload.get("dynamic")
+        # `size` 只供组合票在同一隔离数据库里造两条条数不同的归档；缺省仍是 45。
+        ROOT_FIXTURES[dynamic] = {"size": int(payload.get("size", 45)),
+                                  "fresh": tuple(payload.get("fresh") or ())}
+        return {"dynamic": dynamic, "size": ROOT_FIXTURES[dynamic]["size"],
+                "fresh": list(ROOT_FIXTURES[dynamic]["fresh"])}
 
     async def notify():
         base = os.environ.get("BILI_TEST_NOTIFICATION_BASE")
@@ -343,15 +352,15 @@ def create_app():
 
         `parents` 可覆盖 1 基序号 → 父回复 ID 的关系夹具（缺省沿用模块级默认链）。
         """
-        REPLY_FIXTURE["dynamic"] = payload.get("dynamic")
-        REPLY_FIXTURE["root"] = payload.get("root")
-        REPLY_FIXTURE["fresh"] = tuple(payload.get("fresh") or ())
+        dynamic, root = payload.get("dynamic"), payload.get("root")
         parents = payload.get("parents")
-        REPLY_FIXTURE["parents"] = (
-            {int(key): str(value) for key, value in parents.items()} if parents is not None
-            else dict(REPLY_PARENTS))
-        return {**{key: value for key, value in REPLY_FIXTURE.items() if key != "parents"},
-                "parents": {str(key): value for key, value in REPLY_FIXTURE["parents"].items()}}
+        fixture = {"size": 25, "fresh": tuple(payload.get("fresh") or ()),
+                   "parents": ({int(key): str(value) for key, value in parents.items()}
+                               if parents is not None else dict(REPLY_PARENTS))}
+        REPLY_FIXTURES[(dynamic, root)] = fixture
+        return {"dynamic": dynamic, "root": root, "size": fixture["size"],
+                "fresh": list(fixture["fresh"]),
+                "parents": {str(key): value for key, value in fixture["parents"].items()}}
 
     @app.get("/api/test/source-requests", include_in_schema=False)
     async def read_source_requests():
