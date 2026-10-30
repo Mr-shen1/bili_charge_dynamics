@@ -161,7 +161,7 @@ def test_waiting_config_rechecks_never_count_as_delivery_failures(tmp_path):
     }]
 
 
-def test_claim_uses_due_and_lease_indexes_with_a_bounded_batch(tmp_path):
+def test_claim_uses_the_order_index_with_a_bounded_batch(tmp_path):
     """领取按「角色 + 未终态」索引取每个角色的队头一条，且受批量限制，不全表扫描队列。"""
     path = tmp_path / "monitor.sqlite"
     archive_up_comment(path)

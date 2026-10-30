@@ -38,16 +38,6 @@ def _merge_comment(previous, observed):
     return document
 
 
-# 刷新只写计数类字段：正文、作者、时间、置顶与媒体来源都不在本次语义内。
-COUNT_FIELDS = ("like_count",)
-
-
-def _merge_counts(previous, observed):
-    """只合并计数类字段：来源缺失（未知）不擦除旧可信值，真实 0 照写。"""
-    return {**previous, **{key: observed[key] for key in COUNT_FIELDS
-                           if observed.get(key) is not None}}
-
-
 def _comment_media_version(root_id):
     # 评论不可编辑：图片集合随评论身份固定，版本只跟根评论 rpid 走，
     # 不再随评论区总数变化，避免未被重读的根组版本永久失配。
@@ -1547,9 +1537,11 @@ class Store(CheckStore, DiscoveryStore):
                     ).fetchone()[0])
                     root["source_reply_count"] = count
                     if observed_root is not None:
-                        # 楼页响应本来就带着所属根评论对象：整楼全量刷新时把其中的计数
-                        # 字段合并回根行（缺失不擦除、真实 0 照写），不额外发请求。
-                        root = _merge_counts(root, observed_root)
+                        # 楼页响应本来就带着所属根评论对象：整楼全量刷新时把其中的点赞
+                        # 合并回根行（缺失＝未知不擦除、真实 0 照写），不额外发请求。
+                        # 只写计数类字段：正文、作者、时间、置顶与媒体来源不在刷新语义内。
+                        if observed_root.get("like_count") is not None:
+                            root["like_count"] = observed_root["like_count"]
                     connection.execute("UPDATE root_comments SET document = ? WHERE dynamic_id = ? AND id = ?",
                                        (json.dumps(root, ensure_ascii=False), id, root_id))
                 archive["local_reply_count"] = connection.execute(
