@@ -69,6 +69,11 @@ function replyList(index = 1): HTMLElement[] {
   return within(commentItem(index)).queryAllByRole('list', { name: '回复列表' });
 }
 
+/** 锚点在文档中的位置：替身里 rect.top = 文档位置 - scrollY，与当前滚动无关。 */
+function documentTop(element: HTMLElement): number {
+  return layout.scrollY() + element.getBoundingClientRect().top;
+}
+
 it('宽屏为有回复的一级评论读 3 条 cursor 预览，并提供展开入口', async () => {
   const seen: ReplyRequest[] = [];
   const reader = detailReader({
@@ -124,6 +129,9 @@ it('展开用 page+limit=10 读第 1 页，翻页按 10/10/5 替换当前页，�
   expect(seen.at(-1)).toEqual({ rootId: comment(1).id, limit: 10, page: 2, cursor: undefined });
   expect(within(list()).getAllByRole('listitem')[0]!.dataset.readingId)
     .toBe(`reply:${comment(1).id}:${replies(25)[10]!.id}`);
+  // 翻页落点：宽屏内联楼中楼同样把新页的第一条带到视口顶部。
+  await waitFor(() => expect(Math.round(layout.scrollY()))
+    .toBe(Math.round(documentTop(within(list()).getAllByRole('listitem')[0]!))));
 
   await fireEvent.click(within(region).getByRole('button', { name: '下一页' }));
   await waitFor(() => expect(within(list()).getAllByRole('listitem')).toHaveLength(5));
@@ -295,6 +303,33 @@ it('数量缩减导致页码越界时重读有效末页，分页只按本地总�
     .toEqual(replies(12).slice(10).map(item => `reply:${comment(1).id}:${item.id}`));
   expect(within(region).queryByRole('button', { name: '3' })).toBeNull();
   expect(within(region).getByRole('button', { name: '2' }).getAttribute('aria-current')).toBe('page');
+});
+
+it('翻页在途时不显示“追加加载中”，只有分页器表示忙碌', async () => {
+  const pending = deferred<{ status: 'success'; data: ReplyBatch }>();
+  const reader = detailReader({
+    readReplies: async input => (input.page === undefined
+      ? { status: 'success', data: { items: replies(3), nextCursor: 'more', sourceReplyCount: 25 } }
+      : input.page === 2
+        ? pending.promise
+        : { status: 'success', data: pageBatch(25, input.page) }),
+  });
+
+  await showApp(reader, '/dynamics/1001');
+  const region = await screen.findByRole('region', { name: '评论区' });
+  await waitFor(() => expect(replyList(1)).toHaveLength(1));
+  await fireEvent.click(within(region).getByRole('button', { name: '展开回复' }));
+  await waitFor(() => expect(within(replyList(1)[0]!).getAllByRole('listitem')).toHaveLength(10));
+
+  await fireEvent.click(within(region).getByRole('button', { name: '下一页' }));
+  await waitFor(() => expect(
+    (within(region).getByRole('button', { name: '下一页' }) as HTMLButtonElement).disabled,
+  ).toBe(true));
+  expect(screen.queryByText(/追加加载中|回复加载中/)).toBeNull();
+
+  pending.resolve({ status: 'success', data: pageBatch(25, 2) });
+  await waitFor(() => expect(within(replyList(1)[0]!).getAllByRole('listitem')[0]!.dataset.readingId)
+    .toBe(`reply:${comment(1).id}:${replies(25)[10]!.id}`));
 });
 
 it('单个回复区失败只影响该区域并保留已有评论，重试沿用同一请求', async () => {

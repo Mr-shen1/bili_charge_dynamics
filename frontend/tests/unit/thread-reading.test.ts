@@ -56,6 +56,11 @@ function pageBatch(
   };
 }
 
+/** 锚点在文档中的位置：替身里 rect.top = 文档位置 - scrollY，与当前滚动无关。 */
+function documentTop(element: HTMLElement): number {
+  return layout.scrollY() + element.getBoundingClientRect().top;
+}
+
 function threadReader(reader: Partial<DynamicReader>) {
   return createReader({
     readDetail: async () => ({ status: 'success', data: commentDynamic() }),
@@ -180,6 +185,9 @@ it('每页替换当前页：25 条按 10/10/5 翻页，数据缩减后越界页�
   await waitFor(() => expect(within(list).getAllByRole('listitem')[0]!.dataset.readingId)
     .toBe(`reply:${rootId}:${replies(25)[10]!.id}`));
   expect(seen.at(-1)).toEqual({ rootId, limit: 10, page: 2, cursor: undefined, sort: 'time' });
+  // 翻页落点：第 2 页的第一条直接在视口顶部，从这一页的开头开始读。
+  await waitFor(() => expect(Math.round(layout.scrollY()))
+    .toBe(Math.round(documentTop(within(list).getAllByRole('listitem')[0]!))));
 
   await fireEvent.click(screen.getByRole('button', { name: '下一页' }));
   await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(5));
@@ -194,6 +202,30 @@ it('每页替换当前页：25 条按 10/10/5 翻页，数据缩减后越界页�
   expect(within(list).getAllByRole('listitem')[1]!.dataset.readingId)
     .toBe(`reply:${rootId}:${replies(12)[11]!.id}`);
   expect(within(screen.getByRole('navigation', { name: '回复分页' })).queryByRole('button', { name: '3' })).toBeNull();
+});
+
+it('翻页在途时只有分页器表示忙碌，不再出现“追加加载中”提示', async () => {
+  const pending = deferred<{ status: 'success'; data: ReplyBatch }>();
+  const reader = threadReader({
+    readReplies: async input => (input.page === 2
+      ? pending.promise
+      : { status: 'success', data: pageBatch(25, input.page ?? 1) }),
+  });
+
+  await showApp(reader, `/dynamics/${dynamicId}/comments/${rootId}`);
+  const list = await screen.findByRole('list', { name: '相关回复' });
+  expect(within(list).getAllByRole('listitem')).toHaveLength(10);
+
+  await fireEvent.click(screen.getByRole('button', { name: '下一页' }));
+  // 上一页内容仍在，但底部不再挂一条“相关回复追加加载中…”。
+  await waitFor(() => expect(
+    (screen.getByRole('button', { name: '下一页' }) as HTMLButtonElement).disabled,
+  ).toBe(true));
+  expect(screen.queryByText(/追加加载中/)).toBeNull();
+
+  pending.resolve({ status: 'success', data: pageBatch(25, 2) });
+  await waitFor(() => expect(within(list).getAllByRole('listitem')[0]!.dataset.readingId)
+    .toBe(`reply:${rootId}:${replies(25)[10]!.id}`));
 });
 
 it('返回按钮退回详情，并保持详情已读内容不重读', async () => {

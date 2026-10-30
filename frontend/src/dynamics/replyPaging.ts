@@ -12,13 +12,13 @@ export function replyPageCount(localTotal: number | null | undefined, loaded: nu
   return Math.max(1, Math.ceil(total / replyPageSize));
 }
 
-/** 桌面显示当前页及前后各两页，保留首尾页；窄屏使用精简窗口。 */
-export function replyPageEntries(page: number, pages: number, compact = false): readonly (number | '…')[] {
-  if (pages <= (compact ? 4 : 6)) return Array.from({ length: pages }, (_value, index) => index + 1);
-  if (compact) {
-    if (page >= pages - 1) return [1, '…', pages - 2, pages - 1, pages];
-    return page <= 2 ? [1, 2, 3, '…', pages] : [1, '…', page, '…', pages];
-  }
+/**
+ * 页码窗口：宽窄屏同一口径——保留首尾页，当前页居中取 5 页窗，断开处用省略号，
+ * 例如第 39 页 / 共 46 页是 `1 … 37 38 39 40 41 … 46`。
+ * 页数不超过 6 时直接全列，不再用省略号省空间。
+ */
+export function replyPageEntries(page: number, pages: number): readonly (number | '…')[] {
+  if (pages <= 6) return Array.from({ length: pages }, (_value, index) => index + 1);
   const start = Math.max(1, Math.min(page - 2, pages - 4));
   const end = start + 4;
   return [

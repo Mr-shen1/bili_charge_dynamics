@@ -11,6 +11,7 @@ import { useReplyPreview } from './useReplyPreview';
 import { confirmedTarget, noticeStatus as readNoticeStatus, targetMissing } from './locate';
 import { useLocateTarget } from './useLocateTarget';
 import { replyPageCount, replyPageSize } from './replyPaging';
+import { alignFirstReply } from './pageScroll';
 import { replyBodyText, replyTargetNickname } from './replyText';
 import { displayTime } from './display';
 import FoldableText from './FoldableText.vue';
@@ -90,6 +91,18 @@ const canExpand = computed(() => !expanded.value && !invalidCursor.value
 const busy = computed(() => state.value.status === 'loading' || invalidCursor.value);
 const section = ref<HTMLElement | null>(null);
 const listId = useId();
+
+/** 用户点分页器翻页：新页落下后把这一页的第一条带到视口顶部。 */
+const alignPending = ref(false);
+function selectPage(page: number): void {
+  alignPending.value = true;
+  void live.loadPage(page);
+}
+watch(() => state.value.status, status => {
+  if (!alignPending.value || status === 'loading') return;
+  alignPending.value = false;
+  if (status === 'success') alignFirstReply(section.value);
+}, { flush: 'post' });
 
 function load(): void {
   if (!expanded.value) {
@@ -233,7 +246,7 @@ watch([() => preview.state.value, expanded, () => live.state.value.page, expande
       </li>
     </ul>
     <ReadNotice
-      v-if="state.data && hasItems && state.status !== 'success' && !invalidCursor"
+      v-if="state.data && hasItems && state.status !== 'success' && state.status !== 'loading' && !invalidCursor"
       :status="noticeStatus"
       area="回复"
       @retry="load"
@@ -253,7 +266,7 @@ watch([() => preview.state.value, expanded, () => live.state.value.page, expande
       :page="currentPage"
       :pages="pages"
       :busy="busy"
-      @select="live.loadPage($event)"
+      @select="selectPage"
     />
     <!-- 收起是区域动作而非翻页：从分页器里移出来，展开后单独提供。 -->
     <el-button

@@ -222,6 +222,17 @@ test.describe('窄屏 UP 回复预览与独立楼中楼', () => {
     await expect(threadList(page).locator('> li')).toHaveCount(5);
     await expect(threadList(page).locator('> li').last()).toContainText('回复 25');
     expect(requests.map(request => request.page)).toEqual([1, 2, 3]);
+    // 翻页落点：第 3 页的第一条被带到视口顶部（内容不够长时停在可滚动末端），
+    // 这也是这次访问保存的位置。
+    const pageThreeFirst = threadList(page).locator('> li').first();
+    await expect.poll(async () => {
+      const top = await pageThreeFirst.evaluate(node => node.getBoundingClientRect().top);
+      const atEnd = await page.evaluate(() => Math.abs(
+        window.scrollY - (document.documentElement.scrollHeight - window.innerHeight)) <= 1);
+      return Math.round(top) <= 1 || atEnd;
+    }).toBe(true);
+    const pageThreeTop = await scrollY(page);
+    expect(pageThreeTop).toBeGreaterThan(0);
 
     // 返回有来源的详情：详情自己的已读内容与展开状态保持不变。
     await page.getByRole('button', { name: '评论详情，返回动态详情' }).click();
@@ -238,7 +249,7 @@ test.describe('窄屏 UP 回复预览与独立楼中楼', () => {
     expect(requests.slice(beforeForward)).toEqual([]);
     await expect(page.getByRole('navigation', { name: '回复分页' })
       .getByRole('button', { name: '3' })).toHaveAttribute('aria-current', 'page');
-    await expect.poll(() => scrollY(page)).toBe(0);
+    await expect.poll(() => scrollY(page)).toBe(pageThreeTop);
   });
 
   test('直达与刷新可打开楼中楼，返回用 replace 定位对应动态详情', async ({ page }) => {

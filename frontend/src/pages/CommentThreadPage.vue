@@ -11,6 +11,7 @@ import { displayTime } from '../dynamics/display';
 import { confirmedTarget, noticeStatus as readNoticeStatus, targetMissing } from '../dynamics/locate';
 import { useLocateTarget } from '../dynamics/useLocateTarget';
 import { replyBodyText, replyTargetNickname } from '../dynamics/replyText';
+import { alignFirstReply } from '../dynamics/pageScroll';
 import { replyPageCount, replyPageSize } from '../dynamics/replyPaging';
 import { useReplyPage } from '../dynamics/useReplyPage';
 import { useThreadAuthor } from '../dynamics/useThreadAuthor';
@@ -120,6 +121,18 @@ const unreturned = computed(() => {
 });
 const invalidCursor = computed(() => state.value.reason === 'invalid-cursor');
 const busy = computed(() => state.value.status === 'loading' || invalidCursor.value);
+
+/** 用户点分页器翻页：新页落下后把这一页的第一条带到视口顶部。 */
+const alignPending = ref(false);
+function selectPage(page: number): void {
+  alignPending.value = true;
+  void loadPage(page);
+}
+watch(() => state.value.status, status => {
+  if (!alignPending.value || status === 'loading') return;
+  alignPending.value = false;
+  if (status === 'success') alignFirstReply(container.value);
+}, { flush: 'post' });
 // 数量只在读到本页时才声明：加载/失败期间不拿旧排序或旧页的计数冒充。
 const heading = computed(() => (state.value.data ? `相关回复共${total.value}条` : '相关回复'));
 
@@ -264,17 +277,18 @@ function rootText(comment: Comment): string {
       </ul>
       <p v-else class="thread-status" role="status">暂无回复</p>
       <ReadNotice
-        v-if="state.status !== 'success' && !invalidCursor"
+        v-if="state.status !== 'success' && state.status !== 'loading' && !invalidCursor"
         :status="noticeStatus"
         area="相关回复追加"
         @retry="retryRead"
       />
       <ReplyPager
         v-if="total > 0"
+        class="thread-pager"
         :page="currentPage"
         :pages="pages"
         :busy="busy"
-        @select="loadPage"
+        @select="selectPage"
       />
     </template>
   </div>
@@ -333,5 +347,10 @@ function rootText(comment: Comment): string {
   line-height: var(--line-link);
   font-weight: 400;
   color: var(--action);
+}
+/* 分页与上方回复正文左右对齐：列表条目内距是 16px。 */
+.thread-pager {
+  padding-left: 16px;
+  padding-right: 16px;
 }
 </style>
