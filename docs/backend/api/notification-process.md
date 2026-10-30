@@ -146,7 +146,7 @@ exec .venv/bin/python -m backend.bili_monitor.notifier
 | 类别 `category` | 触发事实（全部来自真实代码路径，不解析日志文本） | 对象 `object` | 固定原因 `reason` |
 | --- | --- | --- | --- |
 | `credential` | 来源业务码 **`-101`** 且本次启动**确实配置了来源凭据**（`BILI_COOKIE_FILE` 读到非空 Cookie） | `source_credential` | `credential_rejected` |
-| `collection` | 目标检查失败（页面/详情/计数读取）、同步阶段真实失败（正文读取失败、根／回复分页失败、执行异常）、近期发现失败 | `{uid}:{dynamic_id}`；发现用 `{uid}` | 采集固定分类，如 `timeout`／`network_error`／`http_status`／`source_rejected`／`body_failed`／`comments_failed`／`source_unavailable`；匿名 `-101` 为 `login_required`。**分页一致性校验（`pagination_*`、`comment_count_decreased`、`reply_count_decreased`）只留 WARNING，不登记告警** |
+| `collection` | 目标检查失败（页面/详情/计数读取）、同步阶段真实失败（正文读取失败、根／回复分页失败、执行异常）、近期发现失败 | `{uid}:{dynamic_id}`；发现用 `{uid}` | 采集固定分类，如 `timeout`／`network_error`／`http_status`／`source_rejected`／`body_failed`／`comments_failed`／`source_unavailable`；匿名 `-101` 为 `login_required`。**分页一致性校验（`pagination_*`、`comment_count_decreased`、`reply_count_decreased`）与来源删除（`source_deleted`）只留 WARNING，不登记告警** |
 | `loop` | 主循环捕获到的运行异常（`collector_loop_failed`） | `collector_loop` | 固定分类（多为 `internal_error`） |
 | `delivery` | 业务目标**持续投递失败**：`notification_deliveries.failures >= 3` 且 `state='pending'`；心跳、告警自身与系统角色不计 | `{role}:{kind}`（如 `up:root_comment`） | 最近一次失败分类，如 `timeout`／`http_error`／`platform_rejected`／`rate_limited` |
 | `route` | 业务目标路由缺失或目的地不可用（`route_missing`／`route_invalid`） | `{role}:{uid}:{dynamic_id}` | `route_missing`｜`route_invalid` |
