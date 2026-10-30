@@ -22,7 +22,8 @@ from .comment_status import utc_now
 from .source_endpoints import REPLIES, REPLIES_URL, note_business_success
 from .source_client import comment_request_headers
 from .collector_logging import (
-    SourceRejected, collector_event, collector_failure, source_ids, source_refs,
+    DELETED_COMMENT_CODES, SourceRejected, collector_event, collector_failure, is_source_deleted,
+    source_ids, source_refs,
 )
 from .risk import SourceRiskPaused
 
@@ -32,7 +33,13 @@ FULL_SCAN_SECONDS = 24 * 60 * 60
 
 
 def scan_due(progress, observed_count, now_iso):
-    """本轮是否需要扫描该楼：新楼层、rcount 变化、上次失败或超出校准周期。"""
+    """本轮是否需要扫描该楼：新楼层、rcount 变化、上次失败或超出校准周期。
+
+    已退役的楼（来源确认该根评论已删除）不再因陈旧 rcount 反复请求：它的恢复只走
+    「根页重新列出该楼」，不在楼中楼侧无限重试。
+    """
+    if progress is not None and progress["status"] == "deleted":
+        return False
     if progress is None or progress["status"] != "success":
         return True
     if progress["observed_count"] != observed_count:
@@ -117,8 +124,12 @@ async def fetch_reply_page(client, dynamic_id, root_id, locator, number, *, uid=
     }, headers=comment_request_headers(uid), timeout=15)
     response.raise_for_status()
     payload = response.json()
-    if type(payload.get("code")) is not int or payload["code"] != 0:
-        raise SourceRejected("Reply source rejected request", payload.get("code"))
+    code = payload.get("code")
+    if type(code) is int and code in DELETED_COMMENT_CODES:
+        # 根评论已被来源删除：整页无内容可读，属来源删除而不是采集故障。
+        raise SourceRejected("Reply source deleted", code)
+    if type(code) is not int or code != 0:
+        raise SourceRejected("Reply source rejected request", code)
     data = payload["data"]
     page = data["page"]
     if type(page.get("num")) is not int or page["num"] != number or type(page.get("size")) is not int or page["size"] != 20:
@@ -527,6 +538,16 @@ async def reply_scan_step(store, client, id, generation, root_id, *, uid=None, r
             collector_event("reply_incremental_finished", warning=True, new=0,
                             stopped_by="drift", page=error.page, direction=direction, **refs)
         timing = getattr(client, "last_reply_page", None)
+        if is_source_deleted(error):
+            # 已删除的根评论退役该楼：保留已归档回复与进度，只标记来源已消失；
+            # 不计楼级失败、不登记告警，下一轮不再因陈旧 rcount 请求它。
+            collector_event("reply_sync_deleted", page=page, stage=stage,
+                            source_code=error.code, **refs)
+            if not await to_thread.run_sync(store.change_reply_root, id, generation, root_id,
+                                           "deleted"):
+                return _stale(root_id, direction, page)
+            return ReplyStep("deleted", root_id, direction, page, None, 0, 0, position.confirmed,
+                             stage, (), expanded)
         collector_failure("reply_sync_failed", error, stage=stage, page=page,
                           elapsed_ms=timing.elapsed_ms if timing is not None else None,
                           wait_ms=timing.wait_ms if timing is not None else None, **refs)
@@ -571,6 +592,7 @@ async def sync_replies(store, client, id, generation, roots_result, *, now=None,
     seen_by_root = await to_thread.run_sync(store.reply_ids, id)
     failed = 0
     skipped = 0
+    deleted = 0
     sync_refs = source_refs(uid=uid, dynamic_id=id)
     collector_event("replies_sync_started", roots=len(roots), **sync_refs)
     try:
@@ -590,6 +612,8 @@ async def sync_replies(store, client, id, generation, roots_result, *, now=None,
                 return
             if step.status == "failed":
                 failed += 1
+            elif step.status == "deleted":
+                deleted += 1
             elif step.status == "skipped":
                 skipped += 1
             if expanded:
@@ -605,4 +629,4 @@ async def sync_replies(store, client, id, generation, roots_result, *, now=None,
                              now() if now is not None and not failed and not degraded else None)
     collector_event("replies_sync_finished", warning=bool(failed),
                     succeeded=not failed and not degraded, degraded=degraded, roots=len(roots),
-                    skipped=skipped, **sync_refs)
+                    skipped=skipped, deleted=deleted, **sync_refs)

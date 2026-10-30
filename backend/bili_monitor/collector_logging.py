@@ -23,9 +23,14 @@ _HANDLER = None
 ID_FIELD_CHARS = 300
 
 # 只识别应用自身的固定错误，不输出其他异常消息或上游响应正文。
+# 上游业务码里唯一能证明「这条评论已不存在」的一个值：12006 没有该评论。
+# 楼中楼页对已删除的根评论会整页返回它，属来源删除而不是采集故障。
+DELETED_COMMENT_CODES = frozenset({12006})
+
 _KNOWN_REASONS = {
     "Comment source rejected request": "source_rejected",
     "Reply source rejected request": "source_rejected",
+    "Reply source deleted": "source_deleted",
     "Comment count source rejected request": "source_rejected",
     "Comment counts changed during scan": "pagination_changed",
     "Reply count changed during scan": "pagination_changed",
@@ -72,6 +77,9 @@ _KNOWN_REASONS = {
 # 重新定位锚点并刷新基准即可继续，因此只保留 `collector_failure` 的 WARNING，不升级为
 # 飞书告警——否则正常的删除行为会被当成采集故障反复提醒。`value_invalid` 这类兜底分类
 # 不在其中：它代表未登记的校验失败，仍要提醒。
+# 来源删除不是故障：已删楼由楼级退役收敛，不登记告警，也不该让整轮变成失败。
+DELETION_REASONS = frozenset({"source_deleted"})
+
 SELF_HEALING_REASONS = frozenset({
     "pagination_changed",
     "pagination_not_advancing",
@@ -101,6 +109,11 @@ class SourceRejected(ValueError):
     def __init__(self, message, code=None):
         super().__init__(message)
         self.code = code if type(code) is int else None
+
+
+def is_source_deleted(error):
+    """该失败是否已被上游确认为「评论不存在」：只认 `SourceRejected` 的整数业务码。"""
+    return isinstance(error, SourceRejected) and error.code in DELETED_COMMENT_CODES
 
 
 def credential_signal(error, *, credentials_configured=False):
@@ -265,6 +278,9 @@ def failure_fields(error, *, allowed_fields=(), credentials_configured=False):
             reason = signal
         elif error.args and isinstance(error.args[0], str):
             reason = _KNOWN_REASONS.get(error.args[0], reason)
+        if isinstance(error, SourceRejected):
+            # 只放行来源业务码整数本身：上游 message、正文与 URL 仍不进日志。
+            details["source_code"] = error.code
     elif isinstance(error, TypeError):
         reason = "type_invalid"
     elif isinstance(error, AttributeError):
