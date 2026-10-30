@@ -1004,6 +1004,18 @@ class Store(CheckStore, DiscoveryStore):
             return None
         return position
 
+    def resuming_full_replies(self, id):
+        """上一轮整楼全量刷新是否还没走完：任一楼的进度仍是未完成的全量扫描。
+
+        全量标志由既有扫描进度持久化：中断后重新进入同一轮时，调用方不需要再传全量
+        参数也能保持整楼正序；只有新一轮扫描才由调用方显式给出。
+        """
+        with self.connection() as connection:
+            rows = connection.execute(
+                "SELECT full, phase FROM page_scan_progress WHERE dynamic_id = ? AND stage = ?",
+                (id, scan_progress.REPLIES))
+            return any(row["full"] and row["phase"] != scan_progress.COMPLETE for row in rows)
+
     def resume_root_scan(self, id, generation, locator, observed_count, *, full=False):
         """一次尝试的开始：续采同代次断点，或按定位／代次／完成态重新起步。
 
