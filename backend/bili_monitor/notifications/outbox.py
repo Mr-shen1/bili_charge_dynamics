@@ -15,6 +15,9 @@
 - 消息快照在取得资格时冻结；投递与重试不读取最新归档。
 - 心跳按北京时间小时时段（`notification_heartbeats.slot`）去重，有效期写到该投递
   记录的 `expires_at`；领取前先丢弃过期心跳，业务记录的 `expires_at` 永远是 NULL。
+- 每个投递角色（UP 群／全员群／系统群）是独立的排队序列：事件入队时记录一个可比较
+  的排序时刻（评论取发表时间，公告类取入队时刻），领取只取该角色排序最早的未终态
+  记录，它没出结果之前不领同群第二条。三个角色互不阻塞。
 
 评论事件（04）额外约束：
 - 评论起点（`notification_phases.comment_started_at`）独立于正文基线：接入评论
@@ -312,9 +315,9 @@ def record_alert(connection, alert, now, cooldown=ALERT_COOLDOWN_SECONDS):
                 "occurred_at": now, "reason": alert.reason}
     # 事件身份按「类别 + 节流窗口」去重：重启或并发写入不会在同一窗口内重复登记。
     event = connection.execute("""INSERT OR IGNORE INTO notification_events
-        (kind, uid, dynamic_id, version, snapshot, created_at) VALUES (?, '', ?, ?, ?, ?)""",
+        (kind, uid, dynamic_id, version, snapshot, created_at, sort_at) VALUES (?, '', ?, ?, ?, ?, ?)""",
         (ALERT, alert.object_key, f"{alert.category}:{int(now // cooldown)}",
-         json.dumps(snapshot, ensure_ascii=False), now))
+         json.dumps(snapshot, ensure_ascii=False), now, now))
     if event.rowcount != 1:
         return False
     connection.execute("""INSERT INTO notification_deliveries(event_id, role, state, due_at)
@@ -356,6 +359,29 @@ def migrate_delivery_facts(connection):
         connection.execute("ALTER TABLE notification_deliveries ADD COLUMN failures INTEGER NOT NULL DEFAULT 0")
     if "last_failed_at" not in columns:
         connection.execute("ALTER TABLE notification_deliveries ADD COLUMN last_failed_at REAL")
+
+
+def migrate_ordering(connection):
+    """v29 通知保序：事件新增可比较的排序时刻，旧行按入队时刻补齐。
+
+    `sort_at` 的语义是「这条消息在所属群里的先后位置」：评论类取发表时间，
+    公告类（正文变化、受限、告警、心跳）没有发表时间，取入队时刻。旧库已有的待发
+    事件按它们当时的入队时刻补齐，既不插队也不落到末尾，不必重建队列表。
+    领取侧仍然 `COALESCE(sort_at, created_at)`：空排序键按入队时刻参与排序，
+    不会被当成最早或最晚。
+    """
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(notification_events)")}
+    if "sort_at" not in columns:
+        connection.execute("ALTER TABLE notification_events ADD COLUMN sort_at REAL")
+    connection.execute("UPDATE notification_events SET sort_at = created_at WHERE sort_at IS NULL")
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(notification_deliveries)")}
+    if "waiting_since" not in columns:
+        # 等待配置的驻留起点：不复用 `expires_at`（那只是心跳的内容时效），也不拿
+        # `due_at` 顶替（启动复检会把它重置成"现在"，永远到不了驻留上限）。
+        connection.execute("ALTER TABLE notification_deliveries ADD COLUMN waiting_since REAL")
+    # 队头领取按「角色 + 未终态」取排序时刻最早的一条；索引让谓词不退化成全表扫描。
+    connection.execute("CREATE INDEX IF NOT EXISTS notification_order "
+                       "ON notification_deliveries(role, state, due_at)")
 
 
 def has_schema(connection):
@@ -503,9 +529,11 @@ def record_body(connection, id, generation, document, version):
     if baseline is not None and baseline != version and first_seen:
         uid = connection.execute("SELECT uid FROM archives WHERE id = ?", (id,)).fetchone()[0]
         snapshot = {"dynamic_id": id, "title": document.get("title")}
+        # 正文变化没有发表时间：排序时刻就是入队时刻。
+        now = time.time()
         event = connection.execute("""INSERT INTO notification_events
-            (kind, uid, dynamic_id, version, snapshot, created_at) VALUES (?, ?, ?, ?, ?, ?)""",
-            (DYNAMIC_CHANGED, uid, id, version, json.dumps(snapshot, ensure_ascii=False), time.time()))
+            (kind, uid, dynamic_id, version, snapshot, created_at, sort_at) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (DYNAMIC_CHANGED, uid, id, version, json.dumps(snapshot, ensure_ascii=False), now, now))
         connection.execute("""INSERT INTO notification_deliveries(event_id, role, state, due_at)
             VALUES (?, ?, ?, 0)""", (event.lastrowid, UP_ROLE, PENDING))
     connection.execute("UPDATE notification_phases SET baseline_version = ? WHERE token = ?", (version, phase["token"]))
@@ -528,10 +556,11 @@ def record_restricted(connection, id, generation, document):
     if row is None:
         return
     snapshot = {"dynamic_id": id, "title": document.get("title")}
+    now = time.time()
     event = connection.execute("""INSERT OR IGNORE INTO notification_events
-        (kind, uid, dynamic_id, version, snapshot, created_at) VALUES (?, ?, ?, ?, ?, ?)""",
+        (kind, uid, dynamic_id, version, snapshot, created_at, sort_at) VALUES (?, ?, ?, ?, ?, ?, ?)""",
         (DYNAMIC_RESTRICTED, row["uid"], id, phase["token"],
-         json.dumps(snapshot, ensure_ascii=False), time.time()))
+         json.dumps(snapshot, ensure_ascii=False), now, now))
     if event.rowcount != 1:
         return
     connection.execute("""INSERT INTO notification_deliveries(event_id, role, state, due_at)
@@ -553,9 +582,10 @@ def record_heartbeat(connection, slot, facts, now):
         return False
     snapshot = {"slot": slot.identity, "label": slot.label, **facts}
     # 心跳没有 UP 与动态：消息对象就是小时时段，`UNIQUE(kind, dynamic_id, version)` 再兜一层去重。
+    # 心跳没有发表时间：排序时刻取入队时刻，不排到最前或最后。
     event = connection.execute("""INSERT INTO notification_events
-        (kind, uid, dynamic_id, version, snapshot, created_at) VALUES (?, '', ?, ?, ?, ?)""",
-        (HEARTBEAT, slot.identity, slot.identity, json.dumps(snapshot, ensure_ascii=False), now))
+        (kind, uid, dynamic_id, version, snapshot, created_at, sort_at) VALUES (?, '', ?, ?, ?, ?, ?)""",
+        (HEARTBEAT, slot.identity, slot.identity, json.dumps(snapshot, ensure_ascii=False), now, now))
     connection.execute("UPDATE notification_heartbeats SET event_id = ? WHERE slot = ?",
                        (event.lastrowid, slot.identity))
     connection.execute("""INSERT INTO notification_deliveries(event_id, role, state, due_at, expires_at)
@@ -576,45 +606,55 @@ def recheck_waiting_config(connection, now):
     connection.execute("UPDATE notification_deliveries SET due_at = ? WHERE state = ?", (now, WAITING_CONFIG))
 
 
-# 领取查询拆成三条：业务到期、系统角色到期、过期租约。业务与系统分开取是为了让
-# 心跳/告警不排在业务积压后面（系统角色另有独立限速额度）；三者各自命中索引。
-# 两条到期查询只差角色谓词，用同一段模板生成，避免复制整条 SQL。
-_DUE_TEMPLATE = """SELECT d.id AS delivery_id, d.role, d.attempts, d.expires_at, d.due_at, e.kind, e.uid,
-        e.dynamic_id, e.version, e.snapshot
+# 领取按「投递角色」取队头：每个角色（UP 群／全员群／系统群）同一时刻最多一条在途，
+# 排序键是事件的排序时刻（评论取发表时间，公告类取入队时刻；空键退回入队时刻）。
+# 系统角色先领，保留「系统群领取优先」的既有语义；三条目互不阻塞。
+HEAD_QUERY = """SELECT d.id AS delivery_id, d.role, d.state, d.attempts, d.failures, d.expires_at,
+        d.due_at, d.lease_until, d.waiting_since, e.kind, e.uid, e.dynamic_id, e.version, e.snapshot,
+        e.sort_at, e.created_at
     FROM notification_deliveries d JOIN notification_events e ON e.id = d.event_id
-    WHERE d.state IN (?, ?) AND d.due_at <= ? AND d.role {comparison} ?
-    ORDER BY d.due_at, d.id LIMIT ?"""
-DUE_QUERY = _DUE_TEMPLATE.format(comparison="<>")
-SYSTEM_DUE_QUERY = _DUE_TEMPLATE.format(comparison="=")
-LEASE_QUERY = """SELECT d.id AS delivery_id, d.role, d.attempts, d.expires_at, d.due_at, e.kind, e.uid,
-        e.dynamic_id, e.version, e.snapshot
-    FROM notification_deliveries d JOIN notification_events e ON e.id = d.event_id
-    WHERE d.state = ? AND d.lease_until <= ?
-    ORDER BY d.lease_until, d.id LIMIT ?"""
+    WHERE d.role = ? AND d.state IN (?, ?, ?)
+    ORDER BY COALESCE(e.sort_at, e.created_at), d.id LIMIT 1"""
+# 领取顺序：系统角色优先，其余按固定次序枚举，不依赖字典或查询返回顺序。
+CLAIM_ROLES = (SYSTEM_ROLE, UP_ROLE, ALL_ROLE)
+
+
+def _head(connection, role):
+    return connection.execute(HEAD_QUERY, (role, PENDING, WAITING_CONFIG, INFLIGHT)).fetchone()
+
+
+def _claimable(row, now):
+    """队头现在能不能领：在途要看租约，退避/顺延/配置复检要看到期时刻。
+
+    在途谓词写「`state = inflight` 且租约未过期」：进程崩溃后过期租约还能被重领，
+    同群也不会双发。未到期（含被限速顺延、失败退避、等待配置复检）的队头原地等待，
+    同群后续消息因此根本不会被领取——退避与顺延天然不插队。
+    """
+    if row["state"] == INFLIGHT:
+        return row["lease_until"] is None or row["lease_until"] <= now
+    return row["due_at"] <= now
 
 
 def claim_due(connection, now, limit, lease_seconds):
-    """短事务领取：先丢弃过期心跳，再领到期待投、等待配置复检与过期租约。
+    """短事务领取：先丢弃过期心跳，再逐角色领取各自队头的一条。
 
-    三条查询各自命中索引，结果合并后按「系统角色优先 + 到期时间」排序并限批量，
-    避免全表扫描、避免一次性抢光同一秒内堆积的记录，也避免大批业务积压把心跳
-    挤到有效期之后。`limit` 是每类查询的上限，合并后再截断到 `limit`。
+    每个角色只看排序时刻最早的一条未终态记录：它正在外发（租约未过期）、正在退避、
+    正被限速顺延或正在等待配置复检时，本轮就不领这个角色的任何记录，因此同一个群里
+    前一条没出结果之前后一条不会被发出。三个角色彼此独立，一个群卡住不耽误另外两个。
     """
     expire_overdue(connection, now)
-    rows = list(connection.execute(DUE_QUERY, (PENDING, WAITING_CONFIG, now, SYSTEM_ROLE, limit)))
-    rows += connection.execute(SYSTEM_DUE_QUERY,
-                               (PENDING, WAITING_CONFIG, now, SYSTEM_ROLE, limit)).fetchall()
-    rows += connection.execute(LEASE_QUERY, (INFLIGHT, now, limit)).fetchall()
-    rows = sorted(rows, key=lambda row: (row["role"] != SYSTEM_ROLE, row["due_at"],
-                                         row["delivery_id"]))[:limit]
     claimed = []
-    for row in rows:
+    for role in CLAIM_ROLES:
+        if len(claimed) >= limit:
+            break
+        row = _head(connection, role)
+        if row is None or not _claimable(row, now):
+            continue
         token = uuid4().hex
         changed = connection.execute("""UPDATE notification_deliveries
             SET state = ?, token = ?, lease_until = ?
-            WHERE id = ? AND (state IN (?, ?) OR (state = ? AND lease_until <= ?))""",
-            (INFLIGHT, token, now + lease_seconds, row["delivery_id"],
-             PENDING, WAITING_CONFIG, INFLIGHT, now)).rowcount
+            WHERE id = ? AND state = ?""",
+            (INFLIGHT, token, now + lease_seconds, row["delivery_id"], row["state"])).rowcount
         if changed != 1:
             continue
         item = dict(row)
@@ -624,21 +664,27 @@ def claim_due(connection, now, limit, lease_seconds):
     return claimed
 
 
-def finish_delivery(connection, delivery_id, token, *, state, now, due_at=None, error=None, failure=False):
+def finish_delivery(connection, delivery_id, token, *, state, now, due_at=None, error=None,
+                    failure=False, waiting_since=None):
     """按领取凭证回写；失效凭证不能覆盖新领取结果。
 
     `failures` 与 `attempts` 分开记：`attempts` 每次回写都 +1（包括等待配置的周期性
     复检），`failures` 只在外部投递真的失败时 +1，并留下最后一次失败时间。票据 08
-    只能用后者判定“飞书持续投递失败”，不能用 `attempts`。
+    只能用后者判定“飞书持续投递失败”，不能用 `attempts`；本票的放弃判据同样只看后者。
+
+    `waiting_since` 是等待配置的驻留起点：只有 `waiting_config` 保留它，回到其它状态
+    （发送成功、放弃、重新失败）就清空，避免一条排队很久的记录凭空继承别人的计时。
     """
     sent_at = now if state == SENT else None
+    waiting = waiting_since if state == WAITING_CONFIG else None
     return connection.execute("""UPDATE notification_deliveries
         SET state = ?, token = NULL, lease_until = NULL, error = ?, due_at = ?, sent_at = ?,
             attempts = attempts + 1, failures = failures + ?,
-            last_failed_at = CASE WHEN ? THEN ? ELSE last_failed_at END
+            last_failed_at = CASE WHEN ? THEN ? ELSE last_failed_at END,
+            waiting_since = ?
         WHERE id = ? AND token = ? AND state = ?""",
         (state, error, now if due_at is None else due_at, sent_at, int(bool(failure)),
-         int(bool(failure)), now, delivery_id, token, INFLIGHT)).rowcount == 1
+         int(bool(failure)), now, waiting, delivery_id, token, INFLIGHT)).rowcount == 1
 
 
 def defer_delivery(connection, delivery_id, token, *, due_at):
@@ -792,11 +838,12 @@ def _register_comment(connection, uid, dynamic_id, archive, document, comment_st
         "has_media": bool(document.get("media") or document.get("media_sources")
                            or document.get("has_pictures")),
     }
+    # 评论类的排序时刻是发表时间：末页倒序读入时也不会让较新的先发出去。
     inserted = connection.execute("""INSERT OR IGNORE INTO notification_events
-        (kind, uid, dynamic_id, version, root_id, comment_id, snapshot, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (kind, uid, dynamic_id, version, root_id, comment_id, snapshot, created_at, sort_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (kind, uid, dynamic_id, None, root_id, comment_id,
-         json.dumps(snapshot, ensure_ascii=False), time.time()))
+         json.dumps(snapshot, ensure_ascii=False), time.time(), published))
     if inserted.rowcount != 1:
         return
     for role in roles:

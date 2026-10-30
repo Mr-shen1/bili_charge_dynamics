@@ -584,19 +584,22 @@ def test_undelivered_alert_merges_repeats_instead_of_stacking(tmp_path):
                 await check_async(path, source, clock, credentials_configured=False)
                 await notifier.tick()
                 clock.advance(300)
-            assert len(alert_events(path)) == 1
-            state["fail"] = False  # 修复系统群后只补发这一条合并后的提醒
+            state["fail"] = False  # 修复系统群后只补发仍在队列里的提醒
             clock.advance(600)
             await notifier.tick()
         finally:
             await notifier.aclose()
 
     asyncio.run(scenario())
-    assert len(alert_events(path)) == 1
-    assert [row["state"] for row in deliveries(path) if row["kind"] == "alert"] == ["sent"]
-    # 失败期间的重试是同一条提醒（外部重复由 06 的退避语义决定），没有第二条内容。
-    attempted = {message_text(payload) for payload in receiver.payloads if "告警【" in message_text(payload)}
-    assert len(attempted) == 1 and "采集异常" in attempted.pop()
+    # 05 之后：一条提醒 14 秒发不出去就放弃，不再永久占住系统群。同一 30 分钟窗口内的
+    # 重复故障仍合并成一条提醒，跨窗口各一条，恢复后不补发已放弃的旧提醒。
+    assert len(alert_events(path)) == 2
+    assert [row["state"] for row in deliveries(path) if row["kind"] == "alert"] == ["expired", "expired"]
+    # 失败期间的重试与合并都是同一份内容，没有按故障次数堆积出不同文本。
+    attempted = [message_text(payload).splitlines() for payload in receiver.payloads
+                 if "告警【" in message_text(payload)]
+    assert {tuple(lines[1:2] + lines[3:4]) for lines in attempted} == {
+        ("对象：900719925474099312345:123", "原因：请求超时")}
 
 
 class FailingFeedSource(CountingSource):
@@ -743,8 +746,9 @@ def test_persistent_failure_of_a_reply_delivery_also_alerts(tmp_path):
     async def scenario():
         notifier = dispatcher(path, receiver, clock, full=ALL_WEBHOOK)
         try:
-            # 只让全员群失败：UP 群的一级评论成功，回复目标持续失败。
-            for delay in (0, 2, 4, 8):
+            # 只让全员群失败：UP 群的一级评论成功；同群队头（一级评论）放弃后
+            # 回复才开始重试，两条各自按（角色, 类型）提醒。
+            for delay in (0, 2, 4, 8, 2, 4):
                 clock.advance(delay)
                 await notifier.tick()
         finally:

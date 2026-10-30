@@ -1,7 +1,10 @@
 """独立投递：短事务领取 → 事务外请求飞书 → 按领取凭证短事务回写。
 
-默认每秒轮询到期记录、有限批量；网络等待、限流与退避都不持有 SQLite 写事务。
-发送前先按目的地过一遍主动限速（票据 13）：超预算只顺延 `due_at`，不算失败。
+默认每秒轮询到期记录；网络等待、限流与退避都不持有 SQLite 写事务。
+同一个群（= 投递角色）严格按排序时刻串行：队头没出结果之前不领同群第二条，一拍内
+发完一条立刻补位，因此瓶颈是限速而不是轮询节拍。发送前先按目的地过一遍主动限速
+（票据 13）：超预算只顺延 `due_at`，不算失败；平台限流按它给的等待时间顺延，
+不消耗重试额度。真实失败退避 2／4／8 秒，第四次失败即放弃并留痕告警。
 每个轮次开头读一次持久总开关（票据 14）：关闭时不领取、不发送、不生成心跳。
 投递结果不回写归档成功 checkpoint。
 """
@@ -23,8 +26,16 @@ BATCH = 8
 LEASE_SECONDS = 30.0
 REQUEST_TIMEOUT_SECONDS = 10.0
 RETRY_BASE_SECONDS = 2.0
-RETRY_CAP_SECONDS = 300.0
+# 退避上限收到 8 秒：保留 2 → 4 → 8 的指数步长，但一条永远发不出去的消息只耽误十几秒，
+# 不会因为「同群严格排队」把整个群长期堵死。
+RETRY_CAP_SECONDS = 8.0
+# 真实外发失败最多重试三次（连同首次发送共四次尝试，约 2 + 4 + 8 = 14 秒），仍失败就放弃。
+MAX_RETRIES = 3
+ABANDON_RETRY_EXHAUSTED = "retry_exhausted"
 CONFIG_RECHECK_SECONDS = 60.0
+# 配置未就绪的驻留上限：仍按 60 秒粒度复检，但超过 10 分钟就放弃，不再永久占住队头。
+CONFIG_RESIDENCE_SECONDS = 600.0
+ABANDON_CONFIG_TIMEOUT = "config_timeout"
 # “飞书持续投递失败”的判定：同一业务目标真实失败至少 3 次且当前仍在待投递。
 # 成功恢复（sent）、等待配置与过期都不算；心跳与告警自身不参与，避免递归告警。
 DELIVERY_FAILURE_THRESHOLD = 3
@@ -50,8 +61,13 @@ class SystemClock:
         await asyncio.sleep(seconds)
 
 
-def _backoff(attempts):
-    return min(RETRY_CAP_SECONDS, RETRY_BASE_SECONDS * (2 ** min(attempts, 8)))
+def _backoff(failures):
+    """退避步长按「真实外发失败次数」算：等待配置的周期复检不放大退避。
+
+    `attempts` 每次回写都 +1（含等待配置复检），用它算退避会让一条从未真正发过
+    HTTP 的记录直接跳到上限；放弃判据同理只看 `failures`。
+    """
+    return min(RETRY_CAP_SECONDS, RETRY_BASE_SECONDS * (2 ** min(failures, 8)))
 
 
 class Dispatcher:
@@ -181,11 +197,21 @@ class Dispatcher:
         return await self._dispatch_batch()
 
     async def _dispatch_batch(self):
-        claimed = await to_thread.run_sync(self._claim)
-        if not claimed:
-            return 0
-        await asyncio.gather(*(self._deliver(item) for item in claimed))
-        return len(claimed)
+        """一拍内循环补位：领取 → 发送 → 再领取，直到没有可领或拍到批量上限。
+
+        同群单飞让每轮最多只能领到每个角色一条，若一拍只领一次，轮询节拍（1 秒）
+        会把每群吞吐压到 1 条/秒，低于 5 次/秒的主动限速额度。这里发完一条立刻
+        补位，瓶颈重新回到限速本身；顺延或退避的队头会把本角色挡在下一轮，
+        因此循环必然在有积压时自然结束。
+        """
+        delivered = 0
+        for _ in range(max(self.batch, 1)):
+            claimed = await to_thread.run_sync(self._claim)
+            if not claimed:
+                break
+            await asyncio.gather(*(self._deliver(item) for item in claimed))
+            delivered += len(claimed)
+        return delivered
 
     def _recheck_routes(self):
         with write(self.store) as connection:
@@ -225,21 +251,27 @@ class Dispatcher:
             # 单条目写错只影响该目标：其他群仍在同一轮投递。
             # 业务目标的缺失/错误路由是独立可观察事实：与“等待配置”回写同事务登记告警，
             # 只标识受影响的目标角色与动态，不回显 webhook 或签名。系统群自身不登记（不递归）。
+            now = self.clock.now()
+            since = item["waiting_since"] if item["waiting_since"] is not None else now
+            if now - since >= CONFIG_RESIDENCE_SECONDS:
+                # 配置始终没就绪：走与真实失败同一条放弃路径，留痕并告警后推进队头。
+                self._abandon(item, ABANDON_CONFIG_TIMEOUT)
+                return
             alert = None
             if item["role"] != outbox.SYSTEM_ROLE:
                 alert = outbox.Alert("route",
                                      f"{item['role']}:{item['uid']}:{item['dynamic_id']}", route.error)
             self._finish(item, state=outbox.WAITING_CONFIG,
-                         due_at=self.clock.now() + CONFIG_RECHECK_SECONDS, error=route.error, alert=alert)
+                         due_at=now + CONFIG_RECHECK_SECONDS, error=route.error, alert=alert,
+                         waiting_since=since)
             notifier_event("delivery_waiting_config", warning=True, role=item["role"], kind=item["kind"],
                            reason=route.error)
             return
         webhook, secret = route.webhook, route.secret
         payload = self._payload(item)
         if payload is None:
-            # 已登记的事件缺模板属于实现缺陷：保留记录并计一次投递失败事实。
-            self._finish(item, state=outbox.PENDING, due_at=self.clock.now() + RETRY_CAP_SECONDS,
-                         error="unsupported_kind", failure=True)
+            # 已登记的事件缺模板属于实现缺陷：按同一套失败规则退避，次数用尽就放弃。
+            self._failed(item, "unsupported_kind")
             return
         # 主动限速在请求之前、事务之外：超预算只顺延，不等 429 也不占写事务。
         key = rate_key(item["role"], webhook)
@@ -264,10 +296,42 @@ class Dispatcher:
             self._finish(item, state=outbox.SENT, due_at=self.clock.now())
             notifier_event("delivery_sent", role=item["role"], kind=item["kind"])
             return
-        delay = result.retry_after if result.error == "rate_limited" else None
-        self._finish(item, state=outbox.PENDING, due_at=self.clock.now() + (delay or _backoff(item["attempts"])),
-                     error=result.error, failure=True)
-        notifier_event("delivery_failed", warning=True, reason=result.error, role=item["role"])
+        if result.error == "rate_limited":
+            # 平台限流按平台给出的等待时间顺延，不消耗那三次重试额度：否则一条消息
+            # 连续遇到几次限流就会被当成「发不出去」而丢弃，与「限流不算失败」相悖。
+            self._finish(item, state=outbox.PENDING,
+                         due_at=self.clock.now() + (result.retry_after or _backoff(item["failures"])),
+                         error=result.error)
+            notifier_event("delivery_rate_limited", warning=True, role=item["role"])
+            return
+        self._failed(item, result.error)
+
+    def _failed(self, item, error):
+        """真实外发失败：按失败次数退避一次，次数用尽就放弃这条并推进队头。
+
+        对所有消息类型一致（评论、正文变化、告警、心跳），不按角色区分；心跳原有的
+        有效期仍作为额外约束先于这里生效。
+        """
+        if item["failures"] + 1 > MAX_RETRIES:
+            self._abandon(item, ABANDON_RETRY_EXHAUSTED, failure=True)
+            return
+        self._finish(item, state=outbox.PENDING,
+                     due_at=self.clock.now() + _backoff(item["failures"]), error=error, failure=True)
+        notifier_event("delivery_failed", warning=True, reason=error, role=item["role"])
+
+    def _abandon(self, item, reason, *, failure=False):
+        """确定性放弃：进入既有终态「已过期」，写入可辨原因并登记既有类别系统告警。
+
+        系统目标自己不再登记告警（会递归成更多告警），与路由缺失分支同一口径。
+        `failure` 为假时（配置未就绪）不增加失败次数：那不是一次真实外发失败。
+        """
+        alert = None
+        if item["role"] != outbox.SYSTEM_ROLE:
+            alert = outbox.Alert("delivery", f"{item['role']}:{item['kind']}", reason)
+        self._finish(item, state=outbox.EXPIRED, due_at=self.clock.now(), error=reason,
+                     failure=failure, alert=alert)
+        notifier_event("delivery_abandoned", warning=True, role=item["role"], kind=item["kind"],
+                       reason=reason)
 
     def _defer(self, item, due_at):
         """超预算顺延：留在 `pending`，下一轮轮询自然重领；不计失败也不消耗 attempts。
@@ -281,12 +345,13 @@ class Dispatcher:
             notifier_event("delivery_lease_expired", warning=True, role=item["role"])
         return accepted
 
-    def _finish(self, item, *, state, due_at, error=None, failure=False, alert=None):
+    def _finish(self, item, *, state, due_at, error=None, failure=False, alert=None,
+                waiting_since=None):
         accepted = False
         with write(self.store) as connection:
             accepted = outbox.finish_delivery(
                 connection, item["delivery_id"], item["token"], state=state, now=self.clock.now(),
-                due_at=due_at, error=error, failure=failure)
+                due_at=due_at, error=error, failure=failure, waiting_since=waiting_since)
             # 告警登记与失败事实同事务：失败事实被接受才登记，回滚则一起丢弃。
             # 单条告警写不进去不牵连投递结果（SAVEPOINT 隔离），只留固定分类日志。
             if accepted and alert is not None:

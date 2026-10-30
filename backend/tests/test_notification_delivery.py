@@ -80,18 +80,22 @@ def test_rate_limit_uses_platform_suggestion_and_network_errors_retry(tmp_path):
     receiver = Receiver(
         lambda request: httpx.Response(429, headers={"x-ogw-ratelimit-reset": "45"}, json={"code": 11232}))
     run_once(path, httpx.MockTransport(receiver), clock=clock)
-    limited = [row for row in deliveries(path) if row["state"] == "pending"]
-    assert len(limited) == 2 and all(row["error"] == "rate_limited" for row in limited)
-    assert all(row["due_at"] == clock.now() + 45.0 for row in limited)
+    # 同群严格排队（05）：只有队头被尝试；它按平台建议顺延，同群后一条不抢跑。
+    head, behind = deliveries(path)
+    assert (head["state"], head["error"], head["due_at"]) == (
+        "pending", "rate_limited", clock.now() + 45.0)
+    assert (behind["state"], behind["error"], behind["due_at"], behind["attempts"]) == (
+        "pending", None, 0.0, 0)
 
     def broken(request):
         raise httpx.ConnectError("fictional network failure", request=request)
 
     clock.advance(45.0)
     run_once(path, httpx.MockTransport(broken), clock=clock)
-    retried = [row for row in deliveries(path) if row["state"] == "pending"]
-    assert len(retried) == 2 and all(row["error"] == "network_error" for row in retried)
-    assert all(row["due_at"] > clock.now() for row in retried)
+    head, behind = deliveries(path)
+    assert (head["state"], head["error"]) == ("pending", "network_error")
+    assert head["due_at"] == clock.now() + 2.0
+    assert (behind["error"], behind["attempts"], behind["due_at"]) == (None, 0, 0.0)
 
 
 def test_missing_destination_waits_for_config_then_delivers_after_repair(tmp_path):
