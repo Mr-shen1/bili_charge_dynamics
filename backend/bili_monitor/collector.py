@@ -227,7 +227,7 @@ class Collector:
         # 启动时一次性读取的来源凭据是否存在；判定处不再读文件，也不为了告警额外访问来源。
         self.credentials_configured = bool(credentials_configured)
         # 点赞刷新配置（间隔＋凌晨窗口）与登记扫描的上一拍；间隔 0 关闭该通道。
-        self.like_refresh = like_refresh_configuration()
+        self.like_refresh_config = like_refresh_configuration()
         self._like_refresh_mark = None
         self.cadence = cadence if cadence is not None else cadence_provider()
         # 默认每轮采样带抖动；显式传值时用于测试/运维固定间隔。
@@ -535,22 +535,33 @@ class Collector:
                 if self.scheduler is not None:
                     await session.target_lease.release()
 
+    def _refresh_window_open(self, now):
+        """刷新通道是否在窗口内：间隔 0 关闭，窗口是北京时间整分钟时段。"""
+        return (self.like_refresh_config["interval"] > 0
+                and like_refresh_window_open(now, self.like_refresh_config["window"]))
+
+    def _like_refresh_round(self, anchor_iso, now):
+        """「窗口内 + 锚点到期」的唯一判定点：本次领取是不是一次点赞刷新。
+
+        登记扫描与领取重判共用这一个谓词，两处不会各自拼一遍窗口与到期条件。
+        窗口外或未到期就完全沿用现有参数，不因持久进度里的全量标记另起全量轮次。
+        """
+        return (self._refresh_window_open(now)
+                and like_refresh_due(anchor_iso, now, self.like_refresh_config["interval"]))
+
     async def _register_like_refresh(self):
         """凌晨窗口内把「已完成且到期」的目标置回待办；写点仍只在检查状态模块内。
 
         只有持进程锁的采集进程调它；API 不登记、不领取。窗口、到期与间隔都是纯函数
         判定，间隔 0 直接关闭该通道。
         """
-        if self.like_refresh["interval"] <= 0:
-            return 0
         now = self.clock.now()
-        if not like_refresh_window_open(now, self.like_refresh["window"]):
+        if not self._refresh_window_open(now):
             return 0
         targets = await to_thread.run_sync(self.store.like_refresh_targets)
         reopened = 0
         for target in targets:
-            if not like_refresh_due(target["like_refresh_succeeded_at"], now,
-                                    self.like_refresh["interval"]):
+            if not self._like_refresh_round(target["like_refresh_succeeded_at"], now):
                 continue
             reopened += int(await to_thread.run_sync(
                 lambda target=target: self.store.reopen_check_work(target["uid"], target["id"])))
@@ -594,9 +605,7 @@ class Collector:
                 return None
             # 领取时就地重判：全量不是跨轮粘性状态，窗口外或锚点未到期就完全沿用现有参数。
             now = self.clock.now()
-            like_refresh = (like_refresh_window_open(now, self.like_refresh["window"])
-                            and like_refresh_due(claim.get("like_refresh_succeeded_at"), now,
-                                                 self.like_refresh["interval"]))
+            like_refresh = self._like_refresh_round(claim.get("like_refresh_succeeded_at"), now)
             collector_event("sync_started", revision=claim["revision"], like_refresh=like_refresh,
                             **target_refs)
             session = TargetSession(
@@ -604,7 +613,7 @@ class Collector:
                 downloader=self.downloader, uploader=self.uploader,
                 comment_client_factory=self.comment_client_factory,
                 now=self.clock.now, pending_comments_only=True, full_replies=False,
-                like_refresh=like_refresh)
+                like_refresh=like_refresh, refresh_window=self._refresh_window_open(now))
             session.claim = claim
             session.alerts = []
             session.on_failure = lambda error: self._note_failure(session, error)
@@ -684,13 +693,13 @@ class Collector:
                             max_checks=self.max_checks, max_syncs=self.max_syncs,
                             max_discoveries=self.max_discoveries, recovery="complete")
             collector_event("like_refresh_configuration",
-                            interval_seconds=self.like_refresh["interval"],
-                            window_start_minute=window_minute(self.like_refresh["window"][0]),
-                            window_end_minute=window_minute(self.like_refresh["window"][1]),
-                            interval_source=self.like_refresh["interval_source"],
-                            window_source=self.like_refresh["window_source"],
-                            warning="invalid" in (self.like_refresh["interval_source"],
-                                                   self.like_refresh["window_source"]))
+                            interval_seconds=self.like_refresh_config["interval"],
+                            window_start_minute=window_minute(self.like_refresh_config["window"][0]),
+                            window_end_minute=window_minute(self.like_refresh_config["window"][1]),
+                            interval_source=self.like_refresh_config["interval_source"],
+                            window_source=self.like_refresh_config["window_source"],
+                            warning="invalid" in (self.like_refresh_config["interval_source"],
+                                                   self.like_refresh_config["window_source"]))
             checks, discoveries = {}, {}
             drain = None
             offset = discovery_offset = 0

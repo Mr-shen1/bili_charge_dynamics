@@ -368,6 +368,48 @@ def test_failed_refresh_does_not_advance_anchor_and_retries_inside_the_window(tm
     asyncio.run(scenario())
 
 
+def test_failure_inside_window_falls_back_to_incremental_outside_it(tmp_path):
+    """LR-06：窗口内的失败不能在窗口外补跑成一次刷新，也不能改动锚点。"""
+    path = tmp_path / "like-refresh-outside.sqlite"
+    configured(path)
+    source = LikeSource()
+    source.expand(total=61)
+    big = source.expand_replies(45, root_index=0)   # 三页数据 + 空尾页：正序全量与末页倒序可分
+    clock = ControlledClock(beijing(0, 0, day=1))
+
+    async def scenario():
+        await initial_archive(path, source, clock)
+        before_anchor = anchor(path)
+        source.forget()
+        async with collecting(path, source, clock):
+            await tick(clock)
+            await tick(clock, jump=26 * 3600)
+            # 窗口内这一轮是刷新：根页首屏失败，整楼正序取到第 2 页失败。
+            source.fail_root_page = 1
+            source.fail_reply_page = 2
+            await tick(clock)
+            await eventually(lambda: work(path) == "pending"
+                             and source.reply_pages(big) == [1, 2])
+            assert anchor(path) == before_anchor
+            source.forget()
+            # 推进到窗口外：待办仍是普通待办，下一次领取必须回到现有增量参数。
+            await tick(clock, jump=3 * 3600 + 60)
+            await eventually(lambda: work(path) == "complete" and bool(source.root_pages()))
+            assert source.root_pages() == ["1", "2"]   # 增量守卫两页收束，不是翻到第 5 页
+            # 末页倒序增量从最后一页起步；整楼正序全量永远从第 1 页起。
+            assert source.reply_pages(big)[0] == 3
+            assert anchor(path) == before_anchor          # 窗口外补跑不推进锚点
+            assert work(path) == "complete"               # 普通增量照常收束
+            # 次日窗口内仍会重新登记一次刷新：锚点仍为空即到期。
+            source.forget()
+            await tick(clock, jump=21 * 3600)
+            await eventually(lambda: work(path) == "complete"
+                             and source.root_pages() == ["1", "2", "3", "4", "5", "5"])
+            assert anchor(path) != before_anchor
+
+    asyncio.run(scenario())
+
+
 def comments(path, sort="latest"):
     """公开评论读取：完整行级 DTO，用于刷新前后的逐字段比对。"""
     with archive_client(path) as api:
@@ -612,6 +654,13 @@ def anchor(path, id="123"):
     with sqlite3.connect(path) as connection:
         return connection.execute(
             "SELECT like_refresh_succeeded_at FROM target_checks WHERE id = ?", (id,)).fetchone()[0]
+
+
+def set_anchor(path, id, value):
+    """用例自带的前置事实：模拟「该目标上一轮刷新就发生在此时刻」。"""
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "UPDATE target_checks SET like_refresh_succeeded_at = ? WHERE id = ?", (value, id))
 
 
 def test_refresh_keeps_comments_the_source_no_longer_returns(tmp_path):
@@ -896,9 +945,10 @@ def test_another_target_still_checks_new_comments_while_a_refresh_runs(tmp_path)
         # 123 的锚点在前一日零点：窗口一开就到期，成为当晚的点赞刷新。
         await initial_archive(path, source, clock, "123")
         before_anchor = anchor(path, "123")
-        # 456 在窗口前一小时才首次归档，锚点新鲜：它是「新评论检查」，不是刷新。
+        # 456 在窗口前一小时才首次归档，并在前一日窗口内刚被刷新过：锚点新鲜，是普通检查。
         clock.advance(25 * 3600)
         await initial_archive(path, source, clock, "456")
+        set_anchor(path, "456", clock.now())
         source.grow(2)
         source.forget()
         clock.advance(26 * 3600)

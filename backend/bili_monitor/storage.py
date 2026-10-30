@@ -1046,6 +1046,10 @@ class Store(CheckStore, DiscoveryStore):
                     connection.commit()
                     return None
                 position = scan_progress.read(connection, id)
+                # 全量意图只能由本次调用确认：持久进度里的 `full` 是上一轮的事实，
+                # 窗口外的增量领取不能因它而继续整轮全量（那等于把夜里没跑完的刷新
+                # 挪到白天补完）。显式全量与窗口内刷新都显式传 `full=True`。
+                resumed_full = position is not None and position.full and bool(full)
                 if position is None:
                     reason, position = "start", scan_progress.start(id, generation, key, observed_count, full=full)
                 elif position.locator != key:
@@ -1067,13 +1071,14 @@ class Store(CheckStore, DiscoveryStore):
                     overlap = position.anchor_page if position.phase in (
                         scan_progress.PAGES, scan_progress.GUARD) else 0
                     position = position._replace(generation=generation, overlap_page=overlap,
-                                                 source_count=observed_count)
+                                                 source_count=observed_count, full=resumed_full)
                 else:
                     # 同一代次的未完成扫描：下一步先校验锚点页，再继续翻页。
                     reason = "resume"
                     overlap = position.anchor_page if position.phase in (
                         scan_progress.PAGES, scan_progress.GUARD) else 0
-                    position = position._replace(overlap_page=overlap, generation=generation)
+                    position = position._replace(overlap_page=overlap, generation=generation,
+                                                 full=resumed_full)
                 scan_progress.write(connection, id, position)
                 connection.commit()
                 return {"position": position, "reason": reason}
@@ -1120,16 +1125,19 @@ class Store(CheckStore, DiscoveryStore):
                                   progress=position)
 
     def finish_roots(self, id, generation, status, observed_count, succeeded_at=None, *,
-                     pin_known=False, pinned_id=None, like_refresh=False):
+                     pin_known=False, pinned_id=None, like_refresh_round=False):
         return self._change_roots(id, generation, status, observed_count, [], succeeded_at,
-                                  pin_known=pin_known, pinned_id=pinned_id, like_refresh=like_refresh)
+                                  pin_known=pin_known, pinned_id=pinned_id,
+                                  like_refresh_round=like_refresh_round)
 
     def _change_roots(self, id, generation, status, observed_count, documents, succeeded_at=None, *,
-                      pin_known=False, pinned_id=None, progress=None, like_refresh=False):
+                      pin_known=False, pinned_id=None, progress=None, like_refresh_round=False):
         """页数据、页进度与归档分项状态同一短事务；返回摘要或 `None`（领取代次过期）。
 
-        `like_refresh=True` 表示本轮是完整根页扫描（每日点赞刷新或显式全量）：成功时
-        同一事务推进「上次点赞刷新成功时间」，不等其他分项成功。
+        `like_refresh_round=True` 只在「本次会话确实是窗口内的点赞刷新轮次」时为真，
+        不靠「本轮是不是完整根页扫描」推断：显式全量初始化也是完整扫描，但它不该推进
+        刷新锚点；窗口外补跑的普通待办更不是刷新。这一个事实决定两件事：成功时在同一
+        事务推进「上次点赞刷新成功时间」，并且不重新确认空图片组（刷新只取计数类字段）。
         """
         with self.connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -1188,7 +1196,7 @@ class Store(CheckStore, DiscoveryStore):
                     archive["synced_root_metadata_version"] = ROOT_METADATA_VERSION
                     archive["synced_root_comment_count"] = observed_count
                     archive["root_comments_last_succeeded_at"] = succeeded_at or utc_now()
-                    if like_refresh:
+                    if like_refresh_round:
                         # 点赞刷新锚点与根页扫描成功同事务提交：不等整条动态所有分项都
                         # 成功，否则活跃动态下来源计数几乎必然变化，锚点永不推进、整夜
                         # 逐拍重复全量。失败不推进，窗口内可重试、窗口外等次日。
