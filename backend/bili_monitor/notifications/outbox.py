@@ -619,11 +619,6 @@ HEAD_QUERY = """SELECT d.id AS delivery_id, d.role, d.state, d.attempts, d.failu
 CLAIM_ROLES = (SYSTEM_ROLE, UP_ROLE, ALL_ROLE)
 
 
-def _sort_key(row):
-    """排序时刻：空键退回入队时刻，不把缺列当成最早或最晚。"""
-    return row["created_at"] if row["sort_at"] is None else row["sort_at"]
-
-
 def _head(connection, role):
     return connection.execute(HEAD_QUERY, (role, PENDING, WAITING_CONFIG, INFLIGHT)).fetchone()
 

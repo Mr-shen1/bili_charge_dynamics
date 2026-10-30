@@ -29,7 +29,6 @@ from backend.tests.root_notification_support import (
 
 ROOT = "870001"
 SYSTEM_WEBHOOK = "https://open.feishu.cn/open-apis/bot/v2/hook/fake-system-order"
-OTHER_HOOK = "https://open.feishu.cn/open-apis/bot/v2/hook/fake-other-order"
 
 
 # --- 装配 -------------------------------------------------------------------
