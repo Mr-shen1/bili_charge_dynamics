@@ -991,7 +991,8 @@ class Store(CheckStore, DiscoveryStore):
                 connection.rollback()
                 raise
 
-    def _refresh_comment_media_success(self, connection, id, succeeded_at, *, media_completed=False):
+    def _refresh_comment_media_success(self, connection, id, succeeded_at, *,
+                                       media_completed=False, confirm_empty=True):
         # 仅在实际根分页或上传提交时推进；读取/检查不补造旧归档的成功时间。
         row = connection.execute("SELECT document FROM archives WHERE id = ?", (id,)).fetchone()
         archive = json.loads(row[0])
@@ -999,11 +1000,12 @@ class Store(CheckStore, DiscoveryStore):
                 or connection.execute("""SELECT 1 FROM root_comments WHERE dynamic_id = ?
                     AND json_extract(document, '$.work.media') IS NOT 'success' LIMIT 1""", (id,)).fetchone()):
             return
-        # 有图时仅由真正的上传完成推进；全空组由实际成功根分页确认。
+        # 有图时仅由真正的上传完成推进；全空组由实际成功根分页确认，但点赞刷新轮次除外
+        # （`confirm_empty=False`）：刷新只取计数类字段，已完成的媒体阶段不得被它重新确认。
         # 旧成功图片缺时间不能在检查、读取或同版本重扫时被补成“刚上传”。
         has_images = connection.execute("""SELECT 1 FROM root_comments WHERE dynamic_id = ?
             AND json_array_length(document, '$.media') > 0 LIMIT 1""", (id,)).fetchone()
-        if media_completed or not has_images:
+        if media_completed or (not has_images and confirm_empty):
             archive["comment_media_last_succeeded_at"] = succeeded_at or utc_now()
             self._write_media_owner(connection, id, None, archive)
 
@@ -1209,7 +1211,10 @@ class Store(CheckStore, DiscoveryStore):
                 connection.execute("UPDATE archives SET document = ? WHERE id = ? AND generation = ?",
                                    (json.dumps(archive, ensure_ascii=False), id, generation))
                 if status == "success":
-                    self._refresh_comment_media_success(connection, id, succeeded_at)
+                    # 刷新轮次只合并计数类字段：不把没有任何图片的组重新确认成「刚成功」，
+                    # 否则媒体阶段已完成的目标会因为一次点赞刷新而改动媒体时间。
+                    self._refresh_comment_media_success(
+                        connection, id, succeeded_at, confirm_empty=not like_refresh_round)
                 position = progress
                 if position is not None:
                     # 进度与页数据同事务：崩溃后要么都有、要么都没有。

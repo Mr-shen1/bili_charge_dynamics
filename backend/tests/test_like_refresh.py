@@ -637,6 +637,40 @@ def test_refresh_does_not_download_or_upload_succeeded_media_again(tmp_path):
     asyncio.run(scenario())
 
 
+def test_refresh_does_not_reconfirm_media_of_image_free_targets(tmp_path):
+    """LR-09：无图目标的刷新不推进媒体确认时间，媒体行也一字不变。"""
+    path = tmp_path / "like-refresh-empty-media.sqlite"
+    configured(path)
+    source = LikeSource()   # 所有根评论都不带图：媒体阶段靠「实际成功根分页」确认空组
+    source.expand()
+    clock = ControlledClock(beijing(0, 0, day=1))
+
+    async def scenario():
+        await initial_archive(path, source, clock)
+        before = comments(path)
+        assert media_state(before) == [[] for _ in before]
+        # 既有确认语义不变：正常归档成功根分页确实确认了空图片组。
+        confirmed_at = archive(path)["comment_media_last_succeeded_at"]
+        assert confirmed_at is not None
+        assert archive(path)["work"]["media"] == "success"
+        source.roots[0]["like"] = 42
+        source.forget()
+        async with collecting(path, source, clock):
+            await tick(clock)
+            await tick(clock, jump=26 * 3600)
+            await eventually(lambda: work(path) == "complete" and bool(source.root_pages()))
+        after = comments(path)
+        # 点赞确实刷新了，媒体则一字未动：刷新只取计数类字段。
+        assert {item["id"]: item["like_count"] for item in after}[
+            source.roots[0]["rpid_str"]] == 42
+        assert media_state(after) == media_state(before)
+        refreshed = archive(path)
+        assert refreshed["work"]["media"] == "success"
+        assert refreshed["comment_media_last_succeeded_at"] == confirmed_at
+
+    asyncio.run(scenario())
+
+
 def reply_items(path, root="900719925474099312346"):
     """公开楼中楼读取（实时 page 模式）：完整行级 DTO，用于刷新前后比对。"""
     with archive_client(path) as api:
