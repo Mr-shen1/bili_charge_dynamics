@@ -31,8 +31,8 @@ from .media import ImageDownloader
 from .oss import OSSUploader
 from .safety import configure_safe_logging
 from .collector_logging import (
-    collector_attempt, collector_event, collector_failure, credential_signal, failure_fields,
-    source_ids, source_refs,
+    SELF_HEALING_REASONS, collector_attempt, collector_event, collector_failure,
+    credential_signal, failure_fields, source_ids, source_refs,
 )
 from .storage import Store
 from .selection import selection_matches
@@ -192,12 +192,17 @@ class Collector:
 
         可信凭据失效只认「来源业务码 -101 + 本次确实配置了凭据」，对象键是全局来源
         凭据；其余仍按原分类归入本阶段类别（采集异常／主循环异常），不让普通网络/
-        风控/HTTP 错误冒充登录失效。
+        风控/HTTP 错误冒充登录失效。可重试收敛的分页一致性校验返回空：它已有 WARNING
+        与持久错误事实，不属于「需要人看一眼」的故障。
         """
         signal = credential_signal(error, credentials_configured=self.credentials_configured)
         if signal == "credential_rejected":
             return [outbox.Alert("credential", "source_credential", signal)]
         reason = signal or failure_fields(error)["reason"]
+        if signal is None and reason in SELF_HEALING_REASONS:
+            # 页内计数漂移由下一次尝试重新定位锚点、刷新基准后收敛；只留 `collector_failure`
+            # 的 WARNING，不登记告警，避免正常的删除／新增被当成采集故障。
+            return []
         return [outbox.Alert(category, object_key, reason)]
 
     async def discover_once(self, uid):
@@ -467,22 +472,28 @@ class Collector:
                     await lease.release()
                 return None
             collector_event("sync_started", revision=claim["revision"], **target_refs)
-            alerts = []
             session = TargetSession(
                 self.store, self.client, uid, id, None, claim["observed"],
                 downloader=self.downloader, uploader=self.uploader,
                 comment_client_factory=self.comment_client_factory,
-                now=self.clock.now, pending_comments_only=True, full_replies=False,
-                on_failure=lambda error: alerts.extend(
-                    self._failure_alerts(error, f"{uid}:{id}")))
+                now=self.clock.now, pending_comments_only=True, full_replies=False)
             session.claim = claim
-            session.alerts = alerts
+            session.alerts = []
+            session.on_failure = lambda error: self._note_failure(session, error)
             session.target_lease = lease
             return session
         except BaseException:
             if lease is not None:
                 await lease.release()
             raise
+
+    def _note_failure(self, session, error):
+        """会话内失败：登记告警；可自愈的分页校验只留 WARNING，并标记本次不兜底告警。"""
+        alerts = self._failure_alerts(error, f"{session.uid}:{session.id}")
+        if alerts:
+            session.alerts.extend(alerts)
+        else:
+            session.suppressed = True
 
     async def _finish_session(self, session, *, succeeded=None, archive=None):
         if archive is None:
@@ -491,8 +502,8 @@ class Collector:
         if succeeded is None:
             succeeded = False
         # 同步阶段的显式失败事实（正文读取失败、根／回复分页失败）也登记告警；
-        # 普通的“待同步／媒体待完成”不是故障，不据此告警。
-        if archive is not None and not session.alerts:
+        # 普通的“待同步／媒体待完成”不是故障，可自愈分页校验（`suppressed`）也不借此兜底。
+        if archive is not None and not session.alerts and not session.suppressed:
             if archive["work"].get("text") == "failed":
                 session.alerts.append(outbox.Alert("collection", f"{session.uid}:{session.id}",
                                                    "body_failed"))

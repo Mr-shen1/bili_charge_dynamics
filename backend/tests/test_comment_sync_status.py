@@ -1,8 +1,10 @@
 """26：原始 fixture transport → Collector 公开入口 → 临时 SQLite → HTTP。"""
 
 import asyncio
+import contextlib
 import copy
 import json
+import logging
 import sqlite3
 from pathlib import Path
 
@@ -36,6 +38,10 @@ class CommentSource:
         self.blocked = False
         # 模拟扫描期间总计数增长：从该页起 count/acount 比第 1 页多 1。
         self.count_growth_from_page = None
+        # 模拟扫描期间总计数减少（有人删评论）：从第 N+1 次根页请求起 count/acount 少 1。
+        # 真实上游是所有页都返回新的总数，因此重试时锚点页也必须能读到减少后的值。
+        self.count_shrink_after_calls = None
+        self.root_page_calls = 0
 
     def __call__(self, request):
         path = request.url.path
@@ -54,9 +60,13 @@ class CommentSource:
             payload = copy.deepcopy(root_fixture() if is_root else self.reply_payload)
             items = self.roots if is_root else self.replies
             growth = 1 if (self.count_growth_from_page and page >= self.count_growth_from_page) else 0
-            payload["data"]["page"].update(num=page, count=len(items) + growth)
             if is_root:
-                payload["data"]["page"]["acount"] = len(self.roots) + len(self.replies) + growth
+                self.root_page_calls += 1
+            shrink = 1 if (is_root and self.count_shrink_after_calls is not None
+                           and self.root_page_calls > self.count_shrink_after_calls) else 0
+            payload["data"]["page"].update(num=page, count=len(items) + growth - shrink)
+            if is_root:
+                payload["data"]["page"]["acount"] = len(self.roots) + len(self.replies) + growth - shrink
             payload["data"]["replies"] = items[(page - 1) * 20:page * 20] or None
             return httpx.Response(200, json=payload)
         if self.blocked and path.endswith("/detail"):
@@ -646,6 +656,73 @@ def test_root_scan_survives_total_count_growth_during_pagination(tmp_path, caplo
             assert check["root_comments_last_attempt"] == "success"
             assert archive["synced_root_comment_count"] == 70
             assert "root_sync_failed" not in caplog.text
+
+    asyncio.run(scenario())
+
+
+@contextlib.contextmanager
+def collector_logs():
+    """采集 logger 有独立 handler 且不传播；这里另挂观察者读实际 WARNING 文本。"""
+    messages = []
+
+    class Handler(logging.Handler):
+        def emit(self, record):
+            messages.append(record.getMessage())
+
+    logger = logging.getLogger("bili_monitor.collector")
+    handler = Handler()
+    logger.addHandler(handler)
+    try:
+        yield messages
+    finally:
+        logger.removeHandler(handler)
+
+
+def test_root_scan_repositions_anchor_when_total_count_shrinks(tmp_path):
+    """扫描期间总数减少：本轮如实失败，重试要重新定位锚点、刷新基准后收敛。
+
+    大动态首页整页已归档时进度停在 `guard`；若重试仍沿用上一页的计数基准，就会每拍
+    撞同一“计数减少”判定而永远失败——这正是 2026-10-30 生产上那组 value_invalid 的
+    真实形状，所以这里走完整的两轮：先归档全部根，再让来源总数变少。
+    """
+    path = tmp_path / "monitor.sqlite"
+    configured(path)
+    source, clock = CommentSource(), ControlledClock()
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(source)) as client:
+            collector = Collector(Store(path), client, clock=clock)
+            # 第一轮：完整归档，让首页整页在库（大动态的常态）。
+            await collector.check_once(UID, "123")
+            clock.advance(15)
+            await collector.execute_pending()
+            assert snapshot(path)[0]["work"] == "complete"
+
+            # 第二轮：检查阶段先看到总数变少（登记增量工作），而扫描的首页仍是旧总数，
+            # 第 2 页起来源已按新总数下发（有人删评论）。
+            source.count = 1
+            source.count_shrink_after_calls = source.root_page_calls + 1  # 首页仍读旧值
+            with collector_logs() as logs:
+                clock.advance(15)
+                await collector.check_once(UID, "123")
+                clock.advance(15)
+                await collector.execute_pending()
+                check, _ = snapshot(path)
+                assert check["root_comments_error"] == check["comments_error"] == "ROOT_COMMENTS_FAILED"
+                assert check["parts"]["comments"] == "pending"
+                failed = "\n".join(logs)
+                assert "reason=comment_count_decreased" in failed
+                assert "value_invalid" not in failed
+
+            # 第三轮：重试必须重新定位锚点并刷新基准，而不是撞同一个旧基准。
+            clock.advance(15)
+            await collector.check_once(UID, "123")
+            clock.advance(15)
+            await collector.execute_pending()
+            check, _ = snapshot(path)
+            assert check["work"] == "complete"
+            assert check["parts"]["comments"] == "success"
+            assert check["root_comments_last_attempt"] == "success"
 
     asyncio.run(scenario())
 

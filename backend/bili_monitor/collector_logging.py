@@ -29,6 +29,8 @@ _KNOWN_REASONS = {
     "Comment count source rejected request": "source_rejected",
     "Comment counts changed during scan": "pagination_changed",
     "Reply count changed during scan": "pagination_changed",
+    "Comment counts decreased during scan": "comment_count_decreased",
+    "Reply count decreased during scan": "reply_count_decreased",
     "Comment pagination did not advance": "pagination_not_advancing",
     "Reply pagination did not advance": "pagination_not_advancing",
     "Unstable empty comment tail": "pagination_unstable",
@@ -65,6 +67,19 @@ _KNOWN_REASONS = {
     "Invalid reply page": "reply_page_invalid",
     "Unconfirmed reply page": "reply_page_unconfirmed",
 }
+
+# 可重试收敛的分页一致性校验：来源侧删除／插入会让页内计数基准短时漂移，下一次尝试
+# 重新定位锚点并刷新基准即可继续，因此只保留 `collector_failure` 的 WARNING，不升级为
+# 飞书告警——否则正常的删除行为会被当成采集故障反复提醒。`value_invalid` 这类兜底分类
+# 不在其中：它代表未登记的校验失败，仍要提醒。
+SELF_HEALING_REASONS = frozenset({
+    "pagination_changed",
+    "pagination_not_advancing",
+    "pagination_unstable",
+    "pagination_incomplete",
+    "comment_count_decreased",
+    "reply_count_decreased",
+})
 
 # 仅允许输出本应用协议中固定的键名，不回显任意 KeyError 参数。
 _FAILURE_FIELDS = {

@@ -146,7 +146,7 @@ exec .venv/bin/python -m backend.bili_monitor.notifier
 | 类别 `category` | 触发事实（全部来自真实代码路径，不解析日志文本） | 对象 `object` | 固定原因 `reason` |
 | --- | --- | --- | --- |
 | `credential` | 来源业务码 **`-101`** 且本次启动**确实配置了来源凭据**（`BILI_COOKIE_FILE` 读到非空 Cookie） | `source_credential` | `credential_rejected` |
-| `collection` | 目标检查失败（页面/详情/计数读取）、同步阶段真实失败（正文读取失败、根／回复分页失败、执行异常）、近期发现失败 | `{uid}:{dynamic_id}`；发现用 `{uid}` | 采集固定分类，如 `timeout`／`network_error`／`http_status`／`source_rejected`／`body_failed`／`comments_failed`／`source_unavailable`；匿名 `-101` 为 `login_required` |
+| `collection` | 目标检查失败（页面/详情/计数读取）、同步阶段真实失败（正文读取失败、根／回复分页失败、执行异常）、近期发现失败 | `{uid}:{dynamic_id}`；发现用 `{uid}` | 采集固定分类，如 `timeout`／`network_error`／`http_status`／`source_rejected`／`body_failed`／`comments_failed`／`source_unavailable`；匿名 `-101` 为 `login_required`。**分页一致性校验（`pagination_*`、`comment_count_decreased`、`reply_count_decreased`）只留 WARNING，不登记告警** |
 | `loop` | 主循环捕获到的运行异常（`collector_loop_failed`） | `collector_loop` | 固定分类（多为 `internal_error`） |
 | `delivery` | 业务目标**持续投递失败**：`notification_deliveries.failures >= 3` 且 `state='pending'`；心跳、告警自身与系统角色不计 | `{role}:{kind}`（如 `up:root_comment`） | 最近一次失败分类，如 `timeout`／`http_error`／`platform_rejected`／`rate_limited` |
 | `route` | 业务目标路由缺失或目的地不可用（`route_missing`／`route_invalid`） | `{role}:{uid}:{dynamic_id}` | `route_missing`｜`route_invalid` |
@@ -157,7 +157,7 @@ exec .venv/bin/python -m backend.bili_monitor.notifier
 判定边界：
 
 - **可信凭据失效只有一条路径**：上游业务码 `-101`（账号未登录）**且**本次进程启动时读到来源凭据。`-111/-352/-401/-403/-412/-799` 等风控／频控／权限码、HTTP 401/403、超时与网络异常一律保持原分类，不冒充登录失效；未配置凭据时的 `-101` 归 `login_required`（采集异常，属本地匿名配置问题）。不新增 `nav` 或其他上游探针，也不用空页启发式推断登录态。
-- **正常业务活动不告警**：计数增长、采集期间的新评论、普通“待同步／媒体待完成”都不产生故障告警；只有显式失败事实（检查失败、正文读取失败、根／回复分页失败、执行异常）才登记。
+- **正常业务活动不告警**：计数增长、采集期间的新评论、普通“待同步／媒体待完成”都不产生故障告警；只有显式失败事实（检查失败、正文读取失败、根／回复分页失败、执行异常）才登记。**可重试收敛的分页一致性校验除外**：页内计数基准因来源删除／插入漂移时，下一次尝试会重新定位锚点并刷新基准，因此只记 `collector_failure` 的 WARNING 与持久错误事实（可续采），不登记告警；`value_invalid` 这类未登记的校验失败仍按采集异常提醒。
 - **不递归**：系统角色（`system`）自身的缺配置、投递失败、心跳失败与告警投递失败一律只留本地脱敏诊断与 `failures` 事实，不再生成新告警，也不转投业务群。
 - **登记与失败事实同事务**：检查结果（`record_check`）、工作回写（`finish_check_work`）、发现结果（`finish_discovery`）与投递回写（`_finish`）在同一事务里登记告警；每条告警用 `SAVEPOINT` 单独隔离，写不进一条告警只丢该告警并记 `alert_registration_failed`，不让采集/投递主链跟着回滚。主循环异常用**独立新建连接的短事务**在退出前登记；该连接或整库不可写时只留脱敏日志，不承诺即时外发（进程被强杀、整机离线同样无法登记）。
 - **节流与合并**：同一 `(category, object)` 首次立即提醒，此后每 **30 分钟**最多一条；节流状态持久在 `notification_alerts`，跨重启保留。若上一条同类提醒**仍未投递完成**（`state` 不是 `sent`／`expired`），新的同类故障合并到它、不再新建事件，因此系统群长期失败时不会按故障次数或采集轮次堆积。不同对象、不同类别分别判定。

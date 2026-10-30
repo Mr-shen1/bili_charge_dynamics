@@ -226,6 +226,46 @@ def test_check_failure_alerts_collection_while_normal_growth_alerts_nothing(tmp_
         healthy, "SELECT kind FROM notification_events ORDER BY id")] == ["root_comment"]
 
 
+class ShrinkingPageSource(CommentSource):
+    """根页第 2 次请求起总数比首页少 1：模拟扫描期间有人删除评论。"""
+
+    def __init__(self, roots):
+        super().__init__()
+        self.add(DYNAMIC, list(roots), count=len(roots))
+        self.root_page_calls = 0
+
+    def __call__(self, request):
+        response = super().__call__(request)
+        if request.url.path != "/x/v2/reply":
+            return response
+        self.root_page_calls += 1
+        if self.root_page_calls <= 1:
+            return response
+        payload = response.json()
+        payload["data"]["page"]["count"] -= 1
+        payload["data"]["page"]["acount"] -= 1
+        return httpx.Response(200, json=payload)
+
+
+def test_self_healing_pagination_failure_keeps_warning_without_alert(tmp_path):
+    """页内计数减少是可自愈的分页校验：错误事实照常落库（可续采），但不登记告警。
+
+    正常的删除行为每 30 分钟提醒一次也没用——而“未登记校验失败”类的 value_invalid
+    仍要提醒，所以降级名单只含分页一致性分类，不包含兜底集。
+    """
+    path = tmp_path / "archive.sqlite"
+    configured(path)
+    source = ShrinkingPageSource([root_comment(7101), root_comment(7102)])
+
+    run_check(path, source, Clock.start(13, 40), credentials_configured=False, sync=True)
+
+    archive = Store(path).read_archive(DYNAMIC)
+    assert archive["comments_error"] == "ROOT_COMMENTS_FAILED"
+    assert archive["work"]["comments"] == "pending"
+    assert alert_events(path) == []
+    assert query(path, "SELECT * FROM notification_alerts") == []
+
+
 def test_captured_loop_failure_is_persisted_before_the_process_exits(tmp_path, monkeypatch):
     """主循环捕获异常：先登记持久告警，再把异常抛给入口。"""
     path = tmp_path / "archive.sqlite"

@@ -1028,14 +1028,18 @@ class Store(CheckStore, DiscoveryStore):
                         generation=generation, source_count=observed_count, full=bool(full))
                 elif position.generation != generation:
                     # 新领取只是重新登记工作，归档数据未重置：保留分片锚点，写入代次换成新领取。
+                    # `guard` 同样复核锚点：这是大动态的常规阶段（首页整页已知），若沿用上一
+                    # 页的计数基准，页内计数偏大时每次重试都撞同一基准而永远失败。
                     reason = "regenerated"
-                    overlap = position.anchor_page if position.phase == scan_progress.PAGES else 0
+                    overlap = position.anchor_page if position.phase in (
+                        scan_progress.PAGES, scan_progress.GUARD) else 0
                     position = position._replace(generation=generation, overlap_page=overlap,
                                                  source_count=observed_count)
                 else:
                     # 同一代次的未完成扫描：下一步先校验锚点页，再继续翻页。
                     reason = "resume"
-                    overlap = position.anchor_page if position.phase == scan_progress.PAGES else 0
+                    overlap = position.anchor_page if position.phase in (
+                        scan_progress.PAGES, scan_progress.GUARD) else 0
                     position = position._replace(overlap_page=overlap, generation=generation)
                 scan_progress.write(connection, id, position)
                 connection.commit()

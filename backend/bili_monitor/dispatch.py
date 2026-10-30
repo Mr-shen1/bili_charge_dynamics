@@ -327,6 +327,9 @@ class TargetSession:
     done: bool = False
     claim: dict | None = None
     alerts: list = field(default_factory=list)
+    # 本次会话登记的失败全是可自愈分页校验：错误事实已落库并留 WARNING，但不再由
+    # `comments_error` 兜底补一条“评论分页失败”告警。
+    suppressed: bool = False
     target_lease: object = None
 
     async def advance(self):
