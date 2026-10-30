@@ -168,7 +168,7 @@ pnpm playwright test --project=desktop-chromium-archive tests/e2e/replies.spec.t
 | `src/theme/theme.css` | Element Plus 主题变量 + 基础布局/图片栅格/预览层样式 |
 | `src/preview/` | 票据 01/04/08 验证过的图片层：图片组与手势、`el-image` 缩略图、独立 `el-image-viewer`、归档图片组连接（动态与各根评论 owner 隔离，历史写入委托导航协调器） |
 | `src/manage/` | 管理行为：生产管理 Adapter（`main.ts` 装配，含 `listUps`/`addUp`/`updateMonitor`/`deleteMonitor`/目标增删读/`readDiscovery`/`listChecks`）、共享页头、列表访问、身份卡（启停、模式与近期 N 草稿、删除配置与重新添加）、`ManageTargets` 指定目标区、`CheckStatusPanel`/`CheckStatusDetail` 检查与归档进度、`DiscoveryStatusPanel` 发现与窗口、`discoveryState.ts` 发现契约、`checkStatusText.ts`/`discoveryText.ts`/`status.ts` 状态文案、`useStatusRead` 一次性读取、`manage.css` 共享版式、按 UID 的防重锁与访问存活校验 |
-| `src/pages/` | 六条基线路由页面（另有一级评论精确入口复用详情页，楼中楼回复精确入口按 640px 断点在详情与独立楼中楼页之间分支，`ThreadPage.vue` 按访问标识重建独立楼中楼页，`ConversationPage.vue` 是手机「查看对话」的独立只读会话页，一次请求读完整段、入口回复居中并标“刚才查看”）；`ListPage.vue`/`DetailPage.vue`/`CommentThreadPage.vue`/`ConversationPage.vue` 已接真实读取，`ManagePage.vue`/`ManageUpPage.vue` 已接真实管理接口（含检查与发现状态），`NotFoundPage.vue` 为不存在页 |
+| `src/pages/` | 六条基线路由页面（另有一级评论精确入口复用详情页，楼中楼回复精确入口按 640px 断点在详情与独立楼中楼页之间分支，`ThreadPage.vue` 按访问标识重建独立楼中楼页，`ConversationPage.vue` 是手机「查看对话」的独立只读会话页，一次请求读完整段、入口回复定位到视口中央（夹在可滚动范围内、不补留白）并标“刚才查看”）；`ListPage.vue`/`DetailPage.vue`/`CommentThreadPage.vue`/`ConversationPage.vue` 已接真实读取，`ManagePage.vue`/`ManageUpPage.vue` 已接真实管理接口（含检查与发现状态），`NotFoundPage.vue` 为不存在页 |
 | `src/mock/` | 受控图片夹具、25 条模拟归档（含 4/9/12 图、长图与异常状态）与 45 条一级评论（含混合状态/长图/纯图/超量评论图片组）及 fault 读取计划，只在 mock/fault 装配加载 |
 | `public/images/unavailable/` | 应用自有的异常图片占位，随生产构建发布；不是来源业务图 |
 | `server/imageServer.mjs` | 图片夹具服务器：缩略/预览不同地址、坏图、无效地址、可重试失败、请求记录 |
@@ -178,7 +178,7 @@ pnpm playwright test --project=desktop-chromium-archive tests/e2e/replies.spec.t
 | `tests/unit` | 历史元数据、装配选择、归档 Adapter（列表、一级评论含 UP 摘要、评论图片与回复）/图片组契约、管理 Adapter（映射、错误白名单、401、取消）契约、检查/发现状态 DTO 守卫与自相矛盾响应拒绝、回复分页与目标文案、列表/详情/一级评论（含评论图片）/窄屏入口/楼中楼/回复/图片预览/管理列表、单 UP 启停与模式/目标/检查与发现状态页面行为 |
 | `tests/fixtures` / `tests/support` | 生产 DTO 夹具、可注入读取与管理接口替身、预览探针、窄屏视口桩与 jsdom 排版/滚动替身 |
 | `tests/e2e` | 骨架冒烟/预览/详情恢复/动态图片/评论图片（mock 装配）+ 列表、一级评论（含根评论 `media` 映射）、管理列表/启停/模式与目标、宽屏回复、宽屏/窄屏回复精确入口、窄屏楼中楼与图片读取（生产装配，HTTP 传输按用例替换）+ `static-delivery`（真实 Nginx 缓存/404/深链接，`E2E_TARGET=nginx` 单独跑） |
-| `tests/e2e-location` | 一级评论与楼中楼回复精确入口、对话投影与整段会话（一次读取全部本地成员、入口居中并标“刚才查看”、历史恢复含首尾留白） + 实际归档 API（`backend/tests/live_app` 虚构上游，仅测试用的 45 条虚构根评论与 25 条带真实父关系的虚构楼中楼夹具，含缺父与互指环）+ 本次运行独占 SQLite：后续批/页目标直开定位、窄屏刷新、目标不存在提示、普通回复页与通知定位页进入对话再返回、读取不触发上游采集 |
+| `tests/e2e-location` | 一级评论与楼中楼回复精确入口、对话投影与整段会话（一次读取全部本地成员、入口定位可见并标“刚才查看”、历史恢复只有阅读位置不含留白） + 实际归档 API（`backend/tests/live_app` 虚构上游，仅测试用的 45 条虚构根评论与 25 条带真实父关系的虚构楼中楼夹具，含缺父与互指环）+ 本次运行独占 SQLite：后续批/页目标直开定位、窄屏刷新、目标不存在提示、普通回复页与通知定位页进入对话再返回、读取不触发上游采集 |
 | `tests/e2e-delivery` | 票据 10 三进程完整链：用例自起实际 API（`backend/tests/delivery_fixture`）＋独立 collector＋生产通知进程，共享本次运行独占 SQLite，通知发到用例内本机接收端；只打开消息里的实际链接，验证动态/后续批一级评论/后续页回复的宽窄屏定位、刷新、返回、目标不存在、路由分群与代理语义，读取不触发采集 |
 | `tests/e2e-manage` | 管理页 + 实际 API（`backend/tests/live_app` 虚构上游，含动态页/detail/空根评论/独立评论计数/近期发现页 + **仅测试用**的 `POST /api/test/collect`、`/api/test/source-failure` 采集驱动端点）+ 本次运行独占 SQLite；覆盖模式保存、目标归属校验与停用/移除目标/删配置后的归档保留、检查无变化、根评论失败的分项失败与整轮成功、发现失败保留旧窗口、读取不触发采集 |
 | `tests/e2e-production` | 生产装配六路由/404/无自检入口 + fault 装配冒烟 |

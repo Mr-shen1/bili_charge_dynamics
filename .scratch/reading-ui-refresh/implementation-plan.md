@@ -40,7 +40,7 @@ Status: resolved（01–13 已收口，最终代码候选 b1dec5c，用户明确
 ## 票 10 首轮反馈追加票（原 01–11 证据保留历史）
 
 - [12 头像裁切与管理对齐](issues/12-avatar-and-management-alignment.md)：首项头像轮廓完整、表单文字垂直居中、输入按钮可见等高（命中 ≥44px、手机输入 16px 不退化）。
-- [13 完整会话与入口居中](issues/13-complete-conversation-and-entry-focus.md)：一次请求整段会话无分页、入口居中且显示“刚才查看”，保留真实关系、时间序与来源返回恢复。
+- [13 完整会话与入口定位](issues/13-complete-conversation-and-entry-focus.md)：一次请求整段会话无分页、入口定位到视口中央（夹在可滚动范围内、不补留白）且显示“刚才查看”，保留真实关系、时间序与来源返回恢复。
 - 12、13 已分别实现并合入，均 `resolved`（仅实现与范围自动化）；双轴审查及其整改收尾候选为 `344235a`，见[组合与最终验证](evidence/10-feedback-round-1-verification.md)，隔离预览供 10 人工复验。需求依据与原图见[首轮反馈](evidence/10-feedback-round-1.md)；新要求替代旧的会话起点首屏/分页方案，不追改旧结果。
 
 ## 2. 实施协调
