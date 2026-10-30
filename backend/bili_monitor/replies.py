@@ -149,7 +149,8 @@ async def fetch_reply_page(client, dynamic_id, root_id, locator, number, *, uid=
                     elapsed_ms=timing.elapsed_ms if timing is not None else None,
                     wait_ms=timing.wait_ms if timing is not None else None,
                     **source_refs(uid=uid, dynamic_id=dynamic_id, root_id=root_id))
-    return documents, ids, count
+    # 楼页响应本来就带着所属根评论对象（含点赞）：随页上抛，刷新时可零成本写回根文档。
+    return documents, ids, count, root
 
 
 class ReplyDrift(ValueError):
@@ -209,9 +210,11 @@ async def _verify_reply_anchor(store, client, id, generation, root_id, position,
     anchor_page, anchor_ids = position.anchor_page, list(position.anchor_ids)
 
     async def fetch(number):
-        return await fetch_reply_page(
+        # 锚点复核只关心页数据与页码校验值：根评论对象的写回交给主翻页循环。
+        documents, ids, count, _ = await fetch_reply_page(
             client, id, root_id, position.locator, number, uid=uid,
             direction=position.direction)
+        return documents, ids, count
 
     async def save(documents, updated):
         saved = await to_thread.run_sync(lambda: store.save_reply_page(
@@ -366,10 +369,14 @@ async def reply_scan_step(store, client, id, generation, root_id, *, uid=None, r
     stage, page = "page_fetch", number
     started = time.monotonic()
 
-    async def save(documents, count, updated, *, complete=False):
+    async def save(documents, count, updated, *, complete=False, page_root=None):
+        # 全量翻页时把楼页携带的所属根评论对象一并交给存储：只合并计数类字段，
+        # 与页数据同一事务提交，不额外发任何请求。增量路径不做写回。
+        observed_root = page_root if full else None
         return await to_thread.run_sync(lambda: store.save_reply_page(
             id, generation, root_id, documents, count, updated, complete=complete,
-            observed=observed, succeeded_at=now() if now is not None else None))
+            observed=observed, succeeded_at=now() if now is not None else None,
+            observed_root=observed_root))
 
     def log_page_saved(saved, number, ids, phase, *, resume=None):
         timing = getattr(client, "last_reply_page", None)
@@ -395,7 +402,7 @@ async def reply_scan_step(store, client, id, generation, root_id, *, uid=None, r
         if position.phase == scan_progress.TAIL:
             # 空尾复查：复读同一页；再不稳定就退回锚点重新定位，不用同一旧基准原地循环。
             stage = "tail_fetch"
-            documents, ids, count = await fetch_reply_page(
+            documents, ids, count, page_root = await fetch_reply_page(
                 client, id, root_id, locator, number, uid=uid, direction=direction)
             expanded = True
             baseline = position.counts[0] if position.counts else None
@@ -412,7 +419,8 @@ async def reply_scan_step(store, client, id, generation, root_id, *, uid=None, r
             else:
                 updated = position._replace(phase=scan_progress.COMPLETE, overlap_page=0)
             stage = "tail_save"
-            saved = await save(documents, count, updated, complete=not unstable)
+            saved = await save(documents, count, updated, complete=not unstable,
+                               page_root=page_root)
             if saved is None:
                 return _stale(root_id, direction, number)
             log_page_saved(saved, number, ids, updated.phase, resume="tail_confirmation")
@@ -424,7 +432,7 @@ async def reply_scan_step(store, client, id, generation, root_id, *, uid=None, r
                              saved["new"], saved["confirmed"], "empty_tail", tuple(ids), True, count)
 
         stage = "page_fetch"
-        documents, ids, count = await fetch_reply_page(
+        documents, ids, count, page_root = await fetch_reply_page(
             client, id, root_id, locator, number, uid=uid, direction=direction)
         expanded = True
         stage = "pagination"
@@ -441,7 +449,7 @@ async def reply_scan_step(store, client, id, generation, root_id, *, uid=None, r
             updated = position._replace(next_page=last, anchor_page=number, anchor_ids=tuple(ids),
                                         counts=(count, relocations), overlap_page=0)
             stage = "page_save"
-            saved = await save(documents, count, updated)
+            saved = await save(documents, count, updated, page_root=page_root)
             if saved is None:
                 return _stale(root_id, direction, number)
             local_ids.update(ids)
@@ -499,7 +507,7 @@ async def reply_scan_step(store, client, id, generation, root_id, *, uid=None, r
                                     overlap_page=0)
         stage = "page_save"
         complete = phase == scan_progress.COMPLETE
-        saved = await save(documents, count, updated, complete=complete)
+        saved = await save(documents, count, updated, complete=complete, page_root=page_root)
         if saved is None:
             collector_event("reply_page_rejected", page=number, reason="stale_generation", **refs)
             return _stale(root_id, direction, number)
