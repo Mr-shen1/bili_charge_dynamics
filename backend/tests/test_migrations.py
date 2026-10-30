@@ -8,6 +8,8 @@ from fastapi.testclient import TestClient
 
 from backend.bili_monitor.app import create_app
 from backend.bili_monitor.comment_status import ROOT_METADATA_VERSION
+from backend.bili_monitor.storage import Store
+from backend.tests.collector_support import configured
 from backend.tests.sqlite_fixtures import management_relation, quote
 from backend.tests.management_support import BASE, UID, client_for
 from backend.tests.archive_support import archive_content, NULL_COMMENT_STATUS
@@ -528,3 +530,29 @@ def test_v23_database_gains_protection_state_without_touching_archives(tmp_path)
     # 未完成工作仍可领取，未被迁移顺手结算。
     assert Store(path).pending_checks() == []
     assert Store(path).read_archive("123")["work"]["replies"] == "success"
+
+
+def columns(path, table):
+    with sqlite3.connect(path) as database:
+        return {row[1] for row in database.execute(f"PRAGMA table_info({table})")}
+
+
+def test_migration_adds_like_refresh_anchor_and_repeats_safely(tmp_path):
+    path = tmp_path / "anchor.sqlite"
+    configured(path)
+    with sqlite3.connect(path) as database:
+        # 一次版本前进：既有检查行原样保留，只多一列时间锚点。
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 29
+    assert "like_refresh_succeeded_at" in columns(path, "target_checks")
+    with sqlite3.connect(path) as database:
+        database.execute("""INSERT INTO target_checks (uid, id, observed, revision, work, check_status)
+            VALUES (?, '123', '{}', 1, 'complete', 'checked')""", (UID,))
+        # 半迁移库（已记成 29 但缺列）再跑一次：缺列才加，可重入，不动已有行。
+        database.execute("ALTER TABLE target_checks DROP COLUMN like_refresh_succeeded_at")
+        database.execute("PRAGMA user_version = 28")
+    Store(path).migrate()
+    with sqlite3.connect(path) as database:
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 29
+        rows = database.execute(
+            "SELECT id, work, like_refresh_succeeded_at FROM target_checks").fetchall()
+    assert rows == [("123", "complete", None)]

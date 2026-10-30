@@ -5,7 +5,9 @@ from datetime import datetime, timedelta, timezone
 
 
 class ControlledClock:
-    def __init__(self):
+    def __init__(self, start=None):
+        # 起点可换：凌晨窗口这类按北京时间判定的用例需要从一个已知时刻起算。
+        self.start = start if start is not None else datetime(2030, 1, 1, tzinfo=timezone.utc)
         self.value = 0
         self.waiters = []
         self.deadlines = []
@@ -14,7 +16,7 @@ class ControlledClock:
         return self.value
 
     def now(self):
-        return (datetime(2030, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=self.value)).isoformat(timespec="seconds")
+        return (self.start + timedelta(seconds=self.value)).isoformat(timespec="seconds")
 
     async def sleep(self, seconds):
         deadline = self.value + seconds

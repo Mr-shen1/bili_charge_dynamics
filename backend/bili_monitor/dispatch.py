@@ -306,6 +306,9 @@ class TargetSession:
     on_failure: object = None
     pending_comments_only: bool = True
     full_replies: bool = False
+    # 本次领取是每日点赞刷新（窗口内且锚点到期）：完整翻根页到空尾页，不使用
+    # 「遇到已知评论就提前收束」的裁切，也不改增量路径本身。
+    like_refresh: bool = False
     stage: str = "body"
     text_succeeded: bool = False
     run_comments: bool = True
@@ -381,9 +384,11 @@ class TargetSession:
                               for key in ("oid", "type"))
         metadata_version_old = (archive.get("synced_root_metadata_version", 0)
                                 < ROOT_METADATA_VERSION)
-        self.full_roots = (not self.pending_comments_only or metadata_version_old)
-        self.run_comments = (not self.pending_comments_only or locator_changed
-                             or metadata_version_old
+        # 点赞刷新不改写任何信号，已成功的分项也不会自行重开——必须显式逼出全量根页。
+        self.full_roots = (not self.pending_comments_only or metadata_version_old
+                           or self.like_refresh)
+        self.run_comments = (not self.pending_comments_only or self.like_refresh
+                             or locator_changed or metadata_version_old
                              or any(archive["work"][part] != "success"
                                     for part in ("comments", "replies")))
         self.stage = "roots" if self.run_comments else "media"
@@ -435,7 +440,10 @@ class TargetSession:
             self.id, self.generation, "success", observed_count,
             self.now() if self.now is not None else None,
             pin_known=position.pin_known if position is not None else False,
-            pinned_id=position.pinned_id if position is not None else None))
+            pinned_id=position.pinned_id if position is not None else None,
+            # 完整根页扫描即一次点赞刷新：成功就在这次提交里推进锚点。中断过的全量轮次
+            # 由持久进度保持全量（重启续采不需要调用方再传参），因此也按全量记账。
+            like_refresh=self.full_roots or bool(position is not None and position.full)))
         if finished is None:
             self.done = True
             return StepOutcome("roots", "stale", page=step.page, reason="stale_generation",

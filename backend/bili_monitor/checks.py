@@ -298,20 +298,29 @@ class CheckStore:
                 WHERE c.work = 'pending'
                 ORDER BY c.uid COLLATE BINARY, c.id COLLATE BINARY""")]
 
+    def like_refresh_targets(self):
+        """凌晨窗口登记扫描的读入口：仍入选且同步已完成的目标与点赞刷新锚点。"""
+        with self.connection() as connection:
+            return [dict(row) for row in connection.execute("""
+                SELECT c.uid, c.id, c.like_refresh_succeeded_at
+                FROM target_checks c JOIN target_selections s ON s.uid = c.uid AND s.id = c.id
+                WHERE c.work = 'complete'
+                ORDER BY c.uid COLLATE BINARY, c.id COLLATE BINARY""")]
+
     def claim_check_work(self, uid, id, *, selection=None):
         with write(self) as connection:
             current = selection_token(connection, uid, id)
             if not selection_matches(current, selection):
                 return None
-            row = connection.execute("""SELECT revision, observed FROM target_checks
-                WHERE uid = ? AND id = ? AND work = 'pending'""", (uid, id)).fetchone()
+            row = connection.execute("""SELECT revision, observed, like_refresh_succeeded_at
+                FROM target_checks WHERE uid = ? AND id = ? AND work = 'pending'""", (uid, id)).fetchone()
             if row is None:
                 return None
             token = uuid4().hex
             connection.execute("UPDATE target_checks SET work = 'running', claim_token = ? WHERE uid = ? AND id = ?",
                                (token, uid, id))
             return {"revision": row["revision"], "observed": json.loads(row["observed"]), "token": token,
-                    "selection": current}
+                    "selection": current, "like_refresh_succeeded_at": row["like_refresh_succeeded_at"]}
 
     def finish_check_work(self, uid, id, revision, succeeded, finished_at, error=None, *, token,
                           selection=None, record_success=True, alerts=()):
@@ -338,3 +347,16 @@ class CheckStore:
         # 仅由已取得进程锁的独立 collector 显式调用；API 启动不得恢复。
         with write(self) as connection:
             connection.execute("UPDATE target_checks SET work = 'pending', claim_token = NULL WHERE work = 'running'")
+
+    def reopen_check_work(self, uid, id):
+        """把已完成的同步工作置回待办（评论点赞刷新的登记）。
+
+        仅由已取得进程锁的独立 collector 在凌晨窗口内调用；API 不调用、不领取，
+        沿用「恢复在途工作只能由已取得进程锁的采集进程执行」的既有约束。只动
+        `complete`、不碰 `running`（同一目标不能出现两个执行者），也不改 `revision`
+        （那是观察代次；改了会话结束时永远无法 complete）。
+        """
+        with write(self) as connection:
+            changed = connection.execute("""UPDATE target_checks SET work = 'pending', claim_token = NULL
+                WHERE uid = ? AND id = ? AND work = 'complete'""", (uid, id)).rowcount
+            return bool(changed)
