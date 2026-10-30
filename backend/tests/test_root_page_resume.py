@@ -394,7 +394,7 @@ def test_v25_migration_preserves_archive_progress_media_and_reading_cursor(tmp_p
         database.execute("PRAGMA user_version = 23")
     Store(path).migrate()
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 28
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 29
         assert database.execute(
             "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='page_scan_progress'"
         ).fetchone()[0] == 1
