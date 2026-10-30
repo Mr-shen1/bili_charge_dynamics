@@ -27,6 +27,7 @@ case "$listen_addr" in
 esac
 WEB="http://$listen_addr"
 DB=/srv/bili-monitor/monitor.sqlite
+APP_DIR=/srv/bili-monitor/app
 fail=0
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$*"; }
 bad()  { printf '  \033[31m✗\033[0m %s\n' "$*"; fail=1; }
@@ -117,7 +118,16 @@ n="$(pgrep -u bili -c python 2>/dev/null || true)"; n="${n:-0}"
 [[ "${n:-0}" -ge 2 ]] && ok "bili 名下 python 进程 $n 个（入口 + API + collector）" || bad "bili 名下 python 进程只有 ${n:-0} 个"
 if [[ -r "$DB" ]]; then
     uv="$(sqlite3 "file:$DB?mode=ro" 'pragma user_version;' 2>/dev/null || echo '?')"
-    [[ "$uv" == 27 ]] && ok "数据库 schema user_version=27" || bad "数据库 user_version=$uv（期望 27）"
+    # 期望版本从部署代码的 SCHEMA_VERSION 读：迁移后验收脚本不跟着改就能对齐。
+    expected="$(sed -n 's/^SCHEMA_VERSION = \([0-9]\{1,\}\)$/\1/p' \
+        "$APP_DIR/backend/bili_monitor/storage.py" 2>/dev/null | head -1)"
+    if [[ -z "$expected" ]]; then
+        info "读不到部署代码的 SCHEMA_VERSION；跳过 schema 比对（数据库 user_version=$uv）"
+    elif [[ "$uv" == "$expected" ]]; then
+        ok "数据库 schema user_version=$uv 与代码一致"
+    else
+        bad "数据库 user_version=$uv（代码期望 $expected）"
+    fi
     ups="$(curl -sS -m 5 "$API/api/manage/ups" 2>/dev/null || true)"
     case "$ups" in
         '{"ups":[]}'*) info "当前没有任何 UP（新空库的正常状态）" ;;

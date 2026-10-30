@@ -159,7 +159,16 @@ if [[ -f "$DB_PATH" ]]; then
     magic="$(head -c 15 "$DB_PATH" 2>/dev/null || true)"
     [[ "$magic" == "SQLite format 3" ]] && ok "数据库文件是 SQLite" || bad "数据库文件头异常：$DB_PATH"
     uv="$(sqlite3 "file:$DB_PATH?mode=ro" 'pragma user_version;' 2>/dev/null || echo '?')"
-    [[ "$uv" == 27 ]] && ok "schema user_version=27" || warn "schema user_version=$uv（代码期望 27）"
+    # 期望版本取部署代码里的 SCHEMA_VERSION，不在这里写死数字。
+    expected="$(sed -n 's/^SCHEMA_VERSION = \([0-9]\{1,\}\)$/\1/p' \
+        "$APP_DIR/backend/bili_monitor/storage.py" 2>/dev/null | head -1)"
+    if [[ -z "$expected" ]]; then
+        info "读不到代码里的 SCHEMA_VERSION；跳过 schema 比对（数据库 user_version=$uv）"
+    elif [[ "$uv" == "$expected" ]]; then
+        ok "schema user_version=$uv 与代码一致"
+    else
+        warn "schema user_version=$uv（代码期望 $expected）"
+    fi
 else
     info "数据库还不存在（首次启动会创建）"
 fi

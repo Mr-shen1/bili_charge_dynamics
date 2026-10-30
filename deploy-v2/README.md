@@ -179,7 +179,7 @@ bash deploy-v2/verify.sh
 | 端口 | Web 端口在听；API 8000 只听回环 |
 | 80 端口 | Nginx 生效配置里没有 `listen 80` |
 | 进程 | `bili` 名下至少 2 个 python |
-| 数据库 | `user_version=27`；新库里没有任何 UP |
+| 数据库 | `user_version` 与代码的 `SCHEMA_VERSION` 一致；新库里没有任何 UP |
 | 日志 | 近 200 行无 traceback |
 
 最后一行 `全部通过` 就是成功。
@@ -283,7 +283,7 @@ bash deploy-v2/verify.sh
 | 项 | 规则（与应用运行时一致） |
 |---|---|
 | env 文件 | `root:root 600`；有效行必须是 `KEY=VALUE`；选配变量**存在但为空**即判错（空串既非「未设置」又算配置不完整） |
-| `BILI_DATABASE_PATH` | 绝对路径、目录对运行用户可写、文件头是 SQLite、`user_version=27` |
+| `BILI_DATABASE_PATH` | 绝对路径、目录对运行用户可写、文件头是 SQLite、`user_version` 与代码的 `SCHEMA_VERSION` 一致 |
 | Cookie | 目录 `bili` 0700、文件 `bili` 0600、`nlink=1`、非符号链接、纯 ASCII 无控制字符（`source_cookies.py:29-84`） |
 | 通知 JSON | 文件存在、权限 ≤0640、属主 `bili` 或 root、JSON 可解析；打印 `base_url` 与 destinations 数量 |
 | OSS | 六项必填全非空、`ENDPOINT` 形如 `https://<域名>.aliyuncs.com` 且无路径/端口、`PUBLIC_BASE_URL` 无 query |

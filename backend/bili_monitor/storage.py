@@ -24,6 +24,8 @@ from .transaction import write
 
 SNAPSHOT_TTL_SECONDS = 15 * 60
 ARCHIVE_RESOURCE = "dynamics:all:published-desc:id-binary:v1"
+# 当前 schema 版本：迁移的守卫与写入都只取这一处；部署验收脚本也从这里读，避免两边漂移。
+SCHEMA_VERSION = 28
 
 
 def _merge_known(previous, observed):
@@ -245,7 +247,7 @@ class Store(CheckStore, DiscoveryStore):
             connection.execute("BEGIN IMMEDIATE")
             try:
                 version = connection.execute("PRAGMA user_version").fetchone()[0]
-                if version > 28:
+                if version > SCHEMA_VERSION:
                     raise RuntimeError("Unsupported database schema version")
                 if version == 0:
                     connection.execute("""CREATE TABLE identities (
@@ -442,7 +444,7 @@ class Store(CheckStore, DiscoveryStore):
                             connection.execute(
                                 "UPDATE root_comments SET document = ? WHERE dynamic_id = ? AND id = ?",
                                 (json.dumps(document, ensure_ascii=False), dynamic_id, root_id))
-                connection.execute("PRAGMA user_version = 28")
+                connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
                 connection.commit()
             except BaseException:
                 connection.rollback()
