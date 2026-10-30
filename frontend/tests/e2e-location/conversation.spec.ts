@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 // 06/13：对话投影与只读 conversation 子资源跑**实际归档 API + 本次运行独占的 SQLite**
 // （backend/tests/live_app 的虚构上游）：页面是生产装配，关系来自真实归档的 parent 链。
-// 13 把会话改成一次整段读取：缺省即全部本地成员，入口回复居中并标“刚才查看”；
+// 13 把会话改成一次整段读取：缺省即全部本地成员，入口回复定位并标“刚才查看”；
 // 显式 page 只是保留的旧兼容入口，前端不得使用。读取不触发上游采集。
 
 const baseURL = 'http://127.0.0.1:4325';
@@ -157,7 +157,7 @@ test('真实 HTTP 契约：对话投影只标注当前页条目，会话子资�
   expect(await archiveDocument(page)).toEqual(archive);
 });
 
-test('手机普通回复页：整段会话一次呈现、入口回复居中并唯一标记“刚才查看”', async ({ page }) => {
+test('手机普通回复页：整段会话一次呈现、入口回复定位可见并唯一标记“刚才查看”', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const before = await sourceRequests(page);
   const archive = await archiveDocument(page);
@@ -192,9 +192,10 @@ test('手机普通回复页：整段会话一次呈现、入口回复居中并�
   await expect(page.locator('[data-conversation-entry="true"]')).toHaveCount(1);
   await expect(page.locator('[data-conversation-entry="true"]'))
     .toHaveAttribute('data-reading-id', `reply:${rootId}:${crossPageId}`);
-  // 入口回复是整段末尾，也要能停在视口中央（靠按需补的尾部留白）。
-  await expect.poll(() => verticalCenterOffset(page, `[data-reading-id="reply:${rootId}:${crossPageId}"]`))
-    .toBeLessThanOrEqual(2);
+  // 入口回复是整段末尾：居中位置被夹到可滚动末端，入口完整可见且下方不留空白带。
+  const entrySelector = `[data-reading-id="reply:${rootId}:${crossPageId}"]`;
+  await expect.poll(() => fullyVisible(page, entrySelector)).toBe(true);
+  await expect.poll(() => atScrollEnd(page)).toBe(true);
   expect(await page.evaluate(() => Math.round(window.scrollY))).toBeGreaterThan(0);
   // 整段只读一次，且不带页码或批量。
   expect(conversations.map(url => url.search)).toEqual(['']);
@@ -212,7 +213,7 @@ test('手机普通回复页：整段会话一次呈现、入口回复居中并�
   expect(await archiveDocument(page)).toEqual(archive);
 });
 
-test('短会话末条居中：留白撑开的范围随历史前进一起还原，不被夹回页首', async ({ page }) => {
+test('短会话末条只贴到底：定位不给列表补留白，历史前进回来位置也不变', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const before = await sourceRequests(page);
   await page.goto(`/dynamics/${dynamicId}/comments/${rootId}`);
@@ -225,13 +226,14 @@ test('短会话末条居中：留白撑开的范围随历史前进一起还原�
   const conversation = page.getByRole('list', { name: '对话内容' });
   await expect(conversation.locator('> li')).toHaveCount(2);
   const entrySelector = `[data-reading-id="reply:${rootId}:${incompleteEntryId}"]`;
-  // 末条居中：按需补的留白把可滚动范围撑开，条目真的停在视口中央。
-  await expect.poll(() => verticalCenterOffset(page, entrySelector)).toBeLessThanOrEqual(2);
+  // 内容不足一屏：可滚动范围为 0，直接停在顶部，入口可见而不撑出任何空白带。
+  await expect.poll(() => fullyVisible(page, entrySelector)).toBe(true);
+  await expect.poll(() => atScrollEnd(page)).toBe(true);
   const padding = await listPadding(conversation);
-  expect(padding.lead + padding.tail).toBeGreaterThan(0);
+  expect(padding).toEqual({ lead: 0, tail: 0 });
   const centeredY = await scrollY(page);
 
-  // 返回来源再前进回同一访问：留白与位置一起还原，不重新居中也不被夹回。
+  // 返回来源再前进回同一访问：位置照旧还原，可滚动范围不依赖任何居中留白。
   await page.getByRole('button', { name: '会话列表，返回评论详情' }).click();
   await expect(page).toHaveURL(new RegExp(`/dynamics/${dynamicId}/comments/${rootId}$`));
   await page.goForward();
@@ -239,13 +241,13 @@ test('短会话末条居中：留白撑开的范围随历史前进一起还原�
   const restored = page.getByRole('list', { name: '对话内容' });
   await expect(restored.locator('> li')).toHaveCount(2);
   await expect.poll(() => scrollY(page)).toBe(centeredY);
-  await expect.poll(() => verticalCenterOffset(page, entrySelector)).toBeLessThanOrEqual(2);
+  await expect.poll(() => fullyVisible(page, entrySelector)).toBe(true);
   expect(await listPadding(restored)).toEqual(padding);
 
   expect(await sourceRequests(page)).toEqual(before);
 });
 
-/** 列表的居中留白（px）：恢复后必须与离开时一致，否则可滚动范围会变。 */
+/** 列表的内联留白（px）：定位只做 clamp，不再往列表注入上下空白，所以必须恒为 0。 */
 async function listPadding(locator: ReturnType<Page['getByRole']>): Promise<{ lead: number; tail: number }> {
   return locator.evaluate(element => {
     const style = (element as HTMLElement).style;
@@ -300,22 +302,23 @@ test('通知定位页进入整段对话再返回该次定位访问；缺祖先�
   expect(await sourceRequests(page)).toEqual(before);
 });
 
-test('直达或刷新会话页可独立整段读取并再次居中；无来源时返回所属回复详情', async ({ page }) => {
+test('直达或刷新会话页可独立整段读取并再次定位；无来源时返回所属回复详情', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const before = await sourceRequests(page);
   await page.goto(`/dynamics/${dynamicId}/comments/${rootId}/replies/${crossPageId}/conversation`);
   const conversation = page.getByRole('list', { name: '对话内容' });
   await expect(conversation.locator('> li')).toHaveCount(conversationCount);
-  // 直达也要把入口回复居中。
-  await expect.poll(() => verticalCenterOffset(page, `[data-reading-id="reply:${rootId}:${crossPageId}"]`))
-    .toBeLessThanOrEqual(2);
+  // 直达也要把入口回复定位到可滚动末端。
+  const entrySelector = `[data-reading-id="reply:${rootId}:${crossPageId}"]`;
+  await expect.poll(() => fullyVisible(page, entrySelector)).toBe(true);
+  await expect.poll(() => atScrollEnd(page)).toBe(true);
 
-  // 刷新后仍靠 URL 与只读接口得到同一段整段对话，不依赖来源内存，并再次居中一次。
+  // 刷新后仍靠 URL 与只读接口得到同一段整段对话，不依赖来源内存，并再次定位一次。
   await page.reload();
   await expect(page.getByRole('list', { name: '对话内容' }).locator('> li')).toHaveCount(conversationCount);
   await expect(page.getByText(`共 ${conversationCount} 条`)).toBeVisible();
-  await expect.poll(() => verticalCenterOffset(page, `[data-reading-id="reply:${rootId}:${crossPageId}"]`))
-    .toBeLessThanOrEqual(2);
+  await expect.poll(() => fullyVisible(page, entrySelector)).toBe(true);
+  await expect.poll(() => atScrollEnd(page)).toBe(true);
 
   // 无有效来源：替换为所属回复详情的时间序第 1 页，不留下不可用的会话地址。
   await page.getByRole('button', { name: '会话列表，返回评论详情' }).click();
@@ -357,14 +360,22 @@ function trackConversationRequests(page: Page): URL[] {
   return urls;
 }
 
-/** 元素垂直中心与视口中心的距离（px）；用来断言“定位到屏幕中央”。 */
-async function verticalCenterOffset(page: Page, selector: string): Promise<number> {
+/** 元素是否完整落在视口内：一次性定位只需要做到“看得见”，不要求正好居中。 */
+async function fullyVisible(page: Page, selector: string): Promise<boolean> {
   return page.evaluate(sel => {
     const element = document.querySelector(sel);
-    if (!element) return Number.POSITIVE_INFINITY;
+    if (!element) return false;
     const box = element.getBoundingClientRect();
-    return Math.abs(box.top + box.height / 2 - window.innerHeight / 2);
+    return box.top >= 0 && box.bottom <= window.innerHeight;
   }, selector);
+}
+
+/** 是否已滚到可滚动范围的末端：末条定位后被夹到底，页尾没有可读内容也没有空白带。 */
+async function atScrollEnd(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const maximum = document.documentElement.scrollHeight - window.innerHeight;
+    return Math.abs(window.scrollY - maximum) <= 1;
+  });
 }
 
 /** 当前滚动位置：返回后按稳定锚点恢复，允许 1px 级的取整差。 */
@@ -403,7 +414,7 @@ test('热度第 2 页进入会话再返回：恢复那一次热度访问的页�
   await expect(conversation.locator('> li')).toHaveCount(conversationCount);
   await expect(conversation.locator('> li').first())
     .toHaveAttribute('data-reading-id', `reply:${rootId}:${startId}`);
-  // 入口回复在整段中间：同样居中并标记一次。
+  // 入口回复在整段中间：定位可见并标记一次。
   await expect(page.getByText('刚才查看')).toHaveCount(1);
 
   const requestsBeforeBack = tracked.replies.length;

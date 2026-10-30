@@ -46,12 +46,6 @@ export interface ReadingPosition {
   readonly pixelY: number;
 }
 
-/** 居中所需的首尾最小留白（px）；页面把它们变成列表内边距，不新增 DOM 结构。 */
-export interface CenterPadding {
-  readonly lead: number;
-  readonly tail: number;
-}
-
 export interface ListSnapshot {
   readonly read: ListReadState;
   readonly expanded: Readonly<Record<string, boolean>>;
@@ -113,16 +107,12 @@ export function replyVisitRegion(dynamicId: string, rootId: string): string {
 
 /**
  * 会话页的访问记录：内容每次都单次整段读取，所以这里只记阅读位置；
- * “有没有记录”就是“是否已居中过一次”——已有访问优先恢复位置，不重复居中。
+ * “有没有记录”就是“是否已定位过一次”——已有访问优先恢复位置，不重复定位。
  * 与 `ReplyVisitSnapshot` 一样只活在内存访问表，不跨重启也不扩成持久阅读历史。
+ * 不保存居中留白：定位只做 clamp，不往列表里注入上下空白。
  */
 export interface ConversationRead {
   readonly position: ReadingPosition | null;
-  /**
-   * 居中时按需补的首尾留白（px）。历史恢复必须先还原它：
-   * 末条/短会话的可滚动范围由这份留白撑开，否则位置会被最大滚动夹回。
-   */
-  readonly padding: CenterPadding;
 }
 
 /**

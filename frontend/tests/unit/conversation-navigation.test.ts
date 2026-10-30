@@ -483,7 +483,7 @@ it('定位读取失败的访问恢复后仍按目标身份重试：不拿第 1 �
   expect(entryOf(target).dataset.located).toBe('true');
 });
 
-it('同一会话访问返回时恢复上次阅读位置，不重复居中也不抢用户滚动', async () => {
+it('同一会话访问返回时恢复上次阅读位置，不重复定位也不抢用户滚动', async () => {
   installCompactViewport(true);
   // 14 条同段对话：入口取第 2 条，新进入时居中位置是 146（见 conversation-reading 的排版替身）。
   const items = replies(14).map((item, index) => ({
@@ -509,7 +509,7 @@ it('同一会话访问返回时恢复上次阅读位置，不重复居中也不�
 
   const router = await showApp(reader, conversationPath);
   expect(await screen.findByRole('list', { name: '对话内容' })).toBeTruthy();
-  // 新进入：一次整段读取并把入口回复放到视口中央。
+  // 新进入：一次整段读取并把入口回复定位到视口中央。
   await waitFor(() => expect(layout.scrollY()).toBe(146));
   expect(reads).toEqual([entry.id]);
 
@@ -525,12 +525,11 @@ it('同一会话访问返回时恢复上次阅读位置，不重复居中也不�
   await waitFor(() => expect(router.currentRoute.value.name).toBe('conversation'));
   expect(await screen.findByRole('list', { name: '对话内容' })).toBeTruthy();
   await waitFor(() => expect(layout.scrollY()).toBe(600));
-  // 内容仍每次单次整段读取（不缓存会话），但落点是恢复的位置而不是重新居中。
+  // 内容仍每次单次整段读取（不缓存会话），但落点是恢复的位置而不是重新定位。
   expect(reads).toEqual([entry.id, entry.id]);
-  expect((screen.getByRole('list', { name: '对话内容' }) as HTMLElement).style.paddingTop).toBe('0px');
 });
 
-it('会话内容还没显示就离开：历史前进回来仍居中，不恢复无内容时的位置', async () => {
+it('会话内容还没显示就离开：历史前进回来仍定位，不恢复无内容时的位置', async () => {
   installCompactViewport(true);
   // 14 条同段对话：入口取第 2 条，居中位置仍是 146（见 conversation-reading 的排版替身）。
   const items = replies(14).map((item, index) => ({
@@ -588,7 +587,7 @@ it('会话内容还没显示就离开：历史前进回来仍居中，不恢复�
     await waitFor(() => expect(router.currentRoute.value.name).toBe('thread'));
     await settle();
 
-    // 历史前进到这同一次访问：这次读取成功，入口回复要重新居中。
+    // 历史前进到这同一次访问：这次读取成功，入口回复要重新定位。
     await router.go(1);
     await waitFor(() => expect(router.currentRoute.value.name).toBe('conversation'));
     expect(await screen.findByRole('list', { name: '对话内容' })).toBeTruthy();
@@ -596,12 +595,10 @@ it('会话内容还没显示就离开：历史前进回来仍居中，不恢复�
   }
 });
 
-it('短会话末条居中的留白随历史恢复一起还原，不被最大滚动夹回', async () => {
+it('短会话末条只贴到底：定位不补留白，历史恢复也不靠留白撑范围', async () => {
   installCompactViewport(true);
-  // 短会话：内容只有两条、连一屏都不到（未夹紧的可滚动范围是 -68），
-  // 末条居中必须靠按需补的尾部留白把范围撑开；替身的文档高度跟着列表留白变化。
-  layout.setScrollHeight(() => 700 + Number.parseFloat(
-    (document.querySelector('.conversation-list') as HTMLElement | null)?.style.paddingBottom || '0'));
+  // 短会话：两条内容不足一屏；文档高度 830 比视口 768 只多 62，可滚动上限就是 62。
+  layout.setScrollHeight(830);
   const items = replies(2).map((item, index) => ({
     ...item, parentId: index === 0 ? null : replies(1)[0]!.id,
   }));
@@ -621,21 +618,22 @@ it('短会话末条居中的留白随历史恢复一起还原，不被最大滚�
 
   const router = await showApp(reader, conversationPath);
   const list = await screen.findByRole('list', { name: '对话内容' });
-  // 末条居中位置 146 超过（未夹紧的）-68：补 146 + 68 + 8 的尾部留白后才放得下。
-  await waitFor(() => expect((list as HTMLElement).style.paddingBottom).toBe('222px'));
-  await waitFor(() => expect(layout.scrollY()).toBe(146));
+  // 末条居中位置 146 超过可滚动上限 62：夹到 62，不为居中把列表撑高。
+  await waitFor(() => expect(layout.scrollY()).toBe(62));
+  expect((list as HTMLElement).style.paddingTop).toBe('');
+  expect((list as HTMLElement).style.paddingBottom).toBe('');
 
-  // 用户回读前文：这是这次访问的位置（此时可滚动范围包含那 122px 留白）。
-  layout.setScrollY(120);
+  // 用户回读前文：这是这次访问的位置。
+  layout.setScrollY(10);
   await settle();
 
-  // 离开再按历史回到同一访问：位置与留白一起还原，不被“少了留白”的可滚动范围夹回 0。
+  // 离开再按历史回到同一访问：位置照旧还原，可滚动范围不依赖任何居中留白。
   await router.push('/');
   await waitFor(() => expect(router.currentRoute.value.path).toBe('/'));
   await settle();
   await router.go(-1);
   await waitFor(() => expect(router.currentRoute.value.name).toBe('conversation'));
   const restored = await screen.findByRole('list', { name: '对话内容' });
-  await waitFor(() => expect((restored as HTMLElement).style.paddingBottom).toBe('222px'));
-  await waitFor(() => expect(layout.scrollY()).toBe(120));
+  await waitFor(() => expect(layout.scrollY()).toBe(10));
+  expect((restored as HTMLElement).style.paddingBottom).toBe('');
 });

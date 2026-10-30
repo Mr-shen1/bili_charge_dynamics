@@ -2,7 +2,6 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { ElButton } from 'element-plus';
 import type { ReadStatus, Reply } from '../data/contracts';
-import type { CenterPadding } from '../app/snapshots';
 import { useArchiveNavigation } from '../app/navigation';
 import { captureReadingPosition, centerReadingAnchor, restoreReadingPosition } from '../app/readingPosition';
 import { useSession } from '../app/session';
@@ -17,8 +16,9 @@ import UserAvatar from '../dynamics/UserAvatar.vue';
 /**
  * 会话列表：一段对话的独立只读页。身份是动态、根评论与入口回复，不以页码或昵称充当身份；
  * 一次请求读完整个本地可确认集合，按时间正序整段展示，没有分页控件也不循环拼页。
- * 一级评论只作上下文不重复展示；入口回复标“刚才查看”，并在新进入时一次性居中。
- * 同一访问的历史恢复优先回到上次的阅读位置，不重复居中、不抢用户滚动。
+ * 一级评论只作上下文不重复展示；入口回复标“刚才查看”，并在新进入时一次性定位：
+ * 能居中就居中，位置夹在真实可滚动范围内，不为居中给列表补留白（短会话/末条不留空白带）。
+ * 同一访问的历史恢复优先回到上次的阅读位置，不重复定位、不抢用户滚动。
  */
 const props = defineProps<{ dynamicId: string; rootId: string; replyId: string }>();
 
@@ -26,7 +26,7 @@ const { reader } = useSession();
 const navigation = useArchiveNavigation();
 // 访问身份在 setup 时固定：卸载时仍按本次访问保存位置，不受已经切换的路由影响。
 const pageEntryId = navigation.pageEntryId;
-// 已有访问（历史前进/后退）只恢复位置；新进入/直达/刷新没有记录，才居中一次。
+// 已有访问（历史前进/后退）只恢复位置；新进入/直达/刷新没有记录，才定位一次。
 const restored = navigation.conversationRead ?? null;
 // 整段读取复用同一套读取状态机（加载／失败重试／不存在／取消），页码恒为 1 且没有翻页入口。
 const { state, retry } = useReplyPage(
@@ -37,8 +37,6 @@ const { state, retry } = useReplyPage(
 );
 
 const container = ref<HTMLElement | null>(null);
-/** 居中只在首尾按需补齐的留白：只作用于本页列表，不改共用阅读标尺。 */
-const padding = ref<CenterPadding>({ lead: 0, tail: 0 });
 
 const items = computed<readonly Reply[]>(() => state.value.data?.items ?? []);
 const total = computed(() => state.value.data?.count ?? items.value.length);
@@ -53,17 +51,15 @@ let stopRestoring: () => void = () => undefined;
 let stopCentering: () => void = () => undefined;
 let settled = false;
 
-/** 首屏结果渲染完成后只落点一次：恢复这次访问的位置，或把入口回复居中。 */
+/** 首屏结果渲染完成后只落点一次：恢复这次访问的位置，或把入口回复定位到视口中央。 */
 watch(() => state.value.status, status => {
   if (settled || status !== 'success') return;
   settled = true;
   if (restored) {
-    padding.value = restored.padding;
-    // 先还原留白再落点：末条/短会话的滚动范围由它撑开，否则位置会被最大滚动夹回。
     stopRestoring = restoreReadingPosition(container.value, restored.position);
     return;
   }
-  stopCentering = centerReadingAnchor(container.value, entryAnchor, value => { padding.value = value; });
+  stopCentering = centerReadingAnchor(container.value, entryAnchor);
 }, { flush: 'post', immediate: true });
 
 // 离开这次访问（返回、前进后退）时保存阅读位置：同一访问再回来优先恢复，不重新居中。
@@ -73,11 +69,8 @@ onBeforeUnmount(() => {
   stopRestoring();
   stopCentering();
   if (!settled || !state.value.data) return;
-  navigation.saveConversationRead(pageEntryId, {
-    position: captureReadingPosition(container.value),
-    // 居中补的留白一起保存：同一访问回来时滚动范围与离开时一致。
-    padding: padding.value,
-  });
+  // 居中不再补留白，所以只需记位置：同一访问回来时滚动范围与离开时一致。
+  navigation.saveConversationRead(pageEntryId, { position: captureReadingPosition(container.value) });
 });
 
 function back(): void {
@@ -114,7 +107,6 @@ function bodyText(reply: Reply): string {
         v-if="items.length > 0"
         class="conversation-list"
         aria-label="对话内容"
-        :style="{ paddingTop: `${padding.lead}px`, paddingBottom: `${padding.tail}px` }"
       >
         <li
           v-for="item in items"
@@ -156,7 +148,7 @@ function bodyText(reply: Reply): string {
   line-height: var(--line-meta);
   font-variant-numeric: tabular-nums;
 }
-/* 入口回复的轻微标记：说明刚才从哪条进来，居中只做一次、不抢用户滚动。 */
+/* 入口回复的轻微标记：说明刚才从哪条进来，定位只做一次、不抢用户滚动。 */
 .conversation-reply--entry {
   background: var(--brand-soft);
   box-shadow: inset 3px 0 0 var(--brand);

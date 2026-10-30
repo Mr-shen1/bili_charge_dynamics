@@ -190,11 +190,11 @@ it('会话页一次整段读取：11 条以上全部呈现、无分页控件，�
   expect(seen).toEqual([reply(2).id]);
 });
 
-it('新进入把入口回复放到视口中央：首尾按需补留白，用户滚动后不再抢回', async () => {
+it('新进入把入口回复放到视口中央：位置夹在可滚动范围内，用户滚动后不再抢回', async () => {
   installCompactViewport(true);
   const items = longConversation();
-  const read = async (replyId: string) => ({
-    status: 'success' as const, data: conversation({ replyId, count: items.length, items }),
+  const read = async (replyId: string, count = items.length, list = items) => ({
+    status: 'success' as const, data: conversation({ replyId, count, items: list }),
   });
   const reader = createReader({
     readDetail: async () => ({ status: 'success', data: commentDynamic() }),
@@ -206,20 +206,41 @@ it('新进入把入口回复放到视口中央：首尾按需补留白，用户�
   await showApp(reader, `/dynamics/${dynamicId}/comments/${rootId}/replies/${reply(2).id}/conversation`);
   await screen.findByRole('list', { name: '对话内容' });
   await waitFor(() => expect(layout.scrollY()).toBe(146));
-  // 条目本来就在可滚动范围内：不补留白。
-  expect((screen.getByRole('list', { name: '对话内容' }) as HTMLElement).style.paddingTop).toBe('0px');
+  // 定位不给列表注入留白：内联内边距为空。
+  expect((screen.getByRole('list', { name: '对话内容' }) as HTMLElement).style.paddingTop).toBe('');
 
-  // 首条：居中位置为负，按需补 154 + 8 的顶部留白，然后停在 8 而不是被夹回 0。
+  // 首条：居中位置为负，夹到 0：不补顶部留白，也不会停在半屏处。
   cleanup();
   layout.setScrollY(0);
   await showApp(reader, `/dynamics/${dynamicId}/comments/${rootId}/replies/${reply(1).id}/conversation`);
-  const first = await screen.findByRole('list', { name: '对话内容' });
-  await waitFor(() => expect(first.style.paddingTop).toBe('162px'));
-  await waitFor(() => expect(layout.scrollY()).toBe(8));
+  await screen.findByRole('list', { name: '对话内容' });
+  await waitFor(() => expect(layout.scrollY()).toBe(0));
 
-  // 用户先滚动：迟到的一次性居中让位，不再把页面拉回入口。
+  // 短会话（内容不足一屏，可滚动范围为 0）：两条也只停在顶部，上方不留空白。
   cleanup();
   layout.setScrollY(0);
+  layout.setScrollHeight(768);
+  const shortReader = createReader({
+    readDetail: async () => ({ status: 'success', data: commentDynamic() }),
+    readReplies: async () => ({ status: 'success', data: threadBatch(conversationFixture()) }),
+    readConversation: async input => read(input.replyId, 2, items.slice(0, 2)),
+  });
+  await showApp(shortReader, `/dynamics/${dynamicId}/comments/${rootId}/replies/${reply(2).id}/conversation`);
+  await screen.findByRole('list', { name: '对话内容' });
+  await waitFor(() => expect(layout.scrollY()).toBe(0));
+
+  // 末条：居中位置超过可滚动上限（2000 - 768 = 1232）时贴到底部，不补尾部留白。
+  cleanup();
+  layout.setScrollY(0);
+  layout.setScrollHeight(2000);
+  await showApp(reader, `/dynamics/${dynamicId}/comments/${rootId}/replies/${reply(14).id}/conversation`);
+  await screen.findByRole('list', { name: '对话内容' });
+  await waitFor(() => expect(layout.scrollY()).toBe(1232));
+
+  // 用户先滚动：迟到的一次性定位让位，不再把页面拉回入口。
+  cleanup();
+  layout.setScrollY(0);
+  layout.setScrollHeight(20000);
   await showApp(reader, `/dynamics/${dynamicId}/comments/${rootId}/replies/${reply(5).id}/conversation`);
   await screen.findByRole('list', { name: '对话内容' });
   await fireEvent.scroll(window, { target: { scrollY: 0 } });

@@ -229,7 +229,7 @@ test('手机组合：列表→详情→楼中楼热度后续页→跨页对话�
   const threadScroll = await scrollY(page);
   expect(threadScroll).toBeGreaterThan(0);
 
-  // 该页条目进入完整跨页对话：整段 11 条一次呈现，入口回复居中并唯一标记“刚才查看”。
+  // 该页条目进入完整跨页对话：整段 11 条一次呈现，入口回复定位可见并唯一标记“刚才查看”。
   const entry = page.locator(`[data-reading-id="reply:${rootId}:${conversationEntry}"]`);
   await entry.getByRole('button', { name: '查看对话' }).click();
   await expect(page).toHaveURL(new RegExp(`/replies/${conversationEntry}/conversation$`));
@@ -239,7 +239,7 @@ test('手机组合：列表→详情→楼中楼热度后续页→跨页对话�
   await expect(conversation.locator('> li').last()).toHaveAttribute('data-reading-id', `reply:${rootId}:960020`);
   await expect(page.getByText(`共 ${conversationCount} 条`)).toBeVisible();
   await expect(page.getByRole('button', { name: '会话列表，返回评论详情' })).toHaveText('‹ 会话列表');
-  // 没有分页控件：整段一次读完，入口回复在整段中间也照样居中。
+  // 没有分页控件：整段一次读完，入口回复在整段中间也照样能被定位到。
   await expect(page.getByRole('navigation', { name: '回复分页' })).toHaveCount(0);
   await expect(page.locator('[data-conversation-entry="true"]'))
     .toHaveAttribute('data-reading-id', `reply:${rootId}:${conversationEntry}`);
