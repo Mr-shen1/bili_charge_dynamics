@@ -455,12 +455,16 @@ class Store(CheckStore, DiscoveryStore):
                                 "UPDATE root_comments SET document = ? WHERE dynamic_id = ? AND id = ?",
                                 (json.dumps(document, ensure_ascii=False), dynamic_id, root_id))
                 if version < 29:
+                    # 29 一版承载两票的列，各自缺列才加、可重入。
                     # 评论点赞每日刷新：目标检查行记录「上次点赞刷新成功时间」，
-                    # 不复用会被普通增量成功推进的其他成功时间。缺列才加，可重入。
+                    # 不复用会被普通增量成功推进的其他成功时间。
                     columns = {row[1] for row in connection.execute("PRAGMA table_info(target_checks)")}
                     if "like_refresh_succeeded_at" not in columns:
                         connection.execute(
                             "ALTER TABLE target_checks ADD COLUMN like_refresh_succeeded_at TEXT")
+                    # 05 通知保序：事件新增可比较的排序时刻，旧行按入队时刻补齐；
+                    # 投递队头改为按「角色 + 排序时刻」领取。
+                    outbox.migrate_ordering(connection)
                 connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
                 connection.commit()
             except BaseException:

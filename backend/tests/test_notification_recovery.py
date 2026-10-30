@@ -21,7 +21,7 @@ from backend.tests.notification_support import (
     deliveries, events,
 )
 from backend.tests.root_notification_support import (
-    DYNAMIC, SYSTEM_WEBHOOK, Source, configure, root_comment,
+    DYNAMIC, SYSTEM_WEBHOOK, Source, comment_id, configure, root_comment,
 )
 
 OVERRIDE_WEBHOOK = "https://open.feishu.cn/open-apis/bot/v2/hook/fake-up-123"
@@ -162,23 +162,22 @@ def test_waiting_config_rechecks_never_count_as_delivery_failures(tmp_path):
 
 
 def test_claim_uses_due_and_lease_indexes_with_a_bounded_batch(tmp_path):
-    """默认领取走「到期」「系统到期」「租约」三条索引并受批量限制，不全表扫描队列。"""
+    """领取按「角色 + 未终态」索引取每个角色的队头一条，且受批量限制，不全表扫描队列。"""
     path = tmp_path / "monitor.sqlite"
     archive_up_comment(path)
     with Store(path).connection() as connection:
-        due_plan = " ".join(str(row["detail"]) for row in connection.execute(
-            "EXPLAIN QUERY PLAN " + outbox.DUE_QUERY,
-            (outbox.PENDING, outbox.WAITING_CONFIG, 1_000_000.0, outbox.SYSTEM_ROLE, 8)))
-        system_plan = " ".join(str(row["detail"]) for row in connection.execute(
-            "EXPLAIN QUERY PLAN " + outbox.SYSTEM_DUE_QUERY,
-            (outbox.PENDING, outbox.WAITING_CONFIG, 1_000_000.0, outbox.SYSTEM_ROLE, 8)))
-        lease_plan = " ".join(str(row["detail"]) for row in connection.execute(
-            "EXPLAIN QUERY PLAN " + outbox.LEASE_QUERY, (outbox.INFLIGHT, 1_000_000.0, 8)))
-        claimed = outbox.claim_due(connection, 1_000_000.0, 2, 30.0)
-    assert "notification_due" in due_plan and "notification_due" in system_plan
-    assert "notification_lease" in lease_plan
+        plan = " ".join(str(row["detail"]) for row in connection.execute(
+            "EXPLAIN QUERY PLAN " + outbox.HEAD_QUERY,
+            (outbox.UP_ROLE, outbox.PENDING, outbox.WAITING_CONFIG, outbox.INFLIGHT)))
+        claimed = outbox.claim_due(connection, 1_000_000.0, 8, 30.0)
+    assert "notification_order" in plan
+    # 每个角色最多一条：UP 群与全员群各一条，同群不会一次领走多条。
     assert len(claimed) == 2
     assert {(item["role"], item["token"] is not None) for item in claimed} == {("up", True), ("all", True)}
+    with Store(path).connection() as connection:
+        # 批量上限仍然生效：领完一轮后再以 limit=1 领取不会再多拿一条。
+        assert outbox.claim_due(connection, 1_000_000.0, 1, 30.0) == []
+        assert outbox.claim_due(connection, 1_000_000.0 + 31, 1, 30.0)
 
 
 def test_blocked_target_does_not_block_the_other_target_in_the_same_round(tmp_path):
@@ -220,8 +219,8 @@ def test_blocked_target_does_not_block_the_other_target_in_the_same_round(tmp_pa
     assert source.spec(DYNAMIC)["count"] == 1
 
 
-def test_failed_target_backoff_does_not_hold_back_newer_deliveries(tmp_path):
-    """失败目标的退避只作用于该记录：期间产生的新事件照常投递，不形成全局阻塞。"""
+def test_queue_head_backoff_holds_back_newer_messages_in_the_same_group(tmp_path):
+    """严格保序（05）：队头退避时同群后续消息不抢跑，退避结束后仍按先后顺序发出。"""
     path = tmp_path / "monitor.sqlite"
     source = archive_up_comment(path)
     clock = Clock()
@@ -235,7 +234,7 @@ def test_failed_target_backoff_does_not_hold_back_newer_deliveries(tmp_path):
     assert {row["state"] for row in rows} == {"pending"}
     assert {row["due_at"] for row in rows} == {clock.now() + 2.0}
 
-    # 退避期间出现一条新评论：它的目标到期即可投递，不必等旧记录的重试时间。
+    # 退避期间出现一条更新的评论：它排在同群队头之后，不能抢在退避重试之前。
     source.replace(DYNAMIC, [root_comment("860001", text="虚构评论"),
                              root_comment("860002", text="虚构新评论")])
 
@@ -251,9 +250,16 @@ def test_failed_target_backoff_does_not_hold_back_newer_deliveries(tmp_path):
     clock.advance(0.5)
     run_once(path, config_mapping(up=WEBHOOK, full=ALL_WEBHOOK),
              transport=httpx.MockTransport(receiver), clock=clock)
-    sent = sorted({row["snapshot"]["comment_id"] for row in deliveries(path) if row["state"] == "sent"})
-    assert sent == ["860002"]
-    assert len(receiver.requests) == 2
+    assert receiver.requests == []  # 队头还在退避：同群后续一条都不发
+
+    clock.advance(1.5)
+    run_once(path, config_mapping(up=WEBHOOK, full=ALL_WEBHOOK),
+             transport=httpx.MockTransport(receiver), clock=clock)
+    # 退避到期先重试队头，队头成功后同群下一条才补位：每群内部顺序不变。
+    assert [request["url"] for request in receiver.requests] == [WEBHOOK, ALL_WEBHOOK,
+                                                                 WEBHOOK, ALL_WEBHOOK]
+    assert [comment_id(payload) for payload in receiver.payloads] == [
+        "860001", "860001", "860002", "860002"]
 
 
 def test_lost_success_response_is_retried_and_may_duplicate_externally(tmp_path):
