@@ -7,7 +7,9 @@
 
 import asyncio
 import json
+import logging
 import sqlite3
+from contextlib import contextmanager
 
 import httpx
 import pytest
@@ -32,6 +34,23 @@ SYSTEM_WEBHOOK = "https://open.feishu.cn/open-apis/bot/v2/hook/fake-system-order
 
 
 # --- 装配 -------------------------------------------------------------------
+
+@contextmanager
+def notifier_logs():
+    """捕获通知进程的实际输出：生产只有一个 stderr handler，这里另挂一个观察者。"""
+    messages = []
+
+    class Handler(logging.Handler):
+        def emit(self, record):
+            messages.append(record.getMessage())
+
+    logger = logging.getLogger("bili_monitor.notifier")
+    handler = Handler()
+    logger.addHandler(handler)
+    try:
+        yield messages
+    finally:
+        logger.removeHandler(handler)
 
 def feishu(clock, calls, responder=None):
     """替身飞书传输：按实际发送顺序记录目的地、发送时刻与载荷，默认回业务成功。"""
@@ -472,16 +491,21 @@ def test_no08_every_message_kind_follows_the_same_retry_and_abandon_rule(tmp_pat
     if kind != "heartbeat":  # 心跳的首次尝试由生成它的那一拍完成
         run_once(path, clock, transport)
 
-    for delay in (2.0, 4.0, 8.0):
-        clock.advance(delay)
-        run_once(path, clock, transport)
+    with notifier_logs() as logs:
+        for delay in (2.0, 4.0, 8.0):
+            clock.advance(delay)
+            run_once(path, clock, transport)
 
     row = next(row for row in deliveries(path).values() if row["kind"] == kind)
     url = {"all": ALL_WEBHOOK, "up": WEBHOOK, "system": SYSTEM_WEBHOOK}[role]
     assert [call["at"] - started for call in calls if call["url"] == url] == [0.0, 2.0, 6.0, 14.0]
     assert (row["state"], row["error"], row["failures"], row["attempts"]) == (
         "expired", "retry_exhausted", 4, 4)
-    # 放弃留痕：业务目标登记既有类别告警；系统目标自身不再递归生成告警。
+    # 放弃留痕对所有类型一致：终态行内原因可辨，并留一条 WARNING 日志。
+    assert row["error"] == "retry_exhausted"
+    assert any("delivery_abandoned" in line and f"role={role}" in line
+               and "reason=retry_exhausted" in line for line in logs)
+    # 放弃告警登记：业务目标登记既有类别告警；系统目标自身不再递归生成告警。
     abandoned = [item for item in alert_events(path) if item["snapshot"]["reason"] == "retry_exhausted"]
     assert len(abandoned) == (0 if role == "system" else 1)
 
