@@ -12,6 +12,7 @@ import pytest
 
 from backend.bili_monitor import notifier
 from backend.bili_monitor.notifications import Dispatcher
+from backend.bili_monitor.notifications.delivery import RETRY_CAP_SECONDS
 from backend.bili_monitor.notifications.ratelimit import (
     DEFER_STEP_SECONDS, MAX_DEFER_SECONDS, RateLimiter,
 )
@@ -102,11 +103,14 @@ def test_over_budget_records_are_deferred_without_counting_failures(tmp_path):
     sent = [row for row in saved if row["state"] == "sent"]
     deferred = [row for row in saved if row["state"] == "pending"]
     assert (len(sent), len(deferred)) == (5, 3)
-    # 顺延不是失败：留在 pending、只改 due_at，不消耗 attempts、不写 error、不增 failures。
-    assert {row["due_at"] for row in deferred} == {clock.now() + 1.0}
-    for row in deferred:
+    # 顺延不是失败：留 pending、只改 due_at，不消耗 attempts、不写 error、不增 failures。
+    # 同群严格排队（05）：只有被顺延的那条队头改了 due_at，后面的记录根本没被领取。
+    head = [row for row in deferred if row["due_at"] != 0.0]
+    assert [row["due_at"] for row in head] == [clock.now() + 1.0]
+    for row in head:
         assert (row["attempts"], row["failures"], row["error"], row["sent_at"]) == (0, 0, None, None)
         assert row["token"] is None and row["lease_until"] is None
+    assert [(row["due_at"], row["attempts"]) for row in deferred if row not in head] == [(0.0, 0)] * 2
     assert all(row["attempts"] == 1 and row["failures"] == 0 for row in sent)
     assert len(events(path)) == 8
 
@@ -146,12 +150,17 @@ def test_failing_group_keeps_retry_waits_bounded_and_attempts_honest(tmp_path):
 
     asyncio.run(scenario())
     saved = deliveries(path)
-    # 退避上限 300 秒、限速顺延上限 61 秒，两者不累加：单条记录的最坏等待可计算。
-    for row in saved:
-        assert row["state"] == "pending"
-        assert 0 < row["due_at"] - clock.now() <= 300.0 + MAX_DEFER_SECONDS
+    # 退避上限 8 秒、限速顺延上限 61 秒，两者不累加：单条记录的最坏等待可计算。
+    attempted = [row for row in saved if row["attempts"] > 0]
+    for row in attempted:
         # 顺延不消耗 attempts：每个 attempts 都对应一次真实发送失败。
         assert row["failures"] == row["attempts"]
+        if row["state"] == "pending":
+            assert 0 < row["due_at"] - clock.now() <= RETRY_CAP_SECONDS + MAX_DEFER_SECONDS
+    # 同群严格排队（05）：一条真实失败三次就放弃，队头因此持续推进而不是永久卡住。
+    assert {row["state"] for row in saved} == {"pending", "expired"}
+    assert [row["state"] for row in saved].count("expired") >= 1
+    assert len(attempted) < len(saved)  # 队头占用期间，后面的记录保持原样
     assert 0 < len(calls) <= 40 * 5
 
 
