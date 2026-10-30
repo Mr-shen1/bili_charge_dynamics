@@ -1094,13 +1094,17 @@ class Store(CheckStore, DiscoveryStore):
                                   progress=position)
 
     def finish_roots(self, id, generation, status, observed_count, succeeded_at=None, *,
-                     pin_known=False, pinned_id=None):
+                     pin_known=False, pinned_id=None, like_refresh=False):
         return self._change_roots(id, generation, status, observed_count, [], succeeded_at,
-                                  pin_known=pin_known, pinned_id=pinned_id)
+                                  pin_known=pin_known, pinned_id=pinned_id, like_refresh=like_refresh)
 
     def _change_roots(self, id, generation, status, observed_count, documents, succeeded_at=None, *,
-                      pin_known=False, pinned_id=None, progress=None):
-        """页数据、页进度与归档分项状态同一短事务；返回摘要或 `None`（领取代次过期）。"""
+                      pin_known=False, pinned_id=None, progress=None, like_refresh=False):
+        """页数据、页进度与归档分项状态同一短事务；返回摘要或 `None`（领取代次过期）。
+
+        `like_refresh=True` 表示本轮是完整根页扫描（每日点赞刷新或显式全量）：成功时
+        同一事务推进「上次点赞刷新成功时间」，不等其他分项成功。
+        """
         with self.connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
@@ -1158,6 +1162,14 @@ class Store(CheckStore, DiscoveryStore):
                     archive["synced_root_metadata_version"] = ROOT_METADATA_VERSION
                     archive["synced_root_comment_count"] = observed_count
                     archive["root_comments_last_succeeded_at"] = succeeded_at or utc_now()
+                    if like_refresh:
+                        # 点赞刷新锚点与根页扫描成功同事务提交：不等整条动态所有分项都
+                        # 成功，否则活跃动态下来源计数几乎必然变化，锚点永不推进、整夜
+                        # 逐拍重复全量。失败不推进，窗口内可重试、窗口外等次日。
+                        connection.execute(
+                            "UPDATE target_checks SET like_refresh_succeeded_at = ? "
+                            "WHERE uid = ? AND id = ?",
+                            (succeeded_at or utc_now(), row["uid"], id))
                     if archive.get("source_comment_count") == observed_count:
                         archive["work"]["comments"] = "success"
                 connection.execute("UPDATE archives SET document = ? WHERE id = ? AND generation = ?",
