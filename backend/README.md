@@ -32,8 +32,6 @@ exec .venv/bin/python -m backend.bili_monitor.service --host 127.0.0.1 --port 80
 
 该入口托管一个 API 子进程和一个独立 collector 子进程，不在 API 内运行定时器。等待 API 完成迁移和监听后才启动 collector；两者继承同一绝对数据库路径、可选 `BILI_COOKIE_FILE` 与 OSS 环境。任一子进程退出时会停止另一进程并报固定错误，便于外部服务托管发现故障；Ctrl-C/TERM 先等待 collector 退出，再停止 API。不要与下节的手动双进程入口同时使用，也不要在已有 collector 运行时重复启动。
 
-当前本机 `live-34/run-api.sh` 已改用该入口，仍保留原端口、数据库和 Cookie 文件路径；需要维护者重启原服务才会生效。它仍清除 OSS 配置，因此有图目标的媒体会保持待归档，不能把文本完成视为全项完成。本次未启动、重启服务，也未做测试或运行验证。
-
 ## 飞书通知进程（01、04、05、06、08、09、13）
 
 动态可信新版本正文成功归档后登记通知事件，由独立进程按索引领取并投递到 UP 群；首次正文只建立基线，通知失败不回写归档成功状态。一级评论在根评论写事务里、楼中楼回复在回复写事务里与内容同事务登记：作者等于该动态所属 UP 时同时发 UP 群和全员群，其他人只发全员群，身份/时间不全时留候选等补齐，评论起点之前的评论静默；单条就绪即投递，不等整轮分页或媒体。回复消息链接直达该条回复（`/dynamics/{id}/comments/{rootId}/replies/{replyId}/locate`），根不可定位或身份不全时不伪造字段（详情见契约）。阶段有效性按领取时绑定的阶段核验，停用后重新启用的旧在途执行不能借新阶段发通知。
@@ -90,11 +88,11 @@ uv run python -m backend.tests.collector_demo --database "$demo_dir/monitor.sqli
 
 ## collector 日志
 
-当前本机统一服务同时托管 API 与 collector，查看最近日志或持续跟随：
+当前本机统一服务同时托管 API 与 collector，查看最近日志或持续跟随（系统级 unit，需 `sudo` 或加入 `systemd-journal` 组）：
 
 ```sh
-journalctl --user -u bili-charge-live-34.service -n 100 --no-pager
-journalctl --user -u bili-charge-live-34.service -f
+sudo journalctl -u bili-monitor -n 100 --no-pager
+sudo journalctl -u bili-monitor -f
 ```
 
 每个节拍的 `collector_tick` 会显示入选目标、待处理数、在途数和本轮新调度数；真正领取后输出 `sync_started`，完成时输出 `sync_finished`。同一同步尝试通过进程内 `attempt` 关联根评论、回复、正文和媒体阶段；日志按正式设计 §6 放行**已校验的业务 ID**（字符串 UID、动态、根评论、每页评论／回复 ID），失败包含固定分类、页号及 HTTP 状态（如有），仍不含 URL、正文、异常原文、Cookie 或内部领取令牌。楼中楼每页一条 `reply_page_fetched`（含页码、方向、数量、`elapsed_ms`、`wait_ms` 与全部已校验回复 ID）和一条 `reply_page_saved`（含新增／更新数），超长 ID 列表按同一关联号分块（`ids_part`/`ids_chunks`/`ids_total`）。根页由 06 起逐页一条 `root_page_saved`（页码、方向、完整评论 ID、`elapsed_ms`、新增／已确认数与 checkpoint 是否被接受），恢复与重定位另记 `root_scan_position`／`root_scan_resumed`。详细字段及如何区分空闲、在途、失败重试和进程退出见[采集日志契约](../docs/backend/api/collector-api.md#调度与失败日志)。正常失败仍按原固定节拍重试，日志本身不触发额外采集。专项：`uv run pytest backend/tests/test_flow_logs.py -q`。
@@ -208,7 +206,7 @@ uv run --offline --no-sync python -m backend.bili_monitor.source_cookies \
 export BILI_COOKIE_FILE="$HOME/.local/state/bili-charge-dynamics/credentials/bilibili-cookie.txt"
 ```
 
-**现有 systemd 服务不会继承另一个终端刚 export 的变量。** 本机会话的启动脚本是仓库外 `/home/kevin/.local/state/bili-charge-dynamics/live-34/run-api.sh`，现已改用上节的 API＋独立 collector 统一入口；它的 `exec` 前配置 `BILI_COOKIE_FILE` 后，两子进程会继承同一路径，仍须维护者自行重启 `bili-charge-live-34.service` 才会加载。此前实例证据见 [#34 Cookie 接入记录](../.scratch/backend-integration/evidence/live-34/cookie-file-implementation.md)，不代表本次修改已经运行。若改用手动双进程方式，须分别配置同一路径；本次未启动或重启服务。
+**现有 systemd 服务不会继承另一个终端刚 export 的变量。** 运行进程的环境经 unit 的 `EnvironmentFile` 加载。需要 `BILI_COOKIE_FILE` 时把路径写入该文件，再 `sudo systemctl restart bili-monitor`；在当前 shell `export` 不会影响已在运行的进程。若改用手动双进程方式，须分别配置同一路径。
 
 API 和 collector 分别在启动时读取私有文件一次，修改文件不会热加载；不自动登录、调用续期接口或轮换账号。HTTPX 信号客户端使用独立 jar，请求前先移除已有 Cookie，只有 GET＋HTTPS＋默认443＋精确 `api.bilibili.com`/`www.bilibili.com`＋无 URL 用户信息时才重新附加，并仅接受相同范围的响应更新。Requests 评论客户端每次尝试从启动时的 Cookie 输入重建 Session，本轮允许 `api.bilibili.com`、`www.bilibili.com`、`space.bilibili.com` 的 HTTPS GET 和响应 Cookie，跳出此范围的请求（包括重定向）在发送前拒绝；完成后关闭。每轮重建是对照参考脚本的生命周期，不是刷新或续期账号。未配置文件时两种路径仍遵守发送范围约束。媒体下载使用独立客户端，OSS 不接入来源凭据；其他代理、头和预热规则见上一节。
 

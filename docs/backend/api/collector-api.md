@@ -28,7 +28,7 @@
 
 ## 调度与失败日志
 
-collector 使用独立 INFO 级别的 stderr handler，保持 HTTPX/HTTPCore、OSS 和 access 传输日志禁用，不依赖根 logger 的默认级别。统一托管时 API 与 collector 的输出归同一个 systemd unit，可用 `journalctl --user -u bili-charge-live-34.service -f` 跟随。此前只有启动信息或固定失败状态时，日志不变不能证明未重试。
+collector 使用独立 INFO 级别的 stderr handler，保持 HTTPX/HTTPCore、OSS 和 access 传输日志禁用，不依赖根 logger 的默认级别。统一托管时 API 与 collector 的输出归同一个 systemd unit，可用 `journalctl -u bili-monitor -f` 跟随。此前只有启动信息或固定失败状态时，日志不变不能证明未重试。
 
 - `collector_initializing`、`collector_configuration`、`collector_started` 表示初始化、评论引擎/代理策略、媒体上传是否启用、固定节拍/并发配置与恢复完成。`comment_session_started/closed` 表示每轮 Requests 生命周期；`comment_session_warmup` 的 homepage/space 只表示对应 HTTP 返回情况，不代表登录成功。
 - 每个固定节拍输出一条 `collector_tick`，记录当前入选 `targets`、`recent_ups`、待处理 `pending`、检查/同步/发现的 `*_in_flight` 和本轮 `*_started` 数量。它是调度快照，不保证任务在该行输出时已完成领取；无目标也输出心跳。
