@@ -1,0 +1,35 @@
+{
+ "before": {
+  "path": "/home/kevin/bili-testdata/likes-baseline.sqlite",
+  "bytes": 57851904,
+  "sha256": "7b5e58d51c49bc9fdcfa09918b9b568c047c852fe911af77a0928163bf6268df",
+  "mtime": "2026-10-30T09:09:47+00:00"
+ },
+ "after": {
+  "path": "/home/kevin/bili-testdata/likes-baseline.sqlite",
+  "bytes": 57851904,
+  "sha256": "7b5e58d51c49bc9fdcfa09918b9b568c047c852fe911af77a0928163bf6268df",
+  "mtime": "2026-10-30T09:09:47+00:00"
+ },
+ "unmodified": true,
+ "row_totals": {
+  "roots": 167,
+  "replies": 16594
+ },
+ "per_dynamic_roots": {
+  "1220432497848877059": 28,
+  "1214018075872985176": 54,
+  "1219141791464292387": 85
+ },
+ "per_dynamic_replies": {
+  "1220432497848877059": 576,
+  "1214018075872985176": 153,
+  "1219141791464292387": 15865
+ },
+ "buildings": {
+  "1220432497848877059": 26,
+  "1214018075872985176": 32,
+  "1219141791464292387": 85
+ },
+ "schema_version": 29
+}

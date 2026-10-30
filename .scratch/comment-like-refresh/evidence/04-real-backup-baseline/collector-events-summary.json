@@ -1,0 +1,33 @@
+{
+ "lines": 4077,
+ "warning": 0,
+ "events": {
+  "collector_started": 1,
+  "like_refresh_configuration": 1,
+  "check_started": 7,
+  "like_refresh_registered": 1,
+  "collector_tick": 5,
+  "sync_started": 3,
+  "check_finished": 7,
+  "dispatch_stage": 6,
+  "dispatch_turn": 1243,
+  "root_scan_position": 3,
+  "root_page_saved": 16,
+  "root_tail_confirmed": 3,
+  "replies_sync_started": 3,
+  "reply_scan_position": 167,
+  "reply_page_fetched": 1218,
+  "reply_page_saved": 1218,
+  "reply_tail_confirmed": 143,
+  "reply_root_finished": 24,
+  "replies_sync_finished": 3,
+  "sync_finished": 3,
+  "collector_stopping": 1,
+  "collector_stopped": 1
+ },
+ "like_refresh_started": 3,
+ "directions": {
+  "reply_scan_position:forward": 167
+ },
+ "registrations": 1
+}
