@@ -117,11 +117,17 @@ fi
 n="$(pgrep -u bili -c python 2>/dev/null || true)"; n="${n:-0}"
 [[ "${n:-0}" -ge 2 ]] && ok "bili 名下 python 进程 $n 个（入口 + API + collector）" || bad "bili 名下 python 进程只有 ${n:-0} 个"
 if [[ -r "$DB" ]]; then
-    uv="$(sqlite3 "file:$DB?mode=ro" 'pragma user_version;' 2>/dev/null || echo '?')"
+    # 服务刚重启时 WAL 还是热的：非 root 身份只读打开会失败，退到 sudo 非交互再读一次。
+    uv="$(sqlite3 "file:$DB?mode=ro" 'pragma user_version;' 2>/dev/null || true)"
+    if [[ -z "$uv" && -n "$SUDO" ]]; then
+        uv="$($SUDO -n sqlite3 "file:$DB?mode=ro" 'pragma user_version;' 2>/dev/null || true)"
+    fi
     # 期望版本从部署代码的 SCHEMA_VERSION 读：迁移后验收脚本不跟着改就能对齐。
     expected="$(sed -n 's/^SCHEMA_VERSION = \([0-9]\{1,\}\)$/\1/p' \
         "$APP_DIR/backend/bili_monitor/storage.py" 2>/dev/null | head -1)"
-    if [[ -z "$expected" ]]; then
+    if [[ -z "$uv" ]]; then
+        info "读不到数据库（需要 sudo 或数据库正被写入）；跳过 schema 比对"
+    elif [[ -z "$expected" ]]; then
         info "读不到部署代码的 SCHEMA_VERSION；跳过 schema 比对（数据库 user_version=$uv）"
     elif [[ "$uv" == "$expected" ]]; then
         ok "数据库 schema user_version=$uv 与代码一致"
