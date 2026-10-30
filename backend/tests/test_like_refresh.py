@@ -785,23 +785,30 @@ def test_count_growth_does_not_repeat_the_full_rescan_on_every_tick(tmp_path):
     async def scenario():
         await initial_archive(path, source, clock)
         source.forget()
-        async with collecting(path, source, clock):
-            await tick(clock)
-            await tick(clock, jump=26 * 3600)
-            # 刷新这一轮翻到底：61 条根评论要 4 页，第 5 页空页再复读一次。
-            await eventually(lambda: work(path) == "complete"
-                             and source.root_pages() == ["1", "2", "3", "4", "5", "5"])
+        with captured_logs() as logs:
+            # 第一轮：窗口内登记的词条目标完整翻到底（61 条根评论 4 页，空页再复读一次）。
+            async with collecting(path, source, clock):
+                await tick(clock)
+                await tick(clock, jump=26 * 3600)
+                await eventually(lambda: work(path) == "complete" and len(source.root_pages()) == 6)
+                assert source.root_pages() == ["1", "2", "3", "4", "5", "5"]
             source.forget()
-            # 同一个夜里来源计数持续增长：连续多拍都不能再重来一遍全量。
-            for _ in range(3):
-                source.grow(1)
-                await tick(clock, jump=15)
-                await tick(clock, jump=15)
-                await eventually(lambda: work(path) == "complete")
+            # 同一个夜里来源计数持续增长：每一拍都重新检查，但都不再重来一遍全量。
+            async with httpx.AsyncClient(transport=httpx.MockTransport(source)) as client:
+                collector = Collector(Store(path), client, clock=clock)
+                for _ in range(3):
+                    source.grow(1)
+                    assert await collector.check_once(UID, "123")
+                    await collector.execute_pending()
+                    assert work(path) == "complete"
             pages = source.root_pages()
             # 全量会翻到第 5 页；增量在已知评论上收束，深层页不再重扫。
             assert pages and "5" not in pages
             assert pages.count("1") <= 2 * 3
+            refreshes = [line for line in logs if "sync_started" in line
+                         and 'dynamic_id="123"' in line and "like_refresh=true" in line]
+        # 整晚只有一次全量刷新会话。
+        assert len(refreshes) == 1
 
     asyncio.run(scenario())
 
