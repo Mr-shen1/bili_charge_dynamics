@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import './playwright.loopback-proxy';
 
 /**
  * 10：三个真实进程（API＋独立采集＋独立通知）到生产前端装配的完整链。

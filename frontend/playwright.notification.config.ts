@@ -2,6 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
+import './playwright.loopback-proxy';
 
 /**
  * 04：真实投递产物链接的浏览器验证。

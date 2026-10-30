@@ -2,6 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
+import './playwright.loopback-proxy';
 
 /**
  * 精确评论入口与实际归档 API 的隔离集成：后端使用 backend/tests/live_app 的虚构上游

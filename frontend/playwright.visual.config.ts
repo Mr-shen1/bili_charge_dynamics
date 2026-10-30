@@ -2,6 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
+import './playwright.loopback-proxy';
 
 /**
  * 票据 14 视觉基准：生产构建（dist/）+ 实际管理 API + 受控归档 HTTP 替身。
@@ -13,14 +14,7 @@ const apiPort = 4178;
 const webPort = 4325;
 const database = join(mkdtempSync(join(tmpdir(), 'bili-visual-e2e-')), 'monitor.sqlite');
 
-// 视觉基准只访问回环地址：本机若设置了 HTTP(S)_PROXY，Playwright 的 webServer 可用性探测
-// 会经代理误判端口“已被占用”。这里在配置加载阶段补上 NO_PROXY，命令无需额外环境变量。
-const noProxy = new Set(
-  (process.env.NO_PROXY ?? process.env.no_proxy ?? '').split(',').map(value => value.trim()).filter(Boolean),
-);
-noProxy.add('127.0.0.1');
-noProxy.add('localhost');
-process.env.NO_PROXY = [...noProxy].join(',');
+// 视觉基准只访问回环地址：NO_PROXY 兜底由 playwright.loopback-proxy 统一处理。
 
 export default defineConfig({
   testDir: './tests/e2e-visual',

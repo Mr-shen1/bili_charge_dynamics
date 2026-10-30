@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import './playwright.loopback-proxy';
 
 // 生产装配与 fault 装配的冒烟：验证普通构建不带自检入口，fault 装配与 mock 装配相互独立。
 const productionPort = 4321;

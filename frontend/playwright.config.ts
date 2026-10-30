@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import './playwright.loopback-proxy';
 
 const port = 4318;
 const imagePort = 4319;
