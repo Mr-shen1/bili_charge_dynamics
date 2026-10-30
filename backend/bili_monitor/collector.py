@@ -33,7 +33,7 @@ from .media import ImageDownloader
 from .oss import OSSUploader
 from .safety import configure_safe_logging
 from .collector_logging import (
-    SELF_HEALING_REASONS, collector_attempt, collector_event, collector_failure,
+    DELETION_REASONS, SELF_HEALING_REASONS, collector_attempt, collector_event, collector_failure,
     credential_signal, failure_fields, source_ids, source_refs,
 )
 from .storage import Store
@@ -297,9 +297,9 @@ class Collector:
         if signal == "credential_rejected":
             return [outbox.Alert("credential", "source_credential", signal)]
         reason = signal or failure_fields(error)["reason"]
-        if signal is None and reason in SELF_HEALING_REASONS:
-            # 页内计数漂移由下一次尝试重新定位锚点、刷新基准后收敛；只留 `collector_failure`
-            # 的 WARNING，不登记告警，避免正常的删除／新增被当成采集故障。
+        if signal is None and (reason in SELF_HEALING_REASONS or reason in DELETION_REASONS):
+            # 页内计数漂移由下一次尝试重新定位锚点、刷新基准后收敛；来源删除由楼级退役收敛。
+            # 两者都只留 `collector_failure` 的 WARNING（删除记 `reply_sync_deleted`），不登记告警。
             return []
         return [outbox.Alert(category, object_key, reason)]
 

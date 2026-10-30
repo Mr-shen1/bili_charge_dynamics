@@ -483,12 +483,24 @@ class TargetSession:
                             **source_refs(dynamic_id=self.id))
         if self.observed_replies is None:
             self.observed_replies = await to_thread.run_sync(self.store.root_reply_counts, self.id)
+        # 来源已确认删除的楼不进候选：不再请求它的楼中楼页，也不再因陈旧 rcount 告警；
+        # 根页重新列出该楼时清除退役标记，让恢复后的楼重新进入本轮。
+        retired = await to_thread.run_sync(self.store.deleted_reply_roots, self.id)
+        if retired:
+            revived = retired & set(self.root_reply_counts or ())
+            if revived:
+                await to_thread.run_sync(self.store.revive_reply_roots, self.id, revived)
+            for root_id in retired - revived:
+                self.observed_replies.pop(root_id, None)
+            collector_event("reply_roots_retired", warning=False, retired=len(retired - revived),
+                            revived=len(revived), **source_refs(dynamic_id=self.id))
         self.replies = await to_thread.run_sync(
             self.store.roots_for_replies, self.id, set(self.observed_replies))
         self.seen = await to_thread.run_sync(self.store.reply_ids, self.id)
         self.reply_index = 0
         self.reply_started = set()
         self.failed_roots = 0
+        self.deleted_roots = 0
         self.skipped_roots = 0
         self.stage = "replies"
         collector_event("replies_sync_started", roots=len(self.replies),
@@ -509,6 +521,7 @@ class TargetSession:
             collector_event("replies_sync_finished", warning=bool(self.failed_roots),
                             succeeded=status == "success", degraded=self.degraded,
                             roots=len(self.replies), skipped=self.skipped_roots,
+                            deleted=self.deleted_roots,
                             **source_refs(uid=self.uid, dynamic_id=self.id))
             self.stage = "media"
             return StepOutcome("replies", "complete", reason=status)
@@ -529,12 +542,16 @@ class TargetSession:
                                done=True, failed=True)
         if step.status == "failed":
             self.failed_roots += 1
+        elif step.status == "deleted":
+            # 来源删除不是失败：该楼已退役，本轮其他楼照常推进，整轮仍可收敛为成功。
+            self.deleted_roots += 1
         elif step.status == "skipped":
             self.skipped_roots += 1
         self.reply_index += 1
         if step.expanded:
             await replies_module.sleep_after_root(random.uniform(0.3, 0.4))
-        return StepOutcome("replies", step.status, page=step.page, reason=step.reason,
+        return StepOutcome("replies", "skipped" if step.status == "deleted" else step.status,
+                           page=step.page, reason=step.reason,
                            failed=step.status == "failed")
 
     async def _media_step(self):

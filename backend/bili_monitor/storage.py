@@ -1335,6 +1335,30 @@ class Store(CheckStore, DiscoveryStore):
             ))
             return [document for document in documents if document["id"] in ids]
 
+    def deleted_reply_roots(self, id):
+        """已被来源确认删除的楼：不再进入楼中楼候选，直到根页重新列出它。"""
+        with self.connection() as connection:
+            return {row[0] for row in connection.execute(
+                "SELECT root_id FROM reply_sync WHERE dynamic_id = ? AND status = 'deleted'", (id,))}
+
+    def revive_reply_roots(self, id, root_ids):
+        """来源又列出该楼时清除退役标记：置回 `failed` 让下一轮重扫，保留既有增量基准。"""
+        ids = tuple(root_ids)
+        if not ids:
+            return 0
+        marks = ",".join("?" for _ in ids)
+        with self.connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = connection.execute(
+                    f"UPDATE reply_sync SET status = 'failed' WHERE dynamic_id = ? "
+                    f"AND status = 'deleted' AND root_id IN ({marks})", (id, *ids))
+                connection.commit()
+                return cursor.rowcount
+            except BaseException:
+                connection.rollback()
+                raise
+
     def change_reply_root(self, id, generation, root_id, status, count=None, *, observed=None, succeeded_at=None):
         with self.connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
