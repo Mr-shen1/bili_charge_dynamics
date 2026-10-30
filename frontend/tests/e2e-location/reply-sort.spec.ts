@@ -167,7 +167,7 @@ test('手机回复详情：默认 ☰ 按时间，点击切到热度回第 1 页
   expect(rendered).toEqual(hotFirstPage.map(id => `reply:${rootId}:${id}`));
   const pager = page.getByRole('navigation', { name: '回复分页' });
   await expect(pager.getByRole('button', { name: '1' })).toHaveAttribute('aria-current', 'page');
-  await expect(pager).toContainText('共3页');
+  await expect(pager.getByRole('button', { name: '3' })).toBeVisible();
   // 翻到热度第 2 页仍是同一套排序，不回时间序。
   await pager.getByRole('button', { name: '下一页' }).click();
   await expect(list.locator('> li').first()).toHaveAttribute(

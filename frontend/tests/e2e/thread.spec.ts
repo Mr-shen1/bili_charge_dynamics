@@ -200,7 +200,7 @@ test.describe('窄屏 UP 回复预览与独立楼中楼', () => {
     await expect(threadList(page).locator('> li')).toHaveCount(10);
     expect(requests.at(-1)).toEqual({ page: 1, limit: 10, cursor: null });
     await expect(page.getByRole('heading', { name: '相关回复共25条' })).toBeVisible();
-    await expect(page.getByRole('navigation', { name: '回复分页' }).getByText('共3页')).toBeVisible();
+    await expect(page.getByRole('navigation', { name: '回复分页' }).getByRole('button', { name: '3' })).toBeVisible();
     // 楼中楼重新挂载从顶部开始。
     await expect.poll(() => scrollY(page)).toBe(0);
     // 根评论与回复都直接显示正文；嵌套目标单独表达且剥离来源前缀。
@@ -254,7 +254,7 @@ test.describe('窄屏 UP 回复预览与独立楼中楼', () => {
       .getByRole('button', { name: '1' })).toHaveAttribute('aria-current', 'page');
 
     // 无详情来源：返回替换为动态详情，历史里不再留下楼中楼（回退不会再次进入该页）。
-    await page.getByRole('navigation', { name: '回复分页' }).getByRole('button', { name: '收起' }).click();
+    await page.getByRole('button', { name: '评论详情，返回动态详情' }).click();
     await expect(page).toHaveURL(/\/dynamics\/1001$/);
     await page.goBack();
     await page.waitForTimeout(200);

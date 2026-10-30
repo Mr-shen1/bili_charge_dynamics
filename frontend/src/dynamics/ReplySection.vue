@@ -254,8 +254,17 @@ watch([() => preview.state.value, expanded, () => live.state.value.page, expande
       :pages="pages"
       :busy="busy"
       @select="live.loadPage($event)"
-      @collapse="collapse"
     />
+    <!-- 收起是区域动作而非翻页：从分页器里移出来，展开后单独提供。 -->
+    <el-button
+      v-if="expanded && hasItems"
+      type="primary"
+      link
+      class="reply-action reply-collapse"
+      aria-expanded="true"
+      :aria-controls="listId"
+      @click="collapse"
+    >收起</el-button>
   </section>
 </template>
 

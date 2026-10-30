@@ -114,7 +114,7 @@ it('直达楼中楼按 page=1&limit=10 读取：展示根评论、回复与分�
   // 宽屏内联楼中楼保留原时间序：不增加排序控件，但页码读取仍显式声明时间序。
   expect(screen.queryByRole('button', { name: /^当前按/ })).toBeNull();
   const pager = screen.getByRole('navigation', { name: '回复分页' });
-  expect(within(pager).getByText('共3页')).toBeTruthy();
+  expect(within(pager).getByRole('button', { name: '3' })).toBeTruthy();
   expect(within(pager).getByRole('button', { name: '1' }).getAttribute('aria-current')).toBe('page');
 
   // 页码模式：固定每页 10 条，不带 cursor（no-store 由 Adapter 用例覆盖）。
@@ -129,7 +129,8 @@ it('页头数量按来源数→本地 count→items 数回退，分页只按本�
   });
   await showApp(reader, `/dynamics/${dynamicId}/comments/${rootId}`);
   expect(await screen.findByText('相关回复共12条')).toBeTruthy();
-  expect(within(screen.getByRole('navigation', { name: '回复分页' })).getByText('共2页')).toBeTruthy();
+  // 页数只由页码按钮表达：本地 12 条算 2 页，没有第 3 页。
+  expect(within(screen.getByRole('navigation', { name: '回复分页' })).queryByRole('button', { name: '3' })).toBeNull();
 
   cleanup();
   const withSource = threadReader({
@@ -146,7 +147,7 @@ it('页头数量按来源数→本地 count→items 数回退，分页只按本�
   expect(await screen.findByText('相关回复共25条')).toBeTruthy();
   expect(screen.getByText('已保存 8/25，上游另有 17 条回复未返回。')).toBeTruthy();
   // 分页只按本地 count（12 条）算 2 页，不被来源 25 条或归档摘要 8 条带偏。
-  expect(within(screen.getByRole('navigation', { name: '回复分页' })).getByText('共2页')).toBeTruthy();
+  expect(within(screen.getByRole('navigation', { name: '回复分页' })).queryByRole('button', { name: '3' })).toBeNull();
 
   cleanup();
   // 只有来源数、没有本地归档摘要时不编造“已保存 x/y”的差额提示。
@@ -192,10 +193,10 @@ it('每页替换当前页：25 条按 10/10/5 翻页，数据缩减后越界页�
   expect(seen.slice(-2).map(item => item.page)).toEqual([3, 2]);
   expect(within(list).getAllByRole('listitem')[1]!.dataset.readingId)
     .toBe(`reply:${rootId}:${replies(12)[11]!.id}`);
-  expect(within(screen.getByRole('navigation', { name: '回复分页' })).getByText('共2页')).toBeTruthy();
+  expect(within(screen.getByRole('navigation', { name: '回复分页' })).queryByRole('button', { name: '3' })).toBeNull();
 });
 
-it('分页器收起与返回按钮都退回详情，并保持详情已读内容不重读', async () => {
+it('返回按钮退回详情，并保持详情已读内容不重读', async () => {
   installCompactViewport(true);
   let commentReads = 0;
   let threadReads = 0;
@@ -250,10 +251,9 @@ it('分页器收起与返回按钮都退回详情，并保持详情已读内容�
   expect(threadReads).toBeGreaterThan(0);
   await waitFor(() => expect(layout.scrollY()).toBe(0));
 
-  // 分页器收起同样回到详情。
+  // 分页器只是翻页：不再内置“收起”，返回只走顶部的 ‹ 评论详情。
   const pager = screen.getByRole('navigation', { name: '回复分页' });
-  await fireEvent.click(within(pager).getByRole('button', { name: '收起' }));
-  await waitFor(() => expect(router.currentRoute.value.name).toBe('detail'));
+  expect(within(pager).queryByRole('button', { name: '收起' })).toBeNull();
 });
 
 it('返回控件可访问名包含可见标签“评论详情”，并说明返回的是动态详情', async () => {

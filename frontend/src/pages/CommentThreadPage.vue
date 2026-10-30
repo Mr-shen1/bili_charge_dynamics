@@ -275,7 +275,6 @@ function rootText(comment: Comment): string {
         :pages="pages"
         :busy="busy"
         @select="loadPage"
-        @collapse="back"
       />
     </template>
   </div>

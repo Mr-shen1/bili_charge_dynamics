@@ -156,7 +156,7 @@ test.describe('宽屏回复预览与实时页码', () => {
     await rootComment(page).getByRole('button', { name: '展开回复', exact: true }).click();
     await expect(replyList(page).locator('> li')).toHaveCount(10);
     expect(api.requests.at(-1)).toEqual({ page: 1, limit: 10, cursor: null });
-    await expect(region.getByText('共3页')).toBeVisible();
+    await expect(region.getByRole('button', { name: '3' })).toBeVisible();
 
     await region.getByRole('button', { name: '下一页' }).click();
     await expect(replyList(page).locator('> li')).toHaveCount(10);

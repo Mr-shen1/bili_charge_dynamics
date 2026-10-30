@@ -230,7 +230,7 @@ test.describe('宽屏楼中楼回复精确链接', () => {
     await expect(target.getByRole('button', { name: '收起回复正文' })).toBeVisible();
     // 分页停在第 2 页，不重置为第 1 页。
     await expect(rootItem(page).getByRole('button', { name: '2' })).toHaveAttribute('aria-current', 'page');
-    await expect(rootItem(page).getByText('共3页')).toBeVisible();
+    await expect(rootItem(page).getByRole('button', { name: '3' })).toBeVisible();
 
     // 定位后的翻页仍是原页内替换，不累计也不额外定位。
     await rootItem(page).getByRole('button', { name: '下一页' }).click();

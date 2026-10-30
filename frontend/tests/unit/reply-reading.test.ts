@@ -114,7 +114,7 @@ it('展开用 page+limit=10 读第 1 页，翻页按 10/10/5 替换当前页，�
   expect(seen.at(-1)).toEqual({ rootId: comment(1).id, limit: 10, page: 1, cursor: undefined });
   expect(within(list()).getAllByRole('listitem').map(item => item.dataset.readingId))
     .toEqual(replies(10).map(item => `reply:${comment(1).id}:${item.id}`));
-  expect(within(region).getByText('共3页')).toBeTruthy();
+  expect(within(region).getByRole('button', { name: '3' })).toBeTruthy();
   // 展开后不再提供展开入口，改为分页与收起。
   expect(within(region).queryByRole('button', { name: '展开回复' })).toBeNull();
   expect(within(region).getByRole('button', { name: '收起' })).toBeTruthy();
@@ -293,7 +293,7 @@ it('数量缩减导致页码越界时重读有效末页，分页只按本地总�
   expect(seen.slice(-2).map(item => item.page)).toEqual([3, 2]);
   expect(within(list()).getAllByRole('listitem').map(item => item.dataset.readingId))
     .toEqual(replies(12).slice(10).map(item => `reply:${comment(1).id}:${item.id}`));
-  expect(within(region).getByText('共2页')).toBeTruthy();
+  expect(within(region).queryByRole('button', { name: '3' })).toBeNull();
   expect(within(region).getByRole('button', { name: '2' }).getAttribute('aria-current')).toBe('page');
 });
 
