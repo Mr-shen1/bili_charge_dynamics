@@ -17,14 +17,15 @@ const archiveSpecs = ['**/list.spec.ts', '**/comments.spec.ts', '**/list-comment
   '**/comment-location.spec.ts', '**/manage.spec.ts'];
 // 宽屏回复只在桌面项目跑；窄屏楼中楼只在移动项目跑（入口按 640px 分支）。
 const desktopArchiveSpecs = [...archiveSpecs, '**/replies.spec.ts', '**/reply-location.spec.ts',
-  '**/locate-return.spec.ts'];
+  '**/locate-return.spec.ts', '**/conversation-dialog.spec.ts'];
 const mobileArchiveSpecs = [...archiveSpecs, '**/thread.spec.ts', '**/reply-location-thread.spec.ts',
   '**/locate-return-thread.spec.ts'];
 // mock/fault 装配不覆试生产装配的回复与楼中楼用例（它自带夹具且无 HTTP 替身）；
 // static-delivery 只验证真实 Nginx 交付路径，由 E2E_TARGET=nginx 单独跑。
 const mockIgnore = [...archiveSpecs, '**/replies.spec.ts', '**/thread.spec.ts',
   '**/reply-location.spec.ts', '**/reply-location-thread.spec.ts',
-  '**/locate-return.spec.ts', '**/locate-return-thread.spec.ts', '**/static-delivery.spec.ts'];
+  '**/locate-return.spec.ts', '**/locate-return-thread.spec.ts',
+  '**/conversation-dialog.spec.ts', '**/static-delivery.spec.ts'];
 
 // mock 装配 + 图片夹具；默认 Linux Chromium，iPhone Safari 必须人工在真机执行。
 export default defineConfig({

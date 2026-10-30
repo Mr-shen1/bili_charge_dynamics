@@ -16,6 +16,8 @@ export function useLocateTarget(options: {
   readonly target: () => HTMLElement | null | undefined;
   readonly container: () => HTMLElement | null | undefined;
   readonly releaseOnUserScroll?: boolean;
+  /** 返回真时挂起定位（例如桌面会话弹窗打开，背景不该抢滚动）。 */
+  readonly suspended?: () => boolean;
 }) {
   let pending = false;
   let release = (): void => undefined;
@@ -40,7 +42,7 @@ export function useLocateTarget(options: {
     async settle(): Promise<void> {
       if (!pending) return;
       await nextTick();
-      if (!pending) return;
+      if (!pending || options.suspended?.()) return;
       pending = false;
       release();
       (options.target() ?? options.container())?.scrollIntoView?.({ block: 'start', behavior: 'instant' });

@@ -168,7 +168,7 @@ pnpm playwright test --project=desktop-chromium-archive tests/e2e/replies.spec.t
 | `src/theme/theme.css` | Element Plus 主题变量 + 基础布局/图片栅格/预览层样式 |
 | `src/preview/` | 票据 01/04/08 验证过的图片层：图片组与手势、`el-image` 缩略图、独立 `el-image-viewer`、归档图片组连接（动态与各根评论 owner 隔离，历史写入委托导航协调器） |
 | `src/manage/` | 管理行为：生产管理 Adapter（`main.ts` 装配，含 `listUps`/`addUp`/`updateMonitor`/`deleteMonitor`/目标增删读/`readDiscovery`/`listChecks`）、共享页头、列表访问、身份卡（启停、模式与近期 N 草稿、删除配置与重新添加）、`ManageTargets` 指定目标区、`CheckStatusPanel`/`CheckStatusDetail` 检查与归档进度、`DiscoveryStatusPanel` 发现与窗口、`discoveryState.ts` 发现契约、`checkStatusText.ts`/`discoveryText.ts`/`status.ts` 状态文案、`useStatusRead` 一次性读取、`manage.css` 共享版式、按 UID 的防重锁与访问存活校验 |
-| `src/pages/` | 六条基线路由页面（另有一级评论精确入口复用详情页，楼中楼回复精确入口按 640px 断点在详情与独立楼中楼页之间分支，`ThreadPage.vue` 按访问标识重建独立楼中楼页，`ConversationPage.vue` 是手机「查看对话」的独立只读会话页，一次请求读完整段、入口回复定位到视口中央（夹在可滚动范围内、不补留白）并标“刚才查看”）；`ListPage.vue`/`DetailPage.vue`/`CommentThreadPage.vue`/`ConversationPage.vue` 已接真实读取，`ManagePage.vue`/`ManageUpPage.vue` 已接真实管理接口（含检查与发现状态），`NotFoundPage.vue` 为不存在页 |
+| `src/pages/` | 六条基线路由页面（另有一级评论精确入口复用详情页，楼中楼回复精确入口按 640px 断点在详情与独立楼中楼页之间分支，`ThreadPage.vue` 按访问标识重建独立楼中楼页，`ConversationPage.vue` 是手机「查看对话」的独立只读会话页；宽屏「查看对话」用 `dynamics/ConversationDialog.vue` 以弹窗承载同一份 `dynamics/ConversationView.vue`（不跳路由、不写地址、关闭归还焦点）。两处都是一次请求读完整段、入口回复定位到滚动源中央（夹在可滚动范围内、不补留白）并标“刚才查看”）；`ListPage.vue`/`DetailPage.vue`/`CommentThreadPage.vue`/`ConversationPage.vue` 已接真实读取，`ManagePage.vue`/`ManageUpPage.vue` 已接真实管理接口（含检查与发现状态），`NotFoundPage.vue` 为不存在页 |
 | `src/mock/` | 受控图片夹具、25 条模拟归档（含 4/9/12 图、长图与异常状态）与 45 条一级评论（含混合状态/长图/纯图/超量评论图片组）及 fault 读取计划，只在 mock/fault 装配加载 |
 | `public/images/unavailable/` | 应用自有的异常图片占位，随生产构建发布；不是来源业务图 |
 | `server/imageServer.mjs` | 图片夹具服务器：缩略/预览不同地址、坏图、无效地址、可重试失败、请求记录 |

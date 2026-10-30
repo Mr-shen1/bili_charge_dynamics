@@ -7,6 +7,7 @@ import type { ReplyReadState, ReplySnapshot } from '../app/snapshots';
 import { useSession } from '../app/session';
 import { useArchiveNavigation } from '../app/navigation';
 import { useReplyPage } from './useReplyPage';
+import { useConversationDialog } from './conversationDialog';
 import { useReplyPreview } from './useReplyPreview';
 import { confirmedTarget, noticeStatus as readNoticeStatus, targetMissing } from './locate';
 import { useLocateTarget } from './useLocateTarget';
@@ -32,6 +33,8 @@ const emit = defineEmits<{ update: [ReplySnapshot] }>();
 
 const { reader } = useSession();
 const navigation = useArchiveNavigation();
+// 宽屏「查看对话」用弹窗承载同一份会话视图：不离开详情页，卡片状态自然保留。
+const conversationDialog = useConversationDialog();
 const located = computed(() => props.locateReplyId ?? null);
 // 历史恢复已有本回复区的快照（含页码）：按保存页码实时重读即可，
 // 按目标身份重新定位只属于主动入口，恢复时不再重跑。
@@ -104,6 +107,23 @@ watch(() => state.value.status, status => {
   if (status === 'success') alignFirstReply(section.value);
 }, { flush: 'post' });
 
+/**
+ * 入口资格只看服务端投影：至少两条可确认关联，且当前条不是对话起点。
+ * 与当前页、排序无关；缺少投影（旧响应、cursor 预览）时不出入口，也不按昵称推断。
+ */
+function conversationOf(reply: Reply) {
+  const conversation = reply.conversation;
+  return conversation && conversation.count >= 2 && conversation.startId !== reply.id
+    ? conversation : null;
+}
+
+/** 桌面弹窗读整段对话：不跳路由，关掉就回到这一楼原来的阅读位置。 */
+function openConversation(reply: Reply, trigger: Event): void {
+  conversationDialog.open({
+    dynamicId: props.dynamicId, rootId: props.rootId, replyId: reply.id,
+  }, trigger.currentTarget instanceof HTMLElement ? trigger.currentTarget : null);
+}
+
 function load(): void {
   if (!expanded.value) {
     void preview.load();
@@ -146,6 +166,8 @@ const locate = useLocateTarget({
   // 目标读不到时定位到本回复区的提示，绝不把楼层顶部当作定位结果。
   container: () => section.value,
   releaseOnUserScroll: true,
+  // 弹窗打开时背景不该抢滚动：定位暂时挂起，关闭后仍可正常落下。
+  suspended: () => conversationDialog.state.open,
 });
 if (activeLocate) locate.arm();
 
@@ -242,6 +264,12 @@ watch([() => preview.state.value, expanded, () => live.state.value.page, expande
             {{ displayTime(item.publishedAt) }}
           </time>
           <ReadOnlyLike :count="item.likeCount" />
+          <el-button
+            v-if="conversationOf(item)"
+            link
+            class="reply-conversation"
+            @click="openConversation(item, $event)"
+          >查看对话</el-button>
         </div>
       </li>
     </ul>
@@ -362,6 +390,14 @@ watch([() => preview.state.value, expanded, () => live.state.value.page, expande
 }
 .reply__time {
   overflow-wrap: anywhere;
+}
+/* 查看对话与手机端同一层级：14px、点击区不小于 44px。 */
+.reply-conversation {
+  min-height: var(--touch);
+  padding: 0 4px;
+  font-size: var(--font-link);
+  line-height: var(--line-link);
+  color: var(--action);
 }
 .reply-action {
   min-height: var(--touch);

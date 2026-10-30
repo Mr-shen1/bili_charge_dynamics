@@ -6,6 +6,8 @@ import PreviewHost from '../preview/PreviewHost.vue';
 import { assembly } from './assembly';
 import { useDocumentTitle } from './documentTitle';
 import { createArchiveNavigation, provideArchiveNavigation } from './navigation';
+import { createConversationDialog, provideConversationDialog } from '../dynamics/conversationDialog';
+import ConversationDialog from '../dynamics/ConversationDialog.vue';
 
 // 会话实例在应用根部创建并高于路由页面存活；导航协调器先装配，
 // 图片预览只接管组与手势，历史记录与位置恢复仍由导航协调器决定。
@@ -13,6 +15,8 @@ const navigation = createArchiveNavigation();
 provideArchiveNavigation(navigation);
 const coordinator = createImagePreviewCoordinator(navigation);
 provideImagePreview(coordinator);
+// 桌面「查看对话」弹窗与路由无关：开关随应用存活，关闭即丢弃，不写地址。
+provideConversationDialog(createConversationDialog());
 
 // 标签标题按路由身份统一设置：新标签、直达与刷新都得到同一标题，页面不再各自维护。
 const route = useRoute();
@@ -32,4 +36,5 @@ useDocumentTitle(computed(() => route.name));
   </div>
   <span v-if="assembly.kind !== 'production'" class="app-badge">{{ assembly.kind }}</span>
   <PreviewHost />
+  <ConversationDialog />
 </template>

@@ -1,19 +1,69 @@
 import type { ReadingPosition } from './snapshots';
 
+/**
+ * 阅读落点的滚动源：默认是文档（整页），也可以是一段自己的滚动容器（桌面会话弹窗）。
+ * 三种读数都从这里取，页面与弹窗因此共用同一套落点语义。
+ */
+interface ScrollPort {
+  /** 当前滚动位置。 */
+  position(): number;
+  /** 可视区高度。 */
+  viewport(): number;
+  /** 最大可滚动值。 */
+  maximum(): number;
+  /** 目标相对可视区顶边的偏移。 */
+  topOf(element: Element): number;
+  scrollTo(top: number): void;
+}
+
+function windowPort(): ScrollPort {
+  return {
+    position: () => window.scrollY,
+    viewport: () => window.innerHeight,
+    maximum: () => Math.max(0, document.documentElement.scrollHeight - window.innerHeight),
+    topOf: element => element.getBoundingClientRect().top,
+    scrollTo: top => window.scrollTo({ top, left: 0, behavior: 'instant' }),
+  };
+}
+
+function elementPort(element: HTMLElement): ScrollPort {
+  const box = (): DOMRect => element.getBoundingClientRect();
+  return {
+    position: () => element.scrollTop,
+    viewport: () => element.clientHeight,
+    maximum: () => Math.max(0, element.scrollHeight - element.clientHeight),
+    topOf: target => target.getBoundingClientRect().top - box().top,
+    scrollTo: top => {
+      // jsdom 没有 Element.scrollTo：退回直接赋值，行为一致。
+      if (typeof element.scrollTo === 'function') element.scrollTo({ top, left: 0, behavior: 'instant' });
+      else element.scrollTop = top;
+    },
+  };
+}
+
+/** `scroller` 为真时在该容器内滚动，否则按整页文档滚动。 */
+function scrollPort(scroller: HTMLElement | null | undefined): ScrollPort {
+  return scroller ? elementPort(scroller) : windowPort();
+}
+
 function readingAnchors(root: HTMLElement | null): HTMLElement[] {
   return Array.from(root?.querySelectorAll<HTMLElement>('[data-reading-id]') ?? []);
 }
 
-export function captureReadingPosition(root: HTMLElement | null): ReadingPosition {
+export function captureReadingPosition(
+  root: HTMLElement | null,
+  scroller?: HTMLElement | null,
+): ReadingPosition {
+  const port = scrollPort(scroller);
   const elements = readingAnchors(root);
   const anchor = elements.find(element => {
-    const box = element.getBoundingClientRect();
-    return box.top >= 0 && box.top < window.innerHeight;
-  }) ?? elements.find(element => element.getBoundingClientRect().bottom > 0);
+    const top = port.topOf(element);
+    return top >= 0 && top < port.viewport();
+  }) ?? elements.find(element => port.topOf(element) + element.getBoundingClientRect().height > 0);
   return {
     anchorId: anchor?.dataset.readingId ?? null,
-    viewportOffset: anchor?.getBoundingClientRect().top ?? 0,
-    pixelY: window.scrollY,
+    viewportOffset: anchor ? port.topOf(anchor) : 0,
+    pixelY: port.position(),
   };
 }
 
@@ -67,9 +117,11 @@ export function restoreReadingPosition(
   root: HTMLElement | null,
   position: ReadingPosition | null,
   onUserInteraction?: () => void,
+  scroller?: HTMLElement | null,
 ): () => void {
   let stopped = false;
   let frame = 0;
+  const port = scrollPort(scroller);
   const stop = (): void => { stopped = true; cancelAnimationFrame(frame); };
   const release = interruptOnUserAction(() => { onUserInteraction?.(); stop(); });
   const locate = (): void => {
@@ -77,10 +129,9 @@ export function restoreReadingPosition(
     const anchor = readingAnchors(root)
       .find(element => element.dataset.readingId === position?.anchorId);
     const target = position
-      ? anchor ? window.scrollY + anchor.getBoundingClientRect().top - position.viewportOffset : position.pixelY
+      ? anchor ? port.position() + port.topOf(anchor) - position.viewportOffset : position.pixelY
       : 0;
-    const maximum = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-    window.scrollTo({ top: Math.max(0, Math.min(target, maximum)), left: 0, behavior: 'instant' });
+    port.scrollTo(Math.max(0, Math.min(target, port.maximum())));
     stopped = true;
   };
   if (!position) locate();
@@ -97,9 +148,14 @@ export function restoreReadingPosition(
  * 与 `restoreReadingPosition` 同一交互语义：用户一旦滚动、触摸或按键立即放弃，
  * 不轮询、不在 resize 或重读后重跑。
  */
-export function centerReadingAnchor(root: HTMLElement | null, anchorId: string | null): () => void {
+export function centerReadingAnchor(
+  root: HTMLElement | null,
+  anchorId: string | null,
+  scroller?: HTMLElement | null,
+): () => void {
   let stopped = false;
   let frame = 0;
+  const port = scrollPort(scroller);
   const stop = (): void => { stopped = true; cancelAnimationFrame(frame); };
   const release = interruptOnUserAction(stop);
 
@@ -108,10 +164,9 @@ export function centerReadingAnchor(root: HTMLElement | null, anchorId: string |
     if (stopped) return;
     const anchor = readingAnchors(root).find(element => element.dataset.readingId === anchorId);
     if (!anchor) return;
-    const box = anchor.getBoundingClientRect();
-    const desired = window.scrollY + box.top - (window.innerHeight - box.height) / 2;
-    const maximum = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-    window.scrollTo({ top: Math.min(Math.max(0, desired), maximum), left: 0, behavior: 'instant' });
+    const height = anchor.getBoundingClientRect().height;
+    const desired = port.position() + port.topOf(anchor) - (port.viewport() - height) / 2;
+    port.scrollTo(Math.min(Math.max(0, desired), port.maximum()));
     stopped = true;
   };
   frame = requestAnimationFrame(() => { frame = requestAnimationFrame(locate); });

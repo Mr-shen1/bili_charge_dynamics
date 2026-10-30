@@ -14,6 +14,8 @@ import type { ManagementApi } from '../../src/manage/managementApi';
 import { createManagement } from './management';
 import { createArchiveNavigation, provideArchiveNavigation, type ArchiveNavigation } from '../../src/app/navigation';
 import type { ImagePreviewCoordinator } from '../../src/preview/useImagePreview';
+import { createConversationDialog, provideConversationDialog } from '../../src/dynamics/conversationDialog';
+import ConversationDialog from '../../src/dynamics/ConversationDialog.vue';
 import { PreviewProbe, providePreview } from './preview';
 
 /** 页面行为测试共用的应用壳：唯一导航协调器 + 会话 + 预览探针。 */
@@ -27,7 +29,9 @@ function createRouterHost(
       provideArchiveNavigation(navigation);
       exposePreview(providePreview(navigation));
       exposeNavigation(navigation);
-      return () => h('div', [h(RouterView), h(PreviewProbe)]);
+      // 桌面「查看对话」弹窗与生产装配同一套：开关随应用存活，宿主挂在壳的一层。
+      provideConversationDialog(createConversationDialog());
+      return () => h('div', [h(RouterView), h(PreviewProbe), h(ConversationDialog)]);
     },
   });
 }
