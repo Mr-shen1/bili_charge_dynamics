@@ -344,7 +344,7 @@ def test_missing_system_route_keeps_local_diagnosis_and_drops_heartbeat_after_ex
     assert_no_credentials(path, SYSTEM_WEBHOOK)
 
 
-def test_failed_system_group_retries_then_stops_delivering_expired_heartbeat(tmp_path):
+def test_failed_system_group_abandons_the_heartbeat_without_backfilling_later(tmp_path):
     path = tmp_path / "archive.sqlite"
     configured(path)
     clock = BeijingClock(moment(13, 40))
@@ -365,8 +365,9 @@ def test_failed_system_group_retries_then_stops_delivering_expired_heartbeat(tmp
             for delay in (2, 4, 8, 16, 32):  # 指数退避重试，不真实等待
                 clock.advance(delay)
                 await notifier.tick()
+            # 05 之后：同一套退避与放弃规则也作用于心跳，四次尝试失败就放弃这一条。
             attempts = len(receiver.requests)
-            assert attempts == 6 and all("13:40" in message_text(
+            assert attempts == 4 and all("13:40" in message_text(
                 request["payload"]) for request in receiver.requests)
             failing["on"] = False
             clock.at(14, 40)  # 13 时段到此失效；14 时段窗口刚好打开
@@ -378,10 +379,10 @@ def test_failed_system_group_retries_then_stops_delivering_expired_heartbeat(tmp
 
     asyncio.run(scenario())
     saved = heartbeats(path)
+    # 放弃与过期共用同一个终态；错误原因可辨，且恢复后不补发已放弃的旧心跳。
     assert [(row["slot"], row["state"], row["error"]) for row in saved] == [
-        ("2026-10-09T13", "expired", "expired"), ("2026-10-09T14", "sent", None)]
-    # 过期后不再发送旧心跳，也不积压恢复后一次性补发。
-    assert [text_of(receiver, index).splitlines()[0] for index in range(6, len(receiver.requests))] == [
+        ("2026-10-09T13", "expired", "retry_exhausted"), ("2026-10-09T14", "sent", None)]
+    assert [text_of(receiver, index).splitlines()[0] for index in range(4, len(receiver.requests))] == [
         "心跳【2026-10-09 14:40】通知进程存活"]
 
 
