@@ -1,0 +1,115 @@
+{
+ "notes": [
+  {
+   "kind": "missing_root",
+   "dynamic_id": "1214018075872985176",
+   "root_id": "307438157536",
+   "like_count": 0,
+   "why": "替身不再返回该根评论（模拟来源已删除/隐藏），本地行必须原样保留"
+  },
+  {
+   "kind": "missing_root",
+   "dynamic_id": "1219141791464292387",
+   "root_id": "311781268065",
+   "like_count": 106,
+   "why": "替身不再返回该根评论（模拟来源已删除/隐藏），本地行必须原样保留"
+  },
+  {
+   "kind": "missing_replies",
+   "dynamic_id": "1219141791464292387",
+   "root_id": "318604867441",
+   "dropped": [
+    "318639277105",
+    "318639591473",
+    "322351236544",
+    "322351699680",
+    "318640255857"
+   ],
+   "served": 554,
+   "local_replies": 559,
+   "source_reply_count_before": 525,
+   "why": "替身整楼少返回末尾若干条回复，本地回复行必须原样保留"
+  },
+  {
+   "kind": "missing_replies",
+   "dynamic_id": "1219141791464292387",
+   "root_id": "317880482081",
+   "dropped": [
+    "318194495473",
+    "321898881584",
+    "318203238593"
+   ],
+   "served": 532,
+   "local_replies": 535,
+   "source_reply_count_before": 535,
+   "why": "替身整楼少返回末尾若干条回复，本地回复行必须原样保留"
+  },
+  {
+   "kind": "like_zero",
+   "table": "root_comments",
+   "dynamic_id": "1219141791464292387",
+   "root_id": "304214528577",
+   "like_count_before": 48,
+   "why": "来源明确返回点赞 0：必须写入 0，不能被「缺失才保留」挡住"
+  },
+  {
+   "kind": "like_missing",
+   "table": "root_comments",
+   "dynamic_id": "1219141791464292387",
+   "root_id": "304325294849",
+   "like_count_before": 23,
+   "why": "来源不返回 like 字段：未知不等于 0，必须保留旧值"
+  },
+  {
+   "kind": "like_zero",
+   "table": "replies",
+   "dynamic_id": "1219141791464292387",
+   "root_id": "311123549393",
+   "reply_id": "311131485905",
+   "like_count_before": 166,
+   "why": "来源明确返回点赞 0：写入 0"
+  },
+  {
+   "kind": "like_missing",
+   "table": "replies",
+   "dynamic_id": "1219141791464292387",
+   "root_id": "310036213041",
+   "reply_id": "310076991697",
+   "like_count_before": 155,
+   "why": "来源不返回 like 字段：保留旧值"
+  },
+  {
+   "kind": "pin_moved",
+   "dynamic_id": "1219141791464292387",
+   "from": "318604867441",
+   "to": "310036213041",
+   "why": "置顶属计数类字段：只验证它允许变化，正文/作者/时间不受影响"
+  }
+ ],
+ "root_like_changes_planned": 109,
+ "root_like_missing_planned": 1,
+ "reply_like_changes_planned": 11106,
+ "reply_like_missing_planned": 1,
+ "missing_roots": {
+  "1214018075872985176": [
+   "307438157536"
+  ],
+  "1219141791464292387": [
+   "311781268065"
+  ]
+ },
+ "dropped_replies": {
+  "1219141791464292387:318604867441": [
+   "318639277105",
+   "318639591473",
+   "318640255857",
+   "322351236544",
+   "322351699680"
+  ],
+  "1219141791464292387:317880482081": [
+   "318194495473",
+   "318203238593",
+   "321898881584"
+  ]
+ }
+}

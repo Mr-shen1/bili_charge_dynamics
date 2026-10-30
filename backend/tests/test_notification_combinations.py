@@ -64,7 +64,8 @@ def test_alerts_heartbeat_expiry_and_phase_switch_do_not_suppress_each_other(tmp
             # 系统群自身失败不递归：不存在对象为系统角色/心跳的告警事件。
             assert all(not row["snapshot"]["object"].startswith("system:")
                        for row in alerts(path))
-            # 过期只作用于心跳：时钟越过心跳有效期后，心跳过期而业务与告警仍在队列。
+            # 统一放弃规则同时作用于业务与心跳：越过心跳有效期时两条都已按各自的
+            # 上限收尾（业务 4 次真实失败、心跳 4 次），系统群里的告警仍在队列。
             clock.advance(3600)
             await notifier.tick()
         finally:
@@ -75,7 +76,7 @@ def test_alerts_heartbeat_expiry_and_phase_switch_do_not_suppress_each_other(tmp
         d.expires_at FROM notification_deliveries d JOIN notification_events e ON e.id = d.event_id
         ORDER BY d.id""")}
     assert saved[("heartbeat", "system")]["state"] == "expired"
-    assert saved[("root_comment", "up")]["state"] == "pending"
+    assert saved[("root_comment", "up")]["state"] == "expired"
     assert saved[("root_comment", "all")]["state"] == "sent"
     assert saved[("alert", "system")]["state"] == "pending"
     assert saved[("heartbeat", "system")]["expires_at"] is not None

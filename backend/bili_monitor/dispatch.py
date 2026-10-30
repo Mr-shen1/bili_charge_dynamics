@@ -306,6 +306,12 @@ class TargetSession:
     on_failure: object = None
     pending_comments_only: bool = True
     full_replies: bool = False
+    # 本次领取是每日点赞刷新（窗口内且锚点到期）：完整翻根页到空尾页，不使用
+    # 「遇到已知评论就提前收束」的裁切，也不改增量路径本身。锚点推进只认这一位。
+    like_refresh: bool = False
+    # 本次领取落在刷新窗口内（间隔开启且处于凌晨窗口）：只用于中断后继续未完成的全量
+    # 轮次。窗口外不续采全量——夜里没跑完的刷新不能挪到白天补完，那时回到现有增量参数。
+    refresh_window: bool = False
     stage: str = "body"
     text_succeeded: bool = False
     run_comments: bool = True
@@ -381,9 +387,19 @@ class TargetSession:
                               for key in ("oid", "type"))
         metadata_version_old = (archive.get("synced_root_metadata_version", 0)
                                 < ROOT_METADATA_VERSION)
-        self.full_roots = (not self.pending_comments_only or metadata_version_old)
-        self.run_comments = (not self.pending_comments_only or locator_changed
-                             or metadata_version_old
+        # 点赞刷新不改写任何信号，已成功的分项也不会自行重开——必须显式逼出全量根页。
+        self.full_roots = (not self.pending_comments_only or metadata_version_old
+                           or self.like_refresh)
+        # 同一次刷新对楼中楼也是整楼正序：不走末页倒序增量，也不使用任何
+        # 「遇到已知回复就收束」的裁切（方向由 `full` 决定）。上一轮整楼全量没走完时
+        # 续采保持全量，但只在刷新窗口内：窗口外即使持久进度仍是未完成的全量轮次，
+        # 也回到现有增量参数（失败目标在主窗口外仍会被当作普通待办领取，那必须是增量）。
+        resumed_full_replies = await to_thread.run_sync(
+            self.store.resuming_full_replies, self.id)
+        self.full_replies = (self.full_replies or self.like_refresh
+                             or (self.refresh_window and resumed_full_replies))
+        self.run_comments = (not self.pending_comments_only or self.like_refresh
+                             or locator_changed or metadata_version_old
                              or any(archive["work"][part] != "success"
                                     for part in ("comments", "replies")))
         self.stage = "roots" if self.run_comments else "media"
@@ -435,7 +451,10 @@ class TargetSession:
             self.id, self.generation, "success", observed_count,
             self.now() if self.now is not None else None,
             pin_known=position.pin_known if position is not None else False,
-            pinned_id=position.pinned_id if position is not None else None))
+            pinned_id=position.pinned_id if position is not None else None,
+            # 锚点只认「本次会话确实是刷新轮次」：持久进度里的全量标记、窗口外补跑的
+            # 普通待办与显式初始化都不推进它，否则夜里失败的刷新会被白天补跑记成已刷新。
+            like_refresh_round=self.like_refresh))
         if finished is None:
             self.done = True
             return StepOutcome("roots", "stale", page=step.page, reason="stale_generation",

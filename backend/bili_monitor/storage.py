@@ -25,7 +25,7 @@ from .transaction import write
 SNAPSHOT_TTL_SECONDS = 15 * 60
 ARCHIVE_RESOURCE = "dynamics:all:published-desc:id-binary:v1"
 # 当前 schema 版本：迁移的守卫与写入都只取这一处；部署验收脚本也从这里读，避免两边漂移。
-SCHEMA_VERSION = 28
+SCHEMA_VERSION = 29
 
 
 def _merge_known(previous, observed):
@@ -424,26 +424,37 @@ class Store(CheckStore, DiscoveryStore):
                         "SELECT dynamic_id, id, document FROM root_comments").fetchall()
                     for dynamic_id, root_id, document_json in rows:
                         document = json.loads(document_json)
-                        version = _comment_media_version(root_id)
+                        media_version = _comment_media_version(root_id)
                         changed = False
                         for key in ("media_version", "observed_version"):
-                            if document.get(key) != version:
-                                document[key] = version
+                            if document.get(key) != media_version:
+                                document[key] = media_version
                                 changed = True
                         # 从未成功同步过的组保持 None：synced_media_version 只标识已成功的版本。
                         if isinstance(document.get("synced_media_version"), str) \
-                                and document["synced_media_version"] != version:
-                            document["synced_media_version"] = version
+                                and document["synced_media_version"] != media_version:
+                            document["synced_media_version"] = media_version
                             changed = True
                         for item in document.get("media") or []:
-                            if item.get("version") != version:
-                                item["version"] = version
+                            if item.get("version") != media_version:
+                                item["version"] = media_version
                                 changed = True
                         if changed:
                             refresh_media_progress(document)
                             connection.execute(
                                 "UPDATE root_comments SET document = ? WHERE dynamic_id = ? AND id = ?",
                                 (json.dumps(document, ensure_ascii=False), dynamic_id, root_id))
+                if version < 29:
+                    # 29 一版承载两票的列，各自缺列才加、可重入。
+                    # 评论点赞每日刷新：目标检查行记录「上次点赞刷新成功时间」，
+                    # 不复用会被普通增量成功推进的其他成功时间。
+                    columns = {row[1] for row in connection.execute("PRAGMA table_info(target_checks)")}
+                    if "like_refresh_succeeded_at" not in columns:
+                        connection.execute(
+                            "ALTER TABLE target_checks ADD COLUMN like_refresh_succeeded_at TEXT")
+                    # 05 通知保序：事件新增可比较的排序时刻，旧行按入队时刻补齐；
+                    # 投递队头改为按「角色 + 排序时刻」领取。
+                    outbox.migrate_ordering(connection)
                 connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
                 connection.commit()
             except BaseException:
@@ -970,7 +981,8 @@ class Store(CheckStore, DiscoveryStore):
                 connection.rollback()
                 raise
 
-    def _refresh_comment_media_success(self, connection, id, succeeded_at, *, media_completed=False):
+    def _refresh_comment_media_success(self, connection, id, succeeded_at, *,
+                                       media_completed=False, confirm_empty=True):
         # 仅在实际根分页或上传提交时推进；读取/检查不补造旧归档的成功时间。
         row = connection.execute("SELECT document FROM archives WHERE id = ?", (id,)).fetchone()
         archive = json.loads(row[0])
@@ -978,11 +990,12 @@ class Store(CheckStore, DiscoveryStore):
                 or connection.execute("""SELECT 1 FROM root_comments WHERE dynamic_id = ?
                     AND json_extract(document, '$.work.media') IS NOT 'success' LIMIT 1""", (id,)).fetchone()):
             return
-        # 有图时仅由真正的上传完成推进；全空组由实际成功根分页确认。
+        # 有图时仅由真正的上传完成推进；全空组由实际成功根分页确认，但点赞刷新轮次除外
+        # （`confirm_empty=False`）：刷新只取计数类字段，已完成的媒体阶段不得被它重新确认。
         # 旧成功图片缺时间不能在检查、读取或同版本重扫时被补成“刚上传”。
         has_images = connection.execute("""SELECT 1 FROM root_comments WHERE dynamic_id = ?
             AND json_array_length(document, '$.media') > 0 LIMIT 1""", (id,)).fetchone()
-        if media_completed or not has_images:
+        if media_completed or (not has_images and confirm_empty):
             archive["comment_media_last_succeeded_at"] = succeeded_at or utc_now()
             self._write_media_owner(connection, id, None, archive)
 
@@ -996,6 +1009,18 @@ class Store(CheckStore, DiscoveryStore):
         if generation is not None and position.generation != generation:
             return None
         return position
+
+    def resuming_full_replies(self, id):
+        """上一轮整楼全量刷新是否还没走完：任一楼的进度仍是未完成的全量扫描。
+
+        全量标志由既有扫描进度持久化：中断后重新进入同一轮时，调用方不需要再传全量
+        参数也能保持整楼正序；只有新一轮扫描才由调用方显式给出。
+        """
+        with self.connection() as connection:
+            rows = connection.execute(
+                "SELECT full, phase FROM page_scan_progress WHERE dynamic_id = ? AND stage = ?",
+                (id, scan_progress.REPLIES))
+            return any(row["full"] and row["phase"] != scan_progress.COMPLETE for row in rows)
 
     def resume_root_scan(self, id, generation, locator, observed_count, *, full=False):
         """一次尝试的开始：续采同代次断点，或按定位／代次／完成态重新起步。
@@ -1013,6 +1038,10 @@ class Store(CheckStore, DiscoveryStore):
                     connection.commit()
                     return None
                 position = scan_progress.read(connection, id)
+                # 全量意图只能由本次调用确认：持久进度里的 `full` 是上一轮的事实，
+                # 窗口外的增量领取不能因它而继续整轮全量（那等于把夜里没跑完的刷新
+                # 挪到白天补完）。显式全量与窗口内刷新都显式传 `full=True`。
+                resumed_full = position is not None and position.full and bool(full)
                 if position is None:
                     reason, position = "start", scan_progress.start(id, generation, key, observed_count, full=full)
                 elif position.locator != key:
@@ -1034,13 +1063,14 @@ class Store(CheckStore, DiscoveryStore):
                     overlap = position.anchor_page if position.phase in (
                         scan_progress.PAGES, scan_progress.GUARD) else 0
                     position = position._replace(generation=generation, overlap_page=overlap,
-                                                 source_count=observed_count)
+                                                 source_count=observed_count, full=resumed_full)
                 else:
                     # 同一代次的未完成扫描：下一步先校验锚点页，再继续翻页。
                     reason = "resume"
                     overlap = position.anchor_page if position.phase in (
                         scan_progress.PAGES, scan_progress.GUARD) else 0
-                    position = position._replace(overlap_page=overlap, generation=generation)
+                    position = position._replace(overlap_page=overlap, generation=generation,
+                                                 full=resumed_full)
                 scan_progress.write(connection, id, position)
                 connection.commit()
                 return {"position": position, "reason": reason}
@@ -1087,13 +1117,20 @@ class Store(CheckStore, DiscoveryStore):
                                   progress=position)
 
     def finish_roots(self, id, generation, status, observed_count, succeeded_at=None, *,
-                     pin_known=False, pinned_id=None):
+                     pin_known=False, pinned_id=None, like_refresh_round=False):
         return self._change_roots(id, generation, status, observed_count, [], succeeded_at,
-                                  pin_known=pin_known, pinned_id=pinned_id)
+                                  pin_known=pin_known, pinned_id=pinned_id,
+                                  like_refresh_round=like_refresh_round)
 
     def _change_roots(self, id, generation, status, observed_count, documents, succeeded_at=None, *,
-                      pin_known=False, pinned_id=None, progress=None):
-        """页数据、页进度与归档分项状态同一短事务；返回摘要或 `None`（领取代次过期）。"""
+                      pin_known=False, pinned_id=None, progress=None, like_refresh_round=False):
+        """页数据、页进度与归档分项状态同一短事务；返回摘要或 `None`（领取代次过期）。
+
+        `like_refresh_round=True` 只在「本次会话确实是窗口内的点赞刷新轮次」时为真，
+        不靠「本轮是不是完整根页扫描」推断：显式全量初始化也是完整扫描，但它不该推进
+        刷新锚点；窗口外补跑的普通待办更不是刷新。这一个事实决定两件事：成功时在同一
+        事务推进「上次点赞刷新成功时间」，并且不重新确认空图片组（刷新只取计数类字段）。
+        """
         with self.connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
@@ -1151,12 +1188,23 @@ class Store(CheckStore, DiscoveryStore):
                     archive["synced_root_metadata_version"] = ROOT_METADATA_VERSION
                     archive["synced_root_comment_count"] = observed_count
                     archive["root_comments_last_succeeded_at"] = succeeded_at or utc_now()
+                    if like_refresh_round:
+                        # 点赞刷新锚点与根页扫描成功同事务提交：不等整条动态所有分项都
+                        # 成功，否则活跃动态下来源计数几乎必然变化，锚点永不推进、整夜
+                        # 逐拍重复全量。失败不推进，窗口内可重试、窗口外等次日。
+                        connection.execute(
+                            "UPDATE target_checks SET like_refresh_succeeded_at = ? "
+                            "WHERE uid = ? AND id = ?",
+                            (succeeded_at or utc_now(), row["uid"], id))
                     if archive.get("source_comment_count") == observed_count:
                         archive["work"]["comments"] = "success"
                 connection.execute("UPDATE archives SET document = ? WHERE id = ? AND generation = ?",
                                    (json.dumps(archive, ensure_ascii=False), id, generation))
                 if status == "success":
-                    self._refresh_comment_media_success(connection, id, succeeded_at)
+                    # 刷新轮次只合并计数类字段：不把没有任何图片的组重新确认成「刚成功」，
+                    # 否则媒体阶段已完成的目标会因为一次点赞刷新而改动媒体时间。
+                    self._refresh_comment_media_success(
+                        connection, id, succeeded_at, confirm_empty=not like_refresh_round)
                 position = progress
                 if position is not None:
                     # 进度与页数据同事务：崩溃后要么都有、要么都没有。
@@ -1438,11 +1486,15 @@ class Store(CheckStore, DiscoveryStore):
                 raise
 
     def save_reply_page(self, id, generation, root_id, documents, count, position=None, *,
-                        complete=False, observed=None, succeeded_at=None):
-        """一页回复、页进度与（可选）整楼成功同一短事务。"""
+                        complete=False, observed=None, succeeded_at=None, observed_root=None):
+        """一页回复、页进度与（可选）整楼成功同一短事务。
+
+        `observed_root` 是楼页响应里携带的所属根评论对象：只在整楼全量刷新时给出，
+        其中的计数类字段随本次事务合并回根评论文档，不额外发请求。
+        """
         return self._change_replies(id, generation, "pending", None, root_id, documents, count,
                                     progress=position, complete=complete, observed=observed,
-                                    succeeded_at=succeeded_at)
+                                    succeeded_at=succeeded_at, observed_root=observed_root)
 
     def save_replies(self, id, generation, root_id, documents, count):
         return self._change_replies(id, generation, "pending", None, root_id, documents, count)
@@ -1451,7 +1503,8 @@ class Store(CheckStore, DiscoveryStore):
         return self._change_replies(id, generation, status, observed_count, None, [], None, succeeded_at)
 
     def _change_replies(self, id, generation, status, observed_count, root_id, documents, count,
-                        succeeded_at=None, *, progress=None, complete=False, observed=None):
+                        succeeded_at=None, *, progress=None, complete=False, observed=None,
+                        observed_root=None):
         """页数据、楼中楼进度与整楼成功记录同一短事务；返回新增条数或 `None`（代次过期）。"""
         with self.connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -1483,6 +1536,12 @@ class Store(CheckStore, DiscoveryStore):
                         "SELECT document FROM root_comments WHERE dynamic_id = ? AND id = ?", (id, root_id)
                     ).fetchone()[0])
                     root["source_reply_count"] = count
+                    if observed_root is not None:
+                        # 楼页响应本来就带着所属根评论对象：整楼全量刷新时把其中的点赞
+                        # 合并回根行（缺失＝未知不擦除、真实 0 照写），不额外发请求。
+                        # 只写计数类字段：正文、作者、时间、置顶与媒体来源不在刷新语义内。
+                        if observed_root.get("like_count") is not None:
+                            root["like_count"] = observed_root["like_count"]
                     connection.execute("UPDATE root_comments SET document = ? WHERE dynamic_id = ? AND id = ?",
                                        (json.dumps(root, ensure_ascii=False), id, root_id))
                 archive["local_reply_count"] = connection.execute(

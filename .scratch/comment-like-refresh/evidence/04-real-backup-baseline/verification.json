@@ -1,0 +1,13 @@
+{
+ "checks": {
+  "like_written": 11215,
+  "like_preserved_when_missing": 2,
+  "near_zero": 2,
+  "missing_rows_untouched": 10,
+  "rcount_changes": 2,
+  "pin_changes": 85
+ },
+ "problems": [],
+ "ok": true,
+ "missing_rows_planned": 10
+}

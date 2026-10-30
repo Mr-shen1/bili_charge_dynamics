@@ -8,6 +8,8 @@ from fastapi.testclient import TestClient
 
 from backend.bili_monitor.app import create_app
 from backend.bili_monitor.comment_status import ROOT_METADATA_VERSION
+from backend.bili_monitor.storage import Store
+from backend.tests.collector_support import configured
 from backend.tests.sqlite_fixtures import management_relation, quote
 from backend.tests.management_support import BASE, UID, client_for
 from backend.tests.archive_support import archive_content, NULL_COMMENT_STATUS
@@ -25,18 +27,18 @@ def test_empty_unversioned_database_migrates_and_reopens(tmp_path):
     with client_for(path) as client:
         assert client.get(BASE).json() == saved
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 28
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 29
 
 
 def test_future_database_refuses_startup_without_downgrading(tmp_path, caplog):
     path = tmp_path / "FICTIONAL_SECRET_FUTURE.sqlite"
     with sqlite3.connect(path) as database:
-        database.execute("PRAGMA user_version = 29")
+        database.execute("PRAGMA user_version = 30")
     with pytest.raises(RuntimeError, match="Unsupported database schema version"):
         with client_for(path):
             pytest.fail("A future schema must not serve requests")
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 29
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 30
     assert "FICTIONAL_SECRET" not in caplog.text
 
 
@@ -417,7 +419,7 @@ def test_real_v9_configuration_and_archive_migrate_to_checks_without_fabricating
         assert current["comment_sync"] == check
         assert archive_content(current) == saved
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 28
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 29
         assert database.execute("PRAGMA foreign_key_check").fetchall() == []
     reopened = Store(path)
     assert reopened.record_check(UID, "123", {}, CHECKED_AT, None)
@@ -487,7 +489,7 @@ def test_v9_check_migration_failure_rolls_back_version_and_can_retry(tmp_path):
     with client_for(path) as client:
         assert get_checks(client)[0]["check_status"] == "unchecked"
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 28
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 29
 
 
 def test_v23_database_gains_protection_state_without_touching_archives(tmp_path):
@@ -507,7 +509,7 @@ def test_v23_database_gains_protection_state_without_touching_archives(tmp_path)
             "/api/archive/dynamics/123/comments/900719925474099312346/replies?page=1").json()
     # 回退成升级前的库：去掉保护状态表并把版本号写回 23。
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 28
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 29
         database.execute("DROP TABLE source_risk")
         database.execute("PRAGMA user_version = 23")
         assert database.execute(
@@ -521,10 +523,36 @@ def test_v23_database_gains_protection_state_without_touching_archives(tmp_path)
         assert client.get(
             "/api/archive/dynamics/123/comments/900719925474099312346/replies?page=1").json() == reply_pages
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 28
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 29
         assert database.execute("SELECT state, generation, backoff_step FROM source_risk").fetchall() == [
             ("normal", 0, 0)]
         assert database.execute("PRAGMA foreign_key_check").fetchall() == []
     # 未完成工作仍可领取，未被迁移顺手结算。
     assert Store(path).pending_checks() == []
     assert Store(path).read_archive("123")["work"]["replies"] == "success"
+
+
+def columns(path, table):
+    with sqlite3.connect(path) as database:
+        return {row[1] for row in database.execute(f"PRAGMA table_info({table})")}
+
+
+def test_migration_adds_like_refresh_anchor_and_repeats_safely(tmp_path):
+    path = tmp_path / "anchor.sqlite"
+    configured(path)
+    with sqlite3.connect(path) as database:
+        # 一次版本前进：既有检查行原样保留，只多一列时间锚点。
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 29
+    assert "like_refresh_succeeded_at" in columns(path, "target_checks")
+    with sqlite3.connect(path) as database:
+        database.execute("""INSERT INTO target_checks (uid, id, observed, revision, work, check_status)
+            VALUES (?, '123', '{}', 1, 'complete', 'checked')""", (UID,))
+        # 半迁移库（已记成 29 但缺列）再跑一次：缺列才加，可重入，不动已有行。
+        database.execute("ALTER TABLE target_checks DROP COLUMN like_refresh_succeeded_at")
+        database.execute("PRAGMA user_version = 28")
+    Store(path).migrate()
+    with sqlite3.connect(path) as database:
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 29
+        rows = database.execute(
+            "SELECT id, work, like_refresh_succeeded_at FROM target_checks").fetchall()
+    assert rows == [("123", "complete", None)]

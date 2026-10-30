@@ -1,0 +1,41 @@
+{
+ "tables_before": {
+  "monitors": 1,
+  "targets": 3,
+  "target_selections": 3,
+  "target_checks": 3,
+  "archives": 3,
+  "root_comments": 167,
+  "replies": 16594,
+  "reply_sync": 167,
+  "root_comment_pages": 98,
+  "reply_pages": 6332,
+  "page_scan_progress": 170,
+  "notification_events": 622,
+  "notification_candidates": 0,
+  "notification_deliveries": 711,
+  "notification_alerts": 3,
+  "notification_phases": 15,
+  "notification_versions": 0
+ },
+ "tables_after": {
+  "monitors": 1,
+  "targets": 3,
+  "target_selections": 3,
+  "target_checks": 3,
+  "archives": 3,
+  "root_comments": 167,
+  "replies": 16594,
+  "reply_sync": 167,
+  "root_comment_pages": 98,
+  "reply_pages": 6332,
+  "page_scan_progress": 170,
+  "notification_events": 622,
+  "notification_candidates": 0,
+  "notification_deliveries": 711,
+  "notification_alerts": 3,
+  "notification_phases": 15,
+  "notification_versions": 0
+ },
+ "changed": {}
+}

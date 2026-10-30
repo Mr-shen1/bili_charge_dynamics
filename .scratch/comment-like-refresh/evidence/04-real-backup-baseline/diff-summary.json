@@ -1,0 +1,41 @@
+{
+ "rows_before": {
+  "root_comments": 167,
+  "replies": 16594
+ },
+ "rows_after": {
+  "root_comments": 167,
+  "replies": 16594
+ },
+ "added": {
+  "root_comments": [],
+  "replies": []
+ },
+ "removed": {
+  "root_comments": [],
+  "replies": []
+ },
+ "changed": {
+  "root_comments": 109,
+  "replies": 11106
+ },
+ "changed_fields": {
+  "root_comments": {
+   "like_count": 109,
+   "is_pinned": 2,
+   "source_reply_count": 2
+  },
+  "replies": {
+   "like_count": 11106
+  }
+ },
+ "unexplained": [],
+ "content_mismatch": [],
+ "rows_compared": 16761,
+ "all_count_fields": [
+  "is_pinned",
+  "like_count",
+  "source_reply_count"
+ ],
+ "ok": true
+}

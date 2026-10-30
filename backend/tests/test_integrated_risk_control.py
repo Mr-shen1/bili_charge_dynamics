@@ -8,6 +8,7 @@
 import json
 import os
 from pathlib import Path
+import re
 import socket
 import subprocess
 import sys
@@ -342,7 +343,10 @@ def test_three_processes_archive_eight_targets_and_ten_thousand_replies(stack):
         # 日志能串起目标、分页、ID、等待与断点；不输出秘密／URL／令牌。
         log = stack.log_text("collector")
         assert "reply_page_saved" in log and "root_page_saved" in log
-        assert "wait_ms=100" in log
+        # 页后等待是 100ms 再加 0～100ms 抖动，日志里落在区间内任意毫秒都合法；只认
+        # 字面上的下界会随抖动取样随机变红（500 页里一次没落到 100ms 就误报）。
+        waits = [int(value) for value in re.findall(r"wait_ms=(\d+)", log)]
+        assert waits and all(100 <= wait <= 200 for wait in waits)
         assert "reply_ids=[" in log
         assert "dispatch_turn" in log
         assert "http://" not in log and "https://" not in log

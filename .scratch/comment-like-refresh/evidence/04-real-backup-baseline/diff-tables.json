@@ -1,0 +1,449 @@
+{
+ "archive_pages": {
+  "columns": [
+   "token",
+   "batch_limit",
+   "document",
+   "expires_at",
+   "resource"
+  ],
+  "columns_added_by_migration": [],
+  "rows_before": 0,
+  "rows_after": 0,
+  "rows_added": 0,
+  "rows_removed": 0,
+  "rows_changed": 0,
+  "identical": true
+ },
+ "archives": {
+  "columns": [
+   "id",
+   "uid",
+   "document",
+   "generation"
+  ],
+  "columns_added_by_migration": [],
+  "rows_before": 3,
+  "rows_after": 3,
+  "rows_added": 3,
+  "rows_removed": 3,
+  "rows_changed": 3,
+  "identical": false
+ },
+ "dispatch_leases": {
+  "columns": [
+   "name",
+   "owner",
+   "workload",
+   "kind",
+   "lease_until",
+   "updated_at"
+  ],
+  "columns_added_by_migration": [],
+  "rows_before": 0,
+  "rows_after": 0,
+  "rows_added": 0,
+  "rows_removed": 0,
+  "rows_changed": 0,
+  "identical": true
+ },
+ "identities": {
+  "columns": [
+   "uid",
+   "name",
+   "avatar_url"
+  ],
+  "columns_added_by_migration": [],
+  "rows_before": 1,
+  "rows_after": 1,
+  "rows_added": 0,
+  "rows_removed": 0,
+  "rows_changed": 0,
+  "identical": true
+ },
+ "media_attempts": {
+  "columns": [
+   "dynamic_id",
+   "media_id",
+   "token",
+   "root_id"
+  ],
+  "columns_added_by_migration": [],
+  "rows_before": 0,
+  "rows_after": 0,
+  "rows_added": 0,
+  "rows_removed": 0,
+  "rows_changed": 0,
+  "identical": true
+ },
+ "monitors": {
+  "columns": [
+   "uid",
+   "mode",
+   "recent_n",
+   "enabled"
+  ],
+  "columns_added_by_migration": [],
+  "rows_before": 1,
+  "rows_after": 1,
+  "rows_added": 0,
+  "rows_removed": 0,
+  "rows_changed": 0,
+  "identical": true
+ },
+ "notification_alerts": {
+  "columns": [
+   "category",
+   "object",
+   "last_alert_at",
+   "event_id"
+  ],
+  "columns_added_by_migration": [],
+  "rows_before": 3,
+  "rows_after": 3,
+  "rows_added": 0,
+  "rows_removed": 0,
+  "rows_changed": 0,
+  "identical": true
+ },
+ "notification_body_claims": {
+  "columns": [
+   "dynamic_id",
+   "generation",
+   "phase"
+  ],
+  "columns_added_by_migration": [],
+  "rows_before": 3,
+  "rows_after": 3,
+  "rows_added": 3,
+  "rows_removed": 3,
+  "rows_changed": 3,
+  "identical": false
+ },
+ "notification_candidates": {
+  "columns": [
+   "dynamic_id",
+   "root_id",
+   "comment_id",
+   "phase",
+   "created_at"
+  ],
+  "columns_added_by_migration": [],
+  "rows_before": 0,
+  "rows_after": 0,
+  "rows_added": 0,
+  "rows_removed": 0,
+  "rows_changed": 0,
+  "identical": true
+ },
+ "notification_deliveries": {
+  "columns": [
+   "id",
+   "event_id",
+   "role",
+   "state",
+   "due_at",
+   "attempts",
+   "token",
+   "lease_until",
+   "error",
+   "sent_at",
+   "expires_at",
+   "failures",
+   "last_failed_at"
+  ],
+  "columns_added_by_migration": [
+   "waiting_since"
+  ],
+  "rows_before": 711,
+  "rows_after": 711,
+  "rows_added": 0,
+  "rows_removed": 0,
+  "rows_changed": 0,
+  "identical": true
+ },
+ "notification_events": {
+  "columns": [
+   "id",
+   "kind",
+   "uid",
+   "dynamic_id",
+   "version",
+   "snapshot",
+   "created_at",
+   "root_id",
+   "comment_id"
+  ],
+  "columns_added_by_migration": [
+   "sort_at"
+  ],
+  "rows_before": 622,
+  "rows_after": 622,
+  "rows_added": 0,
+  "rows_removed": 0,
+  "rows_changed": 0,
+  "identical": true
+ },
+ "notification_gate": {
+  "columns": [
+   "id",
+   "state"
+  ],
+  "columns_added_by_migration": [],
+  "rows_before": 1,
+  "rows_after": 1,
+  "rows_added": 0,
+  "rows_removed": 0,
+  "rows_changed": 0,
+  "identical": true
+ },
+ "notification_heartbeats": {
+  "columns": [
+   "slot",
+   "generated_at",
+   "expires_at",
+   "event_id"
+  ],
+  "columns_added_by_migration": [],
+  "rows_before": 18,
+  "rows_after": 18,
+  "rows_added": 0,
+  "rows_removed": 0,
+  "rows_changed": 0,
+  "identical": true
+ },
+ "notification_phases": {
+  "columns": [
+   "token",
+   "uid",
+   "dynamic_id",
+   "started_at",
+   "comment_started_at",
+   "baseline_version",
+   "sealed"
+  ],
+  "columns_added_by_migration": [],
+  "rows_before": 15,
+  "rows_after": 15,
+  "rows_added": 0,
+  "rows_removed": 0,
+  "rows_changed": 0,
+  "identical": true
+ },
+ "notification_versions": {
+  "columns": [
+   "dynamic_id",
+   "version"
+  ],
+  "columns_added_by_migration": [],
+  "rows_before": 0,
+  "rows_after": 0,
+  "rows_added": 0,
+  "rows_removed": 0,
+  "rows_changed": 0,
+  "identical": true
+ },
+ "page_scan_progress": {
+  "columns": [
+   "dynamic_id",
+   "stage",
+   "scope_id",
+   "generation",
+   "locator",
+   "direction",
+   "phase",
+   "next_page",
+   "page_size",
+   "anchor_page",
+   "anchor_ids",
+   "overlap_page",
+   "counts",
+   "confirmed",
+   "source_count",
+   "pin_known",
+   "pinned_id",
+   "full",
+   "updated_at"
+  ],
+  "columns_added_by_migration": [],
+  "rows_before": 170,
+  "rows_after": 170,
+  "rows_added": 170,
+  "rows_removed": 170,
+  "rows_changed": 170,
+  "identical": false
+ },
+ "recent_discoveries": {
+  "columns": [
+   "uid",
+   "status",
+   "attempt",
+   "trusted_result",
+   "claim_token"
+  ],
+  "columns_added_by_migration": [],
+  "rows_before": 0,
+  "rows_after": 0,
+  "rows_added": 0,
+  "rows_removed": 0,
+  "rows_changed": 0,
+  "identical": true
+ },
+ "replies": {
+  "columns": [
+   "dynamic_id",
+   "root_id",
+   "id",
+   "document"
+  ],
+  "columns_added_by_migration": [],
+  "rows_before": 16594,
+  "rows_after": 16594,
+  "rows_added": 11106,
+  "rows_removed": 11106,
+  "rows_changed": 11106,
+  "identical": false
+ },
+ "reply_pages": {
+  "columns": [
+   "token",
+   "resource",
+   "document"
+  ],
+  "columns_added_by_migration": [],
+  "rows_before": 6332,
+  "rows_after": 6332,
+  "rows_added": 0,
+  "rows_removed": 0,
+  "rows_changed": 0,
+  "identical": true
+ },
+ "reply_sync": {
+  "columns": [
+   "dynamic_id",
+   "root_id",
+   "status",
+   "synced_source_reply_count",
+   "synced_at",
+   "observed_reply_count"
+  ],
+  "columns_added_by_migration": [],
+  "rows_before": 167,
+  "rows_after": 167,
+  "rows_added": 167,
+  "rows_removed": 167,
+  "rows_changed": 167,
+  "identical": false
+ },
+ "root_comment_pages": {
+  "columns": [
+   "token",
+   "resource",
+   "batch_limit",
+   "document"
+  ],
+  "columns_added_by_migration": [],
+  "rows_before": 98,
+  "rows_after": 98,
+  "rows_added": 0,
+  "rows_removed": 0,
+  "rows_changed": 0,
+  "identical": true
+ },
+ "root_comments": {
+  "columns": [
+   "dynamic_id",
+   "id",
+   "document"
+  ],
+  "columns_added_by_migration": [],
+  "rows_before": 167,
+  "rows_after": 167,
+  "rows_added": 148,
+  "rows_removed": 148,
+  "rows_changed": 148,
+  "identical": false
+ },
+ "source_risk": {
+  "columns": [
+   "singleton",
+   "state",
+   "generation",
+   "backoff_step",
+   "since",
+   "next_probe_at",
+   "observing_since",
+   "trigger_endpoint",
+   "trigger_status",
+   "trigger_at",
+   "probe_round_id",
+   "probe_owner",
+   "probe_lease_until",
+   "probe_results",
+   "probe_origin",
+   "probe_request_generation",
+   "observing_active_ms",
+   "observing_successes",
+   "updated_at"
+  ],
+  "columns_added_by_migration": [],
+  "rows_before": 1,
+  "rows_after": 1,
+  "rows_added": 0,
+  "rows_removed": 0,
+  "rows_changed": 0,
+  "identical": true
+ },
+ "target_checks": {
+  "columns": [
+   "uid",
+   "id",
+   "last_checked_at",
+   "last_succeeded_at",
+   "check_status",
+   "observed",
+   "revision",
+   "work",
+   "check_error",
+   "sync_error",
+   "claim_token",
+   "page_checked_at"
+  ],
+  "columns_added_by_migration": [
+   "like_refresh_succeeded_at"
+  ],
+  "rows_before": 3,
+  "rows_after": 3,
+  "rows_added": 3,
+  "rows_removed": 3,
+  "rows_changed": 3,
+  "identical": false
+ },
+ "target_selections": {
+  "columns": [
+   "uid",
+   "id",
+   "token"
+  ],
+  "columns_added_by_migration": [],
+  "rows_before": 3,
+  "rows_after": 3,
+  "rows_added": 0,
+  "rows_removed": 0,
+  "rows_changed": 0,
+  "identical": true
+ },
+ "targets": {
+  "columns": [
+   "uid",
+   "id"
+  ],
+  "columns_added_by_migration": [],
+  "rows_before": 3,
+  "rows_after": 3,
+  "rows_added": 0,
+  "rows_removed": 0,
+  "rows_changed": 0,
+  "identical": true
+ }
+}

@@ -1,0 +1,74 @@
+{
+ "requests_total": 1241,
+ "predicted_vs_actual": {
+  "root_pages": {
+   "predicted": 16,
+   "actual": 16
+  },
+  "reply_pages": {
+   "predicted": 1218,
+   "actual": 1218
+  }
+ },
+ "by_endpoint": {
+  "comment_count": 7,
+  "root_comments": 16,
+  "replies": 1218
+ },
+ "by_dynamic_endpoint": {
+  "1220432497848877059": {
+   "comment_count": 2,
+   "root_comments": 4,
+   "replies": 93
+  },
+  "1214018075872985176": {
+   "comment_count": 2,
+   "root_comments": 5,
+   "replies": 121
+  },
+  "1219141791464292387": {
+   "comment_count": 3,
+   "root_comments": 7,
+   "replies": 1004
+  }
+ },
+ "expected": {
+  "root_pages": 16,
+  "reply_pages": 1218,
+  "detail": {
+   "1220432497848877059": {
+    "dynamics": 1,
+    "root_pages": 4,
+    "reply_pages": 93,
+    "buildings": 26,
+    "empty_buildings": 2
+   },
+   "1214018075872985176": {
+    "dynamics": 1,
+    "root_pages": 5,
+    "reply_pages": 121,
+    "buildings": 32,
+    "empty_buildings": 22
+   },
+   "1219141791464292387": {
+    "dynamics": 1,
+    "root_pages": 7,
+    "reply_pages": 1004,
+    "buildings": 85,
+    "empty_buildings": 0
+   }
+  }
+ },
+ "min_gap_seconds": {
+  "root_comments": 0.3291,
+  "replies": 0.1081
+ },
+ "nominal_pacing_seconds": 246.86,
+ "pacing_waits": 1401,
+ "run": {
+  "wall_seconds": 270.51,
+  "ticks": 4,
+  "simulated_clock_seconds": 61.0
+ },
+ "mode": "real"
+}

@@ -2,10 +2,12 @@
 
 import argparse
 import asyncio
+import math
 import os
 import random
 import signal
 from contextlib import asynccontextmanager, contextmanager, nullcontext
+from datetime import datetime, timezone
 
 import httpx
 import fcntl
@@ -14,7 +16,7 @@ from pathlib import Path
 
 from anyio import to_thread
 
-from .source import fetch_page, page_metadata, fetch_detail, COMMENT_LOCATOR_VERSION
+from .source import BEIJING, fetch_page, page_metadata, fetch_detail, COMMENT_LOCATOR_VERSION
 from .source_transport import PacedSourceTransport, SourcePacer
 from .source_gate import GatedAsyncClient, GatedAsyncTransport, SourceGate
 from .source_client import SOURCE_HEADERS, source_client_event_hooks
@@ -47,6 +49,99 @@ CADENCE_JITTER = 0.10
 # 计数检查走主节拍，所以默认 2.7 秒只带来一次评论计数请求。
 PAGE_CHECK_SECONDS = 60.0
 PAGE_CHECK_JITTER_SECONDS = 2.0
+# 评论点赞每日刷新：只在凌晨窗口内把「距上次成功刷新满间隔」的目标重扫根页。
+# 间隔 0 关闭该通道；窗口是北京时间整分钟时段，与心跳时段同形态（起点含、终点不含）。
+LIKE_REFRESH_SECONDS = 24 * 60 * 60
+LIKE_REFRESH_WINDOW = ("02:00", "05:00")
+# 登记扫描的内部限频：主节拍每 2.7 秒一拍，不必每拍扫一遍已完成目标。
+LIKE_REFRESH_SCAN_SECONDS = 60.0
+LIKE_REFRESH_SECONDS_ENV = "BILI_COLLECTOR_LIKE_REFRESH_SECONDS"
+LIKE_REFRESH_WINDOW_ENV = "BILI_COLLECTOR_LIKE_REFRESH_WINDOW"
+
+
+def beijing_minute(now_iso):
+    """ISO 时刻 → 北京时间当日第几分钟；解析不了返回 None。
+
+    采集写入的时间都是 UTC ISO 字符串，窗口按北京时间判定，不依赖进程本地时区。
+    """
+    try:
+        moment = datetime.fromisoformat(str(now_iso).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    beijing = moment.astimezone(BEIJING)
+    return beijing.hour * 60 + beijing.minute
+
+
+def window_minute(text):
+    """`HH:MM` → 当日分钟序号；格式或取值非法返回 None。"""
+    if not isinstance(text, str):
+        return None
+    parts = text.strip().split(":")
+    if len(parts) != 2:
+        return None
+    try:
+        hour, minute = int(parts[0]), int(parts[1])
+    except ValueError:
+        return None
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        return None
+    return hour * 60 + minute
+
+
+def like_refresh_window_open(now_iso, window=LIKE_REFRESH_WINDOW):
+    """当前时刻是否在凌晨窗口内（北京时间整分钟窗口：起点含、终点不含）。"""
+    start, end = window_minute(window[0]), window_minute(window[1])
+    minute = beijing_minute(now_iso)
+    if start is None or end is None or minute is None or start >= end:
+        return False
+    return start <= minute < end
+
+
+def like_refresh_due(anchor_iso, now_iso, interval=LIKE_REFRESH_SECONDS):
+    """锚点为空或距上次成功刷新达到间隔即到期；间隔 0 关闭该通道。"""
+    if interval <= 0:
+        return False
+    if not anchor_iso:
+        return True
+    try:
+        age = epoch_from_iso(now_iso) - epoch_from_iso(anchor_iso)
+    except (TypeError, ValueError):
+        # 锚点不可解析按到期处理：宁可多刷一轮，也不把未知当成「刚刷过」。
+        return True
+    return age >= interval
+
+
+def like_refresh_configuration():
+    """点赞刷新配置（间隔秒数＋北京时间窗口）；非法值退回默认并标明来源。
+
+    `interval_source`／`window_source` 取 `default`／`environment`／`invalid`，
+    启动日志据此把「配置写错了、正在用默认值」变成可观察事实。
+    """
+    interval_text = os.environ.get(LIKE_REFRESH_SECONDS_ENV)
+    interval, interval_source = LIKE_REFRESH_SECONDS, "default"
+    if interval_text:
+        try:
+            value = float(interval_text)
+        except ValueError:
+            value = None
+        if value is not None and value >= 0 and math.isfinite(value):
+            interval, interval_source = int(value), "environment"
+        else:
+            interval_source = "invalid"
+    window, window_source = LIKE_REFRESH_WINDOW, "default"
+    window_text = os.environ.get(LIKE_REFRESH_WINDOW_ENV)
+    if window_text:
+        candidate = tuple(part.strip() for part in window_text.split("-", 1))
+        start, end = (window_minute(candidate[0]), window_minute(candidate[1])) \
+            if len(candidate) == 2 else (None, None)
+        if start is not None and end is not None and start < end:
+            window, window_source = candidate, "environment"
+        else:
+            window_source = "invalid"
+    return {"interval": interval, "window": window,
+            "interval_source": interval_source, "window_source": window_source}
 
 
 def page_interval_sample():
@@ -131,6 +226,9 @@ class Collector:
         self._observation_mark = None
         # 启动时一次性读取的来源凭据是否存在；判定处不再读文件，也不为了告警额外访问来源。
         self.credentials_configured = bool(credentials_configured)
+        # 点赞刷新配置（间隔＋凌晨窗口）与登记扫描的上一拍；间隔 0 关闭该通道。
+        self.like_refresh_config = like_refresh_configuration()
+        self._like_refresh_mark = None
         self.cadence = cadence if cadence is not None else cadence_provider()
         # 默认每轮采样带抖动；显式传值时用于测试/运维固定间隔。
         self.page_interval = ((lambda: float(page_check_seconds)) if page_check_seconds is not None
@@ -437,6 +535,40 @@ class Collector:
                 if self.scheduler is not None:
                     await session.target_lease.release()
 
+    def _refresh_window_open(self, now):
+        """刷新通道是否在窗口内：间隔 0 关闭，窗口是北京时间整分钟时段。"""
+        return (self.like_refresh_config["interval"] > 0
+                and like_refresh_window_open(now, self.like_refresh_config["window"]))
+
+    def _like_refresh_round(self, anchor_iso, now):
+        """「窗口内 + 锚点到期」的唯一判定点：本次领取是不是一次点赞刷新。
+
+        登记扫描与领取重判共用这一个谓词，两处不会各自拼一遍窗口与到期条件。
+        窗口外或未到期就完全沿用现有参数，不因持久进度里的全量标记另起全量轮次。
+        """
+        return (self._refresh_window_open(now)
+                and like_refresh_due(anchor_iso, now, self.like_refresh_config["interval"]))
+
+    async def _register_like_refresh(self):
+        """凌晨窗口内把「已完成且到期」的目标置回待办；写点仍只在检查状态模块内。
+
+        只有持进程锁的采集进程调它；API 不登记、不领取。窗口、到期与间隔都是纯函数
+        判定，间隔 0 直接关闭该通道。
+        """
+        now = self.clock.now()
+        if not self._refresh_window_open(now):
+            return 0
+        targets = await to_thread.run_sync(self.store.like_refresh_targets)
+        reopened = 0
+        for target in targets:
+            if not self._like_refresh_round(target["like_refresh_succeeded_at"], now):
+                continue
+            reopened += int(await to_thread.run_sync(
+                lambda target=target: self.store.reopen_check_work(target["uid"], target["id"])))
+        if reopened:
+            collector_event("like_refresh_registered", targets=reopened)
+        return reopened
+
     async def _drop_session(self, sessions, attempted, key, session, *, settled="result"):
         """退出一个目标会话的唯一入口。
 
@@ -471,12 +603,17 @@ class Collector:
                 if lease is not None:
                     await lease.release()
                 return None
-            collector_event("sync_started", revision=claim["revision"], **target_refs)
+            # 领取时就地重判：全量不是跨轮粘性状态，窗口外或锚点未到期就完全沿用现有参数。
+            now = self.clock.now()
+            like_refresh = self._like_refresh_round(claim.get("like_refresh_succeeded_at"), now)
+            collector_event("sync_started", revision=claim["revision"], like_refresh=like_refresh,
+                            **target_refs)
             session = TargetSession(
                 self.store, self.client, uid, id, None, claim["observed"],
                 downloader=self.downloader, uploader=self.uploader,
                 comment_client_factory=self.comment_client_factory,
-                now=self.clock.now, pending_comments_only=True, full_replies=False)
+                now=self.clock.now, pending_comments_only=True, full_replies=False,
+                like_refresh=like_refresh, refresh_window=self._refresh_window_open(now))
             session.claim = claim
             session.alerts = []
             session.on_failure = lambda error: self._note_failure(session, error)
@@ -555,6 +692,14 @@ class Collector:
                             page_check_jitter_ms=int(PAGE_CHECK_JITTER_SECONDS * 1000),
                             max_checks=self.max_checks, max_syncs=self.max_syncs,
                             max_discoveries=self.max_discoveries, recovery="complete")
+            collector_event("like_refresh_configuration",
+                            interval_seconds=self.like_refresh_config["interval"],
+                            window_start_minute=window_minute(self.like_refresh_config["window"][0]),
+                            window_end_minute=window_minute(self.like_refresh_config["window"][1]),
+                            interval_source=self.like_refresh_config["interval_source"],
+                            window_source=self.like_refresh_config["window_source"],
+                            warning="invalid" in (self.like_refresh_config["interval_source"],
+                                                   self.like_refresh_config["window_source"]))
             checks, discoveries = {}, {}
             drain = None
             offset = discovery_offset = 0
@@ -637,6 +782,14 @@ class Collector:
                                 launched += 1
                         offset = (offset + max(1, launched)) % len(targets)
                         checks_started = launched
+                    # 每日点赞刷新的登记：窗口内把到期的已完成目标置回待办。扫描内部
+                    # 限频（每 LIKE_REFRESH_SCAN_SECONDS 一次），不必每拍扫一遍表。
+                    like_refresh_reopened = 0
+                    mark = self.clock.monotonic()
+                    if (self._like_refresh_mark is None
+                            or mark - self._like_refresh_mark >= LIKE_REFRESH_SCAN_SECONDS):
+                        self._like_refresh_mark = mark
+                        like_refresh_reopened = await self._register_like_refresh()
                     pending = await to_thread.run_sync(lambda: self.store.pending_checks(with_selection=True))
                     if pending and drain is None:
                         # 单路重型：一个 drain 内按目标轮转步骤，完成一个分页就释放回合。
@@ -656,7 +809,8 @@ class Collector:
                                     syncs_in_flight=int(drain is not None),
                                     discoveries_in_flight=len(discoveries),
                                     checks_started=checks_started, syncs_started=syncs_started,
-                                    discoveries_started=discoveries_started)
+                                    discoveries_started=discoveries_started,
+                                    like_refresh_reopened=like_refresh_reopened)
                     await self.clock.sleep(max(0, deadline - now))
             except asyncio.CancelledError:
                 collector_event("collector_stopping", reason="cancelled")
