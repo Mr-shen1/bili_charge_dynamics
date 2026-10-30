@@ -25,7 +25,7 @@ from .transaction import write
 SNAPSHOT_TTL_SECONDS = 15 * 60
 ARCHIVE_RESOURCE = "dynamics:all:published-desc:id-binary:v1"
 # 当前 schema 版本：迁移的守卫与写入都只取这一处；部署验收脚本也从这里读，避免两边漂移。
-SCHEMA_VERSION = 28
+SCHEMA_VERSION = 29
 
 
 def _merge_known(previous, observed):
@@ -424,26 +424,33 @@ class Store(CheckStore, DiscoveryStore):
                         "SELECT dynamic_id, id, document FROM root_comments").fetchall()
                     for dynamic_id, root_id, document_json in rows:
                         document = json.loads(document_json)
-                        version = _comment_media_version(root_id)
+                        media_version = _comment_media_version(root_id)
                         changed = False
                         for key in ("media_version", "observed_version"):
-                            if document.get(key) != version:
-                                document[key] = version
+                            if document.get(key) != media_version:
+                                document[key] = media_version
                                 changed = True
                         # 从未成功同步过的组保持 None：synced_media_version 只标识已成功的版本。
                         if isinstance(document.get("synced_media_version"), str) \
-                                and document["synced_media_version"] != version:
-                            document["synced_media_version"] = version
+                                and document["synced_media_version"] != media_version:
+                            document["synced_media_version"] = media_version
                             changed = True
                         for item in document.get("media") or []:
-                            if item.get("version") != version:
-                                item["version"] = version
+                            if item.get("version") != media_version:
+                                item["version"] = media_version
                                 changed = True
                         if changed:
                             refresh_media_progress(document)
                             connection.execute(
                                 "UPDATE root_comments SET document = ? WHERE dynamic_id = ? AND id = ?",
                                 (json.dumps(document, ensure_ascii=False), dynamic_id, root_id))
+                if version < 29:
+                    # 评论点赞每日刷新：目标检查行记录「上次点赞刷新成功时间」，
+                    # 不复用会被普通增量成功推进的其他成功时间。缺列才加，可重入。
+                    columns = {row[1] for row in connection.execute("PRAGMA table_info(target_checks)")}
+                    if "like_refresh_succeeded_at" not in columns:
+                        connection.execute(
+                            "ALTER TABLE target_checks ADD COLUMN like_refresh_succeeded_at TEXT")
                 connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
                 connection.commit()
             except BaseException:
@@ -1087,13 +1094,17 @@ class Store(CheckStore, DiscoveryStore):
                                   progress=position)
 
     def finish_roots(self, id, generation, status, observed_count, succeeded_at=None, *,
-                     pin_known=False, pinned_id=None):
+                     pin_known=False, pinned_id=None, like_refresh=False):
         return self._change_roots(id, generation, status, observed_count, [], succeeded_at,
-                                  pin_known=pin_known, pinned_id=pinned_id)
+                                  pin_known=pin_known, pinned_id=pinned_id, like_refresh=like_refresh)
 
     def _change_roots(self, id, generation, status, observed_count, documents, succeeded_at=None, *,
-                      pin_known=False, pinned_id=None, progress=None):
-        """页数据、页进度与归档分项状态同一短事务；返回摘要或 `None`（领取代次过期）。"""
+                      pin_known=False, pinned_id=None, progress=None, like_refresh=False):
+        """页数据、页进度与归档分项状态同一短事务；返回摘要或 `None`（领取代次过期）。
+
+        `like_refresh=True` 表示本轮是完整根页扫描（每日点赞刷新或显式全量）：成功时
+        同一事务推进「上次点赞刷新成功时间」，不等其他分项成功。
+        """
         with self.connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
@@ -1151,6 +1162,14 @@ class Store(CheckStore, DiscoveryStore):
                     archive["synced_root_metadata_version"] = ROOT_METADATA_VERSION
                     archive["synced_root_comment_count"] = observed_count
                     archive["root_comments_last_succeeded_at"] = succeeded_at or utc_now()
+                    if like_refresh:
+                        # 点赞刷新锚点与根页扫描成功同事务提交：不等整条动态所有分项都
+                        # 成功，否则活跃动态下来源计数几乎必然变化，锚点永不推进、整夜
+                        # 逐拍重复全量。失败不推进，窗口内可重试、窗口外等次日。
+                        connection.execute(
+                            "UPDATE target_checks SET like_refresh_succeeded_at = ? "
+                            "WHERE uid = ? AND id = ?",
+                            (succeeded_at or utc_now(), row["uid"], id))
                     if archive.get("source_comment_count") == observed_count:
                         archive["work"]["comments"] = "success"
                 connection.execute("UPDATE archives SET document = ? WHERE id = ? AND generation = ?",
