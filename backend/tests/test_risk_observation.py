@@ -277,7 +277,7 @@ def test_v26_migration_keeps_the_registered_pause_and_adds_observation_state(tmp
 
     store.migrate()
     with sqlite3.connect(path) as database:
-        assert database.execute("PRAGMA user_version").fetchone()[0] == 28
+        assert database.execute("PRAGMA user_version").fetchone()[0] == 29
         columns = {row[1] for row in database.execute("PRAGMA table_info(source_risk)")}
         assert {"probe_origin", "probe_request_generation", "observing_active_ms",
                 "observing_successes"} <= columns

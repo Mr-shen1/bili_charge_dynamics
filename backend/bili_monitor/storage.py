@@ -25,7 +25,7 @@ from .transaction import write
 SNAPSHOT_TTL_SECONDS = 15 * 60
 ARCHIVE_RESOURCE = "dynamics:all:published-desc:id-binary:v1"
 # 当前 schema 版本：迁移的守卫与写入都只取这一处；部署验收脚本也从这里读，避免两边漂移。
-SCHEMA_VERSION = 28
+SCHEMA_VERSION = 29
 
 
 def _merge_known(previous, observed):
@@ -424,26 +424,33 @@ class Store(CheckStore, DiscoveryStore):
                         "SELECT dynamic_id, id, document FROM root_comments").fetchall()
                     for dynamic_id, root_id, document_json in rows:
                         document = json.loads(document_json)
-                        version = _comment_media_version(root_id)
+                        media_version = _comment_media_version(root_id)
                         changed = False
                         for key in ("media_version", "observed_version"):
-                            if document.get(key) != version:
-                                document[key] = version
+                            if document.get(key) != media_version:
+                                document[key] = media_version
                                 changed = True
                         # 从未成功同步过的组保持 None：synced_media_version 只标识已成功的版本。
                         if isinstance(document.get("synced_media_version"), str) \
-                                and document["synced_media_version"] != version:
-                            document["synced_media_version"] = version
+                                and document["synced_media_version"] != media_version:
+                            document["synced_media_version"] = media_version
                             changed = True
                         for item in document.get("media") or []:
-                            if item.get("version") != version:
-                                item["version"] = version
+                            if item.get("version") != media_version:
+                                item["version"] = media_version
                                 changed = True
                         if changed:
                             refresh_media_progress(document)
                             connection.execute(
                                 "UPDATE root_comments SET document = ? WHERE dynamic_id = ? AND id = ?",
                                 (json.dumps(document, ensure_ascii=False), dynamic_id, root_id))
+                if version < 29:
+                    # 评论点赞每日刷新：目标检查行记录「上次点赞刷新成功时间」，
+                    # 不复用会被普通增量成功推进的其他成功时间。缺列才加，可重入。
+                    columns = {row[1] for row in connection.execute("PRAGMA table_info(target_checks)")}
+                    if "like_refresh_succeeded_at" not in columns:
+                        connection.execute(
+                            "ALTER TABLE target_checks ADD COLUMN like_refresh_succeeded_at TEXT")
                 connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
                 connection.commit()
             except BaseException:
