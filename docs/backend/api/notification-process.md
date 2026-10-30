@@ -276,7 +276,8 @@ exec .venv/bin/python -m backend.bili_monitor.notifier
 
 ## 7. 迁移
 
-- 空库与旧库都迁移到 `user_version = 23`；通知表与索引可重入（`IF NOT EXISTS` 与列存在性检查），已是 v23 的库重复执行不变。
+- 空库与旧库都迁移到 `user_version = 29`；通知表与索引可重入（`IF NOT EXISTS` 与列存在性检查），已是 v29 的库重复执行不变。
+- **「缺列才加、可重入」只在 `version < 29` 分支内成立**：这些补列、回填与建索引语句都写在迁移的 `if version < 29:` 里，因此它们只兜「带 v28 版本号但缺个别列」的库（例如降级副本或重放旧迁移号的测试库）。已经写了 `user_version = 29` 却又半迁移的库（版本号已前进但列/索引没建全）**不会**被自动修复：迁移按版本号跳过整段，不会重新逐列检查；这类库只能从备份重建或手工补齐。
 - v16（01 交付形态）库原地升级：发件箱里已入队的事件与投递记录、状态、快照全部保留；业务记录升级后 `expires_at` 为 `NULL`，仍按原规则重试。
 - v17（09 交付形态）库原地升级到 v18：补 `notification_events.root_id/comment_id` 与评论事件唯一索引、`notification_candidates`、`notification_phases.comment_started_at`；已有阶段以升级时刻填 `comment_started_at`（历史评论静默），不会重复迁移时重设（只补 `NULL`）。
 - v18（04 交付形态）库原地升级到 v19（06）：补 `notification_deliveries.failures/last_failed_at`，旧记录默认 0 次失败、无失败时间（不倒推历史 `attempts`），并确保到期/租约两条索引存在。
@@ -284,7 +285,7 @@ exec .venv/bin/python -m backend.bili_monitor.notifier
 - v20 → v21（08）：新增 `notification_alerts` 告警节流表；已有事件、投递记录与状态不动，节流状态从空开始（不凭空补历史告警）。
 - v21 → v22（14）：新增 `notification_gate` 单行布尔闸门表，迁移即写入 `enabled=1`。
 - v22 → v23（15）：布尔闸门重建为三态表 `notification_gate(id, state)`，迁移即置 `off`；已有事件与投递记录不动，重放迁移不重置已选状态。
-- v28 → v29（评论点赞刷新 01 / 通知保序 05 共用一版）：`notification_events` 新增 `sort_at`（旧行按 `created_at` 回填，既不插队也不落到末尾）与 `notification_deliveries.waiting_since`，并新增 `notification_order(role, state, due_at)` 索引。缺列才加，可重入；票 01 的目标检查列并入同一版，不另升版本号。
+- v28 → v29（评论点赞刷新 01 / 通知保序 05 共用一版）：`notification_events` 新增 `sort_at`（旧行按 `created_at` 回填，既不插队也不落到末尾）与 `notification_deliveries.waiting_since`，并新增 `notification_order(role, state, due_at)` 索引。这些语句都在本版的 `if version < 29:` 分支内，因此“缺列才加、可重入”只对 `user_version < 29` 的库成立（见本节首段的限制）；票 01 的目标检查列并入同一版，不另升版本号。
 - 旧库保留归档、观察、checkpoint、入选令牌与近期窗口状态；已成功归档的已选目标以现有可信版本作基线，不补发历史；升级不会凭空生成历史时段的心跳。
 - 迁移在 API lifespan、collector 取得锁后与通知进程启动时都有入口，重复执行幂等；三进程接管同一库时以 API 先完成迁移、其余进程再启动为约定。10 的隔离演练在真实三进程写出的库副本上停掉进程后重复迁移两次，归档正文/检查时间/监控配置/通知阶段与队列均保持不变（见票据 10 证据）。不支持自动降级，也不承诺旧版本打开更新 schema 的库；回退只能是前滚到同一或更高兼容版本。
 - 迁移失败整体回滚（含版本号），可修复后重试；未来版本仍拒绝启动。
