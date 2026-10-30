@@ -387,6 +387,12 @@ class TargetSession:
         # 点赞刷新不改写任何信号，已成功的分项也不会自行重开——必须显式逼出全量根页。
         self.full_roots = (not self.pending_comments_only or metadata_version_old
                            or self.like_refresh)
+        # 同一次刷新对楼中楼也是整楼正序：不走末页倒序增量，也不使用任何
+        # 「遇到已知回复就收束」的裁切（方向由 `full` 决定）。上一轮整楼全量没走完时
+        # 续采保持全量：判定只读持久进度，中断后重新进入同一轮不需要调用方再传参。
+        resumed_full_replies = await to_thread.run_sync(
+            self.store.resuming_full_replies, self.id)
+        self.full_replies = (self.full_replies or self.like_refresh or resumed_full_replies)
         self.run_comments = (not self.pending_comments_only or self.like_refresh
                              or locator_changed or metadata_version_old
                              or any(archive["work"][part] != "success"

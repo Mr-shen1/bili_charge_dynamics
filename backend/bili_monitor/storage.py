@@ -38,6 +38,16 @@ def _merge_comment(previous, observed):
     return document
 
 
+# 刷新只写计数类字段：正文、作者、时间、置顶与媒体来源都不在本次语义内。
+COUNT_FIELDS = ("like_count",)
+
+
+def _merge_counts(previous, observed):
+    """只合并计数类字段：来源缺失（未知）不擦除旧可信值，真实 0 照写。"""
+    return {**previous, **{key: observed[key] for key in COUNT_FIELDS
+                           if observed.get(key) is not None}}
+
+
 def _comment_media_version(root_id):
     # 评论不可编辑：图片集合随评论身份固定，版本只跟根评论 rpid 走，
     # 不再随评论区总数变化，避免未被重读的根组版本永久失配。
@@ -1008,6 +1018,18 @@ class Store(CheckStore, DiscoveryStore):
             return None
         return position
 
+    def resuming_full_replies(self, id):
+        """上一轮整楼全量刷新是否还没走完：任一楼的进度仍是未完成的全量扫描。
+
+        全量标志由既有扫描进度持久化：中断后重新进入同一轮时，调用方不需要再传全量
+        参数也能保持整楼正序；只有新一轮扫描才由调用方显式给出。
+        """
+        with self.connection() as connection:
+            rows = connection.execute(
+                "SELECT full, phase FROM page_scan_progress WHERE dynamic_id = ? AND stage = ?",
+                (id, scan_progress.REPLIES))
+            return any(row["full"] and row["phase"] != scan_progress.COMPLETE for row in rows)
+
     def resume_root_scan(self, id, generation, locator, observed_count, *, full=False):
         """一次尝试的开始：续采同代次断点，或按定位／代次／完成态重新起步。
 
@@ -1461,11 +1483,15 @@ class Store(CheckStore, DiscoveryStore):
                 raise
 
     def save_reply_page(self, id, generation, root_id, documents, count, position=None, *,
-                        complete=False, observed=None, succeeded_at=None):
-        """一页回复、页进度与（可选）整楼成功同一短事务。"""
+                        complete=False, observed=None, succeeded_at=None, observed_root=None):
+        """一页回复、页进度与（可选）整楼成功同一短事务。
+
+        `observed_root` 是楼页响应里携带的所属根评论对象：只在整楼全量刷新时给出，
+        其中的计数类字段随本次事务合并回根评论文档，不额外发请求。
+        """
         return self._change_replies(id, generation, "pending", None, root_id, documents, count,
                                     progress=position, complete=complete, observed=observed,
-                                    succeeded_at=succeeded_at)
+                                    succeeded_at=succeeded_at, observed_root=observed_root)
 
     def save_replies(self, id, generation, root_id, documents, count):
         return self._change_replies(id, generation, "pending", None, root_id, documents, count)
@@ -1474,7 +1500,8 @@ class Store(CheckStore, DiscoveryStore):
         return self._change_replies(id, generation, status, observed_count, None, [], None, succeeded_at)
 
     def _change_replies(self, id, generation, status, observed_count, root_id, documents, count,
-                        succeeded_at=None, *, progress=None, complete=False, observed=None):
+                        succeeded_at=None, *, progress=None, complete=False, observed=None,
+                        observed_root=None):
         """页数据、楼中楼进度与整楼成功记录同一短事务；返回新增条数或 `None`（代次过期）。"""
         with self.connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -1506,6 +1533,10 @@ class Store(CheckStore, DiscoveryStore):
                         "SELECT document FROM root_comments WHERE dynamic_id = ? AND id = ?", (id, root_id)
                     ).fetchone()[0])
                     root["source_reply_count"] = count
+                    if observed_root is not None:
+                        # 楼页响应本来就带着所属根评论对象：整楼全量刷新时把其中的计数
+                        # 字段合并回根行（缺失不擦除、真实 0 照写），不额外发请求。
+                        root = _merge_counts(root, observed_root)
                     connection.execute("UPDATE root_comments SET document = ? WHERE dynamic_id = ? AND id = ?",
                                        (json.dumps(root, ensure_ascii=False), id, root_id))
                 archive["local_reply_count"] = connection.execute(

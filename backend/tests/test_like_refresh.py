@@ -1,4 +1,4 @@
-"""01／03：凌晨窗口驱动的根评论点赞刷新与刷新会话的副作用隔离。
+"""01／02／03：凌晨窗口驱动的根评论与楼中楼点赞刷新、副作用隔离。
 
 临时 SQLite＋替身来源＋受控时钟，其余全用真实持久层、限速、租约与会话状态机。
 """
@@ -20,6 +20,7 @@ from backend.bili_monitor.collector import (
 )
 from backend.bili_monitor.dispatch import DispatchLeases
 from backend.bili_monitor.media import ImageDownloader
+from backend.bili_monitor.replies import scan_due
 from backend.bili_monitor.source_endpoints import ROOT_COMMENTS_URL
 from backend.bili_monitor.source_transport import PAGE_DELAYS, PacedSourceTransport
 from backend.bili_monitor.storage import Store
@@ -110,6 +111,10 @@ class LikeSource:
         for root in self.roots:
             root["content"]["pictures"] = []
         self.replies = json.loads((FIXTURES / "replies.json").read_text())["data"]["replies"]
+        # 根 0 以外的楼层单独登记回复；根 0 始终由 self.replies 承载。
+        self.extra_building = {}
+        # 楼页响应里携带的所属根评论对象：点赞可由用例单独指定，缺失表示来源未返回。
+        self.reply_root_like = {}
         self.count = len(self.roots) + len(self.replies)
         self.fail_root_page = None
         self.fail_reply_page = None
@@ -152,8 +157,11 @@ class LikeSource:
             payload = copy.deepcopy(json.loads((FIXTURES / "replies.json").read_text()))
             root = payload["data"]["root"]
             root["rpid_str"] = params["root"]
-            owned = params["root"] == self.roots[0]["rpid_str"]
-            items = self.replies if owned else []
+            items = self.building.get(params["root"], [])
+            root["rcount"] = len(items)
+            root.pop("like", None)
+            if params["root"] in self.reply_root_like:
+                root["like"] = self.reply_root_like[params["root"]]
             payload["data"]["page"].update(num=number, count=len(items))
             payload["data"]["replies"] = (
                 items[(number - 1) * 20:number * 20] or None) if items else []
@@ -210,8 +218,39 @@ class LikeSource:
     def root_pages(self):
         return [params["pn"] for path, params in self.calls if path == "/x/v2/reply"]
 
-    def reply_pages(self):
-        return [params["pn"] for path, params in self.calls if path == "/x/v2/reply/reply"]
+    @property
+    def building(self):
+        """逐楼回复条目：根 0 沿用 self.replies，其余楼单独登记。"""
+        return {self.roots[0]["rpid_str"]: self.replies, **self.extra_building}
+
+    def expand_replies(self, total, *, root_index=0):
+        """把某栋楼补到跨页：来源顺序（旧→新）递增时间与点赞，根页 rcount 同步。"""
+        template = copy.deepcopy(self.replies[0])
+        root_id = self.roots[root_index]["rpid_str"]
+        items = []
+        for index in range(total):
+            identifier = str(30000 + index)
+            reply = copy.deepcopy(template)
+            reply.update(rpid_str=identifier, ctime=1791513500 + index, like=index + 1,
+                         rcount=0, root_str=root_id, parent_str=root_id)
+            reply["content"] = {"message": f"回复 {identifier}", "pictures": []}
+            reply.pop("replies", None)
+            items.append(reply)
+        if root_index == 0:
+            self.replies = items
+        else:
+            self.extra_building[root_id] = items
+        self.roots[root_index]["rcount"] = total
+        self.recount()
+        return root_id
+
+    def recount(self):
+        self.count = len(self.roots) + sum(len(items) for items in self.building.values())
+
+    def reply_pages(self, root_id=None):
+        """楼中楼真实请求过的页码（按请求先后）：区分整楼正序与末页倒序。"""
+        return [int(params["pn"]) for path, params in self.calls
+                if path == "/x/v2/reply/reply" and (root_id is None or params["root"] == root_id)]
 
     def root_pages_for(self, oid):
         return [params["pn"] for path, params in self.calls
@@ -890,5 +929,211 @@ def test_another_target_still_checks_new_comments_while_a_refresh_runs(tmp_path)
         assert anchor(path, "123") != before_anchor
         assert Store(path).read_archive("456")["local_comment_count"] == 23
         assert Store(path).read_archive("123")["local_comment_count"] == 23
+
+    asyncio.run(scenario())
+
+
+def archived_replies(path, root_id):
+    """公开楼中楼读取：完整行级 DTO，用于刷新前后的逐字段比对。"""
+    items = []
+    with archive_client(path) as api:
+        url = f"{COMMENTS}/{root_id}/replies"
+        while url:
+            page = api.get(url).json()
+            items.extend(page["items"])
+            cursor = page["next_cursor"]
+            url = f"{COMMENTS}/{root_id}/replies?cursor={cursor}" if cursor else None
+    return items
+
+
+def root_dto(path, root_id):
+    for item in comments(path):
+        if item["id"] == root_id:
+            return item
+    raise AssertionError("根评论没有出现在公开读取里")
+
+
+def pages_of(calls):
+    """上游分页账本：只看真实取数请求，(接口, 页码) 按发生顺序。"""
+    return [(path, params.get("pn")) for path, params in calls
+            if path in ("/x/v2/reply", "/x/v2/reply/reply")]
+
+
+def refresh_tick(clock, *, jump=65 * 60):
+    """推到窗口内且锚点已满间隔的下一拍（测试把刷新间隔调成 1 小时）。"""
+    return tick(clock, jump=jump)
+
+
+def test_refresh_scans_every_building_forward_to_the_empty_tail(tmp_path, monkeypatch):
+    """LR-02：每个楼都从第 1 页正序翻到空尾页，不走末页倒序，也不因刚校准过而跳过。"""
+    monkeypatch.setenv("BILI_COLLECTOR_LIKE_REFRESH_SECONDS", "3600")
+    path = tmp_path / "reply-forward.sqlite"
+    configured(path)
+    source = LikeSource()
+    source.expand()
+    big = source.expand_replies(25, root_index=0)     # 两页数据 + 空尾页
+    small = source.expand_replies(15, root_index=1)   # 一页数据 + 空尾页
+    clock = ControlledClock(beijing(1, 0, day=1))
+
+    async def scenario():
+        await initial_archive(path, source, clock)
+        # 前提：两栋楼都在 24 小时校准周期内成功扫过，增量路径会直接跳过它们。
+        progress = Store(path).reply_progress("123")
+        assert scan_due(progress[big], 25, clock.now()) is False
+        assert scan_due(progress[small], 15, clock.now()) is False
+        source.forget()
+        async with collecting(path, source, clock):
+            await tick(clock)
+            await refresh_tick(clock)              # 北京 02:05：窗口内且到期
+            await eventually(lambda: work(path) == "complete" and bool(source.root_pages()))
+        # 25 条 → 1、2、3 页再复读空尾页；15 条 → 1 页再复读空尾页。
+        assert source.reply_pages(big) == [1, 2, 3, 3]
+        assert source.reply_pages(small) == [1, 2, 2]
+
+    asyncio.run(scenario())
+
+
+def test_interrupted_reply_refresh_stays_full_forward_and_keeps_committed_pages(tmp_path, monkeypatch):
+    """LR-07：刷新中断后重新进入同一轮仍是整楼全量，已提交分页不重扫。"""
+    monkeypatch.setenv("BILI_COLLECTOR_LIKE_REFRESH_SECONDS", "3600")
+    path = tmp_path / "reply-resume.sqlite"
+    configured(path)
+    source = LikeSource()
+    source.expand()
+    big = source.expand_replies(45, root_index=0)     # 三页数据 + 空尾页
+    clock = ControlledClock(beijing(1, 0, day=1))
+
+    async def scenario():
+        await initial_archive(path, source, clock)
+        source.forget()
+        async with collecting(path, source, clock):
+            await tick(clock)
+            # 第 3 页取数失败：第 1、2 页已提交，整楼留在待办。
+            source.fail_reply_page = 3
+            await refresh_tick(clock)
+            await eventually(lambda: work(path) == "pending" and 3 in source.reply_pages(big))
+            assert source.reply_pages(big) == [1, 2, 3]
+            # 重新进入同一轮：仍整楼全量正序，先复核第 2 页锚点再往下；既不从第 1 页
+            # 重扫，也不退回末页倒序（那样会是 3、2、1）。
+            source.fail_reply_page = None
+            source.forget()
+            await tick(clock, jump=15)
+            await eventually(lambda: work(path) == "complete" and bool(source.reply_pages(big)))
+            assert source.reply_pages(big) == [2, 3, 4, 4]
+        assert [item["id"] for item in archived_replies(path, big)] == [
+            str(30000 + index) for index in range(45)]
+
+    asyncio.run(scenario())
+
+
+def test_reply_refresh_only_changes_count_fields(tmp_path, monkeypatch):
+    """LR-03：刷新后楼中楼只改点赞，行数与主键不变，其余字段逐字段相等。"""
+    monkeypatch.setenv("BILI_COLLECTOR_LIKE_REFRESH_SECONDS", "3600")
+    path = tmp_path / "reply-fields.sqlite"
+    configured(path)
+    source = LikeSource()
+    source.expand()
+    big = source.expand_replies(25, root_index=0)
+    clock = ControlledClock(beijing(1, 0, day=1))
+
+    async def scenario():
+        await initial_archive(path, source, clock)
+        before = archived_replies(path, big)
+        root_before = root_dto(path, big)
+        assert len(before) == 25
+        # 来源只把两处点赞调高，其余字段与页结构都不动。
+        source.building[big][0]["like"] = 166
+        source.building[big][7]["like"] = 99
+        source.forget()
+        async with collecting(path, source, clock):
+            await tick(clock)
+            await refresh_tick(clock)
+            await eventually(lambda: work(path) == "complete" and bool(source.root_pages()))
+        after = archived_replies(path, big)
+        assert [item["id"] for item in after] == [item["id"] for item in before]
+        by_id = {item["id"]: item for item in before}
+        for item in after:
+            old = by_id[item["id"]]
+            assert set(item) == set(old)
+            # 只有计数类字段可能变化；正文、作者、时间、图片存在性一字不变。
+            assert {key for key in item if item[key] != old[key]} <= {"like_count"}
+        refreshed = {item["id"]: item for item in after}
+        assert by_id["30000"]["like_count"] == 1
+        assert refreshed["30000"]["like_count"] == 166
+        assert refreshed["30007"]["like_count"] == 99
+        # 根评论的置顶与来源回复数语义不变：旁路只写计数类字段。
+        root_after = root_dto(path, big)
+        assert root_after["is_pinned"] == root_before["is_pinned"]
+        assert root_after["source_reply_count"] == root_before["source_reply_count"] == 25
+        assert {key for key in root_after if root_after[key] != root_before[key]} <= {"like_count"}
+
+    asyncio.run(scenario())
+
+
+def test_missing_reply_like_keeps_old_value_and_real_zero_is_written(tmp_path, monkeypatch):
+    """LR-05：楼中楼来源缺点赞时保留旧值，返回真实 0 时写入 0。"""
+    monkeypatch.setenv("BILI_COLLECTOR_LIKE_REFRESH_SECONDS", "3600")
+    path = tmp_path / "reply-merge.sqlite"
+    configured(path)
+    source = LikeSource()
+    source.expand()
+    big = source.expand_replies(25, root_index=0)
+    clock = ControlledClock(beijing(1, 0, day=1))
+
+    async def scenario():
+        await initial_archive(path, source, clock)
+        before = {item["id"]: item for item in archived_replies(path, big)}
+        assert [before[str(30000 + index)]["like_count"] for index in range(3)] == [1, 2, 3]
+        source.building[big][0].pop("like")   # 来源完全不返回点赞：未知，不是 0
+        source.building[big][1]["like"] = 0   # 真实的 0
+        source.building[big][2]["like"] = 17
+        source.forget()
+        async with collecting(path, source, clock):
+            await tick(clock)
+            await refresh_tick(clock)
+            await eventually(lambda: work(path) == "complete" and bool(source.root_pages()))
+        after = {item["id"]: item for item in archived_replies(path, big)}
+        assert after["30000"]["like_count"] == 1     # 旧可信点赞保留
+        assert after["30001"]["like_count"] == 0     # 真实 0 不被「缺失才保留」挡住
+        assert after["30002"]["like_count"] == 17
+
+    asyncio.run(scenario())
+
+
+def test_reply_page_root_like_is_written_back_without_extra_requests(tmp_path, monkeypatch):
+    """零成本旁路：楼页携带的根评论点赞写回根文档，整轮请求序列一字不变。"""
+    monkeypatch.setenv("BILI_COLLECTOR_LIKE_REFRESH_SECONDS", "3600")
+    path = tmp_path / "reply-bypass.sqlite"
+    configured(path)
+    source = LikeSource()
+    source.expand()
+    big = source.expand_replies(25, root_index=0)
+    clock = ControlledClock(beijing(1, 0, day=1))
+
+    async def scenario():
+        await initial_archive(path, source, clock)
+        assert root_dto(path, big)["like_count"] == 8
+        rounds = []
+        async with collecting(path, source, clock):
+            await tick(clock)
+            # 两轮刷新：一轮楼页带着根评论点赞，一轮不带；请求账本必须完全相同。
+            for like in (137, None):
+                source.reply_root_like = {} if like is None else {big: like}
+                source.forget()
+                await refresh_tick(clock)
+                await eventually(lambda: work(path) == "complete" and bool(source.root_pages())
+                                 and bool(source.reply_pages(big)))
+                rounds.append(pages_of(source.calls))
+                if like is None:
+                    assert root_dto(path, big)["like_count"] == 8
+                else:
+                    # 楼页本来就带着这个对象：写回不新增请求，只改计数类字段。
+                    assert root_dto(path, big)["like_count"] == 137
+                    assert root_dto(path, big)["source_reply_count"] == 25
+        # 写回不增加任何请求：带旁路与不带旁路的上游分页账本逐条相同，且没有多出任何一页。
+        assert rounds[0] == rounds[1] == [
+            ("/x/v2/reply", "1"), ("/x/v2/reply", "2"), ("/x/v2/reply", "3"),
+            ("/x/v2/reply", "3"), ("/x/v2/reply/reply", "1"), ("/x/v2/reply/reply", "2"),
+            ("/x/v2/reply/reply", "3"), ("/x/v2/reply/reply", "3")]
 
     asyncio.run(scenario())

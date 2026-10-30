@@ -100,7 +100,7 @@ curl --fail-with-body -X POST http://127.0.0.1:8000/api/sync/initial \
 
 ### RootComment DTO
 
-`id`、`dynamic_id`、`author.id` 均为字符串（未知作者 ID 为 null）；`author:{id,nickname,avatar_url}` 允许未知信息。`published_at` 为明确 `+08:00` 秒精度时间或 null；`text` 为普通文本或 null（缺失），真实空字符串不补内容。`like_count` 和 `source_reply_count` 分别取 `like/rcount`，非负整数或 null，未知不等于零。后续缺失观察不覆盖已有可信计数、时间、文本或作者资料。计数类字段（点赞、置顶、来源回复数）每天凌晨窗口内随一次全量根页重扫更新，其余字段不因刷新改变；读取端仍按「无游标首批冻结快照」呈现，进行中的会话不会跳变。`content` 缺失或 null 按未知内容处理，非对象仍失败。`content.pictures` 空/缺失时支持参考脚本的 `picture` 单图对象回退；没有有效回退时按以下规则区分：该接口只在根评论确实带图时下发 `pictures`（实测同一轮响应里带图的根有键、无图则缺键），因此**该根从未观察到图片**时缺键/null 即来源确认无图；**已观察到图片**后缺键只保留旧组，不擦旧媒体也不冒充空组；显式空数组总是确认无图。非空图片集合仍须合法。
+`id`、`dynamic_id`、`author.id` 均为字符串（未知作者 ID 为 null）；`author:{id,nickname,avatar_url}` 允许未知信息。`published_at` 为明确 `+08:00` 秒精度时间或 null；`text` 为普通文本或 null（缺失），真实空字符串不补内容。`like_count` 和 `source_reply_count` 分别取 `like/rcount`，非负整数或 null，未知不等于零。后续缺失观察不覆盖已有可信计数、时间、文本或作者资料。计数类字段（点赞、置顶、来源回复数）每天凌晨窗口内随一次全量根页重扫更新，`like_count` 另可由楼中楼全量翻页自带的根评论对象补写（同样不额外请求），其余字段不因刷新改变；读取端仍按「无游标首批冻结快照」呈现，进行中的会话不会跳变。`content` 缺失或 null 按未知内容处理，非对象仍失败。`content.pictures` 空/缺失时支持参考脚本的 `picture` 单图对象回退；没有有效回退时按以下规则区分：该接口只在根评论确实带图时下发 `pictures`（实测同一轮响应里带图的根有键、无图则缺键），因此**该根从未观察到图片**时缺键/null 即来源确认无图；**已观察到图片**后缺键只保留旧组，不擦旧媒体也不冒充空组；显式空数组总是确认无图。非空图片集合仍须合法。
 
 `is_pinned` 为布尔置顶标记；旧归档及旧快照缺字段时按未置顶展示，不从 UP 身份推断。`root_id/parent_id` 对根评论为字符串 `"0"`，`comment_locator` 保留回复查询所需资源；`media_sources:[{url,width,height}]` 按 `content.pictures` 顺序保留来源及可用尺寸，不包含 OSS 上传成功承诺，不用于生产业务图回退。17 补齐回复；21 新增下文评论媒体字段与上传；页面图片接入仍由 #22 负责。
 
@@ -142,6 +142,8 @@ Archive 新增：
 `reply_to` 为同根 parent 对应条目的作者对象，或 null。根与跨页回复目标均从完整本地集合解析；目标不存在／无可确认作者 ID 时不拼伪造作者，`content.members` 只是 @ 提及者，不能作为关系证据。目标作者与内容在 cursor 首读一并冻结；page 模式按每次请求的当前完整本地同根集合解析。
 
 楼中楼按根增量推进（与参考脚本一致）：本轮根页 `rcount` 与上次成功快照相同、且距上次成功不足 `FULL_SCAN_SECONDS`（24 小时）的楼层**不重发** `/x/v2/reply/reply`，只沿用已持久状态；`rcount` 变化、从未成功或超过校准周期的楼层才继续推进。逐根成功时记录根页 `rcount`、楼中楼来源数与成功时间（`reply_sync.observed_reply_count` / `synced_source_reply_count` / `synced_at`）；跳过不刷新校准计时，因此每根每 24 小时至少校准一次，用于补偿增删抵消。`replies_sync_finished` 携带 `skipped=` 与 `degraded=` 便于观察本轮省下的请求和降级轮次。显式初始化（`POST /api/sync/initial`）始终正序全量。
+
+每日点赞刷新（02）领取的轮次同样整楼正序：每个楼从第 1 页翻到空尾页，不用「遇到已知回复就收起」的裁剪，也不因校准未到期而跳过。中间失败或进程退出后重新进入同一轮时，整楼全量由持久进度里的 `full` 保持，已提交页只复核页锚点再往下，不退回末页倒序、也不从第 1 页重扫。楼页响应本就带着所属根评论对象，整楼全量翻页时只把其中的计数类字段（`like_count`）合并回根评论文档：缺失不擦除旧可信值、真实 0 照写，正文／作者／时间／置顶都不动，不额外发任何请求；末页倒序增量路径不做这次写回。
 
 根扫描失败不再连坐楼中楼：`sync_roots` 返回空时按已存根评论及其 `source_reply_count` 降级执行（`replies_sync_degraded`），仍按 `scan_due` 只重扫到期/上次失败的楼，失败楼层照常保存已得页。降级轮不改变一致性语义——根集合未确认，故整轮仍记 `replies_last_attempt=unconfirmed`，`synced_reply_comment_count` 与成功时间不推进，`work.replies` 保持 `pending`。因此失败重试只重扫根分页，不会因 `failed/unconfirmed` 强制 `full=True` 全量重扫全部楼层（否则热帖会陷入「全量重扫 → 期间计数变化 → 再全量重扫」的死循环）。楼中楼分页同样只拒绝计数**减少**，增长只记 `reply_scan_count_grew`。
 
